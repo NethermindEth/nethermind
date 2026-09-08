@@ -3,6 +3,7 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -20,28 +21,36 @@ public static partial class TrieUpdater
     private const int FullSortThreshold = PbtFourLevelGroupGeometry.BoundarySlots;
 
     /// <summary>Range knowledge and producer buckets carried through one traversal frame.</summary>
-    internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int depth, int branchDepth, bool isSorted, bool prefixesValidated)
+    internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int depth, int branchDepth, bool isSorted, bool prefixesValidated, Span<byte> buffer = default)
     {
+        private readonly Span<byte> _buffer = buffer;
+
+        internal BucketPlan WithBuffer(Span<byte> buffer) =>
+            new(Precalculated, Depth, BranchDepth, IsSorted, PrefixesValidated, buffer);
+
         internal ReadOnlySpan<int> Precalculated { get; } = precalculated;
         internal int Depth { get; } = depth;
         internal int BranchDepth { get; } = branchDepth;
         internal bool IsSorted { get; } = isSorted;
         internal bool PrefixesValidated { get; } = prefixesValidated;
 
-        internal PartitionOutcome BucketSort<TKey>(Span<PbtWriteOperation<TKey>> operations, scoped Span<int> offsets, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
+        /// <summary>Gets the scratch buffer size in bytes required by this plan.</summary>
+        internal int GetBufferSize(int operationCount) => !Precalculated.IsEmpty
+            ? 0
+            : sizeof(int) * Math.Min(operationCount, BranchDepth >= Depth + PbtFourLevelGroupGeometry.LevelsPerGroup
+                ? 1 : PbtFourLevelGroupGeometry.BoundarySlots);
+
+        internal PartitionOutcome BucketSort<TKey>(Span<PbtWriteOperation<TKey>> operations, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
         {
             if (!Precalculated.IsEmpty)
             {
                 metrics?.IncrementPrecalculatedLevels();
                 int mask = Precalculated[0];
-                int countIndex = 1;
-                offsets[0] = 0;
-                for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
-                    offsets[slot + 1] = offsets[slot] + ((mask & (1 << slot)) != 0 ? Precalculated[countIndex++] : 0);
                 int bound = BitOperations.IsPow2(mask) ? Depth + PbtFourLevelGroupGeometry.LevelsPerGroup : Depth;
-                return new(mask, WithRangeKnowledge(Math.Max(BranchDepth, bound), PrefixesValidated));
+                return new(mask, Precalculated.Slice(1, BitOperations.PopCount((uint)mask)), WithRangeKnowledge(Math.Max(BranchDepth, bound), PrefixesValidated));
             }
 
+            Span<int> counts = MemoryMarshal.Cast<byte, int>(_buffer);
             int branchDepth = operations.Length == 1 ? operations[0].Key.BitLength : BranchDepth;
             branchDepth = Math.Max(branchDepth, Depth);
             BucketPlan plan = WithRangeKnowledge(branchDepth, PrefixesValidated);
@@ -49,9 +58,8 @@ public static partial class TrieUpdater
             {
                 metrics?.IncrementSynthesizedSingleBuckets();
                 int slot = BoundarySlot(operations[0].Key, Depth);
-                offsets[..(slot + 1)].Clear();
-                offsets[(slot + 1)..(PbtFourLevelGroupGeometry.BoundarySlots + 1)].Fill(operations.Length);
-                return new(1 << slot, plan);
+                counts[0] = operations.Length;
+                return new(1 << slot, counts[..1], plan);
             }
 
             if (IsSorted)
@@ -64,35 +72,39 @@ public static partial class TrieUpdater
                     if (operations.Length <= 3) SortTiny(operations);
                     else operations.Sort(OperationKeyComparer<TKey>.Instance);
                 }
-                plan = new(default, Depth, branchDepth, true, PrefixesValidated);
+                plan = new(default, Depth, branchDepth, true, PrefixesValidated, _buffer);
             }
             else
             {
                 metrics?.IncrementRadixPartitions();
-                int mask = BucketizeLarge(operations, Depth, offsets, metrics, out branchDepth);
-                return new(mask, plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
+                int mask = BucketizeLarge(operations, Depth, counts, metrics, out branchDepth);
+                return new(mask, counts[..BitOperations.PopCount((uint)mask)], plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
             }
 
-            offsets[..(PbtFourLevelGroupGeometry.BoundarySlots + 1)].Clear();
             int usedMask = 0;
+            int countIndex = -1;
+            int previousSlot = -1;
             foreach (PbtWriteOperation<TKey> operation in operations)
             {
                 int slot = BoundarySlot(operation.Key, Depth);
-                offsets[slot + 1]++;
-                usedMask |= 1 << slot;
+                if (slot != previousSlot)
+                {
+                    counts[++countIndex] = 0;
+                    previousSlot = slot;
+                    usedMask |= 1 << slot;
+                }
+                counts[countIndex]++;
             }
-            for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
-                offsets[slot + 1] += offsets[slot];
             if (BitOperations.IsPow2(usedMask))
             {
                 metrics?.IncrementOperationPrefixComparisons();
                 branchDepth = operations[0].Key.FirstDifferingBit(operations[^1].Key, Depth);
             }
-            return new(usedMask, plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
+            return new(usedMask, counts[..(countIndex + 1)], plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
         }
 
         internal BucketPlan WithRangeKnowledge(int branchDepth, bool prefixesValidated) =>
-            new(Precalculated, Depth, branchDepth, IsSorted, prefixesValidated);
+            new(Precalculated, Depth, branchDepth, IsSorted, prefixesValidated, _buffer);
 
         internal BucketPlan ForChild() =>
             new(default, Depth + PbtFourLevelGroupGeometry.LevelsPerGroup, BranchDepth, IsSorted, PrefixesValidated);
@@ -103,9 +115,11 @@ public static partial class TrieUpdater
     }
 
     /// <summary>The touched buckets and range knowledge established by partitioning.</summary>
-    internal readonly ref struct PartitionOutcome(int usedMask, BucketPlan plan)
+    internal readonly ref struct PartitionOutcome(int usedMask, ReadOnlySpan<int> counts, BucketPlan plan)
     {
         internal int UsedMask { get; } = usedMask;
+        /// <summary>Non-empty bucket counts in ascending slot order.</summary>
+        internal ReadOnlySpan<int> Counts { get; } = counts;
         internal BucketPlan Plan { get; } = plan;
     }
 
@@ -129,7 +143,7 @@ public static partial class TrieUpdater
         public int Compare(PbtWriteOperation<TKey> left, PbtWriteOperation<TKey> right) => left.Key.CompareTo(right.Key);
     }
 
-    private static int BucketizeLarge<TKey>(Span<PbtWriteOperation<TKey>> operations, int groupDepth, Span<int> offsets, TrieUpdaterMetrics? metrics, out int branchDepth) where TKey : struct, IPbtKey<TKey>
+    private static int BucketizeLarge<TKey>(Span<PbtWriteOperation<TKey>> operations, int groupDepth, Span<int> compactCounts, TrieUpdaterMetrics? metrics, out int branchDepth) where TKey : struct, IPbtKey<TKey>
     {
         Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
         counts.Clear();
@@ -148,9 +162,13 @@ public static partial class TrieUpdater
             counts[bucket]++;
             usedMask |= 1 << bucket;
         }
+        Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
         offsets[0] = 0;
         for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
             offsets[bucket + 1] = offsets[bucket] + counts[bucket];
+        int countIndex = 0;
+        for (int mask = usedMask; mask != 0; mask &= mask - 1)
+            compactCounts[countIndex++] = counts[BitOperations.TrailingZeroCount(mask)];
         if (BitOperations.IsPow2(usedMask)) return usedMask;
 
         branchDepth = groupDepth;
@@ -325,13 +343,13 @@ internal static class TrieUpdater<TKey, TPath>
         }
 
         plan = EstablishRangeKnowledge(current, operations, plan, metrics);
-        Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
+        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length)];
         bool hasComputedPartition = false;
-        PartitionOutcome partition = default;
+        scoped PartitionOutcome partition = default;
         if (plan.Precalculated.IsEmpty && plan.BranchDepth <= depth)
         {
-            partition = plan.BucketSort(operations, offsets, metrics);
-            plan = partition.Plan;
+            partition = plan.WithBuffer(buffer).BucketSort(operations, metrics);
+            plan = new(default, depth, partition.Plan.BranchDepth, partition.Plan.IsSorted, partition.Plan.PrefixesValidated);
             hasComputedPartition = true;
         }
         int branchDepth = FindBranchDepth(current, operations[0].Key, plan);
@@ -351,12 +369,12 @@ internal static class TrieUpdater<TKey, TPath>
 
         if (ownerGroup.BitDepth == depth)
             return hasComputedPartition
-                ? FoldBoundaryFromPartition(store, metrics, ownerGroup, ref current, operations, offsets, partition)
+                ? FoldBoundaryFromPartition(store, metrics, ownerGroup, ref current, operations, partition)
                 : FoldBoundary(store, metrics, ownerGroup, ref current, operations, plan);
 
         using GroupMutationFrame group = new(store, PbtPathOperations.FromKey<TPath>(operations[0].Key.Bytes, depth), metrics, ownerGroup.MemoryProvider);
         Subtree result = hasComputedPartition
-            ? FoldBoundaryFromPartition(store, metrics, group, ref current, operations, offsets, partition)
+            ? FoldBoundaryFromPartition(store, metrics, group, ref current, operations, partition)
             : FoldBoundary(store, metrics, group, ref current, operations, plan);
         try
         {
@@ -374,9 +392,9 @@ internal static class TrieUpdater<TKey, TPath>
         Span<PbtWriteOperation<TKey>> operations,
         BucketPlan plan)
     {
-        Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
-        PartitionOutcome partition = plan.BucketSort(operations, offsets, metrics);
-        return FoldBoundaryFromPartition(store, metrics, group, ref current, operations, offsets, partition);
+        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length)];
+        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, metrics);
+        return FoldBoundaryFromPartition(store, metrics, group, ref current, operations, partition);
     }
 
     private static Subtree FoldBoundaryFromPartition(
@@ -385,7 +403,6 @@ internal static class TrieUpdater<TKey, TPath>
         GroupMutationFrame group,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
-        ReadOnlySpan<int> offsets,
         PartitionOutcome partition)
     {
         int depth = partition.Plan.Depth;
@@ -395,10 +412,14 @@ internal static class TrieUpdater<TKey, TPath>
         {
             Decompose(group, ref current, depth, boundaries);
 
+            int offset = 0;
+            int countIndex = 0;
             for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(mask);
-                Span<PbtWriteOperation<TKey>> bucket = operations[offsets[slot]..offsets[slot + 1]];
+                int count = partition.Counts[countIndex++];
+                Span<PbtWriteOperation<TKey>> bucket = operations.Slice(offset, count);
+                offset += count;
                 boundaries[slot] = FoldMutations(
                     store, metrics, group, ref boundaries[slot], bucket, partition.Plan.ForChild());
             }

@@ -107,6 +107,8 @@ public class Eip8297CanonicalTreeTests
         using PbtWriteBatch<PbtStorageFullKey> first = builder.Build();
         using PbtWriteBatch<PbtStorageFullKey> second = builder.Build();
         TrieUpdater.BucketPlan plan = first.Plan;
+        byte[] buffer = new byte[plan.GetBufferSize(first.Count)];
+        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(first.Entries.ToArray().AsSpan(), null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(plan.Precalculated.Length, Is.EqualTo(17));
@@ -116,6 +118,9 @@ public class Eip8297CanonicalTreeTests
             Assert.That(plan.PrefixesValidated, Is.False);
             Assert.That(plan.Precalculated[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
             Assert.That(plan.Precalculated.Slice(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
+            Assert.That(buffer, Is.Empty);
+            Assert.That(outcome.UsedMask, Is.EqualTo(plan.Precalculated[0]));
+            Assert.That(outcome.Counts.ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
         }
         first.Consume(out ArrayPoolList<PbtWriteOperation<PbtStorageFullKey>> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation<PbtStorageFullKey>> ownedOperations = operations;
@@ -924,6 +929,45 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+    [Test]
+    public void Bucket_plan_uses_exact_scratch_size(
+        [Values(0, 1, 3, 16, 17, 33)] int count,
+        [Values(0, 3, 4, 8)] int branchDepth,
+        [Values(false, true)] bool precomputed,
+        [Values(false, true)] bool sorted)
+    {
+        PbtWriteOperation<PbtStorageFullKey>[] operations = new PbtWriteOperation<PbtStorageFullKey>[count];
+        for (int index = 0; index < count; index++)
+        {
+            byte[] key = Bytes.FromHexString("0xAA0000");
+            key[^1] = (byte)(sorted ? index : count - index - 1);
+            operations[index] = PbtWriteOperation<PbtStorageFullKey>.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
+        }
+        PbtWriteOperation<PbtStorageFullKey>[] original = (PbtWriteOperation<PbtStorageFullKey>[])operations.Clone();
+        int[] table = new int[17];
+        table[0] = count == 0 ? 0 : 1 << 10;
+        table[1] = count;
+        TrieUpdater.BucketPlan plan = new(precomputed ? table : default, 0, branchDepth, sorted, false);
+        int expectedSize = precomputed || count == 0 ? 0 : sizeof(int) * (branchDepth >= 4 ? 1 : Math.Min(count, 16));
+        byte[] buffer = new byte[plan.GetBufferSize(count)];
+        Array.Fill(buffer, (byte)0xFF);
+        TrieUpdaterMetrics metrics = new();
+
+        plan = plan.WithBuffer(buffer);
+        TrieUpdater.PartitionOutcome outcome = plan.BucketSort(operations, metrics);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.Length, Is.EqualTo(expectedSize));
+            Assert.That(outcome.UsedMask, Is.EqualTo(table[0]));
+            Assert.That(outcome.Counts.ToArray(), Is.EqualTo(count == 0 ? Array.Empty<int>() : new[] { count }));
+            Assert.That(operations, Is.EquivalentTo(original));
+            Assert.That(outcome.Plan.Depth, Is.Zero);
+            Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(precomputed ? 1 : 0));
+            if (precomputed) Assert.That(operations, Is.EqualTo(original));
+        }
+    }
+
     private static IEnumerable<TestCaseData> BucketizationCases()
     {
         foreach (int count in new[] { 0, 1, 2, 3, 4, 16, 31, 32, 33, 256 })
@@ -947,10 +991,10 @@ public class Eip8297CanonicalTreeTests
         }
         PbtWriteOperation<PbtStorageFullKey>[] original = (PbtWriteOperation<PbtStorageFullKey>[])operations.Clone();
 
-        int[] offsets = new int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
-        Array.Fill(offsets, -1);
         TrieUpdater.BucketPlan plan = new(default, groupDepth, 0, false, false);
-        TrieUpdater.PartitionOutcome partition = plan.BucketSort(operations, offsets, null);
+        byte[] buffer = new byte[plan.GetBufferSize(count)];
+        Array.Fill(buffer, (byte)0xFF);
+        TrieUpdater.PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, null);
         int expectedMask = 0;
         int expectedBranchDepth = count == 0 ? groupDepth : original[0].Key.BitLength;
         for (int index = 0; index < count; index++)
@@ -978,16 +1022,10 @@ public class Eip8297CanonicalTreeTests
                 : Is.InRange(groupDepth, expectedBranchDepth));
             Assert.That(destinations, Is.Ordered);
             Assert.That(operations, Is.EquivalentTo(original));
-            Assert.That(offsets[0], Is.Zero);
-            Assert.That(offsets[^1], Is.EqualTo(count));
-            Assert.That(offsets, Is.Ordered);
-            int expectedOffset = 0;
-            for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
-            {
-                Assert.That(offsets[bucket], Is.EqualTo(expectedOffset), $"bucket {bucket} start");
-                expectedOffset += bucketCounts[bucket];
-                Assert.That(offsets[bucket + 1], Is.EqualTo(expectedOffset), $"bucket {bucket} end");
-            }
+            List<int> expectedCounts = [];
+            foreach (int bucketCount in bucketCounts)
+                if (bucketCount != 0) expectedCounts.Add(bucketCount);
+            Assert.That(partition.Counts.ToArray(), Is.EqualTo(expectedCounts));
         }
     }
 
@@ -1317,10 +1355,10 @@ public class Eip8297CanonicalTreeTests
             key[^1] = (byte)(sorted ? index : count - index - 1);
             operations[index] = PbtWriteOperation<PbtStorageFullKey>.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
         }
-        int[] offsets = new int[17];
         TrieUpdaterMetrics metrics = new();
         TrieUpdater.BucketPlan plan = new(default, depth, depth, sorted, false);
-        TrieUpdater.PartitionOutcome outcome = plan.BucketSort(operations, offsets, metrics);
+        byte[] buffer = new byte[plan.GetBufferSize(count)];
+        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(operations, metrics);
         int branchDepth = operations[0].Key.BitLength;
         foreach (PbtWriteOperation<PbtStorageFullKey> operation in operations)
             branchDepth = Math.Min(branchDepth, operations[0].Key.FirstDifferingBit(operation.Key));
@@ -1331,13 +1369,16 @@ public class Eip8297CanonicalTreeTests
         Assert.That(outcome.Plan.BranchDepth, Is.EqualTo(branchDepth));
         for (int childDepth = depth + 4; childDepth + 4 <= branchDepth; childDepth += 4)
         {
-            outcome = outcome.Plan.ForChild().BucketSort(operations, offsets, metrics);
+            plan = outcome.Plan.ForChild();
+            buffer = new byte[plan.GetBufferSize(count)];
+            outcome = plan.WithBuffer(buffer).BucketSort(operations, metrics);
             synthesized++;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(System.Numerics.BitOperations.IsPow2(outcome.UsedMask), Is.True);
                 Assert.That(outcome.Plan.BranchDepth, Is.EqualTo(branchDepth));
-                Assert.That(offsets[^1], Is.EqualTo(count));
+                Assert.That(buffer.Length, Is.EqualTo(sizeof(int)));
+                Assert.That(outcome.Counts.ToArray(), Is.EqualTo(new[] { count }));
                 Assert.That(metrics.OperationPrefixComparisons, Is.EqualTo(comparisons));
                 Assert.That(metrics.RadixPartitions, Is.EqualTo(partitions));
                 Assert.That(metrics.FullKeySorts, Is.EqualTo(sorts));
@@ -1396,9 +1437,10 @@ public class Eip8297CanonicalTreeTests
             key[1] = (byte)index;
             operations[index] = PbtWriteOperation<PbtStorageFullKey>.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
         }
-        int[] offsets = new int[17];
         TrieUpdaterMetrics metrics = new();
-        TrieUpdater.PartitionOutcome outcome = default(TrieUpdater.BucketPlan).BucketSort(operations, offsets, metrics);
+        TrieUpdater.BucketPlan plan = default;
+        byte[] buffer = new byte[plan.GetBufferSize(count)];
+        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(operations, metrics);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(outcome.Plan.IsSorted, Is.EqualTo(count <= 16));
@@ -1408,9 +1450,10 @@ public class Eip8297CanonicalTreeTests
         if (count <= 16)
         {
             for (int index = 1; index < count; index++) Assert.That(operations[index - 1].Key.CompareTo(operations[index].Key), Is.LessThan(0));
-            int start = offsets[1];
-            int length = offsets[2] - start;
-            TrieUpdater.PartitionOutcome child = outcome.Plan.ForChild().BucketSort(operations.AsSpan(start, length), offsets, metrics);
+            int length = outcome.Counts[0];
+            TrieUpdater.BucketPlan childPlan = outcome.Plan.ForChild();
+            byte[] childBuffer = new byte[childPlan.GetBufferSize(length)];
+            TrieUpdater.PartitionOutcome child = childPlan.WithBuffer(childBuffer).BucketSort(operations.AsSpan(0, length), metrics);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(child.Plan.IsSorted, Is.True);
