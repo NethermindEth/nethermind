@@ -70,7 +70,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         ILogManager logManager,
-        ForwardCommitmentCapture? commitments = null)
+        ForwardCommitmentCapture? commitments)
     {
         ArgumentNullException.ThrowIfNull(history);
         _commitments = commitments is { Enabled: true } ? commitments : null;

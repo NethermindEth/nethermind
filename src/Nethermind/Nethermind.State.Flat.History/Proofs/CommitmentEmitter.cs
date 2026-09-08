@@ -29,7 +29,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly CommitmentStore _storages;
     private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
-    private const int MaxSpareWindows = 1 << 14;
+    private const int MaxSpareWindowsCeiling = 1 << 16;
+    private readonly int _maxSpareWindows;
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
     private readonly bool _respectFloors;
@@ -59,6 +60,7 @@ public sealed class CommitmentEmitter : IDisposable
     {
         _exactBranches = new ClockCache<NodePathKey, bool>(exactBranchEntries);
         _respectFloors = respectFloors;
+        _maxSpareWindows = Math.Min(maxOpenWindowNodes, MaxSpareWindowsCeiling);
         _history = history;
         _policy = policy;
         _metadata = metadata;
@@ -341,7 +343,7 @@ public sealed class CommitmentEmitter : IDisposable
 
         foreach (KeyValuePair<NodePathKey, WindowState> entry in pending)
         {
-            if (_spareWindows.Count >= MaxSpareWindows)
+            if (_spareWindows.Count >= _maxSpareWindows)
             {
                 entry.Value.Release();
                 continue;
