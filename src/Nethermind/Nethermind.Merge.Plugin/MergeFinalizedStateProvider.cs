@@ -12,6 +12,8 @@ namespace Nethermind.Merge.Plugin;
 
 public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider) : IFinalizedStateProvider
 {
+    public BlockHeader? Head => blockTree.Head?.Header;
+
     public ulong FinalizedBlockNumber
     {
         get

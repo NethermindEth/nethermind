@@ -12,6 +12,8 @@ public class ReorgDepthFinalizedStateProvider(IBlockTree blockTree) : IFinalized
 {
     public ulong FinalizedBlockNumber => blockTree.BestKnownNumber.SaturatingSub(Reorganization.MaxDepth);
 
+    public BlockHeader? Head => blockTree.Head?.Header;
+
     public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
     {
         if (FinalizedBlockNumber < blockNumber) return null;

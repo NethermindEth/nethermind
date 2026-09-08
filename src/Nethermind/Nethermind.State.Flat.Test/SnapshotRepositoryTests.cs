@@ -509,7 +509,7 @@ public class SnapshotRepositoryTests
         }
         _repository.SetLastCommittedStateId(CreateStateId(5, rootByte: 3));
 
-        int pruned = _repository.RemoveOrphanedStates(CreateStateId(5, rootByte: 3));
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(5, rootByte: 3), CreateStateId(5, rootByte: 3));
 
         using (Assert.EnterMultipleScope())
         {
@@ -534,7 +534,7 @@ public class SnapshotRepositoryTests
             _repository.SetLastCommittedStateId(CreateStateId(5, fork));
         }
 
-        int pruned = _repository.RemoveOrphanedStates(CreateStateId(5, rootByte: 2));
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(5, rootByte: 2), CreateStateId(5, rootByte: 2));
 
         using (Assert.EnterMultipleScope())
         {
@@ -552,7 +552,7 @@ public class SnapshotRepositoryTests
         AddSnapshotToRepository(CreateStateId(1), CreateStateId(2, rootByte: 1));
         _repository.SetLastCommittedStateId(CreateStateId(4));
 
-        int pruned = _repository.RemoveOrphanedStates(CreateStateId(4));
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(4), CreateStateId(4));
 
         using (Assert.EnterMultipleScope())
         {
@@ -571,15 +571,15 @@ public class SnapshotRepositoryTests
         BuildSnapshotChain(0, 4);
         AddSnapshotToRepository(CreateStateId(2), CreateStateId(3, rootByte: 1));
 
-        Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(3, rootByte: 1)), Is.True, "nothing committed yet: nothing can be called an orphan");
+        Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(3, rootByte: 1), CreateStateId(3, rootByte: 1)), Is.True, "nothing committed yet: nothing can be called an orphan");
 
         _repository.SetLastCommittedStateId(CreateStateId(4));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(2)), Is.True);
-            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(4)), Is.True);
-            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(3, rootByte: 1)), Is.False);
+            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(2), CreateStateId(4)), Is.True);
+            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(4), CreateStateId(4)), Is.True);
+            Assert.That(_repository.IsOnCommittedAncestry(CreateStateId(3, rootByte: 1), CreateStateId(4)), Is.False);
         }
     }
     [Test]
@@ -591,7 +591,7 @@ public class SnapshotRepositoryTests
         _repository.SetLastCommittedStateId(CreateStateId(3));
         Assert.That(_repository.HasState(CreateStateId(3, rootByte: 1)), Is.True, "precondition: the sibling lives in the persisted tier");
 
-        int pruned = _repository.RemoveOrphanedStates(CreateStateId(3));
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(3), CreateStateId(3));
 
         using (Assert.EnterMultipleScope())
         {
@@ -601,12 +601,52 @@ public class SnapshotRepositoryTests
         }
     }
     [Test]
+    public void RemoveOrphanedStates_ForkChoiceHead_IsRetainedWithItsAncestry()
+    {
+        // The chain follows 4 while every later payload is a sibling of it that was executed but never selected.
+        BuildSnapshotChain(0, 4);
+        for (byte fork = 1; fork <= 3; fork++)
+        {
+            AddSnapshotToRepository(CreateStateId(3), CreateStateId(4, fork));
+            _repository.SetLastCommittedStateId(CreateStateId(4, fork));
+        }
+
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(4, rootByte: 3), CreateStateId(4));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.Zero, "recently committed siblings and the fork-choice head all stay");
+            Assert.That(_repository.HasState(CreateStateId(4)), Is.True, "the fork-choice head is not an orphan");
+        }
+    }
+
+    [Test]
+    public void RemoveOrphanedStates_ForkAboveTheCommittedHead_IsDroppedWhole()
+    {
+        // An orphaned fork 3'->4'->5' reaches above the committed head at 4; keeping 5' would leave a tip whose chain
+        // cannot be assembled.
+        BuildSnapshotChain(0, 4);
+        BuildSnapshotChain(CreateStateId(2), 5, rootByte: 1);
+        _repository.SetLastCommittedStateId(CreateStateId(4));
+
+        int pruned = _repository.RemoveOrphanedStates(CreateStateId(4), CreateStateId(4));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(3));
+            Assert.That(_repository.HasState(CreateStateId(5, rootByte: 1)), Is.False);
+            Assert.That(_repository.HasState(CreateStateId(3, rootByte: 1)), Is.False);
+            Assert.That(_repository.HasState(CreateStateId(4)), Is.True);
+        }
+    }
+
+    [Test]
     public void RemoveOrphanedStates_HeadWithoutInMemorySnapshot_PrunesNothing()
     {
         BuildSnapshotChain(0, 3);
         AddSnapshotToRepository(CreateStateId(1), CreateStateId(2, rootByte: 1));
 
-        Assert.That(_repository.RemoveOrphanedStates(CreateStateId(9)), Is.Zero);
+        Assert.That(_repository.RemoveOrphanedStates(CreateStateId(9), CreateStateId(9)), Is.Zero);
         Assert.That(_repository.HasState(CreateStateId(2, rootByte: 1)), Is.True);
     }
 

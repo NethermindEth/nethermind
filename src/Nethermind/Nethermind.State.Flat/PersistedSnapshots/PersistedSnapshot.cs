@@ -337,6 +337,9 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
 
     public bool TryAcquire() => TryAcquireLease();
 
+    /// <summary>True while a reader other than the caller holds a lease; the caller must hold exactly one lease.</summary>
+    internal bool HasOtherReaders => CurrentLeases > 2 * RefCountingLease.Single;
+
     /// <summary>
     /// Advise this snapshot's mmap range cold and clear the per-arena page-tracker entries that
     /// cover it. A hook for callers that have superseded this snapshot but want to drop its resident

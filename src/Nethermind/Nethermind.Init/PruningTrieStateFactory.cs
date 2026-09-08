@@ -207,6 +207,8 @@ public class MainPruningTrieStoreFactory
     {
         private ulong? _lastFinalizedBlockNumber = null;
 
+        public BlockHeader? Head => finalizedStateProvider.Head;
+
         public ulong FinalizedBlockNumber
         {
             get

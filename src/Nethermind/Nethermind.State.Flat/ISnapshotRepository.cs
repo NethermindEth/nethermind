@@ -149,23 +149,24 @@ public interface ISnapshotRepository
     void RemoveSiblingAndDescendents(in StateId canonicalStateId);
 
     /// <summary>
-    /// Removes snapshots in both tiers at or below <paramref name="committedHead"/>'s block that are neither on its
-    /// ancestry nor on the ancestry of a recently committed state, and returns how many were removed.
+    /// Removes the snapshots, in both tiers, that are on the ancestry of neither <paramref name="committedHead"/>,
+    /// <paramref name="forkChoiceHead"/>, nor a recently committed state, and returns how many were removed.
     /// </summary>
     /// <remarks>
     /// Persistence reclaims snapshots only when the chain advances past the persisted state. A head that stays put
     /// while sibling blocks keep arriving (an engine client replaying payloads against one parent) never advances
     /// it, so without this every sibling's snapshot lives for the life of the process, in memory or converted on
-    /// disk. A later reorg to a removed state re-executes its block from the parent, which <see cref="HasState"/>
-    /// reporting false triggers.
+    /// disk. A payload extending a removed block re-executes the branch down to the nearest state; a fork choice
+    /// that selects a removed block itself serves no state until such a payload arrives.
     /// </remarks>
     /// <param name="committedHead">The last state the main processing scope committed.</param>
-    int RemoveOrphanedStates(in StateId committedHead);
+    /// <param name="forkChoiceHead">The state the chain currently follows; equal to <paramref name="committedHead"/> when unknown.</param>
+    int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead);
 
     /// <summary>
-    /// True when <paramref name="stateId"/> is on the ancestry of the last committed state or of a recently
-    /// committed one; also true while nothing has been committed or the committed state is not in memory,
-    /// so callers cannot mistake an unknown chain for an orphan.
+    /// True when <paramref name="stateId"/> is on the ancestry of the last committed state, of
+    /// <paramref name="forkChoiceHead"/>, or of a recently committed state; also true while nothing has been
+    /// committed or the committed state has no snapshot, so callers cannot mistake an unknown chain for an orphan.
     /// </summary>
-    bool IsOnCommittedAncestry(in StateId stateId);
+    bool IsOnCommittedAncestry(in StateId stateId, in StateId forkChoiceHead);
 }

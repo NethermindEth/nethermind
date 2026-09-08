@@ -19,6 +19,8 @@ public class TestFinalizedStateProvider(ulong depth) : IFinalizedStateProvider
     public TrieStore TrieStore { get; set; } = null!;
     private BlockHeader? _manualFinalizedPoint = null;
 
+    public BlockHeader? Head { get; set; }
+
     public ulong FinalizedBlockNumber
     {
         get

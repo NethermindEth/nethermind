@@ -388,6 +388,7 @@ public class LongFinalityIntegrationTests
     {
         private readonly System.Collections.Generic.Dictionary<ulong, Hash256> _roots = [];
         public ulong FinalizedBlockNumber { get; set; }
+        public BlockHeader? Head { get; set; }
         public void SetRoot(ulong block, Hash256 root) => _roots[block] = root;
         public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => _roots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }

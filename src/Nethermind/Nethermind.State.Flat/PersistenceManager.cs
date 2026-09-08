@@ -106,7 +106,8 @@ public class PersistenceManager(
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
-    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
+    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>, and converts only states on the committed
+    /// ancestry; orphans are left for <see cref="PruneOrphansAboveBudget"/>.
     /// </remarks>
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
@@ -195,6 +196,7 @@ public class PersistenceManager(
         // GetStatesUpToBlock treats as "before any state" (returns empty). long.MaxValue is above every
         // real block height, so this returns every in-memory state, ascending.
         using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
+        StateId forkChoiceHead = ForkChoiceHead(snapshotRepository.GetLastCommittedStateId() ?? currentPersistedState);
 
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
         // Orphans are never converted: a sibling the chain did not follow would only fill the persisted tier
@@ -205,7 +207,7 @@ public class PersistenceManager(
 
             if (compacted!.To.BlockNumber - compacted.From.BlockNumber == _compactSize
                 && IsOnDisk(compacted.From, currentPersistedState)
-                && snapshotRepository.IsOnCommittedAncestry(X))
+                && snapshotRepository.IsOnCommittedAncestry(X, forkChoiceHead))
             {
                 return new ConversionCandidate(compacted, Base: null);
             }
@@ -217,7 +219,7 @@ public class PersistenceManager(
         {
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
-            if (IsOnDisk(baseSnap!.From, currentPersistedState) && snapshotRepository.IsOnCommittedAncestry(X))
+            if (IsOnDisk(baseSnap!.From, currentPersistedState) && snapshotRepository.IsOnCommittedAncestry(X, forkChoiceHead))
             {
                 return new ConversionCandidate(Compacted: null, baseSnap);
             }
@@ -297,10 +299,14 @@ public class PersistenceManager(
         StateId? committedHead = snapshotRepository.GetLastCommittedStateId();
         if (committedHead is null) return;
 
-        int pruned = snapshotRepository.RemoveOrphanedStates(committedHead.Value);
+        int pruned = snapshotRepository.RemoveOrphanedStates(committedHead.Value, ForkChoiceHead(committedHead.Value));
         if (pruned > 0 && _logger.IsDebug)
             _logger.Debug($"Pruned {pruned} orphaned snapshot(s) below committed head {committedHead.Value}; {snapshotRepository.SnapshotCount} base snapshot(s) remain.");
     }
+
+    /// <summary>The state the chain follows, which the last executed payload need not be; falls back to the committed head.</summary>
+    private StateId ForkChoiceHead(in StateId committedHead) =>
+        finalizedStateProvider.Head is { StateRoot: not null } head ? new StateId(head.Number, head.StateRoot) : committedHead;
 
     // Runs before the persist and the prune: the flat head must never advance past durable history, or a crash in
     // between leaves a permanently uncapturable range. Failures propagate and abort this iteration (retried next).

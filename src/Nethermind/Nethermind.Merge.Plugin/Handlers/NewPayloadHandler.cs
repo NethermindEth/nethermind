@@ -440,7 +440,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                                     && parentBlockInfo is { IsBeaconInfo: false } // we are not in beacon sync
                                     && parentIsPoWBlock; // parent was PoW block -> so it was a transition block
 
-        if (!parentProcessed && processTerminalBlock) // so if parent wasn't processed
+        // A processed parent whose state was since pruned (flat state bounding drops orphaned siblings under a head
+        // that never advances) is recovered the same way, re-executing the branch from the nearest ancestor that
+        // still has state. Without such an ancestor the node is behind, and syncing stays the answer.
+        bool parentStateEvicted = !parentProcessed
+                                  && parentBlockInfo is { WasProcessed: true }
+                                  && weHaveOnlyFewBlocksToProcess
+                                  && HasAncestorWithState(parent);
+
+        if (!parentProcessed && (processTerminalBlock || parentStateEvicted)) // so if parent wasn't processed
         {
             if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parent}, parent TD: {parent.TotalDifficulty}");
 
@@ -450,8 +458,25 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             processingOptions &= ~ProcessingOptions.IgnoreParentNotOnMainChain;
         }
 
-        return parentProcessed || processTerminalBlock;
+        return parentProcessed || processTerminalBlock || parentStateEvicted;
     }
+
+    /// <summary>Whether an ancestor within the forced-processing window still has state for a branch re-execution to start from.</summary>
+    private bool HasAncestorWithState(BlockHeader parent)
+    {
+        BlockHeader? ancestor = parent;
+        for (int depth = 0; depth < MaxReExecutionDepth; depth++)
+        {
+            ancestor = _blockTree.FindHeader(ancestor.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (ancestor is null) return false;
+            if (_stateReader.HasStateForBlock(ancestor)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Mirrors the few-blocks-to-process window: a pruned parent is re-executed only from this close an ancestor.</summary>
+    private const int MaxReExecutionDepth = 8;
 
     /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>

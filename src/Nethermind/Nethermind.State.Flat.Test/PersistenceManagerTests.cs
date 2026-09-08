@@ -1444,6 +1444,34 @@ public class PersistenceManagerTests
         }
     }
     [Test]
+    public async Task AddToPersistence_ForkChoiceHead_OffTheCommittedAncestry_IsRetained()
+    {
+        // The chain keeps following the first sibling while every later payload is another sibling that gets
+        // executed but never selected, so the head leaves the recently-committed ring without being an ancestor.
+        StateId pinned = CreateStateId(1);
+        CreateSnapshot(Block0, pinned);
+        Hash256 forkChoiceRoot = Keccak.Compute("fork-choice");
+        StateId forkChoiceHead = new(2, forkChoiceRoot);
+        CreateSnapshot(pinned, forkChoiceHead);
+        _snapshotRepository.SetLastCommittedStateId(forkChoiceHead);
+        _finalizedStateProvider.Head = Build.A.BlockHeader.WithNumber(2).WithStateRoot(forkChoiceRoot).TestObject;
+
+        for (int i = 2; i <= 2 * _config.MaxInMemoryBaseSnapshotCount; i++)
+        {
+            StateId sibling = CreateStateId(2, (byte)i);
+            CreateSnapshot(pinned, sibling);
+            _snapshotRepository.SetLastCommittedStateId(sibling);
+            await _persistenceManager.AddToPersistence(sibling);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasState(forkChoiceHead), Is.True, "the state the chain follows must survive");
+            Assert.That(_snapshotRepository.HasState(CreateStateId(2, 2)), Is.False, "an unselected sibling that aged out is pruned");
+        }
+    }
+
+    [Test]
     public async Task AddToPersistence_SiblingsWithinInMemoryBudget_AreKept()
     {
         StateId pinned = CreateStateId(1);
@@ -1489,6 +1517,8 @@ public class PersistenceManagerTests
 
         public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+
+        public BlockHeader? Head { get; set; }
     }
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
