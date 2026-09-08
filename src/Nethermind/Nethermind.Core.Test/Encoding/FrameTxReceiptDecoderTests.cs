@@ -409,8 +409,8 @@ public class FrameTxReceiptDecoderTests
     [TestCase(1, true, TestName = "MessageDecode_FrameLogsOverTheReceiptBudget_Throws")]
     public void MessageDecode_FrameLogBudgetIsSpentPerReceiptNotPerFrame(int excess, bool rejected)
     {
-        const int firstFrameLogs = ReceiptMessageDecoder.MaxReceiptLogs / 2;
-        int secondFrameLogs = ReceiptMessageDecoder.MaxReceiptLogs - firstFrameLogs + excess;
+        const int firstFrameLogs = FrameReceiptRlp.MaxReceiptLogs / 2;
+        int secondFrameLogs = FrameReceiptRlp.MaxReceiptLogs - firstFrameLogs + excess;
         // Each frame stays under the ceiling on its own, so only their sum can trip the guard.
         TxReceipt receipt = CreateReceipt(
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(firstFrameLogs)),
@@ -422,7 +422,7 @@ public class FrameTxReceiptDecoderTests
         }
         else
         {
-            Assert.That(DecodeMessage(receipt).Logs, Has.Length.EqualTo(ReceiptMessageDecoder.MaxReceiptLogs));
+            Assert.That(DecodeMessage(receipt).Logs, Has.Length.EqualTo(FrameReceiptRlp.MaxReceiptLogs));
         }
     }
 
