@@ -13,14 +13,6 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger) : IIncomingTxFilter
     {
-        private struct BucketBalanceState(UInt256 accountNonce, UInt256 txNonce)
-        {
-            public readonly UInt256 AccountNonce = accountNonce;
-            public readonly UInt256 TxNonce = txNonce;
-            public UInt256 CumulativeCost = UInt256.Zero;
-            public bool Overflow = false;
-        }
-
         private readonly TxDistinctSortedPool _txs = txs;
         private readonly TxDistinctSortedPool _blobTxs = blobTxs;
         private readonly ILogger _logger = logger;
@@ -36,32 +28,9 @@ namespace Nethermind.TxPool.Filters
             AccountStruct account = state.SenderAccount;
             UInt256 balance = account.Balance;
 
-            BucketBalanceState bucketBalanceState = new(account.Nonce, tx.Nonce);
             TxDistinctSortedPool pool = tx.CarriesBlobs ? _blobTxs : _txs;
-            // tx.SenderAddress! as unknownSenderFilter will run before this one
-            pool.VisitBucket(tx.SenderAddress!, ref bucketBalanceState, static (Transaction otherTx, ref BucketBalanceState bucketState) =>
-            {
-                if (otherTx.Nonce < bucketState.AccountNonce)
-                {
-                    return true;
-                }
-
-                if (otherTx.Nonce >= bucketState.TxNonce)
-                {
-                    return false;
-                }
-
-                if (!otherTx.FeeChargedToSender())
-                {
-                    return true;
-                }
-
-                bucketState.Overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(bucketState.CumulativeCost, out bucketState.CumulativeCost);
-                return true;
-            });
-
-            bool overflow = bucketBalanceState.Overflow;
-            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(bucketBalanceState.CumulativeCost, out bucketBalanceState.CumulativeCost);
+            bool overflow = tx.IsOverflowWhenSummingSenderBucket(pool, account.Nonce, unreservedOnly: false, out UInt256 cumulativeCost);
+            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
 
             if (overflow)
             {
@@ -70,7 +39,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Int256Overflow;
             }
 
-            if (balance < bucketBalanceState.CumulativeCost)
+            if (balance < cumulativeCost)
             {
                 Metrics.PendingTransactionsTooLowBalance++;
 
@@ -82,7 +51,7 @@ namespace Nethermind.TxPool.Filters
                 bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
                 return isNotLocal ?
                     AcceptTxResult.InsufficientFunds :
-                    AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {bucketBalanceState.CumulativeCost}");
+                    AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
             }
 
             return AcceptTxResult.Accepted;

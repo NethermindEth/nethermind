@@ -14,8 +14,9 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>Rejects a frame transaction whose payer's summed pending maximum cost would exceed its balance (EIP-8141).</summary>
 /// <remarks>The reservation is taken at admission and released when the transaction leaves the pool. This is the
 /// only affordability gate a frame transaction meets: the sender-balance filters skip them, since their fees are
-/// the payer's liability. A prefix no payer resolved for reserves nothing, so it is gated against the sender
-/// instead of going unpriced.</remarks>
+/// the payer's liability. Whenever the sender is what pays — its own prefix, or one no payer resolved for — the
+/// bound the sibling filters held is taken here instead, over the sender's whole pending bucket rather than this
+/// transaction alone, so nothing the ledger cannot see goes unsummed.</remarks>
 internal sealed class FrameTxPayerExposureFilter(
     IChainHeadSpecProvider specProvider,
     IReadOnlyStateProvider stateProvider,
@@ -41,26 +42,49 @@ internal sealed class FrameTxPayerExposureFilter(
         }
 
         Address? payer = tx.PayerAddress;
-        if (payer is null)
+        UInt256 balance;
+        if (payer is null || payer == tx.SenderAddress)
         {
-            // Nothing to reserve against, so gate the sender: unproven sponsorship must not buy a pool slot
-            // no account was priced for.
-            UInt256 senderBalance = state.SenderAccount.Balance;
-            return maxCost <= senderBalance
-                ? AcceptTxResult.Accepted
-                : RejectOverExposed(tx, tx.SenderAddress!, UInt256.Zero, maxCost, senderBalance);
-        }
+            AccountStruct sender = state.SenderAccount;
+            // The sender-balance filters defer to this one, so their cumulative bound is taken here. Only what
+            // the payer ledger does not already sum is counted, or a self-paid reservation would count twice.
+            TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
+            if (tx.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, out UInt256 pending))
+            {
+                return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction cumulative cost cannot be priced");
+            }
 
-        // A simulated third-party payer must be read from state, or the bound gates the wrong account.
-        UInt256 balance = payer == tx.SenderAddress
-            ? state.SenderAccount.Balance
-            : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
+            // The zero-balance leg is the BalanceZeroFilter backstop a frame transaction now skips: it has to
+            // hold even at zero cost, or a zero-fee prefix buys a pool slot no account could have paid for.
+            if (pending > sender.Balance || (sender.Balance.IsZero && !tx.IsFree()))
+            {
+                return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance);
+            }
+
+            balance = sender.Balance - pending;
+            if (payer is null)
+            {
+                // Nothing to reserve against, so the sender bound is the whole gate. The price is still recorded:
+                // it is what the bound above sums this transaction at once it is one of the pending ones.
+                if (maxCost > balance) return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance);
+
+                tx.PayerExposure = maxCost;
+                return AcceptTxResult.Accepted;
+            }
+        }
+        else
+        {
+            // A simulated third-party payer must be read from state, or the bound gates the wrong account.
+            balance = stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
+        }
 
         // A snapshot; AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
         UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {
-            return RejectOverExposed(tx, payer, reserved, maxCost, balance);
+            return payer == tx.SenderAddress
+                ? RejectUnderfundedSender(tx, reserved, maxCost, balance)
+                : RejectOverExposed(tx, payer, reserved, maxCost, balance);
         }
 
         // Held so the release subtracts exactly this, whatever the transaction still carries by then.
@@ -75,6 +99,18 @@ internal sealed class FrameTxPayerExposureFilter(
         if (logger.IsTrace)
             logger.Trace($"Skipped adding frame transaction {tx.Hash}, account {account} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
         return AcceptTxResult.FrameTxPayerExposureExceeded;
+    }
+
+    /// <summary>The rejection the sender-balance filters would have returned, so a broke sender is not reported
+    /// — to the caller or to the gauge — as a sponsor over-exposure.</summary>
+    private AcceptTxResult RejectUnderfundedSender(Transaction tx, in UInt256 owed, in UInt256 maxCost, in UInt256 balance)
+    {
+        if (balance.IsZero) Metrics.PendingTransactionsZeroBalance++;
+        else Metrics.PendingTransactionsTooLowBalance++;
+
+        if (logger.IsTrace)
+            logger.Trace($"Skipped adding frame transaction {tx.Hash}, sender {tx.SenderAddress} owes {owed} + {maxCost} against {balance} available.");
+        return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, pending cost: {owed}, transaction cost: {maxCost}");
     }
 
     /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending

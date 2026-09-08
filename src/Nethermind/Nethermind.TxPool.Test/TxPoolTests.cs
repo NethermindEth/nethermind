@@ -3793,7 +3793,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
 
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InsufficientFunds));
         }
 
         [Test]
@@ -3803,7 +3803,44 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
 
             Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 1), TxHandlingOptions.None),
-                Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+                Is.EqualTo(AcceptTxResult.InsufficientFunds));
+        }
+
+        [TestCase(false, TestName = "the sender covers both")]
+        [TestCase(true, TestName = "the sender is one wei short of both")]
+        public void SubmitTx_PayerlessFrameTxs_CannotEachBookTheWholeSenderBalance(bool rejected)
+        {
+            // A payer-less prefix reserves nothing and BalanceTooLowFilter no longer sums frame txs, so
+            // without a cumulative sender bound one balance admits an unbounded run of them.
+            CreatePoolWithSimulator(FrameTxSimulationResult.Undecided("simulator unavailable"));
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonce: 1);
+            // As FrameTxDecoder sets it: the helper's stand-in gas limit would price these above any balance
+            // the gate under test can be given, and the bucket sweep would evict them before it binds.
+            second.GasLimit = first.GasLimit = FrameTxValidation.TotalGasLimit(first.Frames);
+            UInt256 both = MaxCostOf(first) + MaxCostOf(second);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, rejected ? both - 1 : both);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None),
+                    Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+            }
+        }
+
+        [TestCase(1, false, TestName = "a funded sender")]
+        [TestCase(0, true, TestName = "a zero-balance sender")]
+        public void SubmitTx_LocalZeroFeeFrameTx_StillNeedsANonZeroSenderBalance(int balance, bool rejected)
+        {
+            // A local submission skips FeeTooLowFilter and a zero max cost clears every summed bound, so the
+            // BalanceZeroFilter backstop is all that stands between a zero-fee prefix and a free pool slot.
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)balance);
+
+            Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 0), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
         }
 
         [TestCase(false, TestName = "account nonce")]
@@ -3822,7 +3859,14 @@ namespace Nethermind.TxPool.Test
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the payer still covers it, so the sender's balance must not evict it");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the payer still covers it, so the sender's balance must not evict it");
+                // Clamped by the sender's balance the seed is zero, and the running minimum spreads that
+                // across the whole bucket: retained, but first in line for eviction and blocking its bucket.
+                Assert.That(tx.GasBottleneck, Is.EqualTo(tx.CalculateEffectiveGasPrice(eip1559Enabled: true, _headInfo.CurrentBaseFee)).And.Not.Zero,
+                    "a sponsored transaction must keep its ordering key");
+            }
         }
 
         [Test]
@@ -4371,7 +4415,8 @@ namespace Nethermind.TxPool.Test
             // Displacing the nonce-0 tx frees only its 3 of the 9 pending, so the bump is priced at 6 + 7.
             AcceptTxResult overBound = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 7), TxHandlingOptions.None);
 
-            Assert.That(overBound, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+            // A self-paying sender's over-exposure is its own insolvency, and reads back as such.
+            Assert.That(overBound, Is.EqualTo(AcceptTxResult.InsufficientFunds));
         }
 
         [Test]
@@ -4398,7 +4443,7 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(bump, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(withinBalance, Is.EqualTo(AcceptTxResult.Accepted), "the displaced reservation must have been released");
-                Assert.That(overBalance, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the bound must still bind, or the case above proves nothing");
+                Assert.That(overBalance, Is.EqualTo(AcceptTxResult.InsufficientFunds), "the bound must still bind, or the case above proves nothing");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "the bump must have displaced the incumbent rather than joined it");
             }
         }
@@ -4576,7 +4621,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded),
+                Assert.That(second, Is.EqualTo(AcceptTxResult.InsufficientFunds),
                     "the keyed transaction joins the pending set rather than displacing the account-domain one");
             }
         }
@@ -4607,7 +4652,7 @@ namespace Nethermind.TxPool.Test
         }
 
         // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
-        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null, ulong? deadline = null, UInt256? feePerGas = null)
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null, ulong? deadline = null, UInt256? feePerGas = null, ulong nonce = 0)
         {
             // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
             TxFrame[] frames = deadline is null
@@ -4626,7 +4671,7 @@ namespace Nethermind.TxPool.Test
             {
                 Type = TxType.FrameTx,
                 ChainId = _specProvider.ChainId,
-                Nonce = 0,
+                Nonce = nonce,
                 SenderAddress = senderKey.Address,
                 NonceKeys = nonceKeys,
                 Frames = frames,

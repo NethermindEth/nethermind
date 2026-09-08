@@ -1680,9 +1680,11 @@ namespace Nethermind.TxPool
                         }
                     }
 
+                    // The clamp is skipped for a payer-funded frame tx: seeded from a balance that never pays it,
+                    // it would return zero and pin the whole bucket's ordering key through the running minimum.
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
                         isEip1559,
-                        _headInfo.CurrentBaseFee, balance);
+                        _headInfo.CurrentBaseFee, tx.FeeChargedToSender() ? balance : UInt256.MaxValue);
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
                     if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)

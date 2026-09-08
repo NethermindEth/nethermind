@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool.Collections;
 
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 
@@ -77,6 +78,62 @@ namespace Nethermind.TxPool
 
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
             => tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
+
+        private struct SenderBucketState(UInt256 accountNonce, UInt256 txNonce, bool unreservedOnly)
+        {
+            public readonly UInt256 AccountNonce = accountNonce;
+            public readonly UInt256 TxNonce = txNonce;
+            public readonly bool UnreservedOnly = unreservedOnly;
+            public UInt256 CumulativeCost = UInt256.Zero;
+            public bool Overflow = false;
+        }
+
+        /// <summary>Sums what the sender of <paramref name="tx"/> already owes across the pending transactions
+        /// ahead of it, so one balance cannot fund a whole bucket.</summary>
+        /// <remarks>An EIP-8141 frame transaction a third-party payer covers is never counted — its cost is that
+        /// payer's. <paramref name="unreservedOnly"/> additionally drops the self-paid ones, for a caller that
+        /// measures against <see cref="PayerExposureCache"/>, which already sums them.</remarks>
+        /// <returns><c>true</c> when the sum overflows, leaving <paramref name="cumulativeCost"/> unusable.</returns>
+        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, in UInt256 accountNonce, bool unreservedOnly, out UInt256 cumulativeCost)
+        {
+            SenderBucketState bucket = new(accountNonce, tx.Nonce, unreservedOnly);
+            // tx.SenderAddress! as unknownSenderFilter will run before either caller
+            pool.VisitBucket(tx.SenderAddress!, ref bucket, static (Transaction otherTx, ref SenderBucketState bucketState) =>
+            {
+                if (otherTx.Nonce < bucketState.AccountNonce)
+                {
+                    return true;
+                }
+
+                if (otherTx.Nonce >= bucketState.TxNonce)
+                {
+                    return false;
+                }
+
+                bool chargedElsewhere = bucketState.UnreservedOnly
+                    ? otherTx.PayerAddress is not null
+                    : !otherTx.FeeChargedToSender();
+                if (chargedElsewhere)
+                {
+                    return true;
+                }
+
+                bucketState.Overflow |= otherTx.IsOverflowWhenAddingPricedCostToCumulative(bucketState.CumulativeCost, out bucketState.CumulativeCost);
+                return true;
+            });
+
+            cumulativeCost = bucket.CumulativeCost;
+            return bucket.Overflow;
+        }
+
+        /// <summary>Adds what a pooled <paramref name="tx"/> costs the account that pays it, preferring the
+        /// figure admission priced over the gas-limit product.</summary>
+        /// <remarks>An EIP-8141 frame transaction is priced on its whole gas budget, of which
+        /// <see cref="Transaction.GasLimit"/> carries only the frame-gas sum, so the product understates it.</remarks>
+        private static bool IsOverflowWhenAddingPricedCostToCumulative(this Transaction tx, in UInt256 currentCost, out UInt256 cumulativeCost)
+            => tx.PayerExposure is { } priced
+                ? UInt256.AddOverflow(currentCost, priced, out cumulativeCost)
+                : tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost);
 
         internal static bool IsOverflowWhenAddingTxCostToCumulative(this Transaction tx, UInt256 currentCost, out UInt256 cumulativeCost)
         {

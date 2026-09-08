@@ -30,6 +30,7 @@ public class FrameTxPayerExposureFilterTests
     private static readonly Address Payer = TestItem.AddressB;
     private static readonly IReleaseSpec Spec = Eip8141Prototype.Instance;
     private const int TestCost = 100_000;
+    private const int OrdinaryCost = 21_000;
 
     // The bound is inclusive: a tx whose reserved + max_cost exactly equals the balance is admitted,
     // matching the spec's strict `available < tx.max_cost` rejection condition.
@@ -163,14 +164,65 @@ public class FrameTxPayerExposureFilterTests
         tx.PayerAddress = null;
         TestReadOnlyStateProvider senderAccounts = new();
         senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
+        PayerExposureCache cache = new();
 
-        AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx, senderAccounts);
+        AcceptTxResult result = Accept(StateWithPayerBalance(0), cache, tx, senderAccounts);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
-            Assert.That(tx.PayerExposure, Is.Null, "an unresolved payer leaves no reservation to release");
+            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted),
+                "the sender is simply underfunded, which is not a sponsor over-exposure");
+            Assert.That(cache.GetReserved(TestItem.AddressA), Is.EqualTo(UInt256.Zero), "an unresolved payer names no account to reserve against");
+            Assert.That(tx.PayerExposure, Is.EqualTo(rejected ? null : (UInt256?)TestCost),
+                "an admitted one still carries its price, which is what the sender bound sums it at next time");
         }
+    }
+
+    // Each was admitted on its own count: BalanceTooLowFilter's cumulative walk skips frame txs, and a
+    // payer-less one reserves nothing, so one balance would admit an unbounded run of them.
+    [TestCase(2 * TestCost, false, TestName = "the sender covers both")]
+    [TestCase(2 * TestCost - 1, true, TestName = "the sender covers only one")]
+    public void Accept_PayerlessFrameTx_SumsTheSendersOtherPayerlessPending(int senderBalance, bool rejected)
+    {
+        Transaction pending = FrameTxCostingExactly(TestCost);
+        pending.PayerAddress = null;
+        pending.PayerExposure = TestCost; // as its own admission priced it
+        pending.Hash = TestItem.KeccakA;
+
+        Transaction tx = FrameTxCostingExactly(TestCost);
+        tx.PayerAddress = null;
+        tx.Nonce = 1;
+        tx.Hash = TestItem.KeccakB;
+
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx, senderAccounts, Pool(blobs: false, pending));
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+    }
+
+    // The exposure ledger holds frame reservations only, so a plain transaction pooled first is invisible to
+    // it and the sender's balance would be booked twice.
+    [TestCase(TestCost + OrdinaryCost, false, TestName = "the sender covers both")]
+    [TestCase(TestCost + OrdinaryCost - 1, true, TestName = "the sender covers only one")]
+    public void Accept_SelfPayingFrameTx_SumsTheSendersOrdinaryPending(int senderBalance, bool rejected)
+    {
+        // A legacy transaction, so its cost is exactly gas_limit * gas_price.
+        Transaction ordinary = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
+            .WithNonce(0).WithGasLimit(OrdinaryCost).WithGasPrice(1).WithValue(0).TestObject;
+        ordinary.Hash = TestItem.KeccakA;
+
+        Transaction tx = FrameTxCostingExactly(TestCost, payer: TestItem.AddressA);
+        tx.Nonce = 1;
+        tx.Hash = TestItem.KeccakB;
+
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
+
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts, Pool(blobs: false, ordinary));
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
     [Test]
@@ -214,7 +266,7 @@ public class FrameTxPayerExposureFilterTests
         // The state provider is left empty: reading it instead would see a zero balance and always reject.
         AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
 
-        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
     [Test]
