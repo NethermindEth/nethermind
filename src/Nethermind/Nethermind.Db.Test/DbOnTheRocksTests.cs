@@ -161,7 +161,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void FlatAccountColumn_UsesInterpolatedIndexAndRoundTripsAfterReopen()
+        public void FlatAccountColumn_UsesAutoIndexAndRoundTripsAfterReopen([Values] bool writeLegacyBinarySst)
         {
             DbConfig config = new();
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
@@ -171,13 +171,27 @@ namespace Nethermind.Db.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(resolvedOptions["block_based_table_factory.index_type"], Is.EqualTo("kBinarySearch"));
-                Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kInterpolation"));
+                Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kAuto"));
+                Assert.That(resolvedOptions["block_based_table_factory.uniform_cv_threshold"], Is.EqualTo("0.2"));
             }
 
             byte[][] keys = CreateAccountKeys();
             byte[][] values = new byte[keys.Length][];
 
-            using (ColumnsDb<FlatDbColumns> db = new(DbPath, new(DbNames.Flat, DbPath), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>()))
+            DbConfig writerConfig = config;
+            RocksDbConfigFactory writerConfigFactory = configFactory;
+            if (writeLegacyBinarySst)
+            {
+                writerConfig = new DbConfig
+                {
+                    FlatAccountDbAdditionalRocksDbOptions =
+                        "block_based_table_factory.index_block_search_type=kBinary;" +
+                        "block_based_table_factory.uniform_cv_threshold=-1;"
+                };
+                writerConfigFactory = new RocksDbConfigFactory(writerConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            }
+
+            using (ColumnsDb<FlatDbColumns> db = new(DbPath, new(DbNames.Flat, DbPath), writerConfig, writerConfigFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>()))
             {
                 IDb account = db.GetColumnDb(FlatDbColumns.Account);
                 for (int i = 0; i < keys.Length; i++)
