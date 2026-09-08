@@ -59,12 +59,15 @@ namespace Nethermind.Synchronization
         /// writes to a freed native handle (#13154). It gets a budget of its own rather than the feeds' advisory one,
         /// and it stays bounded because the runner sets ProcessTerminationTimeout to infinite - a wait with no ceiling
         /// here is a node that never exits.
-        ///
-        /// Settable rather than <c>const</c> so the give-up branch can be exercised in milliseconds; nothing outside
-        /// the tests sets it.
         /// </remarks>
         internal const int DefaultStateSyncTerminationTimeout = 60_000;
 
+        /// <summary>How long <see cref="DisposeAsync"/> waits for the state sync runner before giving up on it.</summary>
+        /// <remarks>
+        /// Settable rather than a <c>const</c> so the give-up branch can be exercised in milliseconds; nothing outside
+        /// the tests sets it. See <see cref="DefaultStateSyncTerminationTimeout"/> for why this wait exists and why it
+        /// is bounded at all.
+        /// </remarks>
         internal int StateSyncTerminationTimeout { get; init; } = DefaultStateSyncTerminationTimeout;
 
         private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();

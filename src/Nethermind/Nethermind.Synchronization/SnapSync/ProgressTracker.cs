@@ -34,6 +34,10 @@ namespace Nethermind.Synchronization.SnapSync
         /// that cannot drain until the pivot moves, while code and storage requests - which are keyed by hash and
         /// succeed against a peer behind the pivot - get none. The fallback below the priority chain restores full
         /// concurrency once refreshes are the only work left.
+        ///
+        /// The bound is therefore "at most this many in flight <em>while other work is queued</em>", not an absolute
+        /// one: when the fallback is reached there is nothing left to starve, and the next queued partition, storage
+        /// or code item puts the capped branch back in charge on the following call.
         /// </remarks>
         internal const int MAX_CONCURRENT_ACCOUNT_REFRESHES = 4;
 
@@ -621,6 +625,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             return true;
         }
+
+        internal int LargeStorageProgressCount => _largeStorageProgress.Count;
 
         public void OnCompletedLargeStorage(PathWithAccount pathWithAccount)
         {

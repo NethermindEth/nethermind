@@ -417,6 +417,64 @@ public class SnapProviderTests
         Assert.That(next, Is.Null);
     }
 
+    /// <summary>
+    /// The sibling of the test above. A large-storage account that is <em>deleted</em> at the pivot, rather than
+    /// merely emptied, is just as terminal: nothing will ever fetch its storage, so nothing else will ever clear its
+    /// large-storage entry. Leaving it counts the account in "Large storage left" for the rest of the sync, which is
+    /// the exact operator signal #13155 was diagnosed by.
+    /// </summary>
+    [Test]
+    public void RefreshAccounts_AccountNoLongerExists_ClearsItsLargeStorageProgress()
+    {
+        (ISnapStateServer server, Hash256 root) = BuildSnapServerFromEntries(
+        [
+            (TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject),
+            (TestItem.KeccakB, Build.An.Account.WithBalance(2).TestObject),
+        ]);
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(root)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        // A path immediately before an existing account: absent from the state, and its neighbour is what proves
+        // the absence. A gap with no successor would come back as an empty range, i.e. Expired rather than NotFound.
+        ValueHash256 missing = ((ValueHash256)TestItem.KeccakB).DecrementPath();
+        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+
+        // Dequeuing a single-account slot range is what registers an account as large storage.
+        progressTracker.EnqueueNextSlot(new StorageRange
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { gone },
+            StartingHash = ValueKeccak.Zero,
+            LimitHash = Keccak.MaxValue
+        });
+        progressTracker.IsFinished(out SnapSyncBatch? slot);
+        using (slot)
+        {
+            Assert.That(slot!.StorageRangeRequest, Is.Not.Null);
+        }
+        Assert.That(progressTracker.LargeStorageProgressCount, Is.EqualTo(1), "guards the premise");
+
+        progressTracker.EnqueueAccountRefresh(gone, ValueKeccak.Zero, Keccak.MaxValue);
+        progressTracker.IsFinished(out SnapSyncBatch? refresh);
+        Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            server.GetAccountRanges(root, gone.Path, gone.Path.IncrementPath(), 4000, CancellationToken.None);
+        refresh.AccountsToRefreshResponse = new AccountsAndProofs { PathAndAccounts = accounts, Proofs = proofs };
+
+        Assert.That(snapProvider.RefreshAccounts(refresh.AccountsToRefreshRequest, refresh.AccountsToRefreshResponse), Is.EqualTo(AddRangeResult.OK));
+        snapProvider.ReleaseRequest(refresh, responseHandled: true);
+        refresh.Dispose();
+
+        Assert.That(gone.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
+        Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
+    }
+
     [TestCase(nameof(SnapSyncBatch.AccountRangeRequest))]
     [TestCase(nameof(SnapSyncBatch.StorageRangeRequest))]
     [TestCase(nameof(SnapSyncBatch.CodesRequest))]

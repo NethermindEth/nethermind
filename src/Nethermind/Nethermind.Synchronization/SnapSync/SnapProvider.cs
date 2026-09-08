@@ -387,6 +387,10 @@ namespace Nethermind.Synchronization.SnapSync
                     // The account no longer exists at the pivot, so there is no storage to retrieve. It remains
                     // tracked for healing. Terminal success - must not retry or the refresh would loop forever.
                     result = AddRangeResult.OK;
+                    // Terminal like the !HasStorage branch above, so it owes the same bookkeeping: nothing else will
+                    // ever clear this account's large-storage entry, and it would keep counting towards
+                    // "Large storage left" for the rest of the sync - the very signal #13155 was diagnosed by.
+                    _progressTracker.OnCompletedLargeStorage(requestedPath.PathAndAccount);
                     break;
 
                 case RefreshVerifyResult.Expired:
