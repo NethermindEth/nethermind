@@ -34,6 +34,22 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public void A_sync_batch_keeps_the_cache_basis_so_readers_stay_cached()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
+
+        using (cache.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+        }
+
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(Address);
+
+        Assert.That(inner.AccountReads, Is.EqualTo(1), "a maintenance batch runs at the sync state id and moves no pointer; parking the basis there would send every reader past the cache until the next real persist");
+    }
+
+    [Test]
     public void GetAccount_SecondReadAtSameBasis_ServedFromCache()
     {
         FakePersistence inner = new();

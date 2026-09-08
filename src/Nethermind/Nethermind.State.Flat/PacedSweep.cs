@@ -18,6 +18,7 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, string markerNa
     private const int MaxCursorLength = 64;
     private static readonly TimeSpan PassBudget = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan DrainPoll = TimeSpan.FromSeconds(10);
+    protected static readonly TimeSpan RetryPoll = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(60);
 
     private readonly IDb _flatMetadata = flat.GetColumnDb(FlatDbColumns.Metadata);
@@ -27,6 +28,7 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, string markerNa
     private Thread? _loop;
     private byte[]? _checkCursor;
     private bool _checkDone;
+    private bool _checkInconclusive;
     private bool _tallyLoaded;
     private long _lastProgressAt;
 
@@ -56,6 +58,8 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, string markerNa
     public bool AlreadyHandled => _flatMetadata.Get(_markerKey) is [Swept or Unsupported];
 
     public bool IsSwept => _flatMetadata.Get(_markerKey) is [Swept];
+
+    internal bool CheckInconclusive => _checkInconclusive;
 
     public void MarkUnsupported() => _flatMetadata.PutSpan(_markerKey, [Unsupported]);
 
@@ -104,6 +108,7 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, string markerNa
         {
             _checkCursor = next;
             _checkDone = completed;
+            if (!Drained(0)) _checkInconclusive = true;
         }
 
         return completed;
@@ -165,7 +170,7 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, string markerNa
             {
                 if (Logger.IsInfo) Logger.Info($"{Name(repair)} done, orphaned entries deleted: {outcome}");
             }
-            else if (!Drained(0))
+            else if (_checkInconclusive || !Drained(0))
             {
                 if (Logger.IsWarn) Logger.Warn($"{Name(repair)} inconclusive: the flat database was cleared under it by a state sync, and slots land before their accounts while that sync writes. {outcome}");
             }
