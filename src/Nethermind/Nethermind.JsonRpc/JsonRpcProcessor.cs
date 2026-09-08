@@ -221,7 +221,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                 if (buffer.IsEmpty && readResult.IsCompleted && options.InputMode == JsonRpcInputMode.SingleDocument)
                 {
-                    result = GetParsingError(startTime, in buffer, "Error during parsing/validation: empty request.");
+                    result = GetParsingError(startTime, in buffer, context, "Error during parsing/validation: empty request.");
                     processingState.ShouldExit = true;
                 }
                 else if (!buffer.IsEmpty)
@@ -235,7 +235,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             if (!TryDecodeSingleObjectRequest(buffer.First, out JsonRpcRequest? directRequest, out Exception? decodeException)
                                 && decodeException is not null)
                             {
-                                result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", decodeException);
+                                result = GetParsingError(startTime, in buffer, context, "Error during parsing/validation.", decodeException);
                                 processingState.ShouldExit = true;
                                 reader.AdvanceTo(buffer.End);
                                 advanced = true;
@@ -278,7 +278,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         }
                         catch (Exception ex) when (IsRequestDecodingException(ex))
                         {
-                            result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
+                            result = GetParsingError(startTime, in buffer, context, "Error during parsing/validation.", ex);
                             processingState.ShouldExit = true;
                             undecodable = true;
                             if (!advanced)
@@ -313,7 +313,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         }
                         else if (!undecodable && isCompleted && !buffer.IsEmpty)
                         {
-                            result = GetParsingError(startTime, in buffer, "Error during parsing/validation: incomplete request.");
+                            result = GetParsingError(startTime, in buffer, context, "Error during parsing/validation: incomplete request.");
                             processingState.ShouldExit = true;
                         }
 
@@ -337,7 +337,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     {
                         // Deliberately NOT IsRequestDecodingException: this catch wraps request *execution* as
                         // well as decoding. See IsRequestDecodingException.
-                        result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
+                        result = GetParsingError(startTime, in buffer, context, "Error during parsing/validation.", ex);
                         processingState.ShouldExit = true;
                     }
                 }
@@ -376,7 +376,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             pendingSingleDocument.Dispose();
             processingState.ShouldExit = true;
-            return GetParsingError(processingState.PendingSingleDocumentStartTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
+            return GetParsingError(processingState.PendingSingleDocumentStartTime, in trailingBuffer, context, "Error during parsing/validation: trailing data after JSON-RPC request.");
         }
 
         if (isCompleted)
@@ -408,7 +408,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             jsonDocument.Dispose();
             processingState.ShouldExit = true;
-            return GetParsingError(startTime, in trailingBuffer, "Error during parsing/validation: trailing data after JSON-RPC request.");
+            return GetParsingError(startTime, in trailingBuffer, context, "Error during parsing/validation: trailing data after JSON-RPC request.");
         }
 
         if (isCompleted)
@@ -442,7 +442,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch (Exception ex) when (IsRequestDecodingException(ex))
         {
-            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), context, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
             return;
         }
 
@@ -461,7 +461,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch (JsonException ex)
         {
-            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), context, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
             return;
         }
 
@@ -472,7 +472,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch (JsonException ex)
         {
-            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), context, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
         }
     }
 
@@ -692,7 +692,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         // -32700, not -32600: the bytes never decoded into a request, so there is nothing to
                         // call invalid. The raw buffer is not available here (the document is already parsed),
                         // and GetParsingError only uses it to enrich the debug log.
-                        await WriteParsingErrorAsync(default, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
+                        await WriteParsingErrorAsync(default, context, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
                         break;
                     }
 
@@ -767,6 +767,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 if (jsonRpcRequest is null)
                 {
                     await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
+                    // The entry still counts against the response body: skipping this read would let the next
+                    // valid element be dispatched in full after the sink already asked to stop.
+                    isStopped |= sink.StopRequested;
                     continue;
                 }
 
@@ -844,6 +847,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 if (jsonRpcRequest is null)
                 {
                     await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
+                    // The entry still counts against the response body: skipping this read would let the next
+                    // valid element be dispatched in full after the sink already asked to stop.
+                    isStopped |= sink.StopRequested;
                     continue;
                 }
 
@@ -973,13 +979,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     private async ValueTask WriteParsingErrorAsync(
         ReadOnlySequence<byte> buffer,
+        JsonRpcContext context,
         IJsonRpcResponseSink sink,
         long startTime,
         string error,
         CancellationToken cancellationToken,
         Exception? exception = null)
     {
-        JsonRpcResult.Entry result = GetParsingError(startTime, in buffer, error, exception);
+        JsonRpcResult.Entry result = GetParsingError(startTime, in buffer, context, error, exception);
         await WriteSingleEntryAsync(result, sink, cancellationToken);
     }
 
@@ -1029,10 +1036,20 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private JsonRpcResult.Entry GetParsingError(long startTime, ref readonly ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
+    /// <remarks>
+    /// -32700 is a request error like any other (#13156): bytes this node could not parse are the caller's fault,
+    /// and one unauthenticated request must not put a line - let alone a stack trace - on the operator's console.
+    /// The detail is kept, at Debug, by the same rule <see cref="IsDemotableRequestError"/> applies to the response
+    /// path: a JWT-authenticated caller that cannot frame a JSON-RPC request is the operator's problem.
+    /// </remarks>
+    private JsonRpcResult.Entry GetParsingError(
+        long startTime,
+        ref readonly ReadOnlySequence<byte> buffer,
+        JsonRpcContext context,
+        string error,
+        Exception? exception = null)
     {
         Metrics.JsonRpcRequestDeserializationFailures++;
-        if (_logger.IsError) _logger.Error(error, exception);
 
         if (_logger.IsDebug)
         {
@@ -1042,9 +1059,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 error = isFullString
                     ? $"{error} Data:\n{data}\n"
                     : $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
-
-                _logger.Debug(error);
             }
+        }
+
+        // DebugError, not Debug, so the exception is still attached and a demoted line is still recognisable as
+        // an error once the operator turns Debug on.
+        if (context.IsAuthenticated)
+        {
+            if (_logger.IsError) _logger.Error(error, exception);
+        }
+        else
+        {
+            _logger.DebugError(error, exception);
         }
 
         JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "parse error");

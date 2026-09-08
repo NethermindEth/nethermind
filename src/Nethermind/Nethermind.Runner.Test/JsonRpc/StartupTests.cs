@@ -265,6 +265,10 @@ public class StartupTests
         Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
         Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
         AssertErrorCodeResponse(body, ErrorCodes.InvalidRequest);
+        // "zzz" is rejected by Kestrel itself, with its own "Bad chunk size data." text. This endpoint serves
+        // unauthenticated callers, so what reaches them has to be a message this repo authored either way.
+        AssertJsonResponse(body, root =>
+            Assert.That(root.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("Invalid request body.")));
     }
 
     [Test]

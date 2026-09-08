@@ -304,12 +304,42 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         catch (Exception e)
         {
             ReturnParameters(parameters, returnParametersToPool);
+            // A fault the params cannot cause is a condition of this node, and the catch is deliberately broad
+            // enough to swallow one. It keeps the operator's line, and marks the response so the processor does
+            // not demote it either - -32602 alone would otherwise read as the caller's fault at both sites.
+            if (IsNodeFault(e))
+            {
+                // Formatting the params would allocate on an already exhausted heap, so they are omitted and the
+                // exception is passed to the logger rather than interpolated (same reason as DescribeForErrorLog).
+                if (_logger.IsError) _logger.Error($"Failed to bind JSON RPC parameters for {methodName}", e);
+                JsonRpcErrorResponse nodeFault = GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
+                if (nodeFault.Error is not null) nodeFault.Error.OperatorActionable = true;
+                return nodeFault;
+            }
+
             // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
             // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
             if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
             string message = GetSafePublicMessage(e) ?? "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
+    }
+
+    /// <summary>
+    /// Whether the fault is a condition of this node rather than something the caller's params can cause.
+    /// </summary>
+    /// <remarks>
+    /// A deny-list of two, not an allow-list of expected binding failures: a converter can throw anything, and
+    /// promoting an unanticipated caller-fault type back into a per-request WARN is what #13156 was about.
+    /// </remarks>
+    private static bool IsNodeFault(Exception e)
+    {
+        for (Exception? ex = e; ex is not null; ex = ex.InnerException)
+        {
+            if (ex is OutOfMemoryException or ObjectDisposedException) return true;
+        }
+
+        return false;
     }
 
     private JsonRpcErrorResponse? PrepareUtf8Parameters(

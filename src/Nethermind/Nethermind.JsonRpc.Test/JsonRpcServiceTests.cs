@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -595,6 +596,30 @@ public class JsonRpcServiceTests
         }
     }
 
+    // The counterpart to the test above: the catch around parameter binding is broad, so it also swallows faults
+    // the params cannot cause. Those are a condition of the node and must stay visible - at this site, and at the
+    // processor, which would otherwise demote every -32602 from an unauthenticated caller to Debug.
+    [Test]
+    public void Node_faults_during_binding_stay_visible_and_omit_the_params()
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        const string rawParameters = """[{"secret":"0x1234"}]""";
+
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        _logManager = new OneLoggerLogManager(new(logger));
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRawRequest(module, "test_node_fault", rawParameters),
+            ErrorCodes.InvalidParams);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.OperatorActionable, Is.True, "the processor must not demote a node fault");
+            Assert.That(logger.LogList.Where(static l => l.Contains("Failed to bind JSON RPC parameters for test_node_fault")), Is.Not.Empty);
+            Assert.That(logger.LogList.Where(static l => l.Contains("secret")), Is.Empty, "the params must not be formatted on a fault that may be an exhausted heap");
+            module.DidNotReceive().test_node_fault(Arg.Any<NodeFaultPayload>());
+        }
+    }
+
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
     public void Raw_utf8_params_invalid_arguments_return_invalid_params_before_invocation(
         string method,
@@ -920,6 +945,22 @@ public class JsonRpcServiceTests
 
         [JsonRpcMethod(Description = "Test method used to verify JSON-RPC array parameter metadata handling.")]
         ResultWrapper<int> test_byte_arrays(byte[][] value);
+
+        [JsonRpcMethod(Description = "Test method used to verify JSON-RPC parameter binding faults.")]
+        ResultWrapper<string> test_node_fault(NodeFaultPayload value);
+    }
+
+    [JsonConverter(typeof(NodeFaultPayloadConverter))]
+    public sealed class NodeFaultPayload;
+
+    /// <summary>Stands in for a fault the caller's params cannot cause, arriving from inside parameter binding.</summary>
+    private sealed class NodeFaultPayloadConverter : JsonConverter<NodeFaultPayload>
+    {
+        public override NodeFaultPayload Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new ObjectDisposedException(nameof(NodeFaultPayloadConverter));
+
+        public override void Write(Utf8JsonWriter writer, NodeFaultPayload value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
     }
 
     private sealed class DisposableProbe : IDisposable
