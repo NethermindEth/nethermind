@@ -298,9 +298,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    // Body responses can be sparse, so an invalid body may belong to a later requested header.
-                    // Building the transaction trie dominates a comparison, so remember the rejected body's
-                    // root and let the remaining headers cost a hash compare instead of another trie build.
+                    // Body responses can be sparse, so a rejected body may belong to a later requested
+                    // header. Remember its transaction root so a header carrying a different one is ruled
+                    // out by a hash compare; a header whose root matches still goes to the validator, which
+                    // rebuilds the trie and may reject the body on uncles or withdrawals.
                     rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
                     _syncStatusList.MarkPending(blockInfo);
                 }
