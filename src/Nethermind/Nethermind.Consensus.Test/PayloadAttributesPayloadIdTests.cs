@@ -67,11 +67,8 @@ public class PayloadAttributesPayloadIdTests
     }
 
     // The streaming path for oversized lists must agree with the pooled path byte for byte.
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(64)]
-    public void Streaming_and_pooled_inclusion_list_digests_agree(int entryCount)
+    [Test]
+    public void Streaming_and_pooled_inclusion_list_digests_agree([Values(0, 1, 7, 64)] int entryCount)
     {
         byte[][] il = new byte[entryCount][];
         for (int i = 0; i < entryCount; i++)
