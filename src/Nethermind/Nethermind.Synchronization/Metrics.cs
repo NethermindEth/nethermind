@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization
         public static long SnapStorageRangesRefreshedAfterEmptyResponses;
 
         [CounterMetric]
-        [Description("State sync pivot updates forced by a streak of unusable range responses")]
+        [Description("State sync pivot updates requested by a streak of unusable range responses and not rate-limited. With Sync.StaticSnapPivot the pivot declines the move, so this counts requests rather than moves")]
         public static long ForcedStatePivotUpdates;
 
         [CounterMetric]

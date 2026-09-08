@@ -61,8 +61,15 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
+        /// <remarks>
+        /// <see cref="IsFinished"/> serves this queue ahead of every other request type, so a caller that enqueues
+        /// speculatively has to keep it short. See <see cref="SnapProvider.MaxQueuedEmptyStreakRefreshes"/>.
+        /// </remarks>
+        internal int AccountsToRefreshCount => AccountsToRefresh.Count;
+
         private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
+        private readonly ulong _stateMinDistanceFromHead;
 
         public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
@@ -77,6 +84,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             _accountRangePartitionCount = accountRangePartitionCount;
             _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
+            _stateMinDistanceFromHead = syncConfig.StateMinDistanceFromHead;
 
             SetupAccountRangePartition();
         }
@@ -134,7 +142,38 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
-        public void UpdatePivot() => _pivot.UpdateHeaderAfterFailureStreak();
+        /// <summary>
+        /// Moves the state sync pivot in response to a streak of unusable range responses, but only once the head has
+        /// advanced at least <see cref="ISyncConfig.StateMinDistanceFromHead"/> blocks past it.
+        /// </summary>
+        /// <remarks>
+        /// Moving the pivot changes the state root that every in-flight and queued range was requested at, so each one
+        /// comes back unusable. That cost is only worth paying when the new pivot is a genuinely different target.
+        /// <see cref="FastSync.IStateSyncPivot.UpdateHeaderForcefully"/> moves whenever the pivot is at or behind the
+        /// head - i.e. always - which is mostly harmless on a slow chain, where the head rarely moves between two
+        /// streaks and the pivot is re-set to the block it already had. On a fast chain the head has advanced by the
+        /// time the next streak lands, so every move invalidates the very work that would have ended the streak and
+        /// manufactures the next one. Measured on OP Mainnet (2 s blocks) against 2.0.0-rc: 74 469 forced updates in
+        /// 60 h, one every 2.9 s, average step 1.5 blocks, "State Ranges (Phase 1)" pinned at 0.00 % with zero
+        /// accounts ever committed, while the natural "distance from HEAD" re-pivot never once fired.
+        /// <para>
+        /// The rate limit lives here rather than on the pivot because it is a property of this caller: the state sync
+        /// round start (<c>TreeSync.ResetStateRootToBestSuggested</c>) needs the newest state root on every round and
+        /// must keep the unrestricted path. <see cref="FastSync.IStateSyncPivot.Diff"/> saturates, so a head behind
+        /// the pivot reads 0 and is suppressed rather than wrapping into a large distance.
+        /// </para>
+        /// </remarks>
+        public void UpdatePivot()
+        {
+            if (_pivot.Diff < _stateMinDistanceFromHead)
+            {
+                Metrics.ForcedStatePivotUpdatesSuppressed++;
+                return;
+            }
+
+            Metrics.ForcedStatePivotUpdates++;
+            _pivot.UpdateHeaderForcefully();
+        }
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {

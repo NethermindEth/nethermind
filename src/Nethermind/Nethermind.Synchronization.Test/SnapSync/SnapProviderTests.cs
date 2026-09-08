@@ -268,6 +268,62 @@ public class SnapProviderTests
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "no storage range may be left queued behind the refreshes");
     }
 
+    // The promotion above is speculative: an empty response is also what a peer that has fallen behind the pivot
+    // sends, and under a genuinely stale root every storage response is empty, so one response can push a whole
+    // STORAGE_BATCH_SIZE batch over the streak limit at once. ProgressTracker.IsFinished serves the refresh queue
+    // ahead of every other request type and a refresh that answers Expired re-queues itself, so an unbounded
+    // promotion would leave no slot for account, storage or code work until the pivot moved. Past the cap the
+    // account has to go back to the ordinary storage queue instead.
+    [Test]
+    public void AddStorageRange_EmptyResponseStreak_DoesNotQueueMoreRefreshesThanTheCap()
+    {
+        const int accountCount = SnapProvider.MaxQueuedEmptyStreakRefreshes + 6;
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        for (int i = 0; i < accountCount; i++)
+        {
+            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject));
+        }
+
+        DrainAccountRangePartition(progressTracker);
+
+        for (int attempt = 0; attempt < SnapProvider.MaxConsecutiveEmptyStorageResponses; attempt++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? batch);
+            Assert.That(batch!.StorageRangeRequest, Is.Not.Null, $"attempt {attempt}: the whole batch is offered again");
+            Assert.That(batch.StorageRangeRequest!.Accounts.Count, Is.EqualTo(accountCount));
+
+            batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
+            Assert.That(snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse), Is.EqualTo(AddRangeResult.ExpiredRootHash));
+            snapProvider.ReleaseRequest(batch, responseHandled: true);
+            batch.Dispose();
+        }
+
+        Assert.That(progressTracker.AccountsToRefreshCount, Is.EqualTo(SnapProvider.MaxQueuedEmptyStreakRefreshes),
+            "the refresh queue must not grow past the cap, whatever the batch size");
+
+        // The 6 accounts the cap turned away are not lost: they are back on the storage queue and are promoted on a
+        // later empty response, once the refreshes ahead of them have drained.
+        for (int i = 0; i < SnapProvider.MaxQueuedEmptyStreakRefreshes; i++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? refresh);
+            Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+            progressTracker.ReportAccountRefreshFinished();
+            refresh.Dispose();
+        }
+
+        progressTracker.IsFinished(out SnapSyncBatch? remaining);
+        Assert.That(remaining!.StorageRangeRequest, Is.Not.Null);
+        Assert.That(remaining.StorageRangeRequest!.Accounts.Count, Is.EqualTo(6));
+        remaining.Dispose();
+    }
+
     // Regression for #13155, second half: when the re-proven account turns out to have no storage at the pivot any
     // more, there is nothing to fetch. Queueing its storage again would only draw the same empty responses.
     [Test]

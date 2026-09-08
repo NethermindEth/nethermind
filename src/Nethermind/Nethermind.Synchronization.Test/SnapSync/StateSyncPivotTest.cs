@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -77,16 +78,24 @@ public class StateSyncPivotTest
     }
 
     // maxDistance is deliberately huge so GetPivotHeader's own re-pivot can never fire and every observed move is
-    // attributable to the update-after-failure-streak path.
+    // attributable to the failure-streak path.
     private static Synchronization.FastSync.StateSyncPivot BuildPivot(IBlockTree blockTree, ulong minDistance = 32UL, ulong maxDistance = 100_000UL) =>
-        new(blockTree,
-            new TestSyncConfig
-            {
-                PivotNumber = 0UL,
-                FastSync = true,
-                StateMinDistanceFromHead = minDistance,
-                StateMaxDistanceFromHead = maxDistance,
-            }, LimboLogs.Instance);
+        new(blockTree, BuildSyncConfig(minDistance, maxDistance), LimboLogs.Instance);
+
+    private static TestSyncConfig BuildSyncConfig(ulong minDistance = 32UL, ulong maxDistance = 100_000UL) =>
+        new()
+        {
+            PivotNumber = 0UL,
+            FastSync = true,
+            SnapSyncAccountRangePartitionCount = 1,
+            StateMinDistanceFromHead = minDistance,
+            StateMaxDistanceFromHead = maxDistance,
+        };
+
+    // SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through ProgressTracker.UpdatePivot, which is where
+    // the rate limit lives; these tests drive the composition rather than the pivot alone.
+    private static ProgressTracker BuildTracker(Synchronization.FastSync.StateSyncPivot pivot, TestSyncConfig syncConfig) =>
+        new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
 
     private static IBlockTree BuildBlockTree()
     {
@@ -100,35 +109,15 @@ public class StateSyncPivotTest
         return blockTree;
     }
 
-    // A forced update costs every in-flight and queued range its root. On a chain whose head moves between two
-    // failure streaks, an unguarded forced update chases the head forever and the invalidated ranges feed the next
-    // streak - observed on OP Mainnet as 74 469 forced updates in 60 h with snap progress pinned at 0.00 %.
-    [TestCase(1UL, false, TestName = "Head one block ahead - not worth invalidating in-flight ranges")]
-    [TestCase(2UL, false, TestName = "Head two blocks ahead (the measured OP Mainnet step)")]
-    [TestCase(31UL, false, TestName = "One block below the minimum step")]
-    [TestCase(32UL, true, TestName = "Exactly the minimum step")]
-    [TestCase(500UL, true, TestName = "Far behind - always worth moving")]
-    public void UpdateHeaderAfterFailureStreak_only_moves_the_pivot_once_the_head_is_a_minimum_step_ahead(ulong headAdvance, bool shouldMove)
-    {
-        IBlockTree blockTree = BuildBlockTree();
-        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree, minDistance: 32UL);
-
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
-        ulong original = pivot.GetPivotHeader()!.Number;
-
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL + headAdvance).TestObject);
-        pivot.UpdateHeaderAfterFailureStreak();
-
-        Assert.That(pivot.GetPivotHeader()!.Number, shouldMove ? Is.Not.EqualTo(original) : Is.EqualTo(original));
-    }
-
-    // The regression itself: repeated streaks on a chain that produces a block or two between them must not drag
-    // the pivot along with the head. Before the fix this loop moved the pivot on every single call.
+    // The regression itself (#13200): repeated streaks on a chain that produces a block or two between them must not
+    // drag the pivot along with the head. Before the fix this loop moved the pivot on every single call.
     [Test]
-    public void UpdateHeaderAfterFailureStreak_repeated_streaks_on_a_fast_chain_do_not_drag_the_pivot_with_the_head()
+    public void UpdatePivot_repeated_streaks_on_a_fast_chain_do_not_drag_the_pivot_with_the_head()
     {
         IBlockTree blockTree = BuildBlockTree();
-        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree, minDistance: 32UL);
+        TestSyncConfig syncConfig = BuildSyncConfig();
+        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree);
+        using ProgressTracker tracker = BuildTracker(pivot, syncConfig);
 
         ulong head = 1000UL;
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(head).TestObject);
@@ -140,7 +129,7 @@ public class StateSyncPivotTest
         {
             head += 2UL; // OP Mainnet: ~1.5 blocks between consecutive streaks
             blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(head).TestObject);
-            pivot.UpdateHeaderAfterFailureStreak();
+            tracker.UpdatePivot();
 
             ulong now = pivot.GetPivotHeader()!.Number;
             if (now != previous) moves++;
@@ -150,25 +139,15 @@ public class StateSyncPivotTest
         Assert.That(moves, Is.LessThanOrEqualTo(1), "the pivot must not step with every streak; head advanced 20 blocks over 10 streaks");
     }
 
+    // A pivot the peers have genuinely dropped still has to be replaceable; the guard only delays the move until the
+    // head is far enough ahead for the new pivot to be different in a way that matters.
     [Test]
-    public void UpdateHeaderAfterFailureStreak_still_sets_the_first_pivot_when_none_exists()
+    public void UpdatePivot_still_recovers_from_a_stale_pivot_once_the_head_moves_on()
     {
         IBlockTree blockTree = BuildBlockTree();
+        TestSyncConfig syncConfig = BuildSyncConfig();
         Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree);
-
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
-        pivot.UpdateHeaderAfterFailureStreak();
-
-        Assert.That(pivot.GetPivotHeader(), Is.Not.Null);
-    }
-
-    // A pivot the peers have genuinely dropped still has to be replaceable; the guard only delays the move until
-    // the head is far enough ahead for the new pivot to be different in a way that matters.
-    [Test]
-    public void UpdateHeaderAfterFailureStreak_still_recovers_from_a_stale_pivot_once_the_head_moves_on()
-    {
-        IBlockTree blockTree = BuildBlockTree();
-        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree, minDistance: 32UL);
+        using ProgressTracker tracker = BuildTracker(pivot, syncConfig);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
         ulong original = pivot.GetPivotHeader()!.Number;
@@ -176,60 +155,47 @@ public class StateSyncPivotTest
         for (ulong head = 1001UL; head <= 1031UL; head++)
         {
             blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(head).TestObject);
-            pivot.UpdateHeaderAfterFailureStreak();
+            tracker.UpdatePivot();
             Assert.That(pivot.GetPivotHeader()!.Number, Is.EqualTo(original), $"suppressed while only {head - 1000UL} ahead");
         }
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1032UL).TestObject);
-        pivot.UpdateHeaderAfterFailureStreak();
+        tracker.UpdatePivot();
         Assert.That(pivot.GetPivotHeader()!.Number, Is.EqualTo(1032UL));
     }
 
     // The head can sit behind the pivot - a reorg, or a pivot that TrySetNewBestHeader placed ahead of
-    // BestSuggestedHeader. `head - best` is ulong arithmetic, so without the `head <= best` half of the guard it
-    // underflows to a value far above StateMinDistanceFromHead and the pivot moves on every streak, which is the
-    // livelock this fix exists to stop. Mutation testing found this case uncovered.
+    // BestSuggestedHeader. StateSyncPivot.Diff is a SaturatingSub for exactly this reason: a raw `head - pivot` in
+    // ulong arithmetic underflows to a value far above StateMinDistanceFromHead, and the pivot would then move on
+    // every streak, which is the livelock this fix exists to stop.
     [TestCase(1UL, TestName = "Head one block behind the pivot")]
     [TestCase(500UL, TestName = "Head far behind the pivot")]
-    public void UpdateHeaderAfterFailureStreak_does_not_move_when_the_head_is_behind_the_pivot(ulong headRetreat)
+    public void UpdatePivot_does_not_move_when_the_head_is_behind_the_pivot(ulong headRetreat)
     {
         IBlockTree blockTree = BuildBlockTree();
-        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree, minDistance: 32UL);
+        TestSyncConfig syncConfig = BuildSyncConfig();
+        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree);
+        using ProgressTracker tracker = BuildTracker(pivot, syncConfig);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
         ulong original = pivot.GetPivotHeader()!.Number;
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL - headRetreat).TestObject);
-        pivot.UpdateHeaderAfterFailureStreak();
-
-        Assert.That(pivot.GetPivotHeader()!.Number, Is.EqualTo(original));
-    }
-
-    [Test]
-    public void UpdateHeaderAfterFailureStreak_does_not_move_when_the_head_equals_the_pivot()
-    {
-        IBlockTree blockTree = BuildBlockTree();
-        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree, minDistance: 32UL);
-
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
-        ulong original = pivot.GetPivotHeader()!.Number;
-
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(original).TestObject);
-        pivot.UpdateHeaderAfterFailureStreak();
+        tracker.UpdatePivot();
 
         Assert.That(pivot.GetPivotHeader()!.Number, Is.EqualTo(original));
     }
 
     // TreeSync.ResetStateRootToBestSuggested calls UpdateHeaderForcefully at the start of every state sync round to
-    // pick up the newest state root; that caller is not responding to a failure and must not be rate-limited. An
-    // earlier revision of this fix guarded UpdateHeaderForcefully itself and broke 104 StateSyncFeed tests.
+    // pick up the newest state root; that caller is not responding to a failure and must not be rate-limited, which
+    // is why the guard sits in ProgressTracker.UpdatePivot rather than on the pivot itself.
     [TestCase(1UL)]
     [TestCase(2UL)]
     [TestCase(31UL)]
     public void UpdateHeaderForcefully_still_follows_the_head_by_a_single_block(ulong headAdvance)
     {
         IBlockTree blockTree = BuildBlockTree();
-        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree, minDistance: 32UL);
+        Synchronization.FastSync.StateSyncPivot pivot = BuildPivot(blockTree);
 
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
         ulong original = pivot.GetPivotHeader()!.Number;

@@ -63,7 +63,10 @@ public class SimpleDispatcher<T>(
                     continue;
                 }
 
-                await semaphore.WaitAsync(token);
+                // Not token: the allocation above is only freed by DoDispatch, so cancelling out of this wait would
+                // leak it and skip HandleResponse for this request. The wait is bounded by the workers already
+                // running, and the loop condition ends the iteration on the next pass.
+                await semaphore.WaitAsync(CancellationToken.None);
                 _ = Task.Run(async () =>
                 {
                     try

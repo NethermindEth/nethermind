@@ -77,24 +77,17 @@ public class SynchronizerModuleTests
         // module registers the feed components in their own keyed lifetime scopes, which an outer
         // override cannot reach.
         ISyncFeed<BlocksRequest> fullSyncFeed = Substitute.For<ISyncFeed<BlocksRequest>>();
-        Synchronizer synchronizer = new(
-            Substitute.For<ISyncModeSelector>(),
-            Substitute.For<ISyncReport>(),
+        static SyncFeedComponent<T> FeedOnly<T>(ISyncFeed<T> feed) => new(feed, null!, null!, null!, null!);
+        Synchronizer synchronizer = BuildSynchronizer(
             Substitute.For<ISyncConfig>(),
             Substitute.For<IBlockTree>(),
-            Substitute.For<ISyncPivotResolver>(),
-            LimboLogs.Instance,
-            Substitute.For<INodeStatsManager>(),
-            new SyncFeedComponent<BlocksRequest>(fullSyncFeed, null!, null!, null!, null!),
-            new SyncFeedComponent<BlocksRequest>(Substitute.For<ISyncFeed<BlocksRequest>>(), null!, null!, null!, null!),
             Substitute.For<IStateSyncRunner>(),
-            new SyncFeedComponent<HeadersSyncBatch>(Substitute.For<ISyncFeed<HeadersSyncBatch>>(), null!, null!, null!, null!),
-            new SyncFeedComponent<BodiesSyncBatch>(Substitute.For<ISyncFeed<BodiesSyncBatch>>(), null!, null!, null!, null!),
-            new SyncFeedComponent<ReceiptsSyncBatch>(Substitute.For<ISyncFeed<ReceiptsSyncBatch>>(), null!, null!, null!, null!),
-            new SyncFeedComponent<BlockAccessListsSyncBatch>(Substitute.For<ISyncFeed<BlockAccessListsSyncBatch>>(), null!, null!, null!, null!),
-            null!,
-            null!,
-            Substitute.For<IProcessExitSource>());
+            FeedOnly(fullSyncFeed),
+            FeedOnly(Substitute.For<ISyncFeed<BlocksRequest>>()),
+            FeedOnly(Substitute.For<ISyncFeed<HeadersSyncBatch>>()),
+            FeedOnly(Substitute.For<ISyncFeed<BodiesSyncBatch>>()),
+            FeedOnly(Substitute.For<ISyncFeed<ReceiptsSyncBatch>>()),
+            FeedOnly(Substitute.For<ISyncFeed<BlockAccessListsSyncBatch>>()));
 
         await synchronizer.DisposeAsync();
         await synchronizer.DisposeAsync();
@@ -141,24 +134,16 @@ public class SynchronizerModuleTests
             return new SyncFeedComponent<T>(feed, dispatcher, downloader, new Lazy<BlockDownloader>(() => blockDownloader), Substitute.For<ILifetimeScope>());
         }
 
-        Synchronizer synchronizer = new(
-            Substitute.For<ISyncModeSelector>(),
-            Substitute.For<ISyncReport>(),
+        Synchronizer synchronizer = BuildSynchronizer(
             syncConfig,
             blockTree,
-            Substitute.For<ISyncPivotResolver>(),
-            LimboLogs.Instance,
-            Substitute.For<INodeStatsManager>(),
-            Component<BlocksRequest>(),
-            Component<BlocksRequest>(),
             stateSyncRunner,
+            Component<BlocksRequest>(),
+            Component<BlocksRequest>(),
             Component<HeadersSyncBatch>(),
             Component<BodiesSyncBatch>(),
             Component<ReceiptsSyncBatch>(),
-            Component<BlockAccessListsSyncBatch>(),
-            null!,
-            null!,
-            Substitute.For<IProcessExitSource>());
+            Component<BlockAccessListsSyncBatch>());
 
         synchronizer.Start();
         _ = stateSyncRunner.Received(1).Run(Arg.Any<CancellationToken>());
@@ -173,4 +158,36 @@ public class SynchronizerModuleTests
         runnerGate.SetResult();
         await disposeTask.WaitAsync(cancellationToken);
     }
+
+    // Both dispose tests construct the class under test directly: the asserts need substituted feeds, and
+    // SynchronizerModule registers the feed components in their own keyed lifetime scopes, which an outer override
+    // cannot reach. Only the collaborators the tests actually drive are parameters here, so the constructor's other
+    // arguments live in one place instead of being repeated per test.
+    private static Synchronizer BuildSynchronizer(
+        ISyncConfig syncConfig,
+        IBlockTree blockTree,
+        IStateSyncRunner stateSyncRunner,
+        SyncFeedComponent<BlocksRequest> fullSync,
+        SyncFeedComponent<BlocksRequest> fastSync,
+        SyncFeedComponent<HeadersSyncBatch> fastHeaders,
+        SyncFeedComponent<BodiesSyncBatch> oldBodies,
+        SyncFeedComponent<ReceiptsSyncBatch> oldReceipts,
+        SyncFeedComponent<BlockAccessListsSyncBatch> oldBlockAccessLists) =>
+        new(Substitute.For<ISyncModeSelector>(),
+            Substitute.For<ISyncReport>(),
+            syncConfig,
+            blockTree,
+            Substitute.For<ISyncPivotResolver>(),
+            LimboLogs.Instance,
+            Substitute.For<INodeStatsManager>(),
+            fullSync,
+            fastSync,
+            stateSyncRunner,
+            fastHeaders,
+            oldBodies,
+            oldReceipts,
+            oldBlockAccessLists,
+            null!,
+            null!,
+            Substitute.For<IProcessExitSource>());
 }

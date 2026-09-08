@@ -50,9 +50,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
         }
 
         [Test]
-        public void ShouldPruneDirtyNode_should_return_true_when_in_pruning_and_difference_greater_than_32()
+        public void ShouldPruneDirtyNode_should_return_true_when_in_pruning_and_difference_reaches_32()
         {
-            TrieStoreState state = new(100, 200, 500, 300); // (LatestCommittedBlock - PruningBoundary) - LastPersistedBlock = 72 > 32
+            TrieStoreState state = new(100, 200, 500, 300); // (LatestCommittedBlock - PruningBoundary) - LastPersistedBlock = 72 >= 32
             _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(false);
             _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
             Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.True);
@@ -91,9 +91,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 }
             }
 
-            // Every 33rd block (1033, 1066, ..., 1231) has 33 > 32 persistable blocks behind the boundary: 7 snapshots.
+            // Every 32nd block (1032, 1064, ..., 1256) has 32 persistable blocks behind the boundary: 8 snapshots.
             // A head-relative trigger fires on all 256 blocks, each persisting a single block.
-            Assert.That(prunes, Is.EqualTo(7));
+            Assert.That(prunes, Is.EqualTo(8));
         }
     }
 }

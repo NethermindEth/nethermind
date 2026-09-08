@@ -3,7 +3,7 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Extensions;
+using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using Nethermind.Trie.Pruning;
 
@@ -17,17 +17,24 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
 
     private readonly IFullPruningDb _fullPruningDb;
     private readonly IPruningStrategy _basePruningStrategy;
-    private readonly ulong _pruningBoundary;
+    private readonly IPruningStrategy _duringFullPruningStrategy;
     private int _inPruning = 0;
 
     public PruningTriggerPruningStrategy(
         IFullPruningDb fullPruningDb,
         IPruningStrategy basePruningStrategy,
-        ulong pruningBoundary)
+        ulong? pruningBoundary = null)
     {
         _fullPruningDb = fullPruningDb;
         _basePruningStrategy = basePruningStrategy;
-        _pruningBoundary = pruningBoundary;
+        // Full pruning needs the best persisted state to keep changing, so while it runs the base strategy is
+        // wrapped in the same "last persisted block is too old" trigger the dirty-cache path already uses. Only
+        // blocks older than the pruning boundary can be persisted, and that helper measures from the boundary
+        // rather than from the head - a head-relative comparison is always true during a full prune, because the
+        // head is by construction at least `pruningBoundary` (>= 64) ahead of the last persisted block, so it
+        // forces a snapshot on every single block.
+        _duringFullPruningStrategy = basePruningStrategy.WhenLastPersistedBlockIsTooOld(
+            SnapshotIntervalDuringFullPruning, pruningBoundary ?? Reorganization.MaxDepth);
         _fullPruningDb.PruningFinished += OnPruningFinished;
         _fullPruningDb.PruningStarted += OnPruningStarted;
     }
@@ -45,20 +52,8 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
         }
     }
 
-    public bool ShouldPruneDirtyNode(TrieStoreState state)
-    {
-        bool inPruning = _inPruning != 0;
-        if (inPruning)
-        {
-            // Make it take snapshot regularly as full pruning need the best persisted state to change.
-            // Only blocks older than the pruning boundary can be persisted, so measure from the boundary and not
-            // from the head: the head is always at least `pruningBoundary` (>= 64) ahead of the last persisted
-            // block, so a head-relative check is always true and forces a snapshot on every block.
-            ulong reorgBoundary = state.LatestCommittedBlock.SaturatingSub(_pruningBoundary);
-            if (reorgBoundary.SaturatingSub(state.LastPersistedBlock) > SnapshotIntervalDuringFullPruning) return true;
-        }
-        return _basePruningStrategy.ShouldPruneDirtyNode(state);
-    }
+    public bool ShouldPruneDirtyNode(TrieStoreState state) =>
+        (_inPruning != 0 ? _duringFullPruningStrategy : _basePruningStrategy).ShouldPruneDirtyNode(state);
 
     public bool ShouldPrunePersistedNode(TrieStoreState state) => _basePruningStrategy.ShouldPrunePersistedNode(state);
 

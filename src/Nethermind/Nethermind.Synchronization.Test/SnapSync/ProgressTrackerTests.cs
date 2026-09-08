@@ -247,20 +247,26 @@ public class ProgressTrackerTests
         Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
-    // SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through this call. It must land on the
-    // rate-limited failure-streak path, not on UpdateHeaderForcefully, which the state sync round start uses and
-    // which moves on every single block.
-    [Test]
-    public void UpdatePivot_uses_the_rate_limited_failure_streak_path()
+    // Regression for #13200. SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through UpdatePivot, and a
+    // forced move costs every in-flight and queued range its root. On a chain whose head moves between two failure
+    // streaks an unguarded move chases the head forever and the invalidated ranges feed the next streak - observed
+    // on OP Mainnet as 74 469 forced updates in 60 h with snap progress pinned at 0.00 %.
+    [TestCase(0UL, false, TestName = "Head level with the pivot")]
+    [TestCase(1UL, false, TestName = "Head one block ahead - not worth invalidating in-flight ranges")]
+    [TestCase(2UL, false, TestName = "Head two blocks ahead (the measured OP Mainnet step)")]
+    [TestCase(31UL, false, TestName = "One block below the minimum step")]
+    [TestCase(32UL, true, TestName = "Exactly the minimum step")]
+    [TestCase(500UL, true, TestName = "Far behind - always worth moving")]
+    public void UpdatePivot_only_moves_the_pivot_once_the_head_is_a_minimum_step_ahead(ulong diff, bool shouldMove)
     {
         IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
-        SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 };
+        pivot.Diff.Returns(diff);
+        SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1, StateMinDistanceFromHead = 32UL };
         using ProgressTracker progressTracker = new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
 
         progressTracker.UpdatePivot();
 
-        pivot.Received(1).UpdateHeaderAfterFailureStreak();
-        pivot.DidNotReceive().UpdateHeaderForcefully();
+        pivot.Received(shouldMove ? 1 : 0).UpdateHeaderForcefully();
     }
 
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
