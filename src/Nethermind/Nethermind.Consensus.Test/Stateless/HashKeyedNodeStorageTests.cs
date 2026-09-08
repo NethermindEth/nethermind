@@ -102,9 +102,9 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Separates_keys_that_share_a_hash_code([Range(0, 3)] int word)
+    public void Separates_keys_that_share_a_hash_code([Range(0, 7)] int half)
     {
-        (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision(word);
+        (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision(half);
 
         HashKeyedNodeStorage storage = Storage();
         storage.Set(null, TreePath.Empty, first, [0x01]);
@@ -168,22 +168,25 @@ public class HashKeyedNodeStorageTests
     }
 
     /// <summary>
-    /// Finds two keys the store buckets together that differ in <paramref name="word"/> alone, so that
-    /// word's comparison is what tells them apart.
+    /// Finds two keys the store buckets together that differ in <paramref name="half"/> alone - one
+    /// 4-byte half of one of the four words equality compares - so that word's comparison is what
+    /// tells them apart, and only the half of it that varies can do so.
     /// </summary>
     /// <remarks>
     /// Searched rather than hard-coded: the hash code is seeded, so no fixed pair collides across runs.
-    /// Only one word varies because equality is spelled out word by word - dropping any one comparison
-    /// has to fail for some <paramref name="word"/>, and a pair differing anywhere else would still be
-    /// separated by the words that remain. A 32-bit birthday collision is overwhelmingly likely well
-    /// inside <c>Attempts</c>.
+    /// One half rather than one whole word, because a pair differing across the whole word is separated
+    /// by any partial read of it: for word <c>w</c>, dropping its comparison fails halves <c>2w</c> and
+    /// <c>2w + 1</c>, while narrowing it to the low or high 32 bits fails the half it stops reading -
+    /// <c>2w + 1</c> and <c>2w</c> respectively. A pair differing anywhere else would still be separated
+    /// by the words that remain. A 32-bit birthday collision is overwhelmingly likely well inside
+    /// <c>Attempts</c>.
     /// <para>
     /// <see cref="NodeKeyHashCode"/> mirrors the store's private hash. Should the two ever drift apart,
     /// the pair no longer shares a bucket and this test passes without reaching equality at all, rather
     /// than failing.
     /// </para>
     /// </remarks>
-    private static (ValueHash256, ValueHash256) FindHashCodeCollision(int word)
+    private static (ValueHash256, ValueHash256) FindHashCodeCollision(int half)
     {
         const int Attempts = 1 << 19;
         Dictionary<int, ValueHash256> seen = [];
@@ -191,7 +194,7 @@ public class HashKeyedNodeStorageTests
         for (int i = 0; i < Attempts; i++)
         {
             ValueHash256 candidate = default;
-            BinaryPrimitives.WriteInt32LittleEndian(candidate.BytesAsSpan[(word * sizeof(ulong))..], i);
+            BinaryPrimitives.WriteInt32LittleEndian(candidate.BytesAsSpan[(half * sizeof(uint))..], i);
             int hashCode = NodeKeyHashCode(in candidate);
 
             // Distinct i give distinct candidates, so the first repeated hash code is the collision.

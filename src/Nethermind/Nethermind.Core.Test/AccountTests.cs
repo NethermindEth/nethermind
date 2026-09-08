@@ -13,9 +13,11 @@ namespace Nethermind.Core.Test;
 public class AccountTests
 {
     [Test]
-    public void Hashing_preserves_entropy_when_code_hash_matches_storage_root()
+    public void Hashing_preserves_entropy_when_both_chained_inputs_coincide()
     {
         UInt256 balance = 2;
+        // The two chained hashes collapsed only when both of their inputs matched, so the nonce has to
+        // equal the seed the balance contributes as well as the code hash equalling the storage root.
         ulong nonce = (uint)balance.GetHashCode();
         HashSet<int> hashes = [];
         byte[] bytes = new byte[32];
@@ -27,7 +29,7 @@ public class AccountTests
             hashes.Add(account.GetHashCode());
         }
 
-        Assert.That(hashes.Count, Is.GreaterThan(1000));
+        Assert.That(hashes.Count, Is.GreaterThan(1020));
     }
 
     [TestCase(0)]
