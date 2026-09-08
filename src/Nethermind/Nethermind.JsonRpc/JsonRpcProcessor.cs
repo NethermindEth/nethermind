@@ -268,9 +268,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             }
                         }
 
-                        // Only the decode is guarded here. The outer catch below wraps request execution too, so
-                        // widening that one would report a module-side InvalidOperationException or
-                        // ObjectDisposedException to the caller as -32700 parse error.
+                        // Decode only; see IsRequestDecodingException for why this cannot be folded into the
+                        // outer catch.
                         JsonDocument? jsonDocument = null;
                         bool undecodable = false;
                         try
@@ -336,10 +335,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     }
                     catch (JsonException ex)
                     {
-                        // Deliberately NOT IsRequestDecodingException: this catch wraps request *execution* as well
-                        // as decoding, so widening it to InvalidOperationException swallows a module-side
-                        // InvalidOperationException or ObjectDisposedException and reports it to the caller as
-                        // -32700 parse error. The decode steps guard themselves instead.
+                        // Deliberately NOT IsRequestDecodingException: this catch wraps request *execution* as
+                        // well as decoding. See IsRequestDecodingException.
                         result = GetParsingError(startTime, in buffer, "Error during parsing/validation.", ex);
                         processingState.ShouldExit = true;
                     }
@@ -439,12 +436,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcRequest? directRequest;
         try
         {
-            // Only the decode is guarded. The rest of this method runs the request, and a module-side
-            // InvalidOperationException or ObjectDisposedException must not be reported as a parse error.
-            if (!TryReadSingleObjectRequest(requestBody, out directRequest))
-            {
-                directRequest = null;
-            }
+            // Decode only; see IsRequestDecodingException. TryReadSingleObjectRequest nulls the out param on
+            // entry, so the false path needs no assignment of its own.
+            _ = TryReadSingleObjectRequest(requestBody, out directRequest);
         }
         catch (Exception ex) when (IsRequestDecodingException(ex))
         {
@@ -487,10 +481,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// <paramref name="decodeException"/> instead of being thrown.
     /// </summary>
     /// <remarks>
-    /// The guard has to sit here, around the decode alone. Wrapping the caller's whole block instead would also cover
-    /// request <em>execution</em>, and a module-side <see cref="InvalidOperationException"/> or
-    /// <see cref="ObjectDisposedException"/> would then be reported to the caller as -32700 parse error and swallowed.
-    /// This mirrors <see cref="TryDeserializeBatchItem"/> and <see cref="TryCreateBatchItemRequest"/>.
+    /// The guard has to sit around the decode alone; see <see cref="IsRequestDecodingException"/>. This mirrors
+    /// <see cref="TryDeserializeBatchItem"/> and <see cref="TryCreateBatchItemRequest"/>.
     /// </remarks>
     private static bool TryDecodeSingleObjectRequest(
         ReadOnlyMemory<byte> memory,
@@ -643,6 +635,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// surrogate escapes inside a string value, as well as reading a non-object element as an object, surface as a bare
     /// <see cref="InvalidOperationException"/>. Both are caller input errors and must become a JSON-RPC error response
     /// instead of escaping to the transport as an unhandled exception.
+    /// <para>
+    /// Every use of this predicate wraps a <em>decode step</em> and nothing else, which is why the call sites look
+    /// repetitive. The outer catches in this file also cover request <em>execution</em>: widening one of those to
+    /// <see cref="InvalidOperationException"/> would swallow a module-side <see cref="InvalidOperationException"/> or
+    /// <see cref="ObjectDisposedException"/> and report it to the caller as -32700 parse error, hiding a real node
+    /// fault behind a client error. <see cref="ObjectDisposedException"/> derives from
+    /// <see cref="InvalidOperationException"/> and so matches here, which is correct within the decode-only scope.
+    /// </para>
     /// </remarks>
     private static bool IsRequestDecodingException(Exception exception) =>
         exception is JsonException or InvalidOperationException;
@@ -684,9 +684,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     JsonRpcRequest request;
                     try
                     {
-                        // Invalid UTF-8 bytes and lone UTF-16 surrogate escapes inside a string value surface here as
-                        // a bare InvalidOperationException rather than a JsonException. Guard the decode, not the
-                        // execution that follows it.
+                        // Decode only; see IsRequestDecodingException.
                         request = CreateRequest(rootElement);
                     }
                     catch (Exception ex) when (IsRequestDecodingException(ex))
@@ -1061,20 +1059,44 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
         return responseTask.IsCompletedSuccessfully
-            ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, startTime))
-            : AwaitAndCreateEntryAsync(responseTask, request, startTime);
+            ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, context, startTime))
+            : AwaitAndCreateEntryAsync(responseTask, request, context, startTime);
 
         async ValueTask<JsonRpcResult.Entry> AwaitAndCreateEntryAsync(
             ValueTask<JsonRpcResponse> responseTask,
             JsonRpcRequest request,
+            JsonRpcContext context,
             long startTime)
         {
             JsonRpcResponse response = await responseTask;
-            return CreateSingleRequestEntry(request, response, startTime);
+            return CreateSingleRequestEntry(request, response, context, startTime);
         }
     }
 
-    private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, long startTime)
+    private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
+        $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";
+
+    /// <summary>
+    /// Whether this error response describes a fault in the request rather than a condition of the node, and so must
+    /// not be able to dictate the operator's WARN volume (#13156). Demoted lines stay available at Debug.
+    /// </summary>
+    /// <remarks>
+    /// Only unauthenticated callers are demoted. The rationale for #13156 is that a client fault costs one
+    /// unauthenticated request, which does not hold for the JWT-authenticated Engine endpoint: there, -32601 is the
+    /// canonical consensus-client/execution-client version-mismatch signal and -32602 means the CL sent a payload
+    /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
+    /// <para>
+    /// Server-side codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN for every caller, and
+    /// <see cref="Error.OperatorActionable"/> overrides the code: -32600 also carries "namespace X is disabled for
+    /// this URL", which is a statement about this node's configuration.
+    /// </para>
+    /// </remarks>
+    private static bool IsDemotableRequestError(Error responseError, JsonRpcContext context) =>
+        !context.IsAuthenticated
+        && ErrorCodes.IsRequestError(responseError.Code)
+        && !responseError.OperatorActionable;
+
+    private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, JsonRpcContext context, long startTime)
     {
         bool isError = response.TryGetError(out Error? responseError);
         bool isSuccess = !isError;
@@ -1082,24 +1104,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (responseError?.SuppressWarning == false)
             {
-                // A request error is the caller's fault and costs one unauthenticated request, so it must not be able
-                // to dictate the operator's WARN volume (#13156); the line stays available at Debug. Server-side
-                // codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN.
-                // OperatorActionable overrides the code: -32600 also carries "namespace X is disabled for this URL",
-                // which is a statement about this node's configuration and must stay at WARN.
-                bool requestError = ErrorCodes.IsRequestError(responseError.Code) && !responseError.OperatorActionable;
-                if (requestError ? _logger.IsDebug : _logger.IsWarn)
+                if (IsDemotableRequestError(responseError, context))
                 {
-                    string message = $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";
-                    if (requestError)
-                    {
-                        _logger.Debug(message);
-                    }
-                    else
-                    {
-                        _logger.Warn(message);
-                    }
+                    if (_logger.IsDebug) _logger.Debug(DescribeErrorResponse(request, responseError));
                 }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn(DescribeErrorResponse(request, responseError));
+                }
+
                 if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {SerializeResponseForDiagnostics(response)}");
             }
             Metrics.JsonRpcErrors++;

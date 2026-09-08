@@ -18,7 +18,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -51,6 +50,9 @@ public class Startup : IStartup
 {
     private const string ApplicationJsonContentType = "application/json";
     private static readonly StringValues JsonContentTypeHeader = new(ApplicationJsonContentType);
+
+    // Rendered straight into the client-visible JSON-RPC error, so it must not carry transport-layer detail.
+    private const string MalformedRequestBodyMessage = "Invalid request body.";
 
     private JsonRpcProcessor _jsonRpcProcessor = null!;
     private JsonRpcService _jsonRpcService = null!;
@@ -528,8 +530,6 @@ public class Startup : IStartup
         }
     }
 
-    private const string MalformedRequestBodyMessage = "Invalid request body.";
-
     private static async ValueTask CollectHttpRequestBodyAsync(
         HttpContext context,
         long? contentLength,
@@ -565,19 +565,22 @@ public class Startup : IStartup
                 {
                     readResult = await bodyReader.ReadAsync(cancellationToken);
                 }
-                catch (IOException e) when (e is not Microsoft.AspNetCore.Http.BadHttpRequestException and not ConnectionResetException)
+                catch (IOException e) when (e.GetType() == typeof(IOException))
                 {
-                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a plain
+                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a *bare*
                     // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
+                    //
+                    // The exact-type test is deliberate. Everything Kestrel surfaces from the body pipe derives from
+                    // IOException, including BadHttpRequestException (already handled below) and the genuine
+                    // transport failures - ConnectionResetException, a mid-body TLS or stream error, an IOException
+                    // wrapping a socket error. Reframing those as a client error would blame the caller for a
+                    // dropped connection and, because the handler below logs at Debug, would leave a real I/O
+                    // failure with no trace at default log level. They keep propagating instead.
                     //
                     // The message is a constant on purpose. The handler below renders it straight into the
                     // client-visible JSON-RPC error, and this endpoint is reachable unauthenticated, so an arbitrary
                     // transport-layer message must not be echoed back. The real one stays on the inner exception,
                     // which LogBadRequest writes at Debug.
-                    //
-                    // ConnectionResetException is excluded because it is a genuine transport failure, not a malformed
-                    // request: there is no longer a client to send a 400 to, and labelling it "invalid request" would
-                    // blame the caller for a dropped connection.
                     throw new Microsoft.AspNetCore.Http.BadHttpRequestException(MalformedRequestBodyMessage, StatusCodes.Status400BadRequest, e);
                 }
 

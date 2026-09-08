@@ -99,9 +99,11 @@ public class EstimateGasTracer : TxTracer
     internal ulong CalculateAdditionalGasRequired(Transaction tx, IReleaseSpec releaseSpec)
     {
         ulong intrinsicGas = tx.GasLimit - IntrinsicGasAt;
-        return _currentGasAndNesting.Peek().AdditionalGasRequired +
-               RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund,
-                   releaseSpec);
+        // Saturating for the same reason as MaxGasNeeded: AdditionalGasRequired can legitimately be ulong.MaxValue,
+        // and an unchecked add would wrap it to a small number that GasEstimator.CheckFunds then reports as a
+        // successful estimate.
+        return _currentGasAndNesting.Peek().AdditionalGasRequired
+            .SaturatingAdd(RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund, releaseSpec));
     }
 
     private int _currentNestingLevel = -1;

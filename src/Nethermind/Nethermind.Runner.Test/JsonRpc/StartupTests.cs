@@ -227,10 +227,32 @@ public class StartupTests
                 contentLength: null),
             Throws.InstanceOf<ConnectionResetException>());
 
+    // A transport failure Kestrel surfaces as a *derived* IOException must keep propagating rather than being
+    // reframed as a client error: doing so would blame the caller for a broken connection and, because the 400
+    // handler logs at Debug, would leave a real I/O failure with no trace at default log level. The catch tests the
+    // exact type for this reason - a bare IOException is how Kestrel reports malformed chunk framing.
+    private sealed class DerivedIOException(string message) : IOException(message);
+
+    [Test]
+    public void ProcessJsonRpcRequest_BodyReadThrowsDerivedIOException_is_not_reframed_as_a_client_error() =>
+        Assert.That(async () => await ProcessJsonRpcRequestWithStatus(
+                new ThrowingReadStream(new DerivedIOException("The request stream was aborted.")),
+                contentLength: null),
+            Throws.InstanceOf<DerivedIOException>());
+
+    // 0x7fffffff is a legitimate chunk size, so it reaches Kestrel's MinRequestBodyDataRate timeout rather than
+    // anything this PR touches - the point of the case is that the fix does not over-catch and turn it into a 400.
+    // Explicit because it can only reach the 408 after that grace period plus a heartbeat tick elapse, which makes
+    // it a multi-second wall-clock test that depends on the runner not being starved. The narrowing itself is
+    // pinned instantly by the two IOException propagation tests above.
+    [Explicit("~5s: waits out Kestrel's MinRequestBodyDataRate grace period")]
+    [TestCase("7fffffff", StatusCodes.Status408RequestTimeout, TestName = "Chunk size int.MaxValue never completes")]
+    public Task Kestrel_ValidButUnfulfilledChunkSize_StillTimesOut(string chunkSizeLine, int expectedStatusCode) =>
+        Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(chunkSizeLine, expectedStatusCode);
+
     [TestCase("80000000", StatusCodes.Status400BadRequest, TestName = "Chunk size int.MaxValue + 1")]
     [TestCase("ffffffff", StatusCodes.Status400BadRequest, TestName = "Chunk size uint.MaxValue")]
     [TestCase("zzz", StatusCodes.Status400BadRequest, TestName = "Non-hex chunk size")]
-    [TestCase("7fffffff", StatusCodes.Status408RequestTimeout, TestName = "Chunk size int.MaxValue never completes")]
     public async Task Kestrel_MalformedChunkedRequestBody_ReturnsFramedJsonRpcError(string chunkSizeLine, int expectedStatusCode)
     {
         await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(Startup, CreateUrl());

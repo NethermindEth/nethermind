@@ -68,11 +68,15 @@ public class JsonRpcProcessorTests
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
+    private static JsonRpcContext CreateEngineContext() =>
+        new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
+
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
         new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
 
     // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
     // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
+    // The demotion is scoped to unauthenticated callers - see Engine_api_request_errors_keep_warn below.
     [TestCase(ErrorCodes.ParseError, false, TestName = "ParseError (-32700) is not WARN")]
     [TestCase(ErrorCodes.InvalidRequest, false, TestName = "InvalidRequest (-32600) is not WARN")]
     [TestCase(ErrorCodes.MethodNotFound, false, TestName = "MethodNotFound (-32601) is not WARN")]
@@ -104,6 +108,33 @@ public class JsonRpcProcessorTests
                 $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
             Assert.That(debugLogger.LogList.Where(l => l.Contains(expectedFragment)), Is.Not.Empty);
         }
+    }
+
+    // The #13156 rationale is that a client fault costs one unauthenticated request, so it must not dictate the
+    // operator's log volume. That does not hold for the JWT-authenticated Engine endpoint: -32601 is the canonical
+    // CL/EL version-mismatch signal and -32602 means the consensus client sent a payload this node could not bind.
+    // Both are the operator's problem and must stay visible at default level on a node running at Info.
+    [TestCase(ErrorCodes.MethodNotFound, TestName = "MethodNotFound (-32601) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParams (-32602) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.InvalidRequest, TestName = "InvalidRequest (-32600) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.ParseError, TestName = "ParseError (-32700) keeps WARN when authenticated")]
+    public async Task Engine_api_request_errors_keep_warn(int errorCode)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = errorCode, Message = "test message" }
+        });
+        string request = CreateRequest("1", "engine_newPayloadV4", "[]");
+
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        using (JsonRpcContext engineContext = CreateEngineContext())
+        {
+            await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, engineContext);
+        }
+
+        Assert.That(warnLogger.LogList.Where(l => l.Contains($"Code: {errorCode} Message: test message")), Is.Not.Empty,
+            $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
     }
 
     [Test]
