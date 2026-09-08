@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -160,6 +161,63 @@ public class SnapshotBundleWarmerTests
         Assert.That(context.CompleteJob(), Is.False, "retired sessions reject queued jobs while borrowers remain alive");
     }
 
+    [Test]
+    public void Live_read_of_shared_parent_uses_snapshot_child_after_warmer_miss(
+        [Values] bool storage, [Values] bool iterator, [Values] bool staleSnapshot)
+    {
+        Hash256 address = TestItem.AddressA.ToAccountPath.ToHash256();
+        ValueHash256 key = TestItem.AddressA.ToAccountPath;
+        if (storage) StorageTree.ComputeKeyWithLookup(UInt256.Zero, ref key);
+        int childIndex = key.BytesAsSpan[0] >> 4;
+        TreePath rootPath = TreePath.Empty;
+        TreePath childPath = rootPath.Append(childIndex);
+        TrieNode child = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("0304"), new byte[33]);
+        child.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
+        child.Seal();
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(childIndex, child);
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
+        TrieNode sharedParent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        sharedParent.ResolveNode(NullTrieNodeResolver.Instance, rootPath);
+
+        (byte[] oldRlp, Hash256 oldHash) = EncodedLeaf();
+        Assert.That(oldHash, Is.Not.EqualTo(child.Keccak));
+        int loads = 0;
+        using SessionContext context = new(storage, branch.Keccak!, oldRlp, () => loads++, child, childPath, content =>
+        {
+            if (storage) content.StorageNodes[(address, rootPath)] = sharedParent;
+            else content.StateNodes[rootPath] = sharedParent;
+            if (staleSnapshot)
+            {
+                TrieNode staleChild = new(NodeType.Unknown, oldHash, oldRlp);
+                if (storage) content.StorageNodes[(address, childPath)] = staleChild;
+                else content.StateNodes[childPath] = staleChild;
+            }
+        });
+
+        context.Hint();
+        if (staleSnapshot)
+        {
+            Assert.Throws<NodeHashMismatchException>(() => context.CompleteJob());
+        }
+        else
+        {
+            Assert.That(context.CompleteJob(), Is.True);
+            Assert.That(loads, Is.EqualTo(1), "the session must reach the missing child in persistence");
+        }
+
+        StateTrieStoreAdapter state = new(context.Bundle, new ConcurrencyController(1));
+        ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
+        Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
+        TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);
+        Assert.That(liveParent, Is.SameAs(sharedParent));
+        TrieNode liveChild = (iterator
+            ? liveParent.CreateChildIterator().GetChildWithChildPath(live, ref childPath, childIndex)
+            : liveParent.GetChildWithChildPath(live, ref childPath, childIndex))!;
+        Assert.That(() => liveChild.ResolveNode(live, childPath), Throws.Nothing);
+        Assert.That(liveChild.FullRlp.ToArray(), Is.EqualTo(child.FullRlp.ToArray()));
+    }
+
     private static TransientResource Retire(SnapshotBundle bundle)
     {
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(
@@ -189,7 +247,8 @@ public class SnapshotBundleWarmerTests
         public TrieNodeCache Cache { get; } = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         public SnapshotBundle Bundle { get; }
 
-        public SessionContext(bool storage, Hash256 hash, byte[]? rlp, Action? onRead = null, TrieNode? committed = null)
+        public SessionContext(bool storage, Hash256 hash, byte[]? rlp, Action? onRead = null, TrieNode? committed = null,
+            TreePath committedPath = default, Action<SnapshotContent>? populate = null)
         {
             _storage = storage;
             ResourcePool pool = new(new FlatDbConfig());
@@ -204,10 +263,10 @@ public class SnapshotBundleWarmerTests
             reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(_ => Load());
             SnapshotPooledList? snapshots = committed is null ? null : FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(pool, content =>
             {
-                if (storage) content.StorageNodes[(AddressHash, TreePath.Empty)] = committed;
-                else content.StateNodes[TreePath.Empty] = committed;
+                if (storage) content.StorageNodes[(AddressHash, committedPath)] = committed;
+                else content.StateNodes[committedPath] = committed;
             }));
-            Bundle = new SnapshotBundle(FlatTestHelpers.MakeBundle(pool, reader), Cache, pool, ResourcePool.Usage.MainBlockProcessing, snapshots);
+            Bundle = new SnapshotBundle(FlatTestHelpers.MakeBundle(pool, reader, populate), Cache, pool, ResourcePool.Usage.MainBlockProcessing, snapshots);
             _warmer.PushAddressJob(Arg.Any<ITrieWarmer.IAddressWarmer>(), Arg.Any<Address>(), Arg.Do<int>(id => _sequenceId = id)).Returns(true);
             _warmer.PushSlotJobMpmc(Arg.Do<ITrieWarmer.IStorageWarmer>(warmer => _storageWarmer = warmer),
                 Arg.Any<UInt256>(), Arg.Do<int>(id => _sequenceId = id)).Returns(true);
