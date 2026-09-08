@@ -237,6 +237,72 @@ public class PbtNodeGroupTests
     }
 
     [Test]
+    public void Dense_group_mutations_preserve_unchanged_subtrees_and_canonical_payloads(
+        [Values(0, 4, 8, 13)] int prefixBits,
+        [Values(false, true)] bool promoteSibling)
+    {
+        using PbtTreeHarness tree = new();
+        EipReferenceTree oracle = new();
+        (byte[] Key, byte[]? Value)[] entries = new (byte[], byte[]?)[32];
+        for (int index = 0; index < entries.Length; index++)
+        {
+            int keyBits = index << (24 - prefixBits - 5);
+            byte[] key = [(byte)(keyBits >> 16), (byte)(keyBits >> 8), (byte)keyBits];
+            entries[index] = (key, Value((byte)(index + 1)));
+            oracle.Insert(key, entries[index].Value!);
+        }
+        tree.ApplyBatch(entries);
+
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        int changedCount = promoteSibling ? entries.Length / 2 : 1;
+        for (int index = 0; index < changedCount; index++)
+        {
+            entries[index].Value = promoteSibling ? null : Value(0xF0);
+            changes.Add(entries[index]);
+            if (promoteSibling) oracle.Delete(entries[index].Key);
+            else oracle.Insert(entries[index].Key, entries[index].Value!);
+        }
+        TrieUpdaterMetrics metrics = new();
+        tree.ApplyBatch(changes, metrics);
+        AssertMatchesRebuild();
+        if (!promoteSibling)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metrics.BulkCopyOperations, Is.GreaterThan(0));
+                Assert.That(metrics.BulkCopiedNodes, Is.GreaterThan(metrics.BulkCopyOperations), "copy entire runs rather than one node at a time");
+                Assert.That(metrics.ReusedHashes, Is.GreaterThan(0));
+            }
+        }
+
+        tree.Reopen();
+        entries[^1].Value = Value(0xF1);
+        oracle.Insert(entries[^1].Key, entries[^1].Value!);
+        tree.ApplyBatch([entries[^1]]);
+        AssertMatchesRebuild();
+
+        void AssertMatchesRebuild()
+        {
+            using PbtTreeHarness rebuilt = new();
+            List<(byte[] Key, byte[]? Value)> survivors = [];
+            foreach ((byte[] key, byte[]? value) in entries)
+                if (value is not null) survivors.Add((key, value));
+            rebuilt.ApplyBatch(survivors);
+            Dictionary<string, byte[]> expectedPayloads = Payloads(rebuilt);
+            Dictionary<string, byte[]> actualPayloads = Payloads(tree);
+            Assert.That(actualPayloads.Keys, Is.EquivalentTo(expectedPayloads.Keys));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+                Assert.That(tree.RootHash, Is.EqualTo(rebuilt.RootHash));
+                Assert.That(tree.CanonicalRecords(), Is.EqualTo(rebuilt.CanonicalRecords()));
+                foreach ((string key, byte[] payload) in expectedPayloads)
+                    Assert.That(actualPayloads[key], Is.EqualTo(payload), $"physical group {key}");
+            }
+        }
+    }
+
+    [Test]
     public void Deleting_the_last_node_removes_its_physical_group_and_reopen_preserves_records()
     {
         using PbtTreeHarness tree = new();

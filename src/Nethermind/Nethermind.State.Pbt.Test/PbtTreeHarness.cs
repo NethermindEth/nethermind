@@ -19,7 +19,7 @@ internal sealed class PbtTreeHarness : IDisposable
     public IReadOnlyList<PbtNodeRecord> Nodes => _store.EnumerateRecords();
     public IReadOnlyList<PbtPhysicalPayload> PhysicalPayloads => _store.ExportPhysicalPayloads();
 
-    public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes, TrieUpdaterMetrics? metrics = null)
     {
         using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in writes)
@@ -28,7 +28,7 @@ internal sealed class PbtTreeHarness : IDisposable
             if (value is null) batch.Delete(fullKey);
             else batch.Set(fullKey, new ValueHash256(value));
         }
-        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, batch.Build());
+        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, batch.Build(), metrics);
         return RootHash;
     }
 

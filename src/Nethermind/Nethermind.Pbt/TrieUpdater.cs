@@ -410,7 +410,7 @@ internal static class TrieUpdater<TKey, TPath>
         Span<Subtree> boundaries = boundaryBuffer.AsSpan();
         try
         {
-            Decompose(group, ref current, depth, boundaries);
+            Decompose(group, ref current, depth, boundaries, partition.UsedMask);
 
             int offset = 0;
             int countIndex = 0;
@@ -516,7 +516,7 @@ internal static class TrieUpdater<TKey, TPath>
         private ComposeFrame _element;
     }
 
-    internal static void Decompose(GroupMutationFrame group, ref Subtree current, int depth, Span<Subtree> boundaries)
+    internal static void Decompose(GroupMutationFrame group, ref Subtree current, int depth, Span<Subtree> boundaries, int touchedMask)
     {
         if (current.IsEmpty) return;
         int boundaryDepth = depth + PbtFourLevelGroupGeometry.LevelsPerGroup;
@@ -534,11 +534,15 @@ internal static class TrieUpdater<TKey, TPath>
         }
 
         int branchDepth = current.Path!.BitDepth + current.PrefixBitCount;
-        if (branchDepth >= boundaryDepth)
+        int prefixDepth = Math.Min(branchDepth, boundaryDepth);
+        int slot = 0;
+        for (int bit = depth; bit < prefixDepth; bit++)
+            slot = (slot << 1) | PrefixBit(current, bit);
+        int width = 1 << (boundaryDepth - prefixDepth);
+        slot *= width;
+        if (branchDepth >= boundaryDepth || (touchedMask & (((1 << width) - 1) << slot)) == 0)
         {
-            int slot = 0;
-            for (int bit = depth; bit < boundaryDepth; bit++)
-                slot = (slot << 1) | PrefixBit(current, bit);
+            // An untouched prefix is one opaque occupant; its post-order descendants remain untaken.
             boundaries[slot] = Subtree.Move(ref current);
             return;
         }
@@ -548,8 +552,8 @@ internal static class TrieUpdater<TKey, TPath>
         current.Dispose();
         try
         {
-            Decompose(group, ref left, depth, boundaries);
-            Decompose(group, ref right, depth, boundaries);
+            Decompose(group, ref left, depth, boundaries, touchedMask);
+            Decompose(group, ref right, depth, boundaries, touchedMask);
         }
         finally
         {
@@ -649,6 +653,7 @@ internal static class TrieUpdater<TKey, TPath>
         private readonly TKey _key;
         private readonly ValueHash256 _valueOrLeft;
         private readonly ValueHash256 _right;
+        private ValueHash256 _hash;
 
         internal Subtree(RefCountingMemory lease, ReadOnlyMemory<byte> encoding, TPath path)
         {
@@ -661,6 +666,7 @@ internal static class TrieUpdater<TKey, TPath>
         internal Subtree(ValueHash256 hash, TPath path)
         {
             _kind = hash == default ? NodeKind.Empty : NodeKind.Reference;
+            _hash = hash;
             Path = path;
         }
 
@@ -707,6 +713,7 @@ internal static class TrieUpdater<TKey, TPath>
                 : null;
             Subtree result = new(source._lease, source._kind, source._encoding, key,
                 source._valueOrLeft, source._right, path);
+            result._hash = source._hash;
             source = default;
             return result;
         }
@@ -715,6 +722,8 @@ internal static class TrieUpdater<TKey, TPath>
         internal readonly TPath? Path { get; }
         internal readonly bool IsEmpty => _kind == NodeKind.Empty;
         internal readonly bool IsReference => _kind == NodeKind.Reference;
+        internal ValueHash256 Hash { readonly get => _hash; set => _hash = value; }
+        internal readonly bool HasOriginalEncoding(ReadOnlyMemory<byte> encoding) => _kind == NodeKind.Original && _encoding.Equals(encoding);
         internal readonly bool IsLeaf => _kind == NodeKind.Leaf || (_kind == NodeKind.Original && Reader.IsLeaf);
         internal readonly TKey Key => _kind == NodeKind.Leaf ? _key : TKey.Create(Reader.Key);
         internal readonly ReadOnlySpan<byte> Prefix => _kind == NodeKind.Branch ? [] : Reader.Prefix;
@@ -726,12 +735,12 @@ internal static class TrieUpdater<TKey, TPath>
             ? (_kind == NodeKind.Leaf ? 3 + _key.Length + 32 : _encoding.Length)
             : 3 + PbtBitPrefix.ByteCount(Path!.BitDepth + PrefixBitCount - depth) + 64;
 
-        internal readonly ValueHash256 Encode(Span<byte> encoding, int depth)
+        internal readonly ValueHash256 Encode(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics)
         {
             if (_kind == NodeKind.Original && (IsLeaf || depth == Path!.BitDepth))
             {
                 _encoding.Span.CopyTo(encoding);
-                return PbtNodeCodec.Hash(new PbtNodeReader(encoding));
+                return OriginalHash(metrics);
             }
             if (IsLeaf)
             {
@@ -749,6 +758,13 @@ internal static class TrieUpdater<TKey, TPath>
             int prefixOffset = Math.Max(0, depth - pathDepth);
             PbtBitPrefix.CopyBits(Prefix, prefixOffset, bitCount - pathBits, prefix, pathBits);
             return Blake3Hash.Hash(encoding);
+        }
+
+        internal readonly ValueHash256 OriginalHash(TrieUpdaterMetrics? metrics)
+        {
+            if (_hash == default) return PbtNodeCodec.Hash(Reader);
+            metrics?.IncrementReusedHashes();
+            return _hash;
         }
 
         internal static Subtree Move(ref Subtree source)
@@ -823,6 +839,18 @@ internal static class TrieUpdater<TKey, TPath>
         internal ReadOnlyMemory<byte> GetEncoding(int position) => _lengths[position] == 0
             ? default
             : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+
+        internal int CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition)
+        {
+            while (startPosition < endPosition && _lengths[startPosition] == 0) startPosition++;
+            if (startPosition == endPosition) return 0;
+            int lastPosition = endPosition - 1;
+            while (_lengths[lastPosition] == 0) lastPosition--;
+            int startOffset = _offsets[startPosition];
+            ReadOnlySpan<byte> entries = _lease!.GetSpan().Slice(startOffset,
+                _offsets[lastPosition] + _lengths[lastPosition] - startOffset);
+            return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
+        }
 
         internal Subtree Acquire(int position, TPath path)
         {
@@ -902,7 +930,11 @@ internal static class TrieUpdater<TKey, TPath>
         internal void Resolve(ref Subtree subtree)
         {
             if (subtree.IsReference)
+            {
+                ValueHash256 hash = subtree.Hash;
                 subtree = Take(subtree.Path!);
+                subtree.Hash = hash;
+            }
         }
 
         internal ValueHash256 Write(int position, int depth, ref Subtree node)
@@ -910,9 +942,17 @@ internal static class TrieUpdater<TKey, TPath>
             if (node.IsEmpty) return default;
             Resolve(ref node);
             if (position < _nextPosition) throw new InvalidOperationException("PBT nodes must be placed in increasing position order.");
+            if (node.Path?.BitDepth == depth && node.HasOriginalEncoding(_reader.GetEncoding(position)))
+            {
+                _taken &= ~(1U << position);
+                CopyUntouchedBefore(position + 1);
+                ValueHash256 originalHash = node.OriginalHash(_metrics);
+                node.Dispose();
+                return originalHash;
+            }
             CopyUntouchedBefore(position);
             Span<byte> encoding = _writer.GetSpan(position, node.EncodedLength(depth));
-            ValueHash256 hash = node.Encode(encoding, depth);
+            ValueHash256 hash = node.Encode(encoding, depth, _metrics);
             if (!_reader.GetEncoding(position).Span.SequenceEqual(encoding)) _changedNodes++;
             _writer.Commit();
             _nextPosition = position + 1;
@@ -924,11 +964,17 @@ internal static class TrieUpdater<TKey, TPath>
         {
             while (_nextPosition < endPosition)
             {
-                int position = _nextPosition++;
-                ReadOnlySpan<byte> previous = _reader.GetEncoding(position).Span;
-                if (previous.IsEmpty) continue;
-                if ((_taken & (1U << position)) != 0) _changedNodes++;
-                else _writer.Write(position, previous);
+                int position = _nextPosition;
+                if ((_taken & (1U << position)) != 0)
+                {
+                    if (!_reader.GetEncoding(position).IsEmpty) _changedNodes++;
+                    _nextPosition++;
+                    continue;
+                }
+                while (_nextPosition < endPosition && (_taken & (1U << _nextPosition)) == 0)
+                    _nextPosition++;
+                int copiedNodes = _reader.CopyRange(_writer, position, _nextPosition);
+                if (copiedNodes != 0) _metrics?.AddBulkCopy(copiedNodes);
             }
         }
 
@@ -964,6 +1010,9 @@ internal sealed class TrieUpdaterMetrics
     internal int GroupParses { get; private set; }
     internal int GroupFrameResolutions { get; private set; }
     internal int EmittedNodeWrites { get; private set; }
+    internal int BulkCopiedNodes { get; private set; }
+    internal int BulkCopyOperations { get; private set; }
+    internal int ReusedHashes { get; private set; }
 
     internal void Add(TrieUpdaterMetrics metrics)
     {
@@ -977,8 +1026,17 @@ internal sealed class TrieUpdaterMetrics
         GroupParses += metrics.GroupParses;
         GroupFrameResolutions += metrics.GroupFrameResolutions;
         EmittedNodeWrites += metrics.EmittedNodeWrites;
+        BulkCopiedNodes += metrics.BulkCopiedNodes;
+        BulkCopyOperations += metrics.BulkCopyOperations;
+        ReusedHashes += metrics.ReusedHashes;
     }
 
+    internal void AddBulkCopy(int nodes)
+    {
+        BulkCopiedNodes += nodes;
+        BulkCopyOperations++;
+    }
+    internal void IncrementReusedHashes() => ReusedHashes++;
     internal void IncrementPrecalculatedLevels() => PrecalculatedLevels++;
     internal void IncrementSortedLevels() => SortedLevels++;
     internal void IncrementFullKeySorts() => FullKeySorts++;

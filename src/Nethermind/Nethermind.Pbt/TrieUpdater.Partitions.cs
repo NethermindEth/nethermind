@@ -62,8 +62,10 @@ public static partial class TrieUpdater
             if (workers.Count == 0) return currentRoot;
 
             using GroupMutationFrame rootGroup = new(store, RootPath, metrics, memoryProvider);
+            int touchedRootMask = 0;
+            foreach (PartitionFold worker in workers) touchedRootMask |= 1 << (worker.Zone >> 4);
             Subtree root = rootGroup.Take(RootPath, allowAbsent: true);
-            try { Decompose(rootGroup, ref root, 0, rootBoundaries.AsSpan()); }
+            try { Decompose(rootGroup, ref root, 0, rootBoundaries.AsSpan(), touchedRootMask); }
             finally { root.Dispose(); }
             foreach (PartitionFold worker in workers)
             {
@@ -74,7 +76,10 @@ public static partial class TrieUpdater
                     sharedGroups[slot] = sharedGroup;
                     zoneBoundaries[slot] = new(16, 16);
                     rootGroup.Resolve(ref rootBoundaries.AsSpan()[slot]);
-                    Decompose(sharedGroup, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan());
+                    int touchedZoneMask = 0;
+                    foreach (PartitionFold zoneWorker in workers)
+                        if ((zoneWorker.Zone >> 4) == slot) touchedZoneMask |= 1 << (zoneWorker.Zone & 15);
+                    Decompose(sharedGroup, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan(), touchedZoneMask);
                 }
                 sharedGroup.Resolve(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
                 worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);

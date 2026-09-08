@@ -76,6 +76,31 @@ internal sealed class PbtNodeGroupWriter : IDisposable
         Commit();
     }
 
+    /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>
+    internal int CopyRange(ReadOnlySpan<byte> entries, ReadOnlySpan<int> offsets, ReadOnlySpan<int> lengths,
+        int firstPosition, int lastPosition)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_pendingPosition >= 0) throw new InvalidOperationException("A reserved PBT node has not been committed.");
+        if (firstPosition <= _lastPosition) throw new InvalidDataException("PBT nodes must be written in increasing position order.");
+        if (entries.Length > MaxEntriesLength - _written)
+            throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
+        EnsureCapacity(_written + entries.Length + PbtNodeGroupCodec.TrailerLength);
+        entries.CopyTo(_memory!.GetSpan()[_written..]);
+        int offsetAdjustment = _written - offsets[firstPosition];
+        int copiedNodes = 0;
+        for (int position = firstPosition; position <= lastPosition; position++)
+        {
+            if (lengths[position] == 0) continue;
+            _offsets[position] = (ushort)(offsets[position] + offsetAdjustment);
+            _availability |= 1U << position;
+            copiedNodes++;
+        }
+        _written += entries.Length;
+        _lastPosition = lastPosition;
+        return copiedNodes;
+    }
+
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
     internal RefCountingMemory? Detach()
     {
