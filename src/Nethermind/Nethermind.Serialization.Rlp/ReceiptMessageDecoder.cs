@@ -14,10 +14,7 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
     public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
-        // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-        internal const int MaxReceiptLogs = 270_000;
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(MaxReceiptLogs, nameof(TxReceipt.Logs));
-        private static readonly RlpLimit FrameReceiptsRlpLimit = RlpLimit.For<TxReceipt>(Eip8141Constants.MaxFrames, nameof(TxReceipt.FrameReceipts));
+        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(FrameReceiptRlp.MaxReceiptLogs, nameof(TxReceipt.Logs));
 
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -35,14 +32,15 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.TxType = (TxType)ctx.ReadByte();
             }
 
+            int sequenceLength = ctx.ReadSequenceLength();
+            int receiptEnd = ctx.Position + sequenceLength;
+
             if (txReceipt.TxType == TxType.FrameTx)
             {
-                DecodeFrameTxReceipt(txReceipt, ref ctx, rlpBehaviors);
+                FrameReceiptRlp.DecodePayload(ref ctx, txReceipt, receiptEnd, rlpBehaviors);
                 return txReceipt;
             }
 
-            int sequenceLength = ctx.ReadSequenceLength();
-            int receiptEnd = ctx.Position + sequenceLength;
             byte[] firstItem = ctx.DecodeByteArray();
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
@@ -97,164 +95,6 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [[status, gas_used, logs], ...]], gas_used = [execution, state].
-        // The payload carries no top-level status or bloom; both are derived from the frame receipts.
-        private void DecodeFrameTxReceipt(TxReceipt txReceipt, ref RlpReader ctx, RlpBehaviors rlpBehaviors)
-        {
-            int sequenceLength = ctx.ReadSequenceLength();
-            int receiptEnd = ctx.Position + sequenceLength;
-
-            txReceipt.GasUsedTotal = ctx.DecodeULong();
-            txReceipt.Payer = ctx.DecodeAddress();
-
-            int framesEnd = ctx.ReadSequenceLength() + ctx.Position;
-            int frameCount = ctx.PeekNumberOfItemsRemaining(framesEnd, Eip8141Constants.MaxFrames + 1);
-            ctx.GuardLimit(frameCount, FrameReceiptsRlpLimit);
-            if (frameCount == 0)
-            {
-                // A frame transaction has at least one frame, so a receipt without one is malformed.
-                // Accepting it would derive a successful transaction status from nothing.
-                ThrowEmptyFrameReceipts();
-            }
-
-            TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frameCount];
-            int totalLogs = 0;
-            for (int i = 0; i < frameCount; i++)
-            {
-                int frameEnd = ctx.ReadSequenceLength() + ctx.Position;
-                byte status = ctx.DecodeByte();
-                if (status is not (TxFrameReceipt.StatusFailure or TxFrameReceipt.StatusSuccess or TxFrameReceipt.StatusSkipped))
-                {
-                    // AggregateStatus folds anything but success to failure while RPC surfaces the raw byte,
-                    // so an out-of-range status would read differently at the two ends of the same receipt.
-                    ThrowUnknownFrameStatus(status);
-                }
-                int gasUsedEnd = ctx.ReadSequenceLength() + ctx.Position;
-                ulong executionGasUsed = ctx.DecodeULong();
-                ulong stateGasUsed = ctx.DecodeULong();
-                ctx.Check(gasUsedEnd);
-
-                int logsEnd = ctx.ReadSequenceLength() + ctx.Position;
-                int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, LogsRlpLimit.Limit + 1);
-                ctx.GuardLimit(logCount, LogsRlpLimit);
-                // The limit is derived from a whole transaction's gas, so it budgets the receipt rather than
-                // each frame; spending it per frame would admit MaxFrames times the emissions it stands for.
-                totalLogs += logCount;
-                if (totalLogs > LogsRlpLimit.Limit)
-                {
-                    ThrowTooManyFrameLogs(totalLogs);
-                }
-
-                LogEntry[] logs = new LogEntry[logCount];
-                for (int j = 0; j < logCount; j++)
-                {
-                    logs[j] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-                }
-
-                ctx.Check(logsEnd);
-
-                frameReceipts[i] = new TxFrameReceipt(status, executionGasUsed, stateGasUsed, logs);
-                ctx.Check(frameEnd);
-            }
-
-            txReceipt.FrameReceipts = frameReceipts;
-            txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts);
-
-            LogEntry[] allLogs = new LogEntry[totalLogs];
-            int offset = 0;
-            for (int i = 0; i < frameReceipts.Length; i++)
-            {
-                LogEntry[] frameLogs = frameReceipts[i].Logs;
-                frameLogs.CopyTo(allLogs, offset);
-                offset += frameLogs.Length;
-            }
-
-            txReceipt.Logs = allLogs;
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-            {
-                ctx.Check(receiptEnd);
-            }
-            else
-            {
-                ctx.Position = receiptEnd;
-            }
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowEmptyFrameReceipts()
-                => throw new RlpException("Frame transaction receipt carries no frame receipts");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUnknownFrameStatus(byte status)
-                => throw new RlpException($"Frame receipt status {status} is not one of failure, success or skipped");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowTooManyFrameLogs(int totalLogs)
-                => throw new RlpException($"Frame transaction receipt carries {totalLogs} logs, over the {LogsRlpLimit.Limit} a receipt may hold");
-        }
-
-        private static (int Total, int Frames) GetFrameTxContentLength(TxReceipt item)
-        {
-            int framesLength = 0;
-            TxFrameReceipt[] frameReceipts = item.FrameReceipts ?? [];
-            for (int i = 0; i < frameReceipts.Length; i++)
-            {
-                framesLength += Rlp.LengthOfSequence(GetFrameReceiptContentLength(frameReceipts[i]));
-            }
-
-            int contentLength = Rlp.LengthOf(item.GasUsedTotal)
-                                + Rlp.LengthOf(item.Payer)
-                                + Rlp.LengthOfSequence(framesLength);
-            return (contentLength, framesLength);
-        }
-
-        private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
-            Rlp.LengthOf((ulong)frameReceipt.Status)
-            + Rlp.LengthOfSequence(GetFrameGasUsedLength(frameReceipt))
-            + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
-
-        private static int GetFrameGasUsedLength(TxFrameReceipt frameReceipt) =>
-            Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
-
-        private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)
-        {
-            int logsLength = 0;
-            for (int i = 0; i < frameReceipt.Logs.Length; i++)
-            {
-                logsLength += Rlp.LengthOf(frameReceipt.Logs[i]);
-            }
-
-            return logsLength;
-        }
-
-        private static void EncodeFrameTxReceipt<TWriter>(ref TWriter writer, TxReceipt item, int totalContentLength, int framesLength)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
-        {
-            writer.StartSequence(totalContentLength);
-            writer.Encode(item.GasUsedTotal);
-            writer.Encode(item.Payer);
-
-            TxFrameReceipt[] frameReceipts = item.FrameReceipts ?? [];
-            writer.StartSequence(framesLength);
-            LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
-            for (int i = 0; i < frameReceipts.Length; i++)
-            {
-                TxFrameReceipt frameReceipt = frameReceipts[i];
-                int logsLength = GetFrameLogsLength(frameReceipt);
-                int gasUsedLength = GetFrameGasUsedLength(frameReceipt);
-                writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOfSequence(gasUsedLength) + Rlp.LengthOfSequence(logsLength));
-                writer.Encode((ulong)frameReceipt.Status);
-                writer.StartSequence(gasUsedLength);
-                writer.Encode(frameReceipt.ExecutionGasUsed);
-                writer.Encode(frameReceipt.StateGasUsed);
-                writer.StartSequence(logsLength);
-                for (int j = 0; j < frameReceipt.Logs.Length; j++)
-                {
-                    logEntryDecoder.Encode(ref writer, frameReceipt.Logs[j]);
-                }
-            }
-        }
-
         /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
         /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
         private (int Total, int Inner) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
@@ -266,7 +106,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                return GetFrameTxContentLength(item);
+                return (FrameReceiptRlp.GetPayloadLength(item, out int framesLength), framesLength);
             }
 
             int contentLength = 0;
@@ -363,13 +203,14 @@ namespace Nethermind.Serialization.Rlp
                 writer.WriteByte((byte)item.TxType);
             }
 
+            writer.StartSequence(totalContentLength);
+
             if (item.TxType == TxType.FrameTx)
             {
-                EncodeFrameTxReceipt(ref writer, item, totalContentLength, innerLength);
+                FrameReceiptRlp.EncodePayload(ref writer, item, innerLength);
                 return;
             }
 
-            writer.StartSequence(totalContentLength);
             if (!skipStateAndStatus)
             {
                 if (isEip658Receipts)
