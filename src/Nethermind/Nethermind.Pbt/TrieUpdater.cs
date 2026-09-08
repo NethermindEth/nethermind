@@ -94,12 +94,8 @@ public static partial class TrieUpdater
         internal BucketPlan WithRangeKnowledge(int branchDepth, bool prefixesValidated) =>
             new(Precalculated, Depth, branchDepth, IsSorted, prefixesValidated);
 
-        internal BucketPlan ForChild(int slot)
-        {
-            int offset = Precalculated.IsEmpty ? 0 : Precalculated[17 + slot];
-            return new(offset == 0 ? default : Precalculated[offset..], Depth + PbtFourLevelGroupGeometry.LevelsPerGroup,
-                BranchDepth, IsSorted, PrefixesValidated);
-        }
+        internal BucketPlan ForChild() =>
+            new(default, Depth + PbtFourLevelGroupGeometry.LevelsPerGroup, BranchDepth, IsSorted, PrefixesValidated);
 
         internal BucketPlan AfterJump(int depth) => new(default, depth, BranchDepth, IsSorted, PrefixesValidated);
 
@@ -276,7 +272,7 @@ internal static class TrieUpdater<TKey, TPath>
         if (current.IsEmpty)
         {
             if (operations.Length == 1)
-                return operations[0].Kind == PbtWriteOperationKind.Delete ? default : new Subtree(operations[0]);
+                return operations[0].Value == default ? default : new Subtree(operations[0]);
         }
         else if (current.IsLeaf)
         {
@@ -284,8 +280,8 @@ internal static class TrieUpdater<TKey, TPath>
             {
                 PbtWriteOperation<TKey> operation = operations[0];
                 if (operation.Key.Equals(current.Key))
-                    return operation.Kind == PbtWriteOperationKind.Delete ? default : new Subtree(operation, current.Path);
-                if (operation.Kind == PbtWriteOperationKind.Delete) return Subtree.Move(ref current);
+                    return operation.Value == default ? default : new Subtree(operation, current.Path);
+                if (operation.Value == default) return Subtree.Move(ref current);
             }
         }
 
@@ -346,7 +342,7 @@ internal static class TrieUpdater<TKey, TPath>
             {
                 metrics?.IncrementPrecalculatedLevels();
                 return FoldMutations(store, metrics, ownerGroup, ref current, operations,
-                    plan.ForChild(BitOperations.TrailingZeroCount(plan.Precalculated[0])));
+                    plan.ForChild());
             }
 
             // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
@@ -404,7 +400,7 @@ internal static class TrieUpdater<TKey, TPath>
                 int slot = BitOperations.TrailingZeroCount(mask);
                 Span<PbtWriteOperation<TKey>> bucket = operations[offsets[slot]..offsets[slot + 1]];
                 boundaries[slot] = FoldMutations(
-                    store, metrics, group, ref boundaries[slot], bucket, partition.Plan.ForChild(slot));
+                    store, metrics, group, ref boundaries[slot], bucket, partition.Plan.ForChild());
             }
 
             return Compose(group, boundaries);

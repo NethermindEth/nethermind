@@ -16,16 +16,17 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture]
 public class Eip8297CanonicalTreeTests
 {
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Small_and_wide_generic_folds_match_oracle_for_identical_34_byte_inputs(bool prepared)
+    [Test]
+    public void Small_and_wide_generic_folds_match_oracle_for_identical_34_byte_inputs(
+        [Values(false, true)] bool prepared,
+        [Values(false, true)] bool zeroDeletes)
     {
         using PbtNodeGroupStore smallStore = new();
         using PbtNodeGroupStore wideStore = new();
         EipReferenceTree oracle = new();
         ValueHash256 smallRoot = default;
         ValueHash256 wideRoot = default;
-        for (int round = 0; round < 3; round++)
+        for (int round = -1; round < 3; round++)
         {
             using PbtWriteBatchBuilder<PbtFullKey> small = new(0);
             using PbtWriteBatchBuilder<PbtStorageFullKey> wide = new(0);
@@ -35,10 +36,25 @@ public class Eip8297CanonicalTreeTests
                 key[0] = (byte)(index % 2);
                 key[1] = (byte)(index / 4);
                 key[^1] = (byte)index;
-                byte[]? value = round == 2 || (round == 1 && index % 3 == 0) ? null : Value((byte)(index + round + 1));
+                byte[]? value = round == -1 || round == 2 || (round == 1 && index % 3 == 0) ? null : Value((byte)(index + round + 1));
                 ValueHash256? leaf = value is null ? null : new ValueHash256(value);
-                small.SetLeaf(new PbtFullKey(key), leaf);
-                wide.SetLeaf(new PbtStorageFullKey(key), leaf);
+                small.Set(new PbtFullKey(key), new ValueHash256(Value(1)));
+                wide.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
+                if (zeroDeletes)
+                {
+                    small.Set(new PbtFullKey(key), default);
+                    wide.Set(new PbtStorageFullKey(key), default);
+                }
+                else
+                {
+                    small.Delete(new PbtFullKey(key));
+                    wide.Delete(new PbtStorageFullKey(key));
+                }
+                if (leaf is { } nonzeroValue)
+                {
+                    small.Set(new PbtFullKey(key), nonzeroValue);
+                    wide.Set(new PbtStorageFullKey(key), nonzeroValue);
+                }
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
             }
@@ -93,6 +109,7 @@ public class Eip8297CanonicalTreeTests
         TrieUpdater.BucketPlan plan = first.Plan;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(plan.Precalculated.Length, Is.EqualTo(17));
             Assert.That(plan.Depth, Is.EqualTo(shardNibbleIndex * 4));
             Assert.That(plan.BranchDepth, Is.EqualTo(plan.Depth));
             Assert.That(plan.IsSorted, Is.False);
@@ -108,6 +125,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(first.ShardNibbleIndex, Is.EqualTo(shardNibbleIndex));
             Assert.That(builder.Count, Is.EqualTo(3));
+            Assert.That(builder.Leaves, Does.Contain(new KeyValuePair<PbtStorageFullKey, ValueHash256?>(zeroKey, null)));
             Assert.That(table[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
             Assert.That(table.AsSpan().Slice(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
             Assert.That(operations, Is.EqualTo(new[]
@@ -132,6 +150,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(independentOperations, Is.EqualTo(expected));
             Assert.That(independentTable[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
+            Assert.That(empty.Plan.Precalculated.Length, Is.EqualTo(17));
             Assert.That(empty.Count, Is.Zero);
             Assert.That(empty.ShardNibbleIndex, Is.EqualTo(shardNibbleIndex));
         }
@@ -142,7 +161,7 @@ public class Eip8297CanonicalTreeTests
     public void Disposed_prepared_batches_release_owned_lists(bool grouped)
     {
         using ArrayPoolList<PbtWriteOperation<PbtStorageFullKey>> operations = new(1, 1);
-        using ArrayPoolList<int> table = new(33, 33);
+        using ArrayPoolList<int> table = new(17, 17);
         using PbtWriteBatch<PbtStorageFullKey> batch = new(operations, table, 0);
         using PbtWriteBatchSet<PbtStorageFullKey>? prepared = grouped ? PbtWriteBatchSet<PbtStorageFullKey>.Create(batch) : null;
 
@@ -169,7 +188,7 @@ public class Eip8297CanonicalTreeTests
         CountingPbtStore store = new() { ThrowOnApply = fail };
         using ArrayPoolList<PbtWriteOperation<PbtFullKey>> operations = new(1);
         operations.Add(PbtWriteOperation<PbtFullKey>.Set(new PbtFullKey(Bytes.FromHexString("0000")), new ValueHash256(Value(1))));
-        using ArrayPoolList<int> table = new(33, 33);
+        using ArrayPoolList<int> table = new(17, 17);
         table[0] = 1;
         table[1] = 1;
         using PbtWriteBatch<PbtFullKey> batch = new(operations, table, mode == 2 ? 2 : 0);
@@ -326,7 +345,7 @@ public class Eip8297CanonicalTreeTests
         }
 
         tree.ApplyBatch([(keys[1], new byte[32]), (keys[2], null)]);
-        oracle.Insert(keys[1], new byte[32]);
+        oracle.Delete(keys[1]);
         oracle.Delete(keys[2]);
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
     }
@@ -1018,7 +1037,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(batch.Operations, Is.EqualTo(original));
             Assert.That(independent.Entries.ToArray(), Is.EquivalentTo(original));
-            Assert.That(table.Count, Is.LessThanOrEqualTo(54 * 33));
+            Assert.That(table.Count, Is.EqualTo(fallback ? 0 : 17));
         }
     }
 
@@ -1069,9 +1088,9 @@ public class Eip8297CanonicalTreeTests
                 }
             }
             using PbtPartitionBatches prepared = new() { Account = account.Build(), Code = code.Build(), Storage = storage.Build() };
-            AssertPreparedLevel(prepared.Account.Entries, prepared.Account.Plan.Precalculated, 8, 8);
-            AssertPreparedLevel(prepared.Code.Entries, prepared.Code.Plan.Precalculated, 8, 8);
-            AssertPreparedLevel(prepared.Storage.Entries, prepared.Storage.Plan.Precalculated, 8, 8);
+            AssertPreparedLevel(prepared.Account.Entries, prepared.Account.Plan.Precalculated, 8);
+            AssertPreparedLevel(prepared.Code.Entries, prepared.Code.Plan.Precalculated, 8);
+            AssertPreparedLevel(prepared.Storage.Entries, prepared.Storage.Plan.Precalculated, 8);
             preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, metrics);
         }
         else
@@ -1086,8 +1105,8 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(preparedRoot, Is.EqualTo(genericRoot));
             Assert.That(preparedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(accumulated ? 3 : 12));
-            Assert.That(metrics.FullKeySorts, Is.EqualTo(accumulated ? 6 : 0));
+            Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(accumulated ? 3 : 1));
+            Assert.That(metrics.FullKeySorts, Is.EqualTo(accumulated ? 6 : 2));
             Assert.That(metrics.RadixPartitions, Is.Zero);
             Assert.That(TrieUpdater.UpdateRoot(reopened, preparedRoot, batch.Build()), Is.EqualTo(preparedRoot));
         }
@@ -1137,7 +1156,7 @@ public class Eip8297CanonicalTreeTests
 
             foreach (PbtWriteOperation<PbtStorageFullKey> operation in batch.Operations)
             {
-                if (operation.Kind == PbtWriteOperationKind.Delete) oracle.Delete(operation.Key.Bytes);
+                if (operation.Value == default) oracle.Delete(operation.Key.Bytes);
                 else oracle.Insert(operation.Key.Bytes, operation.Value.Bytes.ToArray());
             }
             using PbtWriteBatchSet<PbtStorageFullKey> prepared = PbtWriteBatchSet<PbtStorageFullKey>.Create(batch.Build());
@@ -1170,7 +1189,8 @@ public class Eip8297CanonicalTreeTests
         [Values(false, true)] bool shorterReplacement,
         [Values(false, true)] bool conflict,
         [Values(false, true)] bool persisted,
-        [Values(false, true)] bool sibling)
+        [Values(false, true)] bool sibling,
+        [Values(false, true)] bool zeroDeletes)
     {
         byte[] shortKey = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000000001");
         byte[] longKey = new byte[shortKey.Length + 1];
@@ -1191,8 +1211,16 @@ public class Eip8297CanonicalTreeTests
         using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
         if (!conflict)
         {
-            changes.Delete(original);
-            if (sibling) changes.Delete(siblingKey);
+            if (zeroDeletes)
+            {
+                changes.Set(original, default);
+                if (sibling) changes.Set(siblingKey, default);
+            }
+            else
+            {
+                changes.Delete(original);
+                if (sibling) changes.Delete(siblingKey);
+            }
         }
         else if (!persisted)
         {
@@ -1220,8 +1248,9 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    private static void AssertPreparedLevel<TKey>(ReadOnlySpan<PbtWriteOperation<TKey>> entries, ReadOnlySpan<int> table, int depth, int lastDepth = 12) where TKey : struct, IPbtKey<TKey>
+    private static void AssertPreparedLevel<TKey>(ReadOnlySpan<PbtWriteOperation<TKey>> entries, ReadOnlySpan<int> table, int depth) where TKey : struct, IPbtKey<TKey>
     {
+        Assert.That(table.Length, Is.EqualTo(17));
         int[] counts = new int[16];
         foreach (PbtWriteOperation<TKey> entry in entries) counts[(entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15]++;
         int expectedMask = 0;
@@ -1229,23 +1258,12 @@ public class Eip8297CanonicalTreeTests
         int offset = 0;
         for (int slot = 0; slot < 16; slot++)
         {
-            if (counts[slot] == 0)
-            {
-                Assert.That(table[17 + slot], Is.Zero);
-                continue;
-            }
+            if (counts[slot] == 0) continue;
             expectedMask |= 1 << slot;
             Assert.That(table[countIndex++], Is.EqualTo(counts[slot]));
             ReadOnlySpan<PbtWriteOperation<TKey>> bucket = entries.Slice(offset, counts[slot]);
             foreach (PbtWriteOperation<TKey> entry in bucket)
                 Assert.That((entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15, Is.EqualTo(slot));
-            int childOffset = table[17 + slot];
-            if (depth < lastDepth)
-            {
-                Assert.That(childOffset, Is.InRange(33, table.Length - 33));
-                AssertPreparedLevel<TKey>(bucket, table[childOffset..], depth + 4, lastDepth);
-            }
-            else Assert.That(childOffset, Is.Zero);
             offset += counts[slot];
         }
         using (Assert.EnterMultipleScope())
@@ -1260,20 +1278,17 @@ public class Eip8297CanonicalTreeTests
     [TestCase(false)]
     public void Bucket_plan_transitions_keep_only_valid_range_knowledge(bool preservesOrder)
     {
-        int[] table = new int[66];
+        int[] table = new int[17];
         table[0] = 1 << 3;
         table[1] = 2;
-        table[20] = 33;
-        table[33] = 1 << 1;
-        table[34] = 2;
         TrieUpdater.BucketPlan plan = new(table, 0, 4, true, true);
         TrieUpdater.BucketPlan known = plan.WithRangeKnowledge(7, true);
-        TrieUpdater.BucketPlan child = known.ForChild(3);
+        TrieUpdater.BucketPlan child = known.ForChild();
         TrieUpdater.BucketPlan jumped = known.AfterJump(4);
         TrieUpdater.BucketPlan filtered = known.AfterFiltering(preservesOrder);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(child.Precalculated.ToArray(), Is.EqualTo(table[33..]));
+            Assert.That(child.Precalculated.IsEmpty, Is.True);
             Assert.That(child.Depth, Is.EqualTo(4));
             Assert.That(child.BranchDepth, Is.EqualTo(7));
             Assert.That(child.IsSorted && child.PrefixesValidated, Is.True);
@@ -1316,8 +1331,7 @@ public class Eip8297CanonicalTreeTests
         Assert.That(outcome.Plan.BranchDepth, Is.EqualTo(branchDepth));
         for (int childDepth = depth + 4; childDepth + 4 <= branchDepth; childDepth += 4)
         {
-            int slot = System.Numerics.BitOperations.TrailingZeroCount(outcome.UsedMask);
-            outcome = outcome.Plan.ForChild(slot).BucketSort(operations, offsets, metrics);
+            outcome = outcome.Plan.ForChild().BucketSort(operations, offsets, metrics);
             synthesized++;
             using (Assert.EnterMultipleScope())
             {
@@ -1396,7 +1410,7 @@ public class Eip8297CanonicalTreeTests
             for (int index = 1; index < count; index++) Assert.That(operations[index - 1].Key.CompareTo(operations[index].Key), Is.LessThan(0));
             int start = offsets[1];
             int length = offsets[2] - start;
-            TrieUpdater.PartitionOutcome child = outcome.Plan.ForChild(1).BucketSort(operations.AsSpan(start, length), offsets, metrics);
+            TrieUpdater.PartitionOutcome child = outcome.Plan.ForChild().BucketSort(operations.AsSpan(start, length), offsets, metrics);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(child.Plan.IsSorted, Is.True);
@@ -2235,7 +2249,7 @@ public class Eip8297CanonicalTreeTests
     {
         foreach ((byte[] key, byte[]? value) in changes)
         {
-            if (value is null) oracle.Delete(key);
+            if (value is null || new ValueHash256(value) == default) oracle.Delete(key);
             else oracle.Insert(key, value);
         }
     }

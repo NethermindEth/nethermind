@@ -60,7 +60,7 @@ public class PbtResourcePoolTests
             batch.SetLeaf(keys[index], TestItem.KeccakA.ValueHash256);
             batch.SetLeaf(keys[index], null);
             ValueHash256 value = index % 2 == 0 ? default : TestItem.KeccakB.ValueHash256;
-            batch.SetLeaf(keys[index], value);
+            batch.Set(keys[index], value);
         }
         if (parallel) Parallel.For(0, keys.Count, Write);
         else for (int index = 0; index < keys.Count; index++) Write(index);
@@ -75,7 +75,7 @@ public class PbtResourcePoolTests
         prepared.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation<TKey>> operationsLease = operations;
         using ArrayPoolList<int> tableLease = table;
-        int[] expectedTable = new int[33];
+        int[] expectedTable = new int[17];
         expectedTable[0] = touchedMask;
         int compactCount = 0;
         int offset = 0;
@@ -83,7 +83,6 @@ public class PbtResourcePoolTests
         {
             if ((touchedMask & (1 << shard)) == 0) continue;
             expectedTable[1 + compactCount++] = entriesPerShard;
-            bool sawSet = false;
             HashSet<TKey> shardKeys = [];
             foreach (PbtWriteOperation<TKey> operation in operations.AsSpan().Slice(offset, entriesPerShard))
             {
@@ -91,11 +90,8 @@ public class PbtResourcePoolTests
                 {
                     Assert.That(operation.Key.Bytes[1] >> 4, Is.EqualTo(shard));
                     Assert.That(shardKeys.Add(operation.Key), Is.True);
-                    Assert.That(operation.Kind == PbtWriteOperationKind.Delete && sawSet, Is.False, "deletes must precede sets within each shard");
-                    Assert.That(operation.Kind, Is.EqualTo(leaves[operation.Key] is null ? PbtWriteOperationKind.Delete : PbtWriteOperationKind.Set));
                     Assert.That(operation.Value, Is.EqualTo(leaves[operation.Key] ?? default));
                 }
-                sawSet |= operation.Kind == PbtWriteOperationKind.Set;
             }
             offset += entriesPerShard;
         }

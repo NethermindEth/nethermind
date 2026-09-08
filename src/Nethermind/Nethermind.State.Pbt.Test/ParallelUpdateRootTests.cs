@@ -92,14 +92,12 @@ public class ParallelUpdateRootTests
         }
     }
 
-    [TestCase(0, false)]
-    [TestCase(1, false)]
-    [TestCase(3, false)]
-    [TestCase(1, true)]
-    [TestCase(3, true)]
-    [TestCase(1, false, true)]
-    [TestCase(3, false, true)]
-    public void Partition_folds_preserve_canonical_and_physical_records_across_reopen(int populatedZones, bool compressed, bool singleLeafPerZone = false)
+    [Test]
+    public void Partition_folds_preserve_canonical_and_physical_records_across_reopen(
+        [Values(0, 1, 3)] int populatedZones,
+        [Values(false, true)] bool compressed,
+        [Values(false, true)] bool singleLeafPerZone,
+        [Values(false, true)] bool zeroDeletes)
     {
         using PbtNodeGroupStore store = new();
         using PbtTreeHarness sequential = new();
@@ -125,7 +123,10 @@ public class ParallelUpdateRootTests
 
         void ApplyAndCompare((byte[] Key, byte[]? Value)[] mutations)
         {
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(mutations));
+            (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
+            for (int index = 0; index < mutations.Length; index++)
+                writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes));
             sequential.ApplyBatch(mutations);
             foreach ((byte[] key, byte[]? value) in mutations)
             {
@@ -138,7 +139,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(mutations)), Is.EqualTo(root));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes)), Is.EqualTo(root));
                 Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
             }
         }

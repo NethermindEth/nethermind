@@ -53,14 +53,8 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
     }
 }
 
-internal enum PbtWriteOperationKind : byte
+internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>
 {
-    Set,
-    Delete,
-}
-
-internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value, PbtWriteOperationKind Kind) where TKey : struct, IPbtKey<TKey>
-{
-    internal static PbtWriteOperation<TKey> Set(TKey key, in ValueHash256 value) => new(key, value, PbtWriteOperationKind.Set);
-    internal static PbtWriteOperation<TKey> Delete(TKey key) => new(key, default, PbtWriteOperationKind.Delete);
+    internal static PbtWriteOperation<TKey> Set(TKey key, in ValueHash256 value) => new(key, value);
+    internal static PbtWriteOperation<TKey> Delete(TKey key) => new(key, default);
 }

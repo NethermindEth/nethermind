@@ -89,7 +89,7 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
         try
         {
             foreach ((TKey key, ValueHash256? value) in uniqueOperations)
-                operations.Add(value is { } hash ? PbtWriteOperation<TKey>.Set(key, hash) : PbtWriteOperation<TKey>.Delete(key));
+                operations.Add(new(key, value.GetValueOrDefault()));
             return Prepare(operations);
         }
         catch
@@ -105,11 +105,7 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
         counts.Clear();
         foreach (PbtWriteOperation<TKey> operation in operations)
         {
-            if (PartitionOf(operation.Key) < 0)
-            {
-                OrderDeletesFirst(operations.AsSpan());
-                return new(operations, new(0), default);
-            }
+            if (PartitionOf(operation.Key) < 0) return new(operations, new(0), default);
 
             counts[BucketOf(operation)]++;
         }
@@ -139,7 +135,7 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
         return CreateGrouped(operations, counts);
     }
 
-    /// <summary>Accepts unique operations already ordered by partition, shard, and delete/set bucket.</summary>
+    /// <summary>Accepts unique operations already ordered by partition and shard.</summary>
     /// <remarks>Takes ownership of operations, including when preparation fails.</remarks>
     internal static PbtWriteBatchSet<TKey> CreateGrouped(ArrayPoolList<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> counts)
     {
@@ -151,18 +147,29 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
             int total = 0;
             for (int bucket = 0; bucket < BucketCount; bucket++)
             {
-                if (bucket % (ShardsPerPartition * BucketsPerShard) == 0)
-                    partitionOffsets[bucket / (ShardsPerPartition * BucketsPerShard)] = total;
+                if (bucket % ShardsPerPartition == 0)
+                    partitionOffsets[bucket / ShardsPerPartition] = total;
                 total += counts[bucket];
             }
             partitionOffsets[PartitionCount] = total;
             ArgumentOutOfRangeException.ThrowIfNotEqual(operations.Count, total);
-            int levelCount = CountLevels(counts, partitionOffsets);
-            table = new(levelCount * LevelLength, levelCount * LevelLength);
-            if (levelCount != 0)
+            int tableLength = total == 0 ? 0 : LevelLength;
+            table = new(tableLength, tableLength);
+            if (total != 0)
             {
-                int tablePosition = 0;
-                WriteLevel(table.AsSpan(), ref tablePosition, counts, 0, BucketCount, 0);
+                int countIndex = 1;
+                int accountAndCodeCount = partitionOffsets[(int)PbtPartition.Storage];
+                if (accountAndCodeCount != 0)
+                {
+                    table[0] |= 1 << (Eip8297KeyDerivation.AccountZone >> 4);
+                    table[countIndex++] = accountAndCodeCount;
+                }
+                int storageCount = total - accountAndCodeCount;
+                if (storageCount != 0)
+                {
+                    table[0] |= 1 << (Eip8297KeyDerivation.StorageZone >> 4);
+                    table[countIndex] = storageCount;
+                }
             }
             return new(operations, table, partitionOffsets);
         }
@@ -183,93 +190,19 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
     };
 
     private static int BucketOf(in PbtWriteOperation<TKey> operation) =>
-        (PartitionOf(operation.Key) * ShardsPerPartition + operation.Key.Bytes[1]) * BucketsPerShard +
-        (operation.Kind == PbtWriteOperationKind.Delete ? 0 : 1);
-
-    private static void OrderDeletesFirst(Span<PbtWriteOperation<TKey>> operations)
-    {
-        int deleteCount = 0;
-        for (int index = 0; index < operations.Length; index++)
-        {
-            if (operations[index].Kind != PbtWriteOperationKind.Delete) continue;
-            (operations[deleteCount], operations[index]) = (operations[index], operations[deleteCount]);
-            deleteCount++;
-        }
-    }
+        PartitionOf(operation.Key) * ShardsPerPartition + operation.Key.Bytes[1];
 }
 
 internal abstract class PbtWriteBatchSet
 {
     protected const int PartitionCount = 3;
     protected const int ShardsPerPartition = 256;
-    protected const int BucketsPerShard = 2;
-    protected const int BucketCount = PartitionCount * ShardsPerPartition * BucketsPerShard;
-    protected const int LevelLength = 33;
+    protected const int BucketCount = PartitionCount * ShardsPerPartition;
+    protected const int LevelLength = PbtFourLevelGroupGeometry.BoundarySlots + 1;
 
     [InlineArray(PartitionCount + 1)]
     protected struct PartitionOffsets
     {
         private int _element;
-    }
-
-    protected static int CountLevels(ReadOnlySpan<int> counts, ReadOnlySpan<int> partitionOffsets)
-    {
-        if (partitionOffsets[PartitionCount] == 0) return 0;
-        int levelCount = 1;
-        if (partitionOffsets[2] > 0) levelCount++;
-        if (partitionOffsets[3] > partitionOffsets[2]) levelCount++;
-        for (int partition = 0; partition < PartitionCount; partition++)
-        {
-            if (partitionOffsets[partition + 1] == partitionOffsets[partition]) continue;
-            levelCount++;
-            for (int highNibble = 0; highNibble < 16; highNibble++)
-            {
-                int start = (partition * ShardsPerPartition + highNibble * 16) * BucketsPerShard;
-                foreach (int count in counts.Slice(start, 16 * BucketsPerShard))
-                {
-                    if (count == 0) continue;
-                    levelCount++;
-                    break;
-                }
-            }
-        }
-        return levelCount;
-    }
-
-    protected static void WriteLevel(Span<int> table, ref int tablePosition, ReadOnlySpan<int> counts, int startBucket, int endBucket, int depth)
-    {
-        int levelStart = tablePosition;
-        tablePosition += LevelLength;
-        int compactCount = 0;
-        for (int bucket = startBucket; bucket < endBucket;)
-        {
-            int slot = SlotOf(bucket, depth);
-            int slotStart = bucket;
-            int count = 0;
-            do
-            {
-                count += counts[bucket++];
-            } while (bucket < endBucket && SlotOf(bucket, depth) == slot);
-            if (count == 0) continue;
-
-            table[levelStart] |= 1 << slot;
-            table[levelStart + 1 + compactCount++] = count;
-            if (depth == 12) continue;
-            table[levelStart + 17 + slot] = tablePosition - levelStart;
-            WriteLevel(table, ref tablePosition, counts, slotStart, bucket, depth + 4);
-        }
-    }
-
-    private static int SlotOf(int bucket, int depth)
-    {
-        int partition = bucket / (ShardsPerPartition * BucketsPerShard);
-        int shard = bucket / BucketsPerShard % ShardsPerPartition;
-        return depth switch
-        {
-            0 => partition == (int)PbtPartition.Storage ? 15 : 0,
-            4 => partition == (int)PbtPartition.Storage ? 15 : partition,
-            8 => shard >> 4,
-            _ => shard & 15,
-        };
     }
 }

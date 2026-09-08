@@ -62,8 +62,8 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         return (key.Bytes[_shardNibbleIndex >> 1] >> ((_shardNibbleIndex & 1) == 0 ? 4 : 0)) & 15;
     }
 
-    /// <summary>Adds an explicit complete-key value mutation.</summary>
-    public void Set(TKey key, in ValueHash256 value) => SetMutation(key, value);
+    /// <summary>Adds a complete-key value mutation, or a deletion when the value is zero.</summary>
+    public void Set(TKey key, in ValueHash256 value) => SetLeaf(key, value);
 
     /// <summary>Adds an explicit complete-key deletion.</summary>
     public void Delete(TKey key) => SetMutation(key, null);
@@ -113,9 +113,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         get
         {
             foreach ((TKey key, ValueHash256? value) in Leaves)
-                if (value is null) yield return PbtWriteOperation<TKey>.Delete(key);
-            foreach ((TKey key, ValueHash256? value) in Leaves)
-                if (value is { } hash) yield return PbtWriteOperation<TKey>.Set(key, hash);
+                yield return new(key, value.GetValueOrDefault());
         }
     }
 
@@ -124,9 +122,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
     /// Reset only after a successful fold to retain mutations for retry.</remarks>
     public PbtWriteBatch<TKey> Build()
     {
-        Span<int> deleteCounts = stackalloc int[ShardCount];
-        deleteCounts.Clear();
-        ArrayPoolList<int> table = new(33, 33);
+        ArrayPoolList<int> table = new(ShardCount + 1, ShardCount + 1);
         ArrayPoolList<PbtWriteOperation<TKey>>? operations = null;
         try
         {
@@ -135,8 +131,6 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
                 if (_shards[shardIndex]?.Entries is not { Count: > 0 } entries) continue;
-                foreach (ValueHash256? value in entries.Values)
-                    if (value is null) deleteCounts[shardIndex]++;
                 table[0] |= 1 << shardIndex;
                 table[1 + compactCount++] = entries.Count;
                 count += entries.Count;
@@ -147,14 +141,8 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
                 if (_shards[shardIndex]?.Entries is not { } entries) continue;
-                int deleteOffset = offset;
-                int setOffset = offset + deleteCounts[shardIndex];
                 foreach ((TKey key, ValueHash256? value) in entries)
-                {
-                    if (value is null) operations[deleteOffset++] = PbtWriteOperation<TKey>.Delete(key);
-                    else operations[setOffset++] = PbtWriteOperation<TKey>.Set(key, value.Value);
-                }
-                offset += entries.Count;
+                    operations[offset++] = new(key, value.GetValueOrDefault());
             }
             return new PbtWriteBatch<TKey>(operations, table, _shardNibbleIndex);
         }
