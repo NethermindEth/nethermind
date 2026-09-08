@@ -777,16 +777,27 @@ public class FrameTxProcessorTests
     public void Execute_FrameParamStatusOfCurrentFrame_ExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // The sentinel write past the FRAMEPARAM separates the halt from an implementation that pushes
+        // zero and runs on, which would leave slot 0 at zero either way.
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0x05).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        TxFrame frame = Frame(TxFrame.ModeDefault, target: Observer);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), frame);
+        FrameReceiptTracer tracer = new();
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(tx, tracer: tracer);
 
         // Reading the current frame's status halts it, which discards its writes but leaves the tx valid.
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "an exceptional halt consumes the frame's gas limit");
+            AssertStorage(Observer, 1, UInt256.Zero, "the halt is what stopped the frame, not a zero-valued read");
+        }
     }
 
     [Test]
@@ -888,16 +899,27 @@ public class FrameTxProcessorTests
     public void Execute_SigParamResolvedSignerOfArbitraryEntry_ExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // The sentinel write past the SIGPARAM separates the halt from an implementation that pushes the
+        // absent signer as zero and runs on, which would leave slot 0 at zero either way.
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0x00).PushData(0).Op(Instruction.SIGPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        TxFrame frame = Frame(TxFrame.ModeDefault, target: Observer);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), frame);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 1, 2, 3 })];
+        FrameReceiptTracer tracer = new();
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(tx, tracer: tracer);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "an exceptional halt consumes the frame's gas limit");
+            AssertStorage(Observer, 1, UInt256.Zero, "the halt is what stopped the frame, not a zero-valued read");
+        }
     }
 
     [Test]
@@ -1967,21 +1989,30 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_SecondPostTxFrameFails_UnwindsTheWholeBody()
     {
+        // APPROVE is banned in POST_TX, so the passing assertion cannot be the smart sender's own code.
+        Address passingAssertion = TestItem.AddressF;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(passingAssertion, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
             Frame(TxFrame.ModeSender, target: Observer),
-            Frame(TxFrame.ModePostTx, target: Sender),
+            Frame(TxFrame.ModePostTx, target: passingAssertion),
             Frame(TxFrame.ModePostTx, target: Recipient));
 
-        CallOutputTracer tracer = new();
+        FrameReceiptTracer tracer = new();
 
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        AssertStorage(Observer, 0, UInt256.Zero, "a failure in the second assertion unwinds the body the first one passed on");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the first assertion has to pass for the second to be the one that unwinds");
+            Assert.That(tracer.FrameReceipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            AssertStorage(Observer, 0, UInt256.Zero, "a failure in the second assertion unwinds the body the first one passed on");
+        }
     }
 
     /// <summary>A frame transaction's <c>CallAndRestore</c> must leave nothing behind.</summary>
