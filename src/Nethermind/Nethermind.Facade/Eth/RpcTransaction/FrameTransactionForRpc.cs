@@ -68,8 +68,12 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         // Transaction.GasLimit leaves the work a frame transaction asks for unbounded.
         ulong effectiveCap = gasCap.EffectiveGasCap();
         ulong totalFrameGas = FrameTxValidation.TotalGasLimit(frames);
-        if (totalFrameGas > effectiveCap)
-            return RpcTransactionErrors.FrameGasAboveCap(totalFrameGas, effectiveCap);
+        // The processor verifies every entry before it derives any gas budget, so an unpriced signature list
+        // would buy elliptic-curve work no frame ever pays for. Saturates rather than wrapping past the cap.
+        ulong signatureGas = FrameTxValidation.SignatureVerificationWorkGas(signatures);
+        ulong reservedGas = totalFrameGas > ulong.MaxValue - signatureGas ? ulong.MaxValue : totalFrameGas + signatureGas;
+        if (reservedGas > effectiveCap)
+            return RpcTransactionErrors.FrameGasAboveCap(reservedGas, effectiveCap);
 
         Transaction tx = baseResult.Data;
         // The invariant FrameTxDecoder establishes for a decoded frame tx, so GasLimit readers see the same

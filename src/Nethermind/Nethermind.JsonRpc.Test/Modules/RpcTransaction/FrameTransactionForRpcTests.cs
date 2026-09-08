@@ -286,6 +286,77 @@ public class FrameTransactionForRpcTests
         Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
     }
 
+    private const int Secp256k1EntriesAtTheCap = (int)(GasCap / Eip8141Constants.Secp256k1VerificationGasCost);
+
+    /// <summary>The RPC gas cap also bounds the signature verification a frame transaction asks for.</summary>
+    /// <remarks>
+    /// The processor runs <c>validate_signature</c> over every entry before it derives any gas budget, so
+    /// capping the frame limits alone leaves the elliptic-curve work unpriced: a request can keep its frames
+    /// tiny and repeat a verifying SECP256K1 entry to buy arbitrarily many recoveries off one call.
+    /// </remarks>
+    [TestCase(Secp256k1EntriesAtTheCap, false, TestName = "ToTransaction_SignatureWorkAtTheCap_IsAccepted")]
+    [TestCase(Secp256k1EntriesAtTheCap + 1, true, TestName = "ToTransaction_SignatureWorkAboveTheCap_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_CountsSignatureVerificationAgainstTheCap(int entries, bool expectedError)
+    {
+        FrameSignatureForRpc[] signatures = new FrameSignatureForRpc[entries];
+        for (int i = 0; i < entries; i++)
+        {
+            // The reviewer's shape: an explicit non-zero digest and a named signer, so the entry is
+            // structurally acceptable and each repeat costs a full recovery.
+            signatures[i] = new FrameSignatureForRpc
+            {
+                Scheme = TxFrameSignature.SchemeSecp256k1,
+                Signer = TestItem.AddressA,
+                Msg = TestItem.KeccakA.BytesToArray(),
+                Signature = new byte[TxFrameSignature.Secp256k1SignatureLength],
+            };
+        }
+
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            // Deliberately free of frame gas, so only the signature list can breach the cap.
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment }],
+            Signatures = signatures,
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.IsError, Is.EqualTo(expectedError), result.Error);
+    }
+
+    // Signature work is charged on top of the frame limits, so neither alone hides the other.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_AddsSignatureWorkToTheFrameGas()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = GasCap }],
+            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1, Signer = TestItem.AddressA }],
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.IsError, Is.True);
+        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(GasCap));
+    }
+
+    // The combined reservation saturates rather than wrapping to a value under the cap.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_SaturatesTheReservationInsteadOfWrapping()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue }],
+            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1, Signer = TestItem.AddressA }],
+        };
+
+        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+    }
+
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)
     {
         Transaction tx = BuildMinimalFrameTx();
