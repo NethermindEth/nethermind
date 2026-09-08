@@ -27,8 +27,8 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> data = context.Data;
             int position = SkipToHashes(data, context.Position);
 
-            position = DecodeStorageRoot(data, position, out Hash256 storageRoot);
-            context.Position = DecodeCodeHash(data, position, out Hash256 codeHash);
+            position = DecodeHash(data, position, Keccak.EmptyTreeHash, out Hash256 storageRoot);
+            context.Position = DecodeHash(data, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
 
             return (codeHash, storageRoot);
         }
@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Rlp
         public Hash256 DecodeStorageRootOnly(ref RlpReader context)
         {
             ReadOnlySpan<byte> data = context.Data;
-            context.Position = DecodeStorageRoot(data, SkipToHashes(data, context.Position), out Hash256 storageRoot);
+            context.Position = DecodeHash(data, SkipToHashes(data, context.Position), Keccak.EmptyTreeHash, out Hash256 storageRoot);
             return storageRoot;
         }
 
@@ -48,7 +48,7 @@ namespace Nethermind.Serialization.Rlp
         /// </remarks>
         public Hash256 DecodeStorageRootOnly(ReadOnlySpan<byte> accountRlp)
         {
-            DecodeStorageRoot(accountRlp, SkipToHashes(accountRlp, 0), out Hash256 storageRoot);
+            DecodeHash(accountRlp, SkipToHashes(accountRlp, 0), Keccak.EmptyTreeHash, out Hash256 storageRoot);
             return storageRoot;
         }
 
@@ -75,8 +75,8 @@ namespace Nethermind.Serialization.Rlp
 
             position = RlpHelpers.DecodeULong(data, position, out ulong nonce);
             position = RlpHelpers.DecodeUInt256(data, position, out UInt256 balance);
-            position = DecodeStorageRootStruct(data, position, out ValueHash256 storageRoot);
-            endPosition = DecodeCodeHashStruct(data, position, out ValueHash256 codeHash);
+            position = DecodeValueHash(data, position, Keccak.EmptyTreeHash.ValueHash256, out ValueHash256 storageRoot);
+            endPosition = DecodeValueHash(data, position, Keccak.OfAnEmptyString.ValueHash256, out ValueHash256 codeHash);
 
             account = new AccountStruct(nonce, balance, storageRoot, codeHash);
             return true;
@@ -203,17 +203,18 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Account? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int length = decoderContext.ReadSequenceLength();
+            ReadOnlySpan<byte> data = decoderContext.Data;
+            int position = RlpHelpers.ReadSequenceLength(data, decoderContext.Position, out int length);
             if (length == 1)
             {
+                decoderContext.Position = position;
                 return null;
             }
 
-            ulong nonce = decoderContext.DecodeULong();
-            UInt256 balance = decoderContext.DecodeUInt256();
-            ReadOnlySpan<byte> data = decoderContext.Data;
-            int position = DecodeStorageRoot(data, decoderContext.Position, out Hash256 storageRoot);
-            decoderContext.Position = DecodeCodeHash(data, position, out Hash256 codeHash);
+            position = RlpHelpers.DecodeULong(data, position, out ulong nonce);
+            position = RlpHelpers.DecodeUInt256(data, position, out UInt256 balance);
+            position = DecodeHash(data, position, Keccak.EmptyTreeHash, out Hash256 storageRoot);
+            decoderContext.Position = DecodeHash(data, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
 
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
@@ -223,48 +224,29 @@ namespace Nethermind.Serialization.Rlp
             return new(nonce, balance, storageRoot, codeHash);
         }
 
-        private int DecodeStorageRoot(ReadOnlySpan<byte> data, int position, out Hash256 storageRoot)
+        /// <summary>Decodes an account hash, taking the slim format's empty byte string as <paramref name="slimEmpty"/>.</summary>
+        /// <returns>The position past the item.</returns>
+        private int DecodeHash(ReadOnlySpan<byte> data, int position, Hash256 slimEmpty, out Hash256 hash)
         {
             if (IsSlimEmpty(data, position))
             {
-                storageRoot = Keccak.EmptyTreeHash;
+                hash = slimEmpty;
                 return position + 1;
             }
 
-            return RlpHelpers.DecodeKeccak(data, position, out storageRoot);
+            return RlpHelpers.DecodeKeccak(data, position, out hash);
         }
 
-        private int DecodeCodeHash(ReadOnlySpan<byte> data, int position, out Hash256 codeHash)
+        /// <inheritdoc cref="DecodeHash"/>
+        private int DecodeValueHash(ReadOnlySpan<byte> data, int position, in ValueHash256 slimEmpty, out ValueHash256 hash)
         {
             if (IsSlimEmpty(data, position))
             {
-                codeHash = Keccak.OfAnEmptyString;
+                hash = slimEmpty;
                 return position + 1;
             }
 
-            return RlpHelpers.DecodeKeccak(data, position, out codeHash);
-        }
-
-        private int DecodeStorageRootStruct(ReadOnlySpan<byte> data, int position, out ValueHash256 storageRoot)
-        {
-            if (IsSlimEmpty(data, position))
-            {
-                storageRoot = Keccak.EmptyTreeHash.ValueHash256;
-                return position + 1;
-            }
-
-            return RlpHelpers.DecodeValueKeccakNonNull(data, position, out storageRoot);
-        }
-
-        private int DecodeCodeHashStruct(ReadOnlySpan<byte> data, int position, out ValueHash256 codeHash)
-        {
-            if (IsSlimEmpty(data, position))
-            {
-                codeHash = Keccak.OfAnEmptyString.ValueHash256;
-                return position + 1;
-            }
-
-            return RlpHelpers.DecodeValueKeccakNonNull(data, position, out codeHash);
+            return RlpHelpers.DecodeValueKeccakNonNull(data, position, out hash);
         }
 
         private bool IsSlimEmpty(ReadOnlySpan<byte> data, int position)
