@@ -66,6 +66,8 @@ public sealed class HistoryWalkVerifier
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(metadata);
+        if (emitterSource is not null && !ReferenceEquals(emitterSource.Metadata, metadata))
+            throw new ArgumentException("The walk and its emitters must share one commitment metadata.", nameof(metadata));
         ArgumentNullException.ThrowIfNull(headers);
         ArgumentNullException.ThrowIfNull(rowFormat);
         ArgumentNullException.ThrowIfNull(logManager);

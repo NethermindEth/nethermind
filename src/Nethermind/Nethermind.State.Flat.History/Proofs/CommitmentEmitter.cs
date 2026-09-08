@@ -22,6 +22,7 @@ public sealed class CommitmentEmitter : IDisposable
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
     private const int EmptyRecord = -1;
+    private const int MaxSpareWindowsCeiling = 1 << 16;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly CommitmentDepthPolicy _policy;
@@ -29,7 +30,6 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly CommitmentStore _storages;
     private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
-    private const int MaxSpareWindowsCeiling = 1 << 16;
     private readonly int _maxSpareWindows;
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;

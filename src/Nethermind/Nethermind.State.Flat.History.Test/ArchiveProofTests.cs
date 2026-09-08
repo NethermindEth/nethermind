@@ -236,7 +236,7 @@ public class ArchiveProofTests
         Assert.That(
             () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, progress) => { if (item == contractItem) interrupt.Cancel(); }, interrupt.Token, checkpointGroups: 1),
             Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut at the storage range's checkpoint right after the contract's group");
-        Assert.That(new CommitmentMetadata(_historyColumns, TestPolicy).TryGetWalkItemProgress(contractItem, out _), Is.True, "precondition: the storage range left a group checkpoint behind");
+        Assert.That(Metadata(TestPolicy).TryGetWalkItemProgress(contractItem, out _), Is.True, "precondition: the storage range left a group checkpoint behind");
 
         HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
 
@@ -417,7 +417,7 @@ public class ArchiveProofTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(128), "the head sits in the second epoch of 128 blocks, so a node keeping one epoch starts the walk there instead of at genesis, which is the difference between hours and days on a real archive");
-            Assert.That(new CommitmentMetadata(_historyColumns, _policy).RetainedFromEpoch, Is.EqualTo(1), "the floor is recorded before anything is built, so a height below it is refused rather than half-built");
+            Assert.That(Metadata(_policy).RetainedFromEpoch, Is.EqualTo(1), "the floor is recorded before anything is built, so a height below it is refused rather than half-built");
         }
 
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
@@ -753,7 +753,7 @@ public class ArchiveProofTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(
-                new CommitmentMetadata(_historyColumns, _policy).StorageTrieDepth(identity),
+                Metadata(_policy).StorageTrieDepth(identity),
                 Is.GreaterThanOrEqualTo(_policy.LargeTrieSignalDepth),
                 "a trie that carries a branch below the collected ceiling is deeper than that ceiling, and the walk is the only observer a retrofit has");
             Assert.That(
@@ -817,7 +817,7 @@ public class ArchiveProofTests
         AccountProof actual = ProveFromArchive(quiet, 300, maxScannedRows: 192, slots[..4]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new CommitmentMetadata(_historyColumns, _policy).DroppedThroughEpoch, Is.EqualTo(2ul));
+            Assert.That(Metadata(_policy).DroppedThroughEpoch, Is.EqualTo(2ul));
             Assert.That(storages.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier) || IsEpochTier(key, epoch: 1, CommitmentKeyLayout.CoarseTier)), Is.False, "both older epochs are gone");
             Assert.That(actual.Proof, Is.EqualTo(expected.Proof), "a contract untouched since a dropped epoch proves from the rows carried into the retained one, under a budget too small for a rebuild of its slots");
             Assert.That(actual.StorageProofs!.Select(static proof => proof.Proof), Is.EqualTo(expected.StorageProofs!.Select(static proof => proof.Proof)));
@@ -933,8 +933,8 @@ public class ArchiveProofTests
         AccountProof actual = ProveFromArchive(quiet, 300, maxScannedRows: 192, slots[..4]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new CommitmentMetadata(_historyColumns, _policy).RetainedFromEpoch, Is.EqualTo(2ul), "the served floor moved at once");
-            Assert.That(new CommitmentMetadata(_historyColumns, _policy).DroppedThroughEpoch, Is.EqualTo(0ul), "nothing has been reclaimed yet");
+            Assert.That(Metadata(_policy).RetainedFromEpoch, Is.EqualTo(2ul), "the served floor moved at once");
+            Assert.That(Metadata(_policy).DroppedThroughEpoch, Is.EqualTo(0ul), "nothing has been reclaimed yet");
             Assert.That(actual.Proof, Is.EqualTo(expected.Proof), "the reader descends to what is physically on disk, not to what is served, so the rows of the epoch awaiting reclaim still answer");
         }
     }
@@ -1019,7 +1019,7 @@ public class ArchiveProofTests
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofServeEnabled = false };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        ArchiveProofSource source = new(_flatDb, _historyColumns, new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance), rowFormat, _policy, new CommitmentMetadata(_historyColumns, _policy), settings, config, LimboLogs.Instance);
+        ArchiveProofSource source = new(_flatDb, _historyColumns, new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance), rowFormat, _policy, Metadata(_policy), settings, config, LimboLogs.Instance);
 
         bool served = source.TryRunTreeVisitor(new AccountProofCollector(_accounts[0], Array.Empty<UInt256>()), _chain.StateIdAt(1), null, null);
 
@@ -1091,6 +1091,7 @@ public class ArchiveProofTests
             inside.Set();
             hold.Wait();
         }));
+        bool joined;
         try
         {
             Assert.That(inside.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the reclaim pass is inside its callback and holds the turn");
@@ -1099,9 +1100,23 @@ public class ArchiveProofTests
         finally
         {
             hold.Set();
+            joined = reclaim.Wait(TimeSpan.FromSeconds(5));
         }
 
-        return reclaim.Wait(TimeSpan.FromSeconds(5));
+        return joined;
+    }
+
+    [Test]
+    public void A_walk_refuses_emitters_bound_to_another_metadata()
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        using CommitmentMetadata other = new(_historyColumns, TestPolicy);
+
+        Assert.That(
+            () => new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, other),
+            Throws.ArgumentException,
+            "the reclaim turn, the layout flag and the window lock live on the metadata; a walk marking one while its emitters write through another would unshare all three");
     }
 
     [Test]
@@ -1313,7 +1328,7 @@ public class ArchiveProofTests
         Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
         Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
         Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
-        Assert.That(new CommitmentMetadata(_historyColumns, EpochPolicy).DroppedThroughEpoch, Is.EqualTo(3ul), "the mirror is a cache of the persisted key, not a replacement for it");
+        Assert.That(Metadata(EpochPolicy).DroppedThroughEpoch, Is.EqualTo(3ul), "the mirror is a cache of the persisted key, not a replacement for it");
         metadata.TryRaiseDemotedThroughEpoch(5);
         metadata.LowerDemotedThroughEpoch(2);
         Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(2ul));
@@ -1375,8 +1390,8 @@ public class ArchiveProofTests
     {
         _policy = EpochPolicy;
         _fineEpochs = 1;
-        new CommitmentMetadata(_historyColumns, _policy).TryRaiseFineFromEpoch(1);
-        new CommitmentMetadata(_historyColumns, _policy).TryRaiseDemotedThroughEpoch(1);
+        Metadata(_policy).TryRaiseFineFromEpoch(1);
+        Metadata(_policy).TryRaiseDemotedThroughEpoch(1);
 
         BuildCommitments();
         IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
@@ -1429,12 +1444,15 @@ public class ArchiveProofTests
 
     private readonly List<CommitmentMetadata> _metadatas = [];
 
-    private HistoryWalkVerifier CreateVerifyOnlyVerifier(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
+    private CommitmentMetadata Metadata(CommitmentDepthPolicy policy)
     {
-        CommitmentMetadata metadata = new(_historyColumns, _policy);
+        CommitmentMetadata metadata = new(_historyColumns, policy);
         _metadatas.Add(metadata);
-        return CreateVerifyOnlyVerifier(metadata, maxRowsPerPartition);
+        return metadata;
     }
+
+    private HistoryWalkVerifier CreateVerifyOnlyVerifier(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition) =>
+        CreateVerifyOnlyVerifier(Metadata(_policy), maxRowsPerPartition);
 
     private HistoryWalkVerifier CreateVerifyOnlyVerifier(CommitmentMetadata metadata, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
@@ -1541,7 +1559,7 @@ public class ArchiveProofTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout, ArchiveProofRecentEpochs = _recentEpochs, ArchiveProofFineEpochs = _fineEpochs };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        CommitmentMetadata metadata = new(_historyColumns, policy);
+        CommitmentMetadata metadata = Metadata(policy);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
         _reclaimer?.Dispose();
         _reclaimer = new CommitmentReclaimer(_historyColumns, policy, metadata, settings, LimboLogs.Instance);
@@ -1564,7 +1582,7 @@ public class ArchiveProofTests
             new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance),
             rowFormat,
             policy,
-            new CommitmentMetadata(_historyColumns, policy),
+            Metadata(policy),
             new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
             config,
             LimboLogs.Instance);

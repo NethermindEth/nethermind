@@ -29,8 +29,6 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
 
     public bool Enabled => settings.RecentEpochs > 0 || settings.FineEpochs > 0;
 
-    internal event Action? PassCompleted;
-
     public void Start()
     {
         if (!Enabled || _started) return;
@@ -113,8 +111,6 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 while (RunOnePass(token, yieldBetweenChunks: true))
                 {
                 }
-
-                PassCompleted?.Invoke();
             }
             catch (OperationCanceledException)
             {

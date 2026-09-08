@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.History.Test;
 public class HistoryRowScannerTests
 {
     [Test]
-    public void Two_contracts_sharing_a_storage_prefix_and_a_slot_stream_at_full_depth_instead_of_splitting()
+    public void Contracts_sharing_a_storage_prefix_and_a_slot_past_the_streamed_key_limit_stream_at_full_depth_instead_of_splitting()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         const int colliding = HistoryRowScanner.MaxStreamedKeys + 4;

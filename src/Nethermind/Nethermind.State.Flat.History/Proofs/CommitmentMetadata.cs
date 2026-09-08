@@ -38,10 +38,10 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly object _lock = new();
     private readonly SemaphoreSlim _reclaimTurn = new(1, 1);
-    private volatile bool _disposed;
     private readonly object _depthWriteLock = new();
     private readonly ClockCache<ValueHash256, int> _storageTrieDepths = new(StorageTrieDepthCacheEntries);
     private bool _layoutEnsured;
+    private volatile bool _disposed;
     private long _droppedThroughEpoch = -1;
     private long _demotedThroughEpoch = -1;
 
