@@ -83,9 +83,9 @@ public class HealingTreeTests
     }
 
     [Test]
-    public void code_recovery_works([Values(true, false)] bool successfullyRecovered)
+    public void code_recovery_works([Values] bool successfullyRecovered)
     {
-        TestMemDb db = new();
+        using TestMemDb db = new();
         ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
         recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(successfullyRecovered ? _rlp : null));
@@ -105,13 +105,13 @@ public class HealingTreeTests
     [Test]
     public void code_recovery_collapses_concurrent_misses()
     {
-        // The gate holds the first reader inside the recovery until the second has missed in the db and
-        // is on its way to join it, so the two are provably overlapping when the single request resolves.
+        // The gate holds the first reader inside the recovery until the second has provably joined it, so
+        // the two are overlapping when the single request resolves.
         TaskCompletionSource<byte[]?> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int reads = 0;
         int recoveries = 0;
 
-        TestMemDb db = new() { ReadFunc = _ => { Interlocked.Increment(ref reads); return null!; } };
+        using TestMemDb db = new() { ReadFunc = _ => { Interlocked.Increment(ref reads); return null!; } };
         ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
         recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>())
             .Returns(_ => { Interlocked.Increment(ref recoveries); return gate.Task; });
@@ -120,23 +120,32 @@ public class HealingTreeTests
 
         // Dedicated threads, not the pool: both readers park on the recovery, and a saturated pool
         // could otherwise leave the second one queued behind the first.
-        Task<byte[]?> first = ReadOnOwnThread(codeDb);
+        (Thread _, Task<byte[]?> first) = ReadOnOwnThread(codeDb);
         Assert.That(() => Volatile.Read(ref recoveries), Is.EqualTo(1).After(10000, 10));
 
-        Task<byte[]?> second = ReadOnOwnThread(codeDb);
+        (Thread secondThread, Task<byte[]?> second) = ReadOnOwnThread(codeDb);
+        // Releasing the gate on the second db read alone would race the join: the first reader could
+        // finish and drop the shared entry before the second reaches it, so the second would start its
+        // own recovery and the count below would legitimately read 2. Once that read has happened the
+        // shared recovery is the only thing left for the second reader to block on, so waiting for it to
+        // park there is what proves it joined.
         Assert.That(() => Volatile.Read(ref reads), Is.EqualTo(2).After(10000, 10));
+        Assert.That(() => secondThread.ThreadState.HasFlag(ThreadState.WaitSleepJoin), Is.True.After(10000, 10));
 
         gate.SetResult(_rlp);
 
         Assert.That(Task.WhenAll(first, second).Wait(TimeSpan.FromSeconds(30)), Is.True);
-        Assert.That(first.Result, Is.EqualTo(_rlp));
-        Assert.That(second.Result, Is.EqualTo(_rlp));
-        Assert.That(recoveries, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Result, Is.EqualTo(_rlp), "first reader");
+            Assert.That(second.Result, Is.EqualTo(_rlp), "second reader");
+            Assert.That(recoveries, Is.EqualTo(1), "recoveries");
+        }
 
-        static Task<byte[]?> ReadOnOwnThread(HealingCodeDb codeDb)
+        static (Thread, Task<byte[]?>) ReadOnOwnThread(HealingCodeDb codeDb)
         {
             TaskCompletionSource<byte[]?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            new Thread(() =>
+            Thread thread = new(() =>
             {
                 try
                 {
@@ -147,15 +156,16 @@ public class HealingTreeTests
                     completion.SetException(e);
                 }
             })
-            { IsBackground = true }.Start();
-            return completion.Task;
+            { IsBackground = true };
+            thread.Start();
+            return (thread, completion.Task);
         }
     }
 
     [Test]
     public void code_recovery_skips_present_code()
     {
-        TestMemDb db = new() { [_key.Bytes] = _rlp };
+        using TestMemDb db = new() { [_key.Bytes] = _rlp };
         ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
         HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
 
@@ -166,7 +176,7 @@ public class HealingTreeTests
     [Test]
     public void code_recovery_skips_keys_that_cannot_be_a_code_hash()
     {
-        TestMemDb db = new();
+        using TestMemDb db = new();
         ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
         HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
 
