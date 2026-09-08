@@ -108,8 +108,7 @@ public class FrameTxFloodMeasurement
         }
     }
 
-    /// <summary>Swept verification ceilings; 322,800 is soispoke's real declared budget (320,000 + 2,800
-    /// signature), distinct from the 236,285 single-public-input point.</summary>
+    /// <summary>322,800 is soispoke's real declared budget (320,000 + 2,800 signature).</summary>
     private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
 
     private static IEnumerable<TestCaseData> ProductionDelayCases()
@@ -536,11 +535,10 @@ public class FrameTxFloodMeasurement
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
         double shedPct = ShedPct(flooded);
 
-        // sig-secp256k1 (the "signature-stuffed" shape here) scales with cores rather than self-limiting
-        // near 1/t_reject, since it clears the signature filter before the simulator's lock. Projecting
-        // onto FRAME_FLOOD_PROJECT_CORES assumes linear scaling, which only a real multi-core run can
-        // confirm; a delta measured on more than one core is already uncontended, so it isn't a valid
-        // multiplicand.
+        // signature-stuffed clears the signature filter before the simulator's lock, so unlike execution
+        // shapes it scales with cores instead of self-limiting near 1/t_reject - hence the projection,
+        // gated on a genuinely single-core row (an already-multi-core delta is uncontended, not a valid
+        // multiplicand) and an explicit target, since only a real multi-core run confirms linear scaling.
         string coreNormalizedField = "";
         if (shape == "signature-stuffed" && IsSingleCore()
             && int.TryParse(Environment.GetEnvironmentVariable("FRAME_FLOOD_PROJECT_CORES"), out int targetCores)
