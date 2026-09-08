@@ -26,18 +26,27 @@ public class HistoryWalkVerifierTests
     private static readonly UInt256 Slot = 1;
 
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
+    private CommitmentMetadata _metadata = null!;
 
     [SetUp]
-    public void SetUp() => _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+    public void SetUp()
+    {
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _metadata = new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default);
+    }
 
     [TearDown]
-    public void TearDown() => _historyColumns.Dispose();
+    public void TearDown()
+    {
+        _metadata.Dispose();
+        _historyColumns.Dispose();
+    }
 
     private HistoryWalkVerifier CreateVerifier(FakeHeaders headers, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
             HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null);
+        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null, _metadata);
     }
 
     private sealed class FakeHeaders : IHistoryHeaderSource
@@ -792,7 +801,7 @@ public class HistoryWalkVerifierTests
             _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 });
 
         Assert.That(
-            () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null),
+            () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null, _metadata),
             Throws.InstanceOf<InvalidConfigurationException>(),
             "v3 rows are pre-values with no rows at all for unchanged keys - a genesis-anchored forward walk cannot be sound there and must refuse loudly");
     }

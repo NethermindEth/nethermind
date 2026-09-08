@@ -77,7 +77,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (Started)
         {
             HistoryWalkVerifier.RequireUnwindowed(rowFormat);
-            _verifierFactory = rows => new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, rows, _retrofit);
+            _verifierFactory = rows => new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, rows, _retrofit, _metadata);
         }
     }
 

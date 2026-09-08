@@ -56,6 +56,8 @@ public class ArchiveProofTests
     public void TearDown()
     {
         _reclaimer?.Dispose();
+        foreach (CommitmentMetadata metadata in _metadatas) metadata.Dispose();
+        _metadatas.Clear();
         _chain.Dispose();
         _flatDb.Dispose();
         _historyColumns.Dispose();
@@ -104,7 +106,7 @@ public class ArchiveProofTests
         ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
         retrofit.Prepare();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, retrofit.Metadata);
         using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
 
         using CancellationTokenSource interrupt = new();
@@ -383,7 +385,7 @@ public class ArchiveProofTests
         ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
         retrofit.Prepare();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, retrofit);
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, retrofit, retrofit.Metadata);
 
         HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
 
@@ -420,7 +422,7 @@ public class ArchiveProofTests
 
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
         retrofit.Prepare();
-        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, retrofit.Metadata);
         HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(first, _chain.Head, workers: 3, CancellationToken.None);
         retrofit.PublishCoverage(first, _chain.Head);
 
@@ -1053,6 +1055,35 @@ public class ArchiveProofTests
     public void A_walk_start_waiting_behind_a_reclaim_pass_is_cancellable()
     {
         using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        bool joined = HoldingTheReclaimTurn(metadata, () =>
+        {
+            using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
+            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+                "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
+        });
+
+        Assert.That(joined, Is.True);
+        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+    }
+
+    [Test]
+    public void A_verify_only_walk_takes_the_turn_of_the_metadata_it_was_given()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier(metadata);
+        bool joined = HoldingTheReclaimTurn(metadata, () =>
+        {
+            using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
+            Assert.That(() => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+                "a walk without a build still excludes the reclaimer through the one metadata both were given, so it must wait behind the held turn");
+        });
+
+        Assert.That(joined, Is.True);
+        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a walk on a turn of its own would have begun in the shared columns while the reclaim held the real one");
+    }
+
+    private static bool HoldingTheReclaimTurn(CommitmentMetadata metadata, Action whileHeld)
+    {
         using ManualResetEventSlim inside = new();
         using ManualResetEventSlim hold = new();
         Task reclaim = Task.Run(() => metadata.TryReclaimOutsideWalk(() =>
@@ -1060,21 +1091,17 @@ public class ArchiveProofTests
             inside.Set();
             hold.Wait();
         }));
-        Assert.That(inside.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the reclaim pass is inside its callback and holds the turn");
-        using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
-
         try
         {
-            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
-                "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
+            Assert.That(inside.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the reclaim pass is inside its callback and holds the turn");
+            whileHeld();
         }
         finally
         {
             hold.Set();
-            Assert.That(reclaim.Wait(TimeSpan.FromSeconds(5)), Is.True);
         }
 
-        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        return reclaim.Wait(TimeSpan.FromSeconds(5));
     }
 
     [Test]
@@ -1300,7 +1327,7 @@ public class ArchiveProofTests
         ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
         retrofit.Prepare();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit);
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, retrofit.Metadata);
         bool reclaimAttempted = false;
 
         HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, onItemDone: item =>
@@ -1400,10 +1427,19 @@ public class ArchiveProofTests
 
     private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
 
+    private readonly List<CommitmentMetadata> _metadatas = [];
+
     private HistoryWalkVerifier CreateVerifyOnlyVerifier(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
     {
+        CommitmentMetadata metadata = new(_historyColumns, _policy);
+        _metadatas.Add(metadata);
+        return CreateVerifyOnlyVerifier(metadata, maxRowsPerPartition);
+    }
+
+    private HistoryWalkVerifier CreateVerifyOnlyVerifier(CommitmentMetadata metadata, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
+    {
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null);
+        return new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null, metadata);
     }
 
     private static IEnumerable<Address> AddressesSortingAfter(Address anchor, int count)
@@ -1493,7 +1529,7 @@ public class ArchiveProofTests
 
         HistoryWalkVerifier verifier = new(
             _historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance,
-            maxRowsPerPartition, retrofit);
+            maxRowsPerPartition, retrofit, retrofit.Metadata);
 
         HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: minRowsToBorrow);
 

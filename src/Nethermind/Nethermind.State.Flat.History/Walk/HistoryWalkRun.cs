@@ -56,6 +56,7 @@ internal sealed class HistoryWalkRun
         ILogManager logManager,
         long maxRowsPerPartition,
         ICommitmentEmitterSource? emitterSource,
+        CommitmentMetadata metadata,
         ulong from,
         ulong to,
         ulong checkpointBlocks,
@@ -83,7 +84,7 @@ internal sealed class HistoryWalkRun
         _token = token;
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
         CommitmentDepthPolicy policy = emitterSource?.Policy ?? CommitmentDepthPolicy.Default;
-        _metadata = emitterSource?.Metadata ?? new CommitmentMetadata(history, policy);
+        _metadata = metadata;
         _progress = new WalkProgress(_logger, WorkItems, from, to);
         _scanner = new HistoryRowScanner(_accountHistory, _storageHistory, storageClears, rowFormat);
         _accounts = new AccountSubtreeReplayer(_accountHistory, rowFormat, logManager);

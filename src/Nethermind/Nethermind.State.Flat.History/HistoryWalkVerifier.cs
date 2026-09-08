@@ -31,6 +31,7 @@ public sealed class HistoryWalkVerifier
     private readonly ILogManager _logManager;
     private readonly long _maxRowsPerPartition;
     private readonly ICommitmentEmitterSource? _emitterSource;
+    private readonly CommitmentMetadata _metadata;
 
     public HistoryWalkVerifier(
         IColumnsDb<FlatDbColumns> db,
@@ -39,7 +40,8 @@ public sealed class HistoryWalkVerifier
         HistoryRowFormat rowFormat,
         ILogManager logManager,
         long maxRowsPerPartition,
-        ICommitmentEmitterSource? emitterSource)
+        ICommitmentEmitterSource? emitterSource,
+        CommitmentMetadata metadata)
         : this(
             history,
             headers,
@@ -47,7 +49,8 @@ public sealed class HistoryWalkVerifier
             BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<HistoryWalkVerifier>()),
             logManager,
             maxRowsPerPartition,
-            emitterSource)
+            emitterSource,
+            metadata)
     {
     }
 
@@ -58,9 +61,11 @@ public sealed class HistoryWalkVerifier
         bool rlpWrapSlots,
         ILogManager logManager,
         long maxRowsPerPartition,
-        ICommitmentEmitterSource? emitterSource)
+        ICommitmentEmitterSource? emitterSource,
+        CommitmentMetadata metadata)
     {
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(metadata);
         ArgumentNullException.ThrowIfNull(headers);
         ArgumentNullException.ThrowIfNull(rowFormat);
         ArgumentNullException.ThrowIfNull(logManager);
@@ -74,6 +79,7 @@ public sealed class HistoryWalkVerifier
         _logManager = logManager;
         _maxRowsPerPartition = maxRowsPerPartition > 0 ? maxRowsPerPartition : DefaultMaxRowsPerPartition;
         _emitterSource = emitterSource;
+        _metadata = metadata;
     }
 
     internal static void RequireUnwindowed(HistoryRowFormat rowFormat)
@@ -106,7 +112,7 @@ public sealed class HistoryWalkVerifier
                 $"multiple of {granularity}.", -1);
         }
 
-        HistoryWalkRun run = new(_history, _headers, _rowFormat, _rlpWrapSlots, _logManager, _maxRowsPerPartition, _emitterSource, fromInclusive, toInclusive, checkpointBlocks, checkpointGroups, onCheckpoint, onItemDone, token, minRowsToBorrow);
+        HistoryWalkRun run = new(_history, _headers, _rowFormat, _rlpWrapSlots, _logManager, _maxRowsPerPartition, _emitterSource, _metadata, fromInclusive, toInclusive, checkpointBlocks, checkpointGroups, onCheckpoint, onItemDone, token, minRowsToBorrow);
         return run.Execute(workers);
     }
 }

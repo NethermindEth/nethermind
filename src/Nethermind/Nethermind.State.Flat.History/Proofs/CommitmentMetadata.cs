@@ -38,6 +38,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private readonly CommitmentStore _storages = new(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     private readonly object _lock = new();
     private readonly SemaphoreSlim _reclaimTurn = new(1, 1);
+    private volatile bool _disposed;
     private readonly object _depthWriteLock = new();
     private readonly ClockCache<ValueHash256, int> _storageTrieDepths = new(StorageTrieDepthCacheEntries);
     private bool _layoutEnsured;
@@ -344,6 +345,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, CancellationToken token = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         _reclaimTurn.Wait(token);
         try
         {
@@ -363,6 +365,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryReclaimOutsideWalk(Action reclaim, CancellationToken token = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         _reclaimTurn.Wait(token);
         try
         {
@@ -490,5 +493,9 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         _column.PutSpan(key, value);
     }
 
-    public void Dispose() => _reclaimTurn.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _reclaimTurn.Dispose();
+    }
 }

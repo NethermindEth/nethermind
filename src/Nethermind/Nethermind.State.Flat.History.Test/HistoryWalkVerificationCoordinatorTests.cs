@@ -34,6 +34,8 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         foreach (CommitmentReclaimer reclaimer in _reclaimers) reclaimer.Dispose();
         _reclaimers.Clear();
+        foreach (CommitmentMetadata metadata in _metadatas) metadata.Dispose();
+        _metadatas.Clear();
         _db.Dispose();
         _historyColumns.Dispose();
     }
@@ -52,6 +54,14 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     private readonly List<CommitmentReclaimer> _reclaimers = [];
+    private readonly List<CommitmentMetadata> _metadatas = [];
+
+    private CommitmentMetadata CreateMetadata()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        _metadatas.Add(metadata);
+        return metadata;
+    }
 
     private ArchiveProofRetrofit CreateRetrofit(CommitmentMetadata metadata, FlatDbConfig config, HistoryRowFormat rowFormat)
     {
@@ -64,8 +74,9 @@ public class HistoryWalkVerificationCoordinatorTests
     private HistoryWalkVerificationCoordinator CreateCoordinator(FlatDbConfig config, FakeHeaders headers)
     {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        CommitmentMetadata metadata = CreateMetadata();
         return new HistoryWalkVerificationCoordinator(
-            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), config, rowFormat), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
     }
 
     [Test]
@@ -82,7 +93,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
-        CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        using CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.BeginWalk(0, 100, HistoryWalkRun.WorkItems);
         using (SeriesWriter scratch = new(_historyColumns))
         {
@@ -121,8 +132,9 @@ public class HistoryWalkVerificationCoordinatorTests
 
         availability.PublishWatermark(2, rowFormat.FormatVersion);
 
+        CommitmentMetadata metadata = CreateMetadata();
         using HistoryWalkVerificationCoordinator coordinator = new(
-            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), config, rowFormat), new CommitmentMetadata(_historyColumns, CommitmentDepthPolicy.Default), LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
         coordinator.Start();
 
         Assert.That(coordinator.Started, Is.True);
