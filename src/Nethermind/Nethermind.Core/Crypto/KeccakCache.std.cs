@@ -15,6 +15,19 @@ namespace Nethermind.Core.Crypto;
 
 public static unsafe partial class KeccakCache
 {
+    // The client's cache: 64 MB of native memory holding 512k entries. Everything is aligned both to
+    // cache lines and to its own boundaries, so there are no misaligned or torn reads. Reads are
+    // lock-free through a seqlock — read the sequence, speculatively read the entry, then verify the
+    // sequence has not moved — and a write takes a single CAS to lock plus a Volatile.Write to unlock.
+    // A failed CAS just moves on rather than waiting: a skipped cache write costs one keccak, nothing
+    // more. Everything sizing or indexing this cache lives here rather than in the shared partial,
+    // which compiles into the zkEVM guest image too.
+    /// <summary>
+    /// Count is defined as a +1 over bucket mask. In the future, just change the mask as the main parameter.
+    /// </summary>
+    public const nuint Count = BucketMask + 1;
+
+    private const int BucketMask = 0x0007_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
     private const uint LockMarker = 0x0000_8000;
     private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
@@ -175,6 +188,11 @@ public static unsafe partial class KeccakCache
     Uncommon:
         keccak256 = input.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
     }
+
+    /// <summary>
+    /// Gets the bucket for tests.
+    /// </summary>
+    public static uint GetBucket(ReadOnlySpan<byte> input) => (uint)input.FastHash() & BucketMask;
 
     /// <summary>
     /// An entry to cache keccak
