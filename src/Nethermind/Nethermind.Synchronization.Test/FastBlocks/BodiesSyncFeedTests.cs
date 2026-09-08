@@ -169,7 +169,12 @@ public class BodiesSyncFeedTests
         Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block skippedBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block thirdBlock = _syncingFromBlockTree.FindBlock(req.Infos[2]!.BlockNumber, BlockTreeLookupOptions.None)!;
-        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body]);
+        // The third body is rejected against the skipped header before it matches, so it is the body whose
+        // transaction root gets cached. A differing root on the fourth makes the match below depend on that
+        // cache being cleared.
+        Block fourthBlock = _syncingFromBlockTree.FindBlock(req.Infos[3]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Assert.That(fourthBlock.Header.TxRoot, Is.Not.EqualTo(thirdBlock.Header.TxRoot), "the two bodies must differ for this to assert anything");
+        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body, fourthBlock.Body]);
         req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
@@ -178,6 +183,7 @@ public class BodiesSyncFeedTests
         Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
         Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
         Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
