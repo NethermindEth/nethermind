@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -97,20 +98,27 @@ public class ReceiptMessageDecoder69Tests
             Logs = [log]
         };
 
+        AssertHeaderMustMatchItsContent(receipt, encoded => LogsHeaderIndex(encoded, Rlp.LengthOf(log)), underDeclare,
+            static decoded => Assert.That(decoded.Logs, Has.Length.EqualTo(1)));
+    }
+
+    /// <summary>Decodes <paramref name="receipt"/> with the list header <paramref name="headerIndex"/> locates
+    /// left canonical, or under-declared by one byte.</summary>
+    private static void AssertHeaderMustMatchItsContent(
+        TxReceipt receipt, Func<byte[], int> headerIndex, bool underDeclare, Action<TxReceipt> assertDecoded)
+    {
         ReceiptMessageDecoder69 decoder = new();
-        byte[] encoded = new byte[decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts)];
-        RlpWriter writer = new(encoded);
-        decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
-        int headerIndex = LogsHeaderIndex(encoded, Rlp.LengthOf(log));
+        byte[] encoded = Encode(decoder, receipt);
+        int index = headerIndex(encoded);
 
         if (underDeclare)
         {
-            encoded[headerIndex]--;
+            encoded[index]--;
             Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpException>());
         }
         else
         {
-            Assert.That(Decode(decoder, encoded).Logs, Has.Length.EqualTo(1));
+            assertDecoded(Decode(decoder, encoded));
         }
     }
 
@@ -178,19 +186,8 @@ public class ReceiptMessageDecoder69Tests
             Logs = TxFrameReceipt.ConcatLogs(frameReceipts),
         };
 
-        ReceiptMessageDecoder69 decoder = new();
-        byte[] encoded = Encode(decoder, receipt);
-        int headerIndex = FramesHeaderIndex(encoded);
-
-        if (underDeclare)
-        {
-            encoded[headerIndex]--;
-            Assert.That(() => Decode(decoder, encoded), Throws.InstanceOf<RlpException>());
-        }
-        else
-        {
-            Assert.That(Decode(decoder, encoded).FrameReceipts, Has.Length.EqualTo(1));
-        }
+        AssertHeaderMustMatchItsContent(receipt, FramesHeaderIndex, underDeclare,
+            static decoded => Assert.That(decoded.FrameReceipts, Has.Length.EqualTo(1)));
     }
 
     /// <summary>Locates the header of the frames list, and asserts that the list runs to the payload end.</summary>
