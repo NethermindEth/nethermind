@@ -88,6 +88,8 @@ jobs:
   zisk-bench-scripts:
     name: Test zkVM benchmark scripts
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -97,6 +99,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Covers the emulator-log parse the guest cost report is built on, and the check that
+      # inputs.json still names the blocks stateless-tests.yml verifies. Both fail silently
+      # otherwise: a drifted parse reports nothing, a drifted block list reports the wrong thing.
       - name: Run script test suites
         run: python -m unittest discover -s scripts/zisk-bench -p 'test*.py' -v
 
