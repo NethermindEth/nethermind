@@ -1103,6 +1103,7 @@ public class ArchiveProofTests
             joined = reclaim.ContinueWith(static _ => { }, TaskContinuationOptions.ExecuteSynchronously).Wait(TimeSpan.FromSeconds(5));
         }
 
+        Assert.That(reclaim.Exception, Is.Null, "the reclaim pass itself must not have failed");
         return joined;
     }
 
