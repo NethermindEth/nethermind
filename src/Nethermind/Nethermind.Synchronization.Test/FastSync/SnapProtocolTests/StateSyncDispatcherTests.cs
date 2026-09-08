@@ -191,6 +191,26 @@ public class StateSyncDispatcherTests
             Throws.InstanceOf<InvalidOperationException>());
     }
 
+    [Test]
+    public async Task Dispatch_does_not_fall_back_once_the_token_is_cancelled()
+    {
+        using CancellationTokenSource cts = new();
+        ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+        snapPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>()).Returns<IByteArrayList>(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException();
+        });
+        ISyncPeer peer = CreatePeer(EthVersions.Eth66, snapPeer);
+
+        using StateSyncBatch batch = StateBatch(new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State));
+
+        await new StateSyncDownloader(_logManager).Dispatch(new PeerInfo(peer), batch, cts.Token);
+
+        await snapPeer.Received(1).GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>());
+        await peer.DidNotReceiveWithAnyArgs().GetNodeData(default!, default);
+    }
+
     private static StateSyncBatch StateBatch(params StateSyncItem[] items) =>
         new(Keccak.OfAnEmptyString, NodeDataType.State, items);
 
