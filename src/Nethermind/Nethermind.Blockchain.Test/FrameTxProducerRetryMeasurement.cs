@@ -5,15 +5,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
-using Nethermind.Crypto;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -47,23 +49,42 @@ public class FrameTxProducerRetryMeasurement
     private ISpecProvider _specProvider = null!;
     private IWorldState _stateProvider = null!;
     private ITransactionProcessor _transactionProcessor = null!;
-    private IDisposable _stateCloser = null!;
+    private BasicTestBlockchain? _chain;
+    private IReadOnlyTxProcessorSource? _source;
+    private IReadOnlyTxProcessingScope? _scope;
 
     private IReleaseSpec Spec => _specProvider.GenesisSpec;
 
-    [SetUp]
-    public void Setup()
+    /// <summary>Takes the processing stack from the chain's production wiring, with the measured sender's code
+    /// placed in genesis; only the executor under measurement and the gates it drives are built here.</summary>
+    private async Task BuildChain(byte[] senderCode)
     {
         _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
-        _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _chain = await BasicTestBlockchain.Create(builder =>
+        {
+            builder.AddSingleton(_specProvider);
+            builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
+                new FunctionalGenesisPostProcessor(_ =>
+                {
+                    worldState.CreateAccount(Sender, 100.Ether);
+                    worldState.InsertCode(Sender, senderCode, specProvider.GenesisSpec);
+                    worldState.RecalculateStateRoot();
+                }));
+        });
+
+        _source = _chain.ReadOnlyTxProcessingEnvFactory.Create();
+        _scope = _source.Build(_chain.BlockTree.Head?.Header);
+        _stateProvider = _scope.WorldState;
+        _transactionProcessor = _scope.TransactionProcessor;
     }
 
     [TearDown]
-    public void TearDown() => _stateCloser?.Dispose();
+    public void TearDown()
+    {
+        _scope?.Dispose();
+        _source?.Dispose();
+        _chain?.Dispose();
+    }
 
     /// <summary>A prefix that never approves: it loops until the frame's gas limit is exhausted.</summary>
     private static byte[] NeverApproves() =>
@@ -84,12 +105,9 @@ public class FrameTxProducerRetryMeasurement
     [TestCase(true, 236_285ul, TestName = "control: a prefix that approves is included and paid for")]
     [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
     [TestCase(false, 236_285ul, TestName = "never approves, at a measured private-pool prefix")]
-    public void ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
+    public async Task ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {
-        _stateProvider.CreateAccount(Sender, 100.Ether);
-        _stateProvider.InsertCode(Sender, approves ? Approves() : NeverApproves(), Spec);
-        _stateProvider.Commit(Spec);
-        _stateProvider.CommitTree(0);
+        await BuildChain(approves ? Approves() : NeverApproves());
 
         CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
         BlockProcessor.BlockProductionTransactionPicker picker = new(_specProvider);
@@ -177,12 +195,9 @@ public class FrameTxProducerRetryMeasurement
     /// that is evicted after <paramref name="kRetry"/> failed attempts.
     /// </summary>
     [TestCaseSource(nameof(RetryCases))]
-    public void ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
+    public async Task ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
-        _stateProvider.CreateAccount(Sender, 100.Ether);
-        _stateProvider.InsertCode(Sender, NeverApproves(), Spec);
-        _stateProvider.Commit(Spec);
-        _stateProvider.CommitTree(0);
+        await BuildChain(NeverApproves());
 
         CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
         BlockProcessor.BlockProductionTransactionPicker picker = new(_specProvider);

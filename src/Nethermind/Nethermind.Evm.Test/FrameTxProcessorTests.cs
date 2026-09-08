@@ -3442,10 +3442,9 @@ public class FrameTxProcessorTests
             DecodedMaxFeePerGas = 1,
         };
 
-    [TestCase(Instruction.TXTRACE)]
-    [TestCase(Instruction.TXDIFF)]
-    [TestCase(Instruction.EVENTDATACOPY)]
-    public void Execute_AssertionOpcodeOutsidePostTxFrame_HaltsExceptionally(Instruction opcode)
+    [Test]
+    public void Execute_AssertionOpcodeOutsidePostTxFrame_HaltsExceptionally(
+        [Values(Instruction.TXTRACE, Instruction.TXDIFF, Instruction.EVENTDATACOPY)] Instruction opcode)
     {
         // Four operands cover the widest of the three; a halt leaves any surplus unread.
         DeploySmartSender(Prepare.EvmCode
@@ -3456,10 +3455,9 @@ public class FrameTxProcessorTests
     }
 
     // The opcodes are in the jump table for every transaction once EIP-7906 is on.
-    [TestCase(Instruction.TXTRACE)]
-    [TestCase(Instruction.TXDIFF)]
-    [TestCase(Instruction.EVENTDATACOPY)]
-    public void Execute_AssertionOpcodeInOrdinaryTransaction_HaltsExceptionally(Instruction opcode)
+    [Test]
+    public void Execute_AssertionOpcodeInOrdinaryTransaction_HaltsExceptionally(
+        [Values(Instruction.TXTRACE, Instruction.TXDIFF, Instruction.EVENTDATACOPY)] Instruction opcode)
     {
         DeployContract(Recipient, Prepare.EvmCode
             .PushData(0).PushData(0).PushData(0).PushData(0).Op(opcode).Op(Instruction.STOP).Done);

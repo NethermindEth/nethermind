@@ -18,7 +18,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -967,7 +966,8 @@ public class FrameTxFloodMeasurement
         if (shape == "signature-stuffed")
         {
             _frameCalldataPrefix = [];
-            _frameSignatures = BuildSecp256k1Signatures(StuffedSignatureCount(ceiling));
+            _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(
+                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling));
             _frameExecutionGasLimit = MinimalFrameGas;
             return PrefixCode("banned-opcode");
         }
@@ -978,27 +978,6 @@ public class FrameTxFloodMeasurement
         return PrefixCode(shape);
     }
 
-    /// <summary>Builds signature entries whose final mismatch occurs only after curve recovery.</summary>
-    private static TxFrameSignature[] BuildSecp256k1Signatures(int count)
-    {
-        EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
-        TxFrameSignature[] entries = new TxFrameSignature[count];
-        for (int i = 0; i < count; i++)
-        {
-            byte[] msg = ValueKeccak.Compute(BitConverter.GetBytes(i)).ToByteArray();
-            byte[] signed = i == count - 1 ? ValueKeccak.Compute("mismatch"u8).ToByteArray() : msg;
-            Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, new Hash256(signed));
-
-            byte[] raw = new byte[TxFrameSignature.Secp256k1SignatureLength];
-            raw[0] = signature.RecoveryId;
-            signature.RAsSpan.CopyTo(raw.AsSpan(1));
-            signature.SAsSpan.CopyTo(raw.AsSpan(33));
-            entries[i] = new TxFrameSignature(
-                TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyA.Address, msg, raw);
-        }
-
-        return entries;
-    }
 
     private static byte[] Groth16Artifact(Groth16Sweep sweep, string fileName)
     {
