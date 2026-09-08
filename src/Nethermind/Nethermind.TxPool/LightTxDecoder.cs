@@ -109,8 +109,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             // Null when the payer is not what needs the group: a record admitted without simulation names a
             // sponsor the cap counts, or a price the sender bound sums, with no payer to reserve against.
             writer.Encode(tx.PayerAddress);
-            // A transaction that never reached the exposure gate holds no price, which this record does not
-            // distinguish from a zero one: reserving, releasing and summing zero are all no-ops.
+            // The placeholder for a transaction that never reached the exposure gate, read back as absent.
+            // A genuine zero price collapses onto it and costs the same: the fallback's fee terms are zero too.
             writer.Encode(tx.PayerExposure ?? default);
             if (paymaster is not null) writer.Encode(paymaster);
         }
@@ -178,7 +178,14 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 nonceKeys = DecodeKeysOrNull(ref ctx);
                 // Nullable: a group written for the paymaster alone leaves this slot empty.
                 if (ctx.Position < end) payerAddress = ctx.DecodeAddressOrNull();
-                if (ctx.Position < end) payerExposure = ctx.DecodeUInt256();
+                if (ctx.Position < end)
+                {
+                    // The placeholder must not read back as a price: a record an earlier build wrote for its
+                    // paymaster alone carries one, and the sender's bound now charges the record at it.
+                    UInt256 priced = ctx.DecodeUInt256();
+                    if (!priced.IsZero) payerExposure = priced;
+                }
+
                 // Nullable for the same reason as the payer: once a later slot exists, an absent paymaster
                 // is written as the placeholder rather than omitted.
                 if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();

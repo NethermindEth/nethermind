@@ -322,6 +322,37 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
+    [Test]
+    public void Accept_PayerlessFrameTx_ChargesARestoredSponsoredRecordTheFallbackPrice()
+    {
+        // A sponsored record admitted with no payer resolved holds no price, and its paymaster is what makes
+        // the record carry the exposure slot at all. Decoded as a zero price it would cost the sender nothing.
+        Transaction pending = SponsoredFrameTx();
+        pending.PayerExposure = null;
+        pending.GasLimit = FrameTxValidation.TotalGasLimit(pending.Frames!);
+        pending.Hash = TestItem.KeccakA;
+        Transaction restored = LightTxDecoder.Decode(LightTxDecoder.Encode(pending));
+
+        Transaction tx = BlobFrameTxCosting(TestCost);
+        tx.PayerAddress = null;
+        tx.Nonce = 1;
+        tx.Hash = TestItem.KeccakB;
+
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)TestCost);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx, senderAccounts, Pool(blobs: true, restored));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.PersistedPaymaster, Is.Not.Null, "the paymaster is what makes the record carry the slot");
+            Assert.That(restored.PayerExposure, Is.Null, "an unpriced record must not read back as a free one");
+            Assert.That((UInt256)restored.GasLimit * restored.MaxFeePerGas, Is.GreaterThan(UInt256.Zero),
+                "the fallback must charge something, or this pins nothing");
+            Assert.That(result, Is.EqualTo(AcceptTxResult.InsufficientFunds));
+        }
+    }
+
     // The exposure ledger holds frame reservations only, so a plain transaction pooled first is invisible to
     // it and the sender's balance would be booked twice.
     [TestCase(TestCost + OrdinaryCost, false, TestName = "the sender covers both")]
@@ -578,6 +609,15 @@ public class FrameTxPayerExposureFilterTests
         Transaction tx = FrameTxCostingExactly(cost);
         tx.BlobVersionedHashes = [new byte[32]];
         tx.MaxFeePerBlobGas = UInt256.Zero;
+        return tx;
+    }
+
+    /// <summary>A blob-carrying frame tx sponsored through a <c>pay</c> frame, with no payer resolved.</summary>
+    private static Transaction SponsoredFrameTx()
+    {
+        Transaction tx = BlobFrameTxCosting(TestCost);
+        tx.Frames = [FrameTxTestFrames.OnlyVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Pay(TestItem.AddressD, FrameTxTestFrames.PrefixFrameGas)];
+        tx.PayerAddress = null;
         return tx;
     }
 
