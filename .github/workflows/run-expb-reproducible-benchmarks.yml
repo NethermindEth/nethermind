@@ -2549,7 +2549,10 @@ jobs:
                  printf "mem.current mean %.2f GiB   max %.2f GiB\n", mem/n/1073741824, memmax/1073741824
                  printf "anon        mean %.2f GiB   max %.2f GiB\n", a/n/1073741824, amax/1073741824
                  printf "memory PSI avg10 mean %.3f\n", psi/n
-                 printf "cpu              %.1f s\n", (last-first)/1000000
+                 # cpu.stat counts from container start, so the last reading is the container total;
+                 # the window figure drops what ran before the sampler caught the container.
+                 printf "cpu              %.1f s\n", last/1000000
+                 printf "cpu (window)     %.1f s   first sample at %.1f s of CPU\n", (last-first)/1000000, first/1000000
                  printf "nr_throttled     %s\n", thr
                }' "${samples}" | tee "${{ runner.temp }}/pressure-summary.txt"
           # Per-sample rows let a CPU difference be placed in a phase (startup, blocks, shutdown).
