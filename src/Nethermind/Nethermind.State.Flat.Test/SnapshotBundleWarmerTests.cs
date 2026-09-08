@@ -493,7 +493,7 @@ public class SnapshotBundleWarmerTests
 
     [Test]
     public void Live_read_of_shared_parent_uses_snapshot_child_after_warmer_miss(
-        [Values] bool storage, [Values] bool iterator)
+        [Values] bool storage, [Values] bool iterator, [Values] bool staleSnapshot)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath rootPath = TreePath.Empty;
@@ -517,6 +517,12 @@ public class SnapshotBundleWarmerTests
             {
                 if (storage) content.StorageNodes[(address, rootPath)] = sharedParent;
                 else content.StateNodes[rootPath] = sharedParent;
+                if (staleSnapshot)
+                {
+                    TrieNode staleChild = new(NodeType.Unknown, oldHash, oldRlp);
+                    if (storage) content.StorageNodes[(address, childPath)] = staleChild;
+                    else content.StateNodes[childPath] = staleChild;
+                }
             }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
         if (storage) bundle.SetStorageNode(address, childPath, child);
         else bundle.SetStateNode(childPath, child);
@@ -524,10 +530,17 @@ public class SnapshotBundleWarmerTests
 
         ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
         TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
-        TrieNode warmedChild = (iterator
+        TrieNode ReadWarmedChild() => (iterator
             ? warmedParent.CreateChildIterator().GetChildWithChildPath(warmer, ref childPath, 0)
             : warmedParent.GetChildWithChildPath(warmer, ref childPath, 0))!;
-        Assert.That(warmedChild.TryResolveNode(warmer, ref childPath), Is.False);
+        if (staleSnapshot)
+        {
+            Assert.Throws<NodeHashMismatchException>(() => ReadWarmedChild());
+        }
+        else
+        {
+            Assert.That(ReadWarmedChild().TryResolveNode(warmer, ref childPath), Is.False);
+        }
 
         StateTrieStoreAdapter state = new(bundle, new ConcurrencyController(1));
         ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;

@@ -105,6 +105,11 @@ namespace Nethermind.Trie
 
         internal bool IsWarmerResolved => (ReadBlockAndFlags() & _warmerResolvedMask) != 0;
 
+        /// <summary>Whether this warmer-owned node still requires verified resolution.</summary>
+        /// <remarks>Shared parent slots retain its hash so live readers use their own snapshot lookup.</remarks>
+        internal bool IsUnresolvedWarmerOwned =>
+            (ReadBlockAndFlags() & (_warmerOwnedMask | _warmerResolvedMask)) == _warmerOwnedMask;
+
         internal void MarkWarmerOwned()
         {
             byte previousValue = ReadBlockAndFlags();
@@ -1454,8 +1459,7 @@ namespace Nethermind.Trie
                                 Hash256 keccak = rlpReader.DecodeKeccak();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                // A warmer miss must not bypass a later live reader's snapshot lookup.
-                                data = child.IsWarmerOwned && !child.IsWarmerResolved ? keccak : child;
+                                data = child.IsUnresolvedWarmerOwned ? keccak : child;
                                 childOrRef = child;
 
                                 break;
@@ -1636,8 +1640,7 @@ namespace Nethermind.Trie
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    // A warmer miss must not bypass a later live reader's snapshot lookup.
-                                    data = child.IsWarmerOwned && !child.IsWarmerResolved ? keccak : child;
+                                    data = child.IsUnresolvedWarmerOwned ? keccak : child;
                                     childOrRef = child;
 
                                     break;
