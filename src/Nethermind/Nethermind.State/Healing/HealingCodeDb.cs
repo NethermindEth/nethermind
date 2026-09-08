@@ -106,8 +106,12 @@ public class HealingCodeDb(IKeyValueStoreWithBatching codeDb, Lazy<ICodeRecovery
         }
     }
 
+    /// <summary>Writes <paramref name="value"/> to the wrapped store under <paramref name="key"/>.</summary>
+    /// <remarks>Healing is a read-side concern, so writes are not intercepted.</remarks>
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
         codeDb.Set(key, value, flags);
 
+    /// <summary>Starts a batch of writes against the wrapped store.</summary>
+    /// <returns>The wrapped store's own batch, so writes through it are not intercepted either.</returns>
     public IWriteBatch StartWriteBatch() => codeDb.StartWriteBatch();
 }

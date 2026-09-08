@@ -87,11 +87,9 @@ public class HealingTreeTests
     public void code_recovery_works([Values] bool successfullyRecovered)
     {
         using TestMemDb db = new();
-        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
         recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(successfullyRecovered ? _rlp : null));
-
-        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
 
         Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(successfullyRecovered ? _rlp : null));
         if (successfullyRecovered)
@@ -113,11 +111,9 @@ public class HealingTreeTests
         int recoveries = 0;
 
         using TestMemDb db = new() { ReadFunc = _ => { Interlocked.Increment(ref reads); return null!; } };
-        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
         recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>())
             .Returns(_ => { Interlocked.Increment(ref recoveries); return gate.Task; });
-
-        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
 
         // Dedicated threads, not the pool: both readers park on the recovery, and a saturated pool
         // could otherwise leave the second one queued behind the first.
@@ -170,10 +166,8 @@ public class HealingTreeTests
     public void code_recovery_reaches_every_read_member([Values] CodeRead read)
     {
         using TestMemDb db = new();
-        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
         recovery.Recover(_key.ValueHash256, Arg.Any<CancellationToken>()).Returns(Task.FromResult<byte[]?>(_rlp));
-
-        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
 
         using (Assert.EnterMultipleScope())
         {
@@ -188,8 +182,7 @@ public class HealingTreeTests
     public void code_key_exists_that_hits_skips_the_allocating_get()
     {
         using TestMemDb db = new() { [_key.Bytes] = _rlp };
-        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
-        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+        (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
 
         Assert.That(codeDb.KeyExists(_key.Bytes), Is.True);
 
@@ -197,6 +190,13 @@ public class HealingTreeTests
         // back through is the only member TestMemDb records - so no recorded read is the proof.
         db.KeyWasRead(_key.BytesToArray(), times: 0);
         recovery.DidNotReceiveWithAnyArgs().Recover(default, default);
+    }
+
+    /// <summary>Wraps <paramref name="db"/> in the healing code db, behind a recovery each test stubs itself.</summary>
+    private static (HealingCodeDb CodeDb, ICodeRecovery Recovery) HealingCodeDbOver(TestMemDb db)
+    {
+        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
+        return (new HealingCodeDb(db, new Lazy<ICodeRecovery>(recovery)), recovery);
     }
 
     private static byte[]? ReadThrough(HealingCodeDb codeDb, TestMemDb db, CodeRead read) => read switch
@@ -240,8 +240,7 @@ public class HealingTreeTests
     public void code_recovery_skips_present_code()
     {
         using TestMemDb db = new() { [_key.Bytes] = _rlp };
-        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
-        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+        (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
 
         Assert.That(codeDb.Get(_key.Bytes), Is.EqualTo(_rlp));
         recovery.DidNotReceiveWithAnyArgs().Recover(default, default);
@@ -251,8 +250,7 @@ public class HealingTreeTests
     public void code_recovery_skips_keys_that_cannot_be_a_code_hash()
     {
         using TestMemDb db = new();
-        ICodeRecovery recovery = Substitute.For<ICodeRecovery>();
-        HealingCodeDb codeDb = new(db, new Lazy<ICodeRecovery>(recovery));
+        (HealingCodeDb codeDb, ICodeRecovery recovery) = HealingCodeDbOver(db);
 
         Assert.That(codeDb.Get([1, 2, 3]), Is.Null);
         recovery.DidNotReceiveWithAnyArgs().Recover(default, default);
