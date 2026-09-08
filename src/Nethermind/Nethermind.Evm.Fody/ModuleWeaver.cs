@@ -115,7 +115,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
     private MethodDefinition CloneFactory(MethodDefinition source, string opcode)
     {
         if (_factories.TryGetValue((source, opcode), out MethodDefinition? existing)) return existing;
-        MethodDefinition factory = new MethodCloner(source).Clone(source.Name + "_" + opcode);
+        MethodDefinition factory = new MethodCloner(source, WriteWarning).Clone(source.Name + "_" + opcode);
         _factories.Add((source, opcode), factory);
         source.DeclaringType.Methods.Add(factory);
         bool redirected = false;
@@ -133,7 +133,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 if (!_handlers.TryGetValue(opcode, out MethodDefinition? handler))
                 {
                     // Retain the generic parameters: only the metadata name and table target change.
-                    handler = new MethodCloner(Resolve(target)).Clone("Op" + opcode);
+                    handler = new MethodCloner(Resolve(target), WriteWarning).Clone("Op" + opcode);
                     source.DeclaringType.Methods.Add(handler);
                     _handlers.Add(opcode, handler);
                 }

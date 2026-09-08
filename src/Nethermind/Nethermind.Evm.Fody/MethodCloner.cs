@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Fody;
 using Mono.Cecil;
@@ -8,7 +9,7 @@ using Mono.Cecil.Cil;
 
 namespace Nethermind.Evm.Fody;
 
-internal sealed class MethodCloner(MethodDefinition source)
+internal sealed class MethodCloner(MethodDefinition source, Action<string> warn)
 {
     private MethodDefinition _target = null!;
 
@@ -71,7 +72,9 @@ internal sealed class MethodCloner(MethodDefinition source)
                 HandlerEnd = handler.HandlerEnd is null ? null : instructions[handler.HandlerEnd],
                 FilterStart = handler.FilterStart is null ? null : instructions[handler.FilterStart]
             });
-        // Instructions an earlier weaver inserted still carry offset zero, so recompute before keying on offsets.
+        // Cecil exposes sequence points and scope bounds by offset only, and instructions an earlier weaver
+        // inserted still carry offset zero. Writing the recomputed offsets back to the source makes them a
+        // truthful join key; the writer recomputes them again anyway.
         int offset = 0;
         Dictionary<int, Instruction> byOffset = [];
         foreach (Instruction instruction in source.Body.Instructions)
@@ -83,7 +86,11 @@ internal sealed class MethodCloner(MethodDefinition source)
         foreach (SequencePoint point in source.DebugInformation.SequencePoints)
         {
             if (!byOffset.TryGetValue(point.Offset, out Instruction? instruction))
-                throw new WeavingException($"Sequence point at IL_{point.Offset:x4} in {source.FullName} is not an instruction.");
+            {
+                // Debug info only: a stale point drifts a line number, so it is not worth failing the build.
+                warn($"Sequence point at IL_{point.Offset:x4} in {source.FullName} is not an instruction.");
+                continue;
+            }
             _target.DebugInformation.SequencePoints.Add(new SequencePoint(instruction, point.Document)
             {
                 StartLine = point.StartLine,
@@ -118,7 +125,7 @@ internal sealed class MethodCloner(MethodDefinition source)
         }
     }
 
-    /// <summary>Copies an attribute read from the image by blob; one another weaver built in memory has no blob, so copy its arguments.</summary>
+    /// <summary>Copies an attribute read from the image by blob; an attribute another weaver built in memory has no blob, so copy its arguments instead.</summary>
     private static CustomAttribute CloneAttribute(CustomAttribute attribute)
     {
         if (!attribute.IsResolved) return new CustomAttribute(attribute.Constructor, attribute.GetBlob());
