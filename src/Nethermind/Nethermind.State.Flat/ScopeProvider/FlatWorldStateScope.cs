@@ -38,6 +38,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
+    private readonly StateId _baseStateId;
     internal volatile bool _pausePrewarmer = false;
 
     private CancellationTokenSource? _hintBalCts;
@@ -62,6 +63,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
+        _baseStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
@@ -156,7 +158,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public Hash256 RootHash => _stateTree.RootHash;
 
     public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
-        _snapshotBundle.CreateTrieWarmupSession(_currentStateId, _warmer, _logManager);
+        _snapshotBundle.CreateTrieWarmupSession(_baseStateId, _warmer, _logManager);
 
     public void UpdateRootHash()
     {
@@ -354,11 +356,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             if (_snapshotBundle.HintSequenceId != sequenceId || _pausePrewarmer) return false;
 
-            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-            // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
 
-            return true;
+            try
+            {
+                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+                // this is just for warming up
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+                return true;
+            }
+            finally
+            {
+                _snapshotBundle.ReleaseReadOnlyBundleLease();
+            }
         }
         finally
         {

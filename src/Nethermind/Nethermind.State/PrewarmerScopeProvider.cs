@@ -39,7 +39,8 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// </summary>
 /// <param name="prewarmerState">
 /// Carries the shared caches and <see cref="IPrewarmerState.IsPrewarmer"/>. On a cache hit a consumer seeds the
-/// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not.
+/// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers
+/// itself as the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
 /// </param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
@@ -91,6 +92,7 @@ public class PrewarmerScopeProvider(
             scope = null;
             trieWarmupSession = null;
             consumerScopeOpened = false;
+            registeredMainScope = false;
             return wrapper;
         }
         finally
@@ -157,7 +159,10 @@ public class PrewarmerScopeProvider(
             }
 
             // Unregister before teardown so no new warm hints target a disposing scope.
-            preBlockCaches.MainScope = null;
+            lock (preBlockCaches)
+            {
+                preBlockCaches.MainScope = null;
+            }
             try
             {
                 ObserveWriteBatchToDispose();
@@ -283,7 +288,7 @@ public class PrewarmerScopeProvider(
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         // Capturing (discovery) scopes execute on placeholder values, so their hinted addresses and slots can be
-        // fictitious. Populator hints otherwise target the independently owned scope for this build's base state.
+        // fictitious. Populator hints otherwise target the borrowed session for this build's base state.
         public void HintWarmAccount(in ValueAddress address)
         {
             if (storageReadCapture is not null) return;

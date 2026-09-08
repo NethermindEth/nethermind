@@ -18,7 +18,8 @@ public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
 
-    /// <summary>An independently owned, hint-only lifetime for warming trie paths.</summary>
+    /// <summary>A borrowed, hint-only reference for warming trie paths.</summary>
+    /// <remarks>Dispose releases one borrowed reference, not other callers' references to the same session.</remarks>
     interface ITrieWarmupSession : IDisposable
     {
         /// <summary>Queues an account path for warm-up.</summary>
@@ -54,13 +55,14 @@ public interface IWorldStateScopeProvider
         Hash256 RootHash { get; }
 
         /// <summary>
-        /// Creates an independently owned, hint-only trie-warmer session bound to this scope's state resources.
+        /// Acquires a hint-only trie-warmer reference bound to this scope's state resources.
         /// </summary>
         /// <remarks>
-        /// Each returned instance is independently owned and must be disposed by its caller. Multiple instances may
-        /// exist for one ordinary scope. Backends without trie warming return a reusable no-op session.
+        /// Calls may share one reference-counted session. Each acquired reference must be disposed exactly once.
+        /// The main scope controls cancellation; releasing a borrow does not cancel other borrowers' hints.
+        /// Backends without trie warming return a reusable no-op session.
         /// </remarks>
-        /// <returns>An owned trie-warmer session bound to this scope.</returns>
+        /// <returns>A borrowed trie-warmer reference bound to this scope.</returns>
         ITrieWarmupSession CreateTrieWarmupSession() => ITrieWarmupSession.Noop.Instance;
 
         void UpdateRootHash();

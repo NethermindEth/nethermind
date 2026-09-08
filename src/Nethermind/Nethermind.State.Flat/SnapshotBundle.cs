@@ -50,6 +50,9 @@ public sealed class SnapshotBundle : IDisposable
     // Incrementing this invalidates queued warmer jobs, including jobs owned by leased warmup sessions.
     private volatile int _hintSequenceId;
     private bool _isDisposed;
+    private readonly Lock _warmupSessionLock = new();
+    private FlatTrieWarmupSession? _warmupSession;
+    private bool _warmingStopped;
     private readonly IResourcePool _resourcePool;
 
     internal ResourcePool.Usage _usage;
@@ -173,7 +176,8 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node))
+        else if (_transientResource.TryGetStateNode(path, hash, out node)
+                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -205,6 +209,7 @@ public sealed class SnapshotBundle : IDisposable
         }
         finally
         {
+            transientResource.ReleaseAccess();
             transientResource.ReleaseLease();
         }
     }
@@ -222,7 +227,12 @@ public sealed class SnapshotBundle : IDisposable
             : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
     }
 
-    private static TrieNode CreateWarmerUnknownNode(Hash256 hash) => new(NodeType.Unknown, hash);
+    private static TrieNode CreateWarmerUnknownNode(Hash256 hash)
+    {
+        TrieNode node = new(NodeType.Unknown, hash);
+        node.MarkWarmerOwned();
+        return node;
+    }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
     // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
@@ -242,10 +252,15 @@ public sealed class SnapshotBundle : IDisposable
             TransientResource transientResource = Volatile.Read(ref _transientResource);
             if (transientResource.TryAcquireLease())
             {
-                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
-                    && !Volatile.Read(ref _isDisposed))
+                if (transientResource.TryAcquireAccess())
                 {
-                    return transientResource;
+                    if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
+                        && !Volatile.Read(ref _isDisposed))
+                    {
+                        return transientResource;
+                    }
+
+                    transientResource.ReleaseAccess();
                 }
 
                 transientResource.ReleaseLease();
@@ -298,7 +313,8 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
+        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
+                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -333,6 +349,7 @@ public sealed class SnapshotBundle : IDisposable
         }
         finally
         {
+            transientResource.ReleaseAccess();
             transientResource.ReleaseLease();
         }
     }
@@ -551,6 +568,7 @@ public sealed class SnapshotBundle : IDisposable
         }
         finally
         {
+            transientResource.ReleaseAccess();
             transientResource.ReleaseLease();
         }
     }
@@ -566,46 +584,66 @@ public sealed class SnapshotBundle : IDisposable
         }
         finally
         {
+            transientResource.ReleaseAccess();
             transientResource.ReleaseLease();
         }
     }
 
     internal int HintSequenceId => _hintSequenceId;
 
-    internal void StopWarming() => Interlocked.Increment(ref _hintSequenceId);
+    internal void StopWarming()
+    {
+        lock (_warmupSessionLock)
+        {
+            _warmingStopped = true;
+            Interlocked.Increment(ref _hintSequenceId);
+            _warmupSession?.StopWarming();
+        }
+    }
 
     internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
         in StateId baseState,
         ITrieWarmer trieWarmer,
         ILogManager logManager)
     {
-        ReadOnlySnapshotBundle? readOnlySnapshotBundle = null;
-        TransientResource? transientResource = null;
-        try
+        lock (_warmupSessionLock)
         {
-            readOnlySnapshotBundle = _readOnlySnapshotBundle.TryLease()
-                ? _readOnlySnapshotBundle
-                : throw new ObjectDisposedException(nameof(SnapshotBundle));
-            transientResource = TryLeaseTransientResource()
-                ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
+            if (_isDisposed || _warmingStopped) return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
 
-            FlatTrieWarmupSession session = new(
-                baseState,
-                this,
-                readOnlySnapshotBundle,
-                transientResource,
-                _trieNodeCache,
-                trieWarmer,
-                logManager);
-            readOnlySnapshotBundle = null;
-            transientResource = null;
-            return session;
+            if (_warmupSession is null)
+            {
+                if (!_readOnlySnapshotBundle.TryLease()) throw new ObjectDisposedException(nameof(SnapshotBundle));
+                TransientResource transientResource = _transientResource;
+                bool transientLeased = false;
+                try
+                {
+                    transientLeased = transientResource.TryAcquireLease();
+                    if (!transientLeased) throw new ObjectDisposedException(nameof(SnapshotBundle));
+                    _warmupSession = new FlatTrieWarmupSession(
+                        baseState, this, _readOnlySnapshotBundle, transientResource, _trieNodeCache, trieWarmer, logManager);
+                }
+                catch
+                {
+                    if (transientLeased) transientResource.ReleaseLease();
+                    _readOnlySnapshotBundle.Dispose();
+                    throw;
+                }
+            }
+
+            _warmupSession.AcquireLease();
+            return _warmupSession;
         }
-        finally
+    }
+
+    private void ReleaseWarmupSession()
+    {
+        FlatTrieWarmupSession? session;
+        lock (_warmupSessionLock)
         {
-            transientResource?.ReleaseLease();
-            readOnlySnapshotBundle?.Dispose();
+            session = _warmupSession;
+            _warmupSession = null;
         }
+        session?.Dispose();
     }
 
     /// <summary>
@@ -624,6 +662,9 @@ public sealed class SnapshotBundle : IDisposable
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
+        StopWarming();
+        ReleaseWarmupSession();
+
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
         Snapshot snapshot = new(
@@ -684,6 +725,8 @@ public sealed class SnapshotBundle : IDisposable
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
 
+        StopWarming();
+        ReleaseWarmupSession();
         _snapshots.Dispose();
 
         // Null them in case unexpected mutation from trie warmer
