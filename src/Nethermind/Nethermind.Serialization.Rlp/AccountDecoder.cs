@@ -55,18 +55,28 @@ namespace Nethermind.Serialization.Rlp
         /// <inheritdoc cref="TryDecodeStruct(ref RlpReader, out AccountStruct)"/>
         /// <remarks><inheritdoc cref="DecodeStorageRootOnly(ReadOnlySpan{byte})" path="/remarks"/></remarks>
         public bool TryDecodeStruct(ReadOnlySpan<byte> accountRlp, out AccountStruct account)
+            => TryDecodeStruct(accountRlp, position: 0, out _, out account);
+
+        /// <summary>The cursor-threaded core both public overloads run.</summary>
+        /// <param name="data">The buffer to decode from.</param>
+        /// <param name="position">Offset of the account sequence within <paramref name="data"/>.</param>
+        /// <param name="endPosition">Offset just past the account, or just past the sequence prefix of a placeholder.</param>
+        /// <param name="account">The decoded account, or <see cref="AccountStruct.TotallyEmpty"/> for a placeholder.</param>
+        /// <returns><see langword="true"/> when an account was decoded; otherwise <see langword="false"/>.</returns>
+        private bool TryDecodeStruct(ReadOnlySpan<byte> data, int position, out int endPosition, out AccountStruct account)
         {
-            int position = RlpHelpers.ReadSequenceLength(accountRlp, 0, out int length);
+            position = RlpHelpers.ReadSequenceLength(data, position, out int length);
             if (length == 1)
             {
                 account = AccountStruct.TotallyEmpty;
+                endPosition = position;
                 return false;
             }
 
-            position = RlpHelpers.DecodeULong(accountRlp, position, out ulong nonce);
-            position = RlpHelpers.DecodeUInt256(accountRlp, position, out UInt256 balance);
-            position = DecodeStorageRootStruct(accountRlp, position, out ValueHash256 storageRoot);
-            DecodeCodeHashStruct(accountRlp, position, out ValueHash256 codeHash);
+            position = RlpHelpers.DecodeULong(data, position, out ulong nonce);
+            position = RlpHelpers.DecodeUInt256(data, position, out UInt256 balance);
+            position = DecodeStorageRootStruct(data, position, out ValueHash256 storageRoot);
+            endPosition = DecodeCodeHashStruct(data, position, out ValueHash256 codeHash);
 
             account = new AccountStruct(nonce, balance, storageRoot, codeHash);
             return true;
@@ -260,23 +270,19 @@ namespace Nethermind.Serialization.Rlp
         private bool IsSlimEmpty(ReadOnlySpan<byte> data, int position)
             => _slimFormat && data[position] == Rlp.EmptyByteArrayByte;
 
+        /// <summary>Decodes an account payload into its allocation-free <see cref="AccountStruct"/> form.</summary>
+        /// <remarks>
+        /// Returns <see langword="false"/> only for the placeholder encoding that carries no account — a
+        /// sequence with a single content byte — leaving <paramref name="account"/> as
+        /// <see cref="AccountStruct.TotallyEmpty"/> and the reader positioned just past the sequence prefix.
+        /// Malformed input is not reported this way: it throws <see cref="RlpException"/> like any other decode.
+        /// </remarks>
+        /// <returns><see langword="true"/> when an account was decoded; otherwise <see langword="false"/>.</returns>
         public bool TryDecodeStruct(ref RlpReader decoderContext, out AccountStruct account)
         {
-            int length = decoderContext.ReadSequenceLength();
-            if (length == 1)
-            {
-                account = AccountStruct.TotallyEmpty;
-                return false;
-            }
-
-            ulong nonce = decoderContext.DecodeULong();
-            UInt256 balance = decoderContext.DecodeUInt256();
-            ReadOnlySpan<byte> data = decoderContext.Data;
-            int position = DecodeStorageRootStruct(data, decoderContext.Position, out ValueHash256 storageRoot);
-            decoderContext.Position = DecodeCodeHashStruct(data, position, out ValueHash256 codeHash);
-
-            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
-            return true;
+            bool decoded = TryDecodeStruct(decoderContext.Data, decoderContext.Position, out int endPosition, out account);
+            decoderContext.Position = endPosition;
+            return decoded;
         }
     }
 }
