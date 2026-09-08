@@ -12,7 +12,6 @@ using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
 using System.Threading;
 using Nethermind.Core.Test.Builders;
-using NSubstitute;
 using System.Linq;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -163,7 +162,7 @@ public class HistoryWalkVerificationCoordinatorTests
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.AdvanceTipSeries(0, 2, out _);
 
-        using OrphanStorageRowSweep sweep = new(_historyColumns, _db, Substitute.For<IPersistenceManager>(), rowFormat, LimboLogs.Instance);
+        using OrphanStorageRowSweep sweep = new(_historyColumns, _db, availability, rowFormat, new SweepPacer(), LimboLogs.Instance);
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10), sweep);
         coordinator.Start();
