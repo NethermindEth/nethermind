@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
@@ -32,6 +31,13 @@ internal static class CommittedLogs
             if (logs[i] is null) throw new ArgumentException($"Log entry {i} of receipt {receipt.TransactionHash} is null");
         }
 
+        return Committed(receipt, logs);
+    }
+
+    /// <summary>The committed subset of <paramref name="logs"/>, split out so <see cref="Of"/> can reject a
+    /// malformed receipt at the call rather than on the first <c>MoveNext</c>.</summary>
+    private static IEnumerable<LogEntryForRpc> Committed(ReceiptForRpc receipt, LogEntryForRpc[] logs)
+    {
         if (TryGetAttributableFrames(receipt, logs, out FrameReceiptForRpc[]? frames))
         {
             int start = 0;
@@ -77,18 +83,6 @@ internal static class CommittedLogs
     private static bool IsSameLog(LogEntryForRpc log, LogEntry frameLog) =>
         frameLog is not null
         && log.Address == frameLog.Address
-        && HaveSameTopics(log.Topics, frameLog.Topics)
+        && log.Topics.AsSpan().SequenceEqual(frameLog.Topics)
         && Bytes.AreEqual(log.Data, frameLog.Data);
-
-    private static bool HaveSameTopics(ReadOnlySpan<Hash256> left, ReadOnlySpan<Hash256> right)
-    {
-        if (left.Length != right.Length) return false;
-
-        for (int i = 0; i < left.Length; i++)
-        {
-            if (left[i] != right[i]) return false;
-        }
-
-        return true;
-    }
 }
