@@ -57,7 +57,12 @@ internal sealed class FlatTrieWarmupSession :
         if (!RefCountingLease.TryAcquire(ref _leases)) throw new ObjectDisposedException(nameof(FlatTrieWarmupSession));
     }
 
-    internal void StopWarming() => Volatile.Write(ref _isStopped, true);
+    internal void StopWarming()
+    {
+        if (!Interlocked.Exchange(ref _isStopped, true)) RefCountingLease.ReleaseOnce(ref _operations);
+        SpinWait spinWait = default;
+        while (Volatile.Read(ref _operations) > RefCountingLease.NoAccessors) spinWait.SpinOnce();
+    }
 
     public void HintWarmAccount(in ValueAddress address)
     {
@@ -73,7 +78,10 @@ internal sealed class FlatTrieWarmupSession :
         }
     }
 
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index) =>
+        HintWarmSlot(in address, in index, singleProducer: false);
+
+    internal void HintWarmSlot(in ValueAddress address, in UInt256 index, bool singleProducer)
     {
         if (!TryEnterOperation(_hintSequenceId)) return;
         try
@@ -88,7 +96,8 @@ internal sealed class FlatTrieWarmupSession :
                     ? null
                     : new StorageWarmer(session, address.Value.ToAccountPath.ToHash256(), storageRoot, session._logManager);
             }, this);
-            if (storageWarmer is not null)
+            if (storageWarmer is not null
+                && (!singleProducer || !_trieWarmer.PushSlotJob(storageWarmer, in index, _hintSequenceId)))
                 _trieWarmer.PushSlotJobMpmc(storageWarmer, in index, _hintSequenceId);
         }
         finally
@@ -117,17 +126,13 @@ internal sealed class FlatTrieWarmupSession :
     private bool TryEnterOperation(int sequenceId)
     {
         if (ShouldStopWarming(sequenceId) || !RefCountingLease.TryAcquire(ref _operations)) return false;
-        if (!ShouldStopWarming(sequenceId) && _transientResource.TryAcquireAccess()) return true;
+        if (!ShouldStopWarming(sequenceId)) return true;
 
         RefCountingLease.ReleaseOnce(ref _operations);
         return false;
     }
 
-    private void ExitOperation()
-    {
-        _transientResource.ReleaseAccess();
-        RefCountingLease.ReleaseOnce(ref _operations);
-    }
+    private void ExitOperation() => RefCountingLease.ReleaseOnce(ref _operations);
 
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
@@ -180,10 +185,6 @@ internal sealed class FlatTrieWarmupSession :
         if (!RefCountingLease.ReleaseOnce(ref _leases)) return;
 
         StopWarming();
-        RefCountingLease.ReleaseOnce(ref _operations);
-        SpinWait spinWait = default;
-        while (Volatile.Read(ref _operations) > RefCountingLease.NoAccessors) spinWait.SpinOnce();
-
         try
         {
             _transientResource.ReleaseLease();

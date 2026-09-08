@@ -100,8 +100,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     public void Add(TransientResource transientResource)
     {
-        transientResource.RetireAndWaitForAccesses();
-
         if (_maxCacheMemoryThreshold == 0)
         {
             for (int i = 0; i < ShardCount; i++)
