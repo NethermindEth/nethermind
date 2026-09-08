@@ -9,11 +9,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Contracts;
 using Autofac.Features.AttributeFilters;
 
@@ -25,7 +27,8 @@ internal sealed class XdcExtendedEthModule(
     ISpecProvider specProvider,
     IMasternodeVotingContract masternodeVotingContract,
     IRewardsStore rewardsStore,
-    IStateReader stateReader) : IXdcExtendedEthRpcModule
+    IStateReader stateReader,
+    IEthSyncingInfo ethSyncingInfo) : IXdcExtendedEthRpcModule
 {
     private static readonly IRlpDecoder<TxReceipt> ReceiptEncoder = Rlp.GetDecoder<TxReceipt>();
 
@@ -121,7 +124,12 @@ internal sealed class XdcExtendedEthModule(
         SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(searchResult));
+            // Marked temporary while the headers are still coming in, so a caller racing sync does not
+            // have the expected miss logged as a warning.
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
+                searchResult,
+                searchResult.ErrorCode == ErrorCodes.ResourceNotFound
+                && ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
         }
 
         BlockHeader header = searchResult.Object!;
@@ -129,7 +137,8 @@ internal sealed class XdcExtendedEthModule(
         {
             return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
                 $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
-                ErrorCodes.ResourceUnavailable));
+                ErrorCodes.ResourceUnavailable,
+                ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()));
         }
 
         if (!stateReader.TryGetAccount(header, accountAddress, out AccountStruct account))

@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
@@ -14,6 +15,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RPC;
 using NSubstitute;
@@ -244,16 +246,27 @@ public class XdcExtendedEthModuleTests
         }
     }
 
+    /// <remarks>
+    /// A node still fetching state is expected to miss it, so the failure is marked temporary and the
+    /// response suppresses the warning the caller would otherwise log on every call during sync.
+    /// </remarks>
     [Test]
-    public async Task eth_getAccountInfo_fails_when_the_block_has_no_state()
+    public async Task eth_getAccountInfo_fails_when_the_block_has_no_state([Values] bool syncingState)
     {
         (IStateReader stateReader, IBlockFinder blockFinder, BlockHeader _) = HeadWithState(hasState: false);
+        IEthSyncingInfo ethSyncingInfo = Substitute.For<IEthSyncingInfo>();
+        ethSyncingInfo.SyncMode.Returns(syncingState ? SyncMode.StateNodes : SyncMode.Full);
 
         ResultWrapper<XdcAccountInfo> result =
-            await CreateModule(blockFinder: blockFinder, stateReader: stateReader)
+            await CreateModule(blockFinder: blockFinder, stateReader: stateReader, ethSyncingInfo: ethSyncingInfo)
                 .eth_getAccountInfo(TestItem.AddressA, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(result.IsTemporary, Is.EqualTo(syncingState));
+        }
     }
 
     /// <summary>Points the finder at a head block and the reader at whether that block's state is retained.</summary>
@@ -288,13 +301,15 @@ public class XdcExtendedEthModuleTests
         ISpecProvider? specProvider = null,
         IMasternodeVotingContract? votingContract = null,
         IRewardsStore? rewardsStore = null,
-        IStateReader? stateReader = null) =>
+        IStateReader? stateReader = null,
+        IEthSyncingInfo? ethSyncingInfo = null) =>
         new(blockFinder ?? Substitute.For<IBlockFinder>(),
             receiptFinder ?? Substitute.For<IReceiptFinder>(),
             specProvider ?? Substitute.For<ISpecProvider>(),
             votingContract ?? Substitute.For<IMasternodeVotingContract>(),
             rewardsStore ?? Substitute.For<IRewardsStore>(),
-            stateReader ?? Substitute.For<IStateReader>());
+            stateReader ?? Substitute.For<IStateReader>(),
+            ethSyncingInfo ?? Substitute.For<IEthSyncingInfo>());
 
     private static IXdcExtendedEthRpcModule CreateOwnerModule(Address owner)
     {
