@@ -109,14 +109,49 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ISnapshotRepository snapshots = chain.Container.Resolve<ISnapshotRepository>();
+        (BlockHeader forkHeader, GetPayloadV6Result child, Hash256 finalized) = await ExecuteForkThenPruneIt(chain, rpc, snapshots);
 
+        BlockHeader childHeader = await SiblingPayloads.Submit(chain, rpc, child);
+        await SiblingPayloads.ForkchoiceUpdated(chain, rpc, childHeader.Hash!, finalized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshots.HasState(new StateId(childHeader)), Is.True, "the child was executed on the rebuilt fork state");
+            Assert.That(snapshots.HasState(new StateId(forkHeader)), Is.True, "re-execution restored the fork block's state");
+        }
+    }
+
+    [Test]
+    public async Task Fork_choice_selecting_a_pruned_sibling_re_executes_it_instead_of_syncing()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ISnapshotRepository snapshots = chain.Container.Resolve<ISnapshotRepository>();
+        (BlockHeader forkHeader, _, Hash256 finalized) = await ExecuteForkThenPruneIt(chain, rpc, snapshots);
+
+        await SiblingPayloads.ForkchoiceUpdated(chain, rpc, forkHeader.Hash!, finalized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(forkHeader.Hash), "the fork block is the head");
+            Assert.That(snapshots.HasState(new StateId(forkHeader)), Is.True, "the head serves state again");
+            chain.StateReader.TryGetAccount(forkHeader, TestItem.AddressB, out AccountStruct funder);
+            Assert.That(funder.Nonce, Is.GreaterThan(0UL), "state at the head is readable");
+        }
+    }
+
+    /// <summary>
+    /// Executes a fork block on the pinned parent without selecting it, builds its child while the fork state still
+    /// exists, then runs enough unselected siblings for orphan pruning to drop the fork's state.
+    /// </summary>
+    private static async Task<(BlockHeader Fork, GetPayloadV6Result Child, Hash256 Finalized)> ExecuteForkThenPruneIt(
+        MergeTestBlockchain chain, IEngineRpcModule rpc, ISnapshotRepository snapshots)
+    {
         PrivateKey[] forkSenders = SiblingPayloads.CreateAccounts("fork");
         PrivateKey[] siblingSenders = SiblingPayloads.CreateAccounts("sibling");
         PrivateKey[] childSenders = SiblingPayloads.CreateAccounts("child");
         (BlockHeader pinned, Hash256 finalized) = await SiblingPayloads.Fund(chain, rpc, [.. forkSenders, .. siblingSenders, .. childSenders]);
 
-        // The fork block is executed but never selected by fork choice. Its child is built now, while the fork
-        // state still exists, the way a consensus client would hand over a payload built by another node.
         SiblingPayloads.SubmitTransfers(chain, forkSenders, childSenders, pinned, 0);
         (_, BlockHeader forkHeader) = await SiblingPayloads.ProduceAndSubmit(chain, rpc, pinned, Keccak.Compute("fork"), SiblingPayloads.TxsPerBlock);
         StateId forkState = new(forkHeader);
@@ -134,15 +169,7 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
 
         await Task.Delay(TimeSpan.FromSeconds(1));
         Assert.That(snapshots.HasState(forkState), Is.False, "precondition: the unselected fork block was pruned");
-
-        BlockHeader childHeader = await SiblingPayloads.Submit(chain, rpc, child);
-        await SiblingPayloads.ForkchoiceUpdated(chain, rpc, childHeader.Hash!, finalized);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(snapshots.HasState(new StateId(childHeader)), Is.True, "the child was executed on the rebuilt fork state");
-            Assert.That(snapshots.HasState(forkState), Is.True, "re-execution restored the fork block's state");
-        }
+        return (forkHeader, child, finalized);
     }
 }
 

@@ -446,7 +446,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         bool parentStateEvicted = !parentProcessed
                                   && parentBlockInfo is { WasProcessed: true }
                                   && weHaveOnlyFewBlocksToProcess
-                                  && HasAncestorWithState(parent);
+                                  && PrunedStateRecovery.HasAncestorWithState(_blockTree, _stateReader, parent);
 
         if (!parentProcessed && (processTerminalBlock || parentStateEvicted)) // so if parent wasn't processed
         {
@@ -460,23 +460,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         return parentProcessed || processTerminalBlock || parentStateEvicted;
     }
-
-    /// <summary>Whether an ancestor within the forced-processing window still has state for a branch re-execution to start from.</summary>
-    private bool HasAncestorWithState(BlockHeader parent)
-    {
-        BlockHeader? ancestor = parent;
-        for (int depth = 0; depth < MaxReExecutionDepth; depth++)
-        {
-            ancestor = _blockTree.FindHeader(ancestor.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (ancestor is null) return false;
-            if (_stateReader.HasStateForBlock(ancestor)) return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>Mirrors the few-blocks-to-process window: a pruned parent is re-executed only from this close an ancestor.</summary>
-    private const int MaxReExecutionDepth = 8;
 
     /// <summary>Slack above head within which early recovery is worthwhile, mirroring the
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>

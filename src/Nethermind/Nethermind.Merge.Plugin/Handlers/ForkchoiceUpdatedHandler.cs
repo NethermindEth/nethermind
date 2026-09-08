@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -22,6 +23,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -47,12 +49,19 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
+    IReceiptConfig receiptConfig,
+    IStateReader stateReader,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    // Re-executing a pruned head walks the branch down to the nearest state, so the parent-on-main-chain shortcut is off.
+    private readonly ProcessingOptions _reExecutionOptions =
+        (receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge)
+        & ~ProcessingOptions.IgnoreParentNotOnMainChain;
+    private readonly TimeSpan _reExecutionTimeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -264,6 +273,12 @@ public class ForkchoiceUpdatedHandler(
             return result;
         }
 
+        if (!stateReader.HasStateForBlock(newHeadHeader) && !await TryRestoreState(newHeadHeader))
+        {
+            if (_logger.IsInfo) _logger.Info($"Syncing, state of the processed head {newHeadHeader.ToString(BlockHeader.Format.Short)} is gone and could not be rebuilt. Request: {requestStr}.");
+            return ForkchoiceUpdatedV1Result.Syncing;
+        }
+
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
         // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and
@@ -283,6 +298,42 @@ public class ForkchoiceUpdatedHandler(
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return null;
+    }
+
+    /// <summary>
+    /// Re-executes a processed head whose state was pruned, from the nearest ancestor with state, so the fork
+    /// choice can be served instead of answered with SYNCING. Waits for the processing queue as newPayload does.
+    /// </summary>
+    private async Task<bool> TryRestoreState(BlockHeader newHeadHeader)
+    {
+        if (!PrunedStateRecovery.HasAncestorWithState(_blockTree, stateReader, newHeadHeader)) return false;
+
+        Block? block = _blockTree.FindBlock(newHeadHeader.Hash!, BlockTreeLookupOptions.None);
+        if (block is null) return false;
+
+        if (_logger.IsInfo) _logger.Info($"Re-executing {newHeadHeader.ToString(BlockHeader.Format.Short)}: it was processed but its state has been pruned.");
+
+        TaskCompletionSource<ProcessingResult> processed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
+        {
+            if (e.BlockHash == newHeadHeader.Hash) processed.TrySetResult(e.ProcessingResult);
+        }
+
+        processingQueue.BlockRemoved += OnBlockRemoved;
+        try
+        {
+            await processingQueue.Enqueue(block, _reExecutionOptions);
+            using CancellationTokenSource timeout = new(_reExecutionTimeout);
+            return await processed.Task.WaitAsync(timeout.Token) == ProcessingResult.Success;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            processingQueue.BlockRemoved -= OnBlockRemoved;
+        }
     }
 
     protected virtual bool IsPayloadTimestampValid(BlockHeader newHeadHeader, PayloadAttributes payloadAttributes)

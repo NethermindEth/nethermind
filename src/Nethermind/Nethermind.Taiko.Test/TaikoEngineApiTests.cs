@@ -7,6 +7,8 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Handlers;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.State;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -50,6 +52,8 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            Substitute.For<IReceiptConfig>(),
+            StateReaderWithState(),
             Substitute.For<ILogManager>()
         );
 
@@ -98,6 +102,8 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
+            Substitute.For<IReceiptConfig>(),
+            StateReaderWithState(),
             Substitute.For<ILogManager>()
         );
 
@@ -120,4 +126,13 @@ public class TaikoEngineApiTests
             Assert.That(result.Result.Error, Does.Contain("Invalid payload timestamp"));
         }
     }
+
+    // Every head in these tests is processed with its state present; the handler only re-executes when it is not.
+    private static IStateReader StateReaderWithState()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
+        return stateReader;
+    }
+
 }
