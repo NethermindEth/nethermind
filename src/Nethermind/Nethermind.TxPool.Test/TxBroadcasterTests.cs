@@ -886,9 +886,12 @@ public class TxBroadcasterTests
 
         _broadcaster.OnNewHead(this, Build.A.Block.WithTimestamp(1_000).TestObject);
 
-        Assert.That(_broadcaster.ContainsTx(frameTx.Hash!), Is.EqualTo(!shouldBeDropped));
-        Assert.That(_broadcaster.ContainsTx(regularTx.Hash!), Is.True,
-            "a transaction without a frame expiry deadline must never be swept");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_broadcaster.ContainsTx(frameTx.Hash!), Is.EqualTo(!shouldBeDropped));
+            Assert.That(_broadcaster.ContainsTx(regularTx.Hash!), Is.True,
+                "a transaction without a frame expiry deadline must never be swept");
+        }
     }
 
     private Transaction FrameTxWithDeadline(ulong deadline, bool carriesBlobs = false)

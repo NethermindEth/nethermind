@@ -3,23 +3,20 @@
 
 #nullable enable
 
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.TxPool.Test.FrameTxFilterTestPools;
 
 namespace Nethermind.TxPool.Test;
 
@@ -491,25 +488,5 @@ public class FrameTxPayerExposureFilterTests
         FrameTxPayerExposureFilter filter = new(specProvider, state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
         TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>(), Spec);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
-    }
-
-    /// <summary>The real pool type for the shape, so the visitor's ascending-nonce exit is exercised as wired.</summary>
-    private static TxDistinctSortedPool Pool(bool blobs, params Transaction[] pending)
-    {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-
-        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
-        TxDistinctSortedPool pool = blobs
-            ? new BlobTxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance)
-            : new TxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance);
-        foreach (Transaction tx in pending)
-        {
-            pool.TryInsert(tx.Hash!, tx);
-        }
-
-        return pool;
     }
 }

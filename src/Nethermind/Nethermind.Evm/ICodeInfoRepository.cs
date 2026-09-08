@@ -10,6 +10,12 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 namespace Nethermind.Evm;
 
+/// <remarks>
+/// Extension contract: there is no base class to derive from, so an added member is a compile error for every
+/// implementation, deliberately. A wrapping repository has to answer for the one it wraps, and a default body
+/// would let a missing forward return the terminal answer silently — the reason <see cref="IsCodeOverridable"/>
+/// had its <c>=> false</c> default stripped again in #12282.
+/// </remarks>
 public interface ICodeInfoRepository
 {
     /// <summary>Whether account code may be overridden (e.g. <c>eth_call</c> state overrides), disabling the simple-transfer fast path.</summary>

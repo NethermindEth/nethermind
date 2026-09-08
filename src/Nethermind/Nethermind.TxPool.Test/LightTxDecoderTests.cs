@@ -25,9 +25,8 @@ namespace Nethermind.TxPool.Test;
 [TestFixture]
 public class LightTxDecoderTests
 {
-    [TestCase(TxType.Blob)]
-    [TestCase(TxType.FrameTx)]
-    public void Round_trip_preserves_the_type_and_proof_version(TxType type)
+    [Test]
+    public void Round_trip_preserves_the_type_and_proof_version([Values(TxType.Blob, TxType.FrameTx)] TxType type)
     {
         Transaction tx = BlobCarryingTx(type);
 
@@ -63,9 +62,8 @@ public class LightTxDecoderTests
     }
 
     // ProofVersion.V0 encodes as the RLP empty string, which a raw byte read returns as 128.
-    [TestCase(ProofVersion.V0)]
-    [TestCase(ProofVersion.V1)]
-    public void Round_trip_preserves_the_proof_version(ProofVersion version)
+    [Test]
+    public void Round_trip_preserves_the_proof_version([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
     {
         Transaction tx = BlobCarryingTx(TxType.Blob);
         tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version);
@@ -123,7 +121,7 @@ public class LightTxDecoderTests
     public void Unreadable_record_is_skipped_and_leaves_the_rest_of_the_pool_loadable(TxType type, ulong? deadline)
     {
         Transaction readable = BlobCarryingTx(TxType.Blob);
-        MemColumnsDb<BlobTxsColumns> database = new();
+        using MemColumnsDb<BlobTxsColumns> database = new();
         IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
         lightBlobTxs.Set(UnreadableRecordKey, EncodeWithBlobFieldsLast(BlobCarryingTx(type, deadline)));
         lightBlobTxs.Set(ReadableRecordKey, LightTxDecoder.Encode(readable));
@@ -140,7 +138,7 @@ public class LightTxDecoderTests
     public void Unreadable_records_are_reported_as_one_warning()
     {
         const int unreadableCount = 5;
-        MemColumnsDb<BlobTxsColumns> database = new();
+        using MemColumnsDb<BlobTxsColumns> database = new();
         IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
         for (int i = 0; i < unreadableCount; i++)
         {
@@ -187,7 +185,7 @@ public class LightTxDecoderTests
             $"these records must span the roots the catch filter lists, but they only produced: {string.Join(", ", shapes)}");
 
         Transaction readable = BlobCarryingTx(TxType.Blob);
-        MemColumnsDb<BlobTxsColumns> database = new();
+        using MemColumnsDb<BlobTxsColumns> database = new();
         IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
         for (int i = 0; i < corrupt.Length; i++)
         {

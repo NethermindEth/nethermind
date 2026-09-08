@@ -10,6 +10,10 @@ namespace Nethermind.TxPool;
 /// <remarks>Optional: with no simulator wired, such transactions are admitted unresolved and hold no exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
+    /// <summary>Runs <paramref name="tx"/>'s validation prefix at chain head and reports the payer it resolves.</summary>
+    /// <remarks>Serialized node-wide and bounded by a per-simulation timeout, a cumulative per-head budget and
+    /// <c>MAX_VERIFY_GAS</c>; the result says which of those, if any, ended it.</remarks>
+    /// <param name="tx">The frame transaction to simulate. Any other type is rejected rather than executed.</param>
     /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
     /// <c>validate_signature</c> at chain head; the simulation then trusts its signatures. The two sides read
     /// the head separately, so a head change between them can only mis-admit, never mis-reject.</param>
@@ -22,6 +26,7 @@ public interface IFrameTxPrefixSimulator
     FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false);
 }
 
+/// <summary>How far a validation-prefix simulation got.</summary>
 public enum FrameTxSimulationOutcome
 {
     /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
@@ -35,6 +40,14 @@ public enum FrameTxSimulationOutcome
     Rejected,
 }
 
+/// <summary>The verdict of one validation-prefix simulation.</summary>
+/// <remarks>Construct through the static factories rather than this constructor: they are the combinations
+/// admission and revalidation are written against.</remarks>
+/// <param name="outcome">How far the simulation got.</param>
+/// <param name="payer">The resolved payer, for an accepted prefix only.</param>
+/// <param name="reason">A human-readable explanation, for anything but an acceptance.</param>
+/// <param name="indeterminate">Whether the outcome reflects a bound or a fault rather than the prefix.</param>
+/// <param name="nodeBound">Whether that bound was one this node imposed on itself.</param>
 public readonly struct FrameTxSimulationResult(
     FrameTxSimulationOutcome outcome,
     Address? payer,
@@ -42,11 +55,13 @@ public readonly struct FrameTxSimulationResult(
     bool indeterminate = false,
     bool nodeBound = false)
 {
+    /// <summary>How far the simulation got.</summary>
     public FrameTxSimulationOutcome Outcome { get; } = outcome;
 
     /// <summary>Non-null only when <see cref="Outcome"/> is <see cref="FrameTxSimulationOutcome.Accepted"/>.</summary>
     public Address? Payer { get; } = payer;
 
+    /// <summary>Why the prefix was not accepted; <see langword="null"/> when it was.</summary>
     public string? Reason { get; } = reason;
 
     /// <summary>
@@ -63,7 +78,10 @@ public readonly struct FrameTxSimulationResult(
     /// </summary>
     public bool NodeBound { get; } = nodeBound;
 
+    /// <summary>The prefix ran to <paramref name="payer"/>.</summary>
     public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
+
+    /// <summary>The prefix itself is invalid, so the transaction can be dropped.</summary>
     public static FrameTxSimulationResult Reject(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason);
 
     /// <summary>A rejection caused by a bound this node spent on itself, not by the prefix. Still charged to

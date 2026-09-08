@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -258,11 +259,12 @@ public class FrameTxPrefixSimulatorTests
     {
         // The prefix's own wall clock trips the timeout, so revalidation retains it, but it still counts
         // against the sender rather than reading as this node shedding load.
-        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, timeoutMs: 1);
+        ManualTimeProvider time = new();
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, timeoutMs: 1, time: time);
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
-            .Returns<TransactionResult>(static _ =>
+            .Returns<TransactionResult>(_ =>
             {
-                Thread.Sleep(50);
+                time.Advance(TimeSpan.FromMilliseconds(50));
                 throw new OperationCanceledException();
             });
 
@@ -336,22 +338,26 @@ public class FrameTxPrefixSimulatorTests
             release.Wait(TimeSpan.FromSeconds(30));
             throw new TestEnvUnavailableException();
         });
+        using ManualResetEventSlim secondCallerReachedTheLock = new(false);
         using FrameTxPrefixSimulator simulator = CreateSimulator(
-            envFactory, BlockFinderAtHead(), budgetPerHeadMs: 0, timeoutMs: 30_000);
+            envFactory, BlockFinderAtHead(secondCallerReachedTheLock), budgetPerHeadMs: 0, timeoutMs: 30_000);
 
         Task<FrameTxSimulationResult> holder = Task.Run(() => simulator.Simulate(FrameTx()));
         Assert.That(inside.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first simulation never took the env");
 
         Task<FrameTxSimulationResult> local = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
-        // Long enough that a zero wait would already have shed it, so what follows measures the wait.
-        Thread.Sleep(200);
-        Assert.That(local.IsCompleted, Is.False, "a local submission must not be shed while the simulator is busy");
+        // Reading the head is the last step before contending for the env, so the env is still held here.
+        Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
+        // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
+        // fails deterministically on a zero wait is the reason check below.
+        Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
 
         release.Set();
         Assert.That(local.Wait(TimeSpan.FromSeconds(10)), Is.True);
         holder.Wait(TimeSpan.FromSeconds(10));
 
-        Assert.That(local.Result.Reason, Does.Not.Contain("busy"));
+        Assert.That(local.Result.Reason, Does.Not.Contain("busy"),
+            "a local submission must wait for a busy simulator rather than being shed");
     }
 
     // The budget rejects nearly everything under spam, so it is read before the lock; reading it after would
@@ -362,6 +368,7 @@ public class FrameTxPrefixSimulatorTests
         using ManualResetEventSlim inside = new(false);
         using ManualResetEventSlim release = new(false);
         int calls = 0;
+        ManualTimeProvider time = new();
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(_ =>
         {
@@ -373,13 +380,13 @@ public class FrameTxPrefixSimulatorTests
             }
             else
             {
-                Thread.Sleep(5);
+                time.Advance(TimeSpan.FromMilliseconds(5));
             }
 
             throw new TestEnvUnavailableException();
         });
         using FrameTxPrefixSimulator simulator = CreateSimulator(
-            envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1, timeoutMs: 30_000);
+            envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1, timeoutMs: 30_000, time: time);
 
         simulator.Simulate(FrameTx());
         Task<FrameTxSimulationResult> holder = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
@@ -399,13 +406,14 @@ public class FrameTxPrefixSimulatorTests
         int budgetPerHeadMs = 1000)
     {
         blockFinder = BlockFinderAtHead();
-        // Stands in for a simulation past the bounds: observable, and slow enough to drive the budget.
+        ManualTimeProvider time = new();
+        // Stands in for a simulation past the bounds: observable, and it spends enough of the clock to drive the budget.
         envFactory.Create().Returns(_ =>
         {
-            Thread.Sleep(5);
+            time.Advance(TimeSpan.FromMilliseconds(5));
             throw new TestEnvUnavailableException();
         });
-        return CreateSimulator(envFactory, blockFinder, budgetPerHeadMs);
+        return CreateSimulator(envFactory, blockFinder, budgetPerHeadMs, time: time);
     }
 
     [TestCase(false, ExecutionOptions.FrameValidationPrefixOnly)]
@@ -424,7 +432,8 @@ public class FrameTxPrefixSimulatorTests
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
         InterfaceLogger? logSink = null,
-        int timeoutMs = 250)
+        int timeoutMs = 250,
+        TimeProvider? time = null)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -437,13 +446,28 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);
 
-        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink, timeoutMs);
+        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink, timeoutMs, time);
     }
 
-    private static IBlockFinder BlockFinderAtHead()
+    /// <param name="secondCallerReachedTheLock">Set when a second caller reads the head, which is the last
+    /// step before it contends for the env.</param>
+    private static IBlockFinder BlockFinderAtHead(ManualResetEventSlim? secondCallerReachedTheLock = null)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        Block head = Build.A.Block.WithNumber(1).TestObject;
+        if (secondCallerReachedTheLock is null)
+        {
+            blockFinder.Head.Returns(head);
+            return blockFinder;
+        }
+
+        int reads = 0;
+        blockFinder.Head.Returns(_ =>
+        {
+            if (Interlocked.Increment(ref reads) > 1) secondCallerReachedTheLock.Set();
+            return head;
+        });
+
         return blockFinder;
     }
 
@@ -452,12 +476,14 @@ public class FrameTxPrefixSimulatorTests
         IBlockFinder blockFinder,
         int budgetPerHeadMs,
         InterfaceLogger? logSink = null,
-        int timeoutMs = 250) =>
+        int timeoutMs = 250,
+        TimeProvider? time = null) =>
         new(envFactory,
             blockFinder,
             new TestSpecProvider(Eip8141Prototype.Instance),
             new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs, FrameTxSimulationTimeoutMs = timeoutMs },
-            logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)));
+            logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)),
+            time);
 
     private static Transaction FrameTx() => new()
     {

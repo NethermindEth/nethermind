@@ -50,6 +50,27 @@ public static class FrameTxTestFrames
         return bytes;
     }
 
+    /// <summary>A chain of secp256k1 entries that all require curve recovery, the last one failing signer
+    /// validation.</summary>
+    /// <remarks>The admission measurements need the worst case: no entry short-circuits before the mismatch,
+    /// so the whole chain is recovered before the transaction is rejected.</remarks>
+    public static TxFrameSignature[] RecoveredSecp256k1Signatures(EthereumEcdsa ecdsa, int count)
+    {
+        TxFrameSignature[] entries = new TxFrameSignature[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] msg = ValueKeccak.Compute(BitConverter.GetBytes(i)).ToByteArray();
+            byte[] signed = i == count - 1 ? ValueKeccak.Compute("mismatch"u8).ToByteArray() : msg;
+            entries[i] = new TxFrameSignature(
+                TxFrameSignature.SchemeSecp256k1,
+                TestItem.PrivateKeyA.Address,
+                msg,
+                Secp256k1SignatureBytes(ecdsa.Sign(TestItem.PrivateKeyA, new Hash256(signed))));
+        }
+
+        return entries;
+    }
+
     public static TxFrame SelfVerify(ulong gasLimit = 1_000) =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 
