@@ -70,22 +70,38 @@ internal sealed class MethodCloner(MethodDefinition source)
                 HandlerEnd = handler.HandlerEnd is null ? null : instructions[handler.HandlerEnd],
                 FilterStart = handler.FilterStart is null ? null : instructions[handler.FilterStart]
             });
+        Dictionary<int, Instruction> byOffset = [];
+        foreach (Instruction instruction in source.Body.Instructions) byOffset[instruction.Offset] = instructions[instruction];
         foreach (SequencePoint point in source.DebugInformation.SequencePoints)
         {
-            foreach (Instruction instruction in source.Body.Instructions)
+            if (!byOffset.TryGetValue(point.Offset, out Instruction? instruction)) continue;
+            _target.DebugInformation.SequencePoints.Add(new SequencePoint(instruction, point.Document)
             {
-                if (instruction.Offset != point.Offset) continue;
-                _target.DebugInformation.SequencePoints.Add(new SequencePoint(instructions[instruction], point.Document)
-                {
-                    StartLine = point.StartLine,
-                    StartColumn = point.StartColumn,
-                    EndLine = point.EndLine,
-                    EndColumn = point.EndColumn
-                });
-                break;
-            }
+                StartLine = point.StartLine,
+                StartColumn = point.StartColumn,
+                EndLine = point.EndLine,
+                EndColumn = point.EndColumn
+            });
         }
+        if (source.DebugInformation.Scope is not null)
+            _target.DebugInformation.Scope = CloneScope(source.DebugInformation.Scope, byOffset, body);
         return _target;
+    }
+
+    private ScopeDebugInformation CloneScope(ScopeDebugInformation scope, Dictionary<int, Instruction> byOffset, MethodBody body)
+    {
+        ScopeDebugInformation copy = new(MapOffset(scope.Start), MapOffset(scope.End)) { Import = scope.Import };
+        foreach (VariableDebugInformation variable in scope.Variables)
+            copy.Variables.Add(new VariableDebugInformation(body.Variables[variable.Index], variable.Name) { Attributes = variable.Attributes });
+        foreach (ConstantDebugInformation constant in scope.Constants)
+            copy.Constants.Add(new ConstantDebugInformation(constant.Name, MapType(constant.ConstantType), constant.Value));
+        foreach (ScopeDebugInformation nested in scope.Scopes)
+            copy.Scopes.Add(CloneScope(nested, byOffset, body));
+        return copy;
+
+        // A scope end at the method's end has no instruction; Cecil represents it as an unresolved offset.
+        Instruction? MapOffset(InstructionOffset offset) =>
+            offset.IsEndOfMethod ? null : byOffset[offset.Offset];
     }
 
     private static Instruction[] MapBranches(Instruction[] branches, Dictionary<Instruction, Instruction> instructions)

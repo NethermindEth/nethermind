@@ -47,7 +47,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                     "GetCallHandler" or "GetCreateHandler" => GetOperationName(call.GenericArguments[0]),
                     _ => GetOpcodeName(call.GenericArguments[0])
                 };
-                instruction.Operand = Retarget(call, CloneFactory(call.Resolve(), name));
+                instruction.Operand = Retarget(call, CloneFactory(Resolve(call), name));
             }
         }
 
@@ -77,7 +77,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
             foreach (Instruction instruction in method.Body.Instructions)
             {
                 if (instruction.Operand is not MethodReference reference || reference.DeclaringType.Resolve() != vm) continue;
-                MethodDefinition target = reference.Resolve();
+                MethodDefinition target = Resolve(reference);
                 if (instruction.OpCode == OpCodes.Ldftn)
                 {
                     if (!expected.Contains(target))
@@ -106,6 +106,9 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         return result ?? throw new WeavingException($"Method {name} was not found in {type.FullName}.");
     }
 
+    private static MethodDefinition Resolve(MethodReference reference) =>
+        reference.Resolve() ?? throw new WeavingException($"Could not resolve {reference.FullName}.");
+
     private static bool IsFactory(string name) => name is
         "OpcodeHandler" or "TerminatingOpcodeHandler" or "JumpIfOpcodeHandler" or "GetCallHandler" or "GetCreateHandler";
 
@@ -122,7 +125,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 continue;
             if (IsFactory(target.Name))
             {
-                instruction.Operand = Retarget(target, CloneFactory(target.Resolve(), opcode));
+                instruction.Operand = Retarget(target, CloneFactory(Resolve(target), opcode));
                 redirected = true;
             }
             else if (instruction.OpCode == OpCodes.Ldftn && target.Name is "ExecuteOpcode" or "ExecuteJumpIfOpcode")
@@ -130,7 +133,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 if (!_handlers.TryGetValue(opcode, out MethodDefinition? handler))
                 {
                     // Retain the generic parameters: only the metadata name and table target change.
-                    handler = new MethodCloner(target.Resolve()).Clone("Op" + opcode);
+                    handler = new MethodCloner(Resolve(target)).Clone("Op" + opcode);
                     source.DeclaringType.Methods.Add(handler);
                     _handlers.Add(opcode, handler);
                 }
@@ -153,7 +156,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
     private static string GetOpcodeName(TypeReference type)
     {
         string name = type.Name.Split('`')[0];
-        if (!name.EndsWith("Opcode", StringComparison.Ordinal))
+        if (type is GenericParameter || !name.EndsWith("Opcode", StringComparison.Ordinal))
             throw new WeavingException($"Unknown opcode body {type.FullName}.");
         name = name.Substring(0, name.Length - "Opcode".Length);
         if (name is "Math1" or "Math2" or "Math3" or "Bitwise" or "Shift"
@@ -177,6 +180,8 @@ public sealed class ModuleWeaver : BaseModuleWeaver
 
     private static GenericInstanceMethod Retarget(GenericInstanceMethod original, MethodDefinition target)
     {
+        if (target.GenericParameters.Count != original.GenericArguments.Count)
+            throw new WeavingException($"Handler {target.Name} does not match the dispatch arity of {original.ElementMethod.FullName}.");
         MethodReference reference = new(target.Name, original.ElementMethod.ReturnType, original.DeclaringType)
         {
             HasThis = original.HasThis,
