@@ -1556,6 +1556,7 @@ public ref partial struct EvmStack
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public EvmExceptionType PushZero<TTracingInst, TCheckDepth>()
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
@@ -1969,6 +1970,7 @@ public ref partial struct EvmStack
     /// <summary>
     /// Pops an address, reusing the cached instance when the popped bytes match the previously popped address.
     /// </summary>
+    [SkipLocalsInit]
     public Address? PopAddress(PoppedAddressCache cache)
     {
         nint head = Head - 1;
@@ -2200,6 +2202,7 @@ public ref partial struct EvmStack
         return true;
     }
 
+    [SkipLocalsInit]
     public bool PopWord256(out Span<byte> word)
     {
         nint head = Head - 1;

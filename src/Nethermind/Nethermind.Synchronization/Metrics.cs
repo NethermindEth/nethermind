@@ -65,6 +65,14 @@ namespace Nethermind.Synchronization
         [Description("Synced bytecodes via SNAP Sync")]
         public static long SnapSyncedCodes;
 
+        [CounterMetric]
+        [Description("SNAP Sync requests that produced no response at all. Distinguishes an unresponsive or non-serving peer set from one answering with unusable data, which SnapRangeResult covers.")]
+        public static long SnapRequestTimeouts;
+
+        [GaugeMetric]
+        [Description("Consecutive SNAP Sync requests that yielded no usable range, reset by the first one that does. A value that keeps climbing means snap sync is stalled; sustained non-zero is the alertable condition.")]
+        public static long SnapConsecutiveUnproductiveResponses;
+
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]
