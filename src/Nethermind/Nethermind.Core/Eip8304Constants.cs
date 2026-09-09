@@ -8,8 +8,6 @@ namespace Nethermind.Core;
 /// </summary>
 public static class Eip8304Constants
 {
-    public const string ContractAddressKey = "INDEX_CONTRACT_ADDRESS";
-
     /// <summary>
     /// The <c>TABLE_SIZES</c> parameter — table sizes at each level of the hierarchy.
     /// </summary>

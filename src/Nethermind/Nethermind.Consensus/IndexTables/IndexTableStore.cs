@@ -15,9 +15,8 @@ namespace Nethermind.Consensus.IndexTables;
 /// Each level maintains up to <see cref="Eip8304Constants.TablesPerLevel"/> tables.
 /// When the limit is exceeded, the table with the smallest first block at that level
 /// is evicted. This implementation is thread-safe for concurrent reads and writes
-/// but does not persist across node restarts, and keys tables by <c>(level, firstBlock)</c>
-/// only, so competing blocks at the same height overwrite each other (a persistent,
-/// branch-keyed store will replace this for production use).
+/// but does not persist across node restarts (missing entries can be recovered historically
+/// from block headers and receipts; a persistent database store can replace this for production use).
 /// </remarks>
 public class IndexTableStore : IIndexTableStore
 {
@@ -55,10 +54,15 @@ public class IndexTableStore : IIndexTableStore
                     minBlock = kvp.Key.FirstBlock;
             }
 
-            if (latestDict.TryRemove((level, minBlock), out Hash256? evictedHash))
+            if (latestDict.TryRemove((level, minBlock), out _))
             {
-                dict.TryRemove((level, minBlock, evictedHash), out _);
-                dict.TryRemove((level, minBlock, null), out _);
+                foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
+                {
+                    if (kvp.Key.Level == level && kvp.Key.FirstBlock == minBlock)
+                    {
+                        dict.TryRemove(kvp.Key, out _);
+                    }
+                }
             }
         }
     }
@@ -70,8 +74,9 @@ public class IndexTableStore : IIndexTableStore
 
         if (blockHash is not null)
         {
-            if (dict.TryGetValue((level, firstBlock, blockHash), out IReadOnlyList<IndexEntry>? branchEntries))
-                return branchEntries;
+            return dict.TryGetValue((level, firstBlock, blockHash), out IReadOnlyList<IndexEntry>? branchEntries)
+                ? branchEntries
+                : null;
         }
 
         if (_latestByBlock[level].TryGetValue((level, firstBlock), out Hash256? latestHash))
@@ -85,14 +90,32 @@ public class IndexTableStore : IIndexTableStore
     }
 
     /// <inheritdoc />
-    public void Remove(int level, long firstBlock)
+    public void Remove(int level, long firstBlock, Hash256? blockHash)
     {
-        if (_latestByBlock[level].TryRemove((level, firstBlock), out Hash256? blockHash))
+        ConcurrentDictionary<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> dict = _entries[level];
+
+        if (blockHash is not null)
         {
-            _entries[level].TryRemove((level, firstBlock, blockHash), out _);
+            dict.TryRemove((level, firstBlock, blockHash), out _);
+            if (_latestByBlock[level].TryGetValue((level, firstBlock), out Hash256? latest) && latest == blockHash)
+            {
+                _latestByBlock[level].TryRemove((level, firstBlock), out _);
+            }
+            return;
         }
-        _entries[level].TryRemove((level, firstBlock, null), out _);
+
+        _latestByBlock[level].TryRemove((level, firstBlock), out _);
+        foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
+        {
+            if (kvp.Key.Level == level && kvp.Key.FirstBlock == firstBlock)
+            {
+                dict.TryRemove(kvp.Key, out _);
+            }
+        }
     }
+
+    /// <inheritdoc />
+    public void Remove(int level, long firstBlock) => Remove(level, firstBlock, null);
 
     /// <inheritdoc />
     public void InvalidateAbove(long blockNumber)

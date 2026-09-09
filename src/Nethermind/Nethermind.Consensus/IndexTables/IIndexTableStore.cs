@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.IndexTables;
 /// <remarks>
 /// Each level maintains a ring buffer of <see cref="Nethermind.Core.Eip8304Constants.TablesPerLevel"/>
 /// tables. When a new table is stored and the ring buffer is full, the oldest table at
-/// that level is evicted. Implementations must survive node restarts.
+/// that level is evicted. A production implementation should persist across node restarts.
 /// <para>See <see href="https://eips.ethereum.org/EIPS/eip-8304">EIP-8304</see>.</para>
 /// </remarks>
 public interface IIndexTableStore
@@ -37,9 +37,14 @@ public interface IIndexTableStore
     IReadOnlyList<IndexEntry>? Get(int level, long firstBlock, Hash256? blockHash = null);
 
     /// <summary>
-    /// Removes a table entry, used during reorg invalidation.
+    /// Removes a table entry for a specific block hash, or all branch variants if blockHash is null.
     /// </summary>
-    void Remove(int level, long firstBlock);
+    void Remove(int level, long firstBlock, Hash256? blockHash);
+
+    /// <summary>
+    /// Removes all table entries for the given level and first block across all branch variants.
+    /// </summary>
+    void Remove(int level, long firstBlock) => Remove(level, firstBlock, null);
 
     /// <summary>
     /// Removes every table that covers a block above <paramref name="blockNumber"/>.

@@ -23,13 +23,13 @@ public interface IIndexProofRpcModule : IRpcModule
     [JsonRpcMethod(
         Description = "Returns an SSZ Merkle proof that a transaction is included in the EIP-8304 index table of the given level covering the given block.",
         IsImplemented = true,
-        IsSharable = true)]
+        IsSharable = false)]
     ResultWrapper<IndexProofResult?> indexProof_getTransactionProof(Hash256 txHash, long blockNumber, int level = 0);
 
     [JsonRpcMethod(
         Description = "Returns SSZ Merkle proofs for all log entries matching the given address in the EIP-8304 index table of the given level covering the given block.",
         IsImplemented = true,
-        IsSharable = true)]
+        IsSharable = false)]
     ResultWrapper<IndexProofResult[]?> indexProof_getLogAddressProofs(Address address, long blockNumber, int level = 0);
 
     [JsonRpcMethod(

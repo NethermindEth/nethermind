@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.IndexTables;
@@ -40,7 +41,11 @@ public static class IndexTableMergeScheduler
     /// Callback invoked for each table that should be published at this block.
     /// Parameters are (level, firstBlock, tableSize).
     /// </param>
-    public static void GetTablesForBlock(long blockNumber, PublishAction publishActions)
+    /// <param name="isForkActiveAt">
+    /// Optional predicate to check whether the EIP-8304 fork was active at <c>firstBlock</c>.
+    /// If provided and returns <c>false</c>, publication is skipped per the EIP-8304 specification.
+    /// </param>
+    public static void GetTablesForBlock(long blockNumber, PublishAction publishActions, Func<long, bool>? isForkActiveAt = null)
     {
         for (int level = 1; level < Eip8304Constants.TableSizes.Length; level++)
         {
@@ -57,6 +62,10 @@ public static class IndexTableMergeScheduler
                 continue;
 
             if (candidateFirst % tableSize != 0)
+                continue;
+
+            // EIP-8304: If the fork was not active at first_block, do not publish a table.
+            if (isForkActiveAt is not null && !isForkActiveAt(candidateFirst))
                 continue;
 
             publishActions(level, candidateFirst, tableSize);

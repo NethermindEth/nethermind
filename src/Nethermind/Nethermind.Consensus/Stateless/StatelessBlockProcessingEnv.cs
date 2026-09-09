@@ -102,7 +102,7 @@ public class StatelessBlockProcessingEnv(
             new WithdrawalProcessor(WorldState, logManager),
             new StatelessExecutionRequestsProcessor(txProcessor),
             blockAccessListManager,
-            new IndexTableHandler(txProcessor, new IndexTableStore())
+            new IndexTableHandler(txProcessor, new IndexTableStore(), specProvider, statelessBlockTree, NullReceiptStorage.Instance)
         );
     }
 

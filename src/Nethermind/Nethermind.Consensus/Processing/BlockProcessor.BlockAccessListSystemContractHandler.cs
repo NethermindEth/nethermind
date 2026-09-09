@@ -19,7 +19,7 @@ public partial class BlockProcessor
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IBlockAccessListManager balManager,
-        IIndexTableHandler indexTableHandler)
+        IIndexTableHandler? indexTableHandler = null)
         : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
@@ -44,6 +44,18 @@ public partial class BlockProcessor
             => balManager.ProcessWithdrawals(block, spec);
 
         public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
-            => indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
+            => balManager.CommitIndexTableRoots(block, receipts, spec, tracer);
+
+        public void RollbackBlock(Block block)
+        {
+            balManager.RollbackBlock(block);
+            indexTableHandler?.RollbackBlock(block);
+        }
+
+        public void UpdateFinalBlockHash(Block block)
+        {
+            balManager.UpdateFinalBlockHash(block);
+            indexTableHandler?.UpdateFinalBlockHash(block);
+        }
     }
 }

@@ -10,6 +10,8 @@ namespace Nethermind.Consensus.IndexTables;
 public class NullIndexTableHandler : IIndexTableHandler
 {
     public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer) { }
+    public void RollbackBlock(Block block) { }
+    public void UpdateFinalBlockHash(Block block) { }
 
     public static IIndexTableHandler Instance { get; } = new NullIndexTableHandler();
 }

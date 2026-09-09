@@ -158,4 +158,69 @@ public class IndexTableStoreTests
             Assert.That(latest[0].CompareTo(branchB[0]), Is.EqualTo(0));
         });
     }
+
+    [Test]
+    public void Remove_deletes_all_branch_variants_at_height()
+    {
+        IndexTableStore store = new();
+        List<IndexEntry> branchA = [IndexEntry.CreateBlock(TestItem.KeccakA, 50)];
+        List<IndexEntry> branchB = [IndexEntry.CreateBlock(TestItem.KeccakB, 50)];
+
+        store.Store(0, 50, branchA, TestItem.KeccakC);
+        store.Store(0, 50, branchB, TestItem.KeccakD);
+
+        store.Remove(0, 50);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(0, 50, TestItem.KeccakC), Is.Null);
+            Assert.That(store.Get(0, 50, TestItem.KeccakD), Is.Null);
+            Assert.That(store.Get(0, 50), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Remove_with_specific_block_hash_deletes_only_that_variant()
+    {
+        IndexTableStore store = new();
+        List<IndexEntry> branchA = [IndexEntry.CreateBlock(TestItem.KeccakA, 50)];
+        List<IndexEntry> branchB = [IndexEntry.CreateBlock(TestItem.KeccakB, 50)];
+
+        store.Store(0, 50, branchA, TestItem.KeccakC);
+        store.Store(0, 50, branchB, TestItem.KeccakD);
+
+        store.Remove(0, 50, TestItem.KeccakC);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(0, 50, TestItem.KeccakC), Is.Null);
+            Assert.That(store.Get(0, 50, TestItem.KeccakD), Is.Not.Null);
+            Assert.That(store.Get(0, 50), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Eviction_removes_all_branch_variants_when_height_ages_out()
+    {
+        IndexTableStore store = new();
+        List<IndexEntry> branchA = [IndexEntry.CreateBlock(TestItem.KeccakA, 0)];
+        List<IndexEntry> branchB = [IndexEntry.CreateBlock(TestItem.KeccakB, 0)];
+
+        store.Store(0, 0, branchA, TestItem.KeccakA);
+        store.Store(0, 0, branchB, TestItem.KeccakB);
+
+        // Store 1024 additional heights (from 1 to 1024), pushing total heights to 1025 > Capacity (1024)
+        for (long height = 1; height <= 1024; height++)
+        {
+            store.Store(0, height, [IndexEntry.CreateBlock(TestItem.KeccakC, (ulong)height)], TestItem.KeccakC);
+        }
+
+        // Height 0 must be evicted, and BOTH branch variants must be gone
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(0, 0, TestItem.KeccakA), Is.Null);
+            Assert.That(store.Get(0, 0, TestItem.KeccakB), Is.Null);
+            Assert.That(store.Get(0, 0), Is.Null);
+        }
+    }
 }

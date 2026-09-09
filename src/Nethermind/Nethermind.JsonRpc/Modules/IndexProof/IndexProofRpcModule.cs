@@ -15,6 +15,9 @@ namespace Nethermind.JsonRpc.Modules.IndexProof;
 /// </summary>
 public class IndexProofRpcModule(IIndexTableStore store) : IIndexProofRpcModule
 {
+    /// <summary>Maximum number of log proofs returned in a single query to protect against DoS.</summary>
+    public const int MaxLogProofs = 1024;
+
     public ResultWrapper<IndexProofResult?> indexProof_getTransactionProof(Hash256 txHash, long blockNumber, int level = 0)
     {
         if (!TryGetTableParameters(level, blockNumber, out long firstBlock, out int tableSize))
@@ -49,6 +52,11 @@ public class IndexProofRpcModule(IIndexTableStore store) : IIndexProofRpcModule
                 leafIndices.Add(i);
             }
         }
+
+        if (leafIndices.Count > MaxLogProofs)
+            return ResultWrapper<IndexProofResult[]?>.Fail(
+                $"Query matched {leafIndices.Count} logs, exceeding the limit of {MaxLogProofs} proofs per request.",
+                ErrorCodes.InvalidRequest);
 
         // One tree build for the whole result set; per-proof generation is quadratic in table size.
         IndexEntryProof[] proofs = IndexProofEngine.GenerateProofs(entries, leafIndices);

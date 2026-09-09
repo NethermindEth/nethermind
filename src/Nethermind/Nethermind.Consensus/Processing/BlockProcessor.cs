@@ -95,19 +95,36 @@ public partial class BlockProcessor(
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
+            _systemContractHandler.RollbackBlock(block);
             throw new BlockAccessListSequentialRetryException(ex);
         }
         catch (BlockAccessListManager.ParallelExecutionException ex) when (
             _balManager.ParallelExecutionEnabled &&
             ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
         {
+            _systemContractHandler.RollbackBlock(block);
             throw new BlockAccessListSequentialRetryException(blockAccessListException);
+        }
+        catch
+        {
+            _systemContractHandler.RollbackBlock(block);
+            throw;
         }
         finally
         {
             if (!processed) block.DisposeAccountChanges();
         }
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
+        try
+        {
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+        }
+        catch
+        {
+            _systemContractHandler.RollbackBlock(block);
+            _systemContractHandler.RollbackBlock(suggestedBlock);
+            throw;
+        }
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
@@ -244,6 +261,8 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
+
+        _systemContractHandler.UpdateFinalBlockHash(block);
 
         return receipts;
     }

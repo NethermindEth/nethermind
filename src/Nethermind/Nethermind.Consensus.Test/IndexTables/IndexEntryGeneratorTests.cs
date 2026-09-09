@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,7 +21,16 @@ public class IndexEntryGeneratorTests
 
         IndexEntryGenerator.GenerateEntries(header, [], [], null, entries);
 
-        Assert.That(entries.Any(e => e.Type == IndexEntryType.Block), Is.False);
+        bool hasBlock = false;
+        foreach (IndexEntry entry in entries)
+        {
+            if (entry.Type == IndexEntryType.Block)
+            {
+                hasBlock = true;
+                break;
+            }
+        }
+        Assert.That(hasBlock, Is.False);
     }
 
     [Test]
@@ -35,9 +43,12 @@ public class IndexEntryGeneratorTests
 
         IndexEntryGenerator.GenerateEntries(header, [], [], parentHash, entries);
 
-        Assert.That(entries.Count, Is.EqualTo(1));
-        Assert.That(entries[0].Type, Is.EqualTo(IndexEntryType.Block));
-        Assert.That(entries[0].BlockNumber, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Count, Is.EqualTo(1));
+            Assert.That(entries[0].Type, Is.EqualTo(IndexEntryType.Block));
+            Assert.That(entries[0].BlockNumber, Is.EqualTo(4));
+        }
     }
 
     [Test]
@@ -53,7 +64,7 @@ public class IndexEntryGeneratorTests
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(header, [tx], [receipt], parentHash, entries);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // 1 block entry + 1 tx entry = 2
             Assert.That(entries.Count, Is.EqualTo(2));
@@ -61,7 +72,7 @@ public class IndexEntryGeneratorTests
             Assert.That(entries[0].BlockNumber, Is.EqualTo(9)); // parent block
             Assert.That(entries[1].Type, Is.EqualTo(IndexEntryType.Transaction));
             Assert.That(entries[1].BlockNumber, Is.EqualTo(10));
-        });
+        }
     }
 
     [Test]
@@ -80,16 +91,16 @@ public class IndexEntryGeneratorTests
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(header, [tx], [receipt], parentHash, entries);
 
-        // 1 block + 1 tx + 1 address + 2 topics = 5
-        Assert.That(entries.Count, Is.EqualTo(5));
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
+            // 1 block + 1 tx + 1 address + 2 topics = 5
+            Assert.That(entries.Count, Is.EqualTo(5));
             Assert.That(entries[0].Type, Is.EqualTo(IndexEntryType.Block));
             Assert.That(entries[1].Type, Is.EqualTo(IndexEntryType.Transaction));
             Assert.That(entries[2].Type, Is.EqualTo(IndexEntryType.LogAddress));
             Assert.That(entries[3].Type, Is.EqualTo(IndexEntryType.LogTopic0));
             Assert.That(entries[4].Type, Is.EqualTo(IndexEntryType.LogTopic1));
-        });
+        }
     }
 
     [Test]
@@ -98,38 +109,37 @@ public class IndexEntryGeneratorTests
         Hash256 parentHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).TestObject;
 
-        // Tx0 has 2 logs, Tx1 has 1 log
-        LogEntry log0a = new(TestItem.AddressA, [], [TestItem.KeccakC]);
-        LogEntry log0b = new(TestItem.AddressB, [], [TestItem.KeccakD]);
-        LogEntry log1a = new(TestItem.AddressC, [], [TestItem.KeccakE]);
-
-        Transaction tx0 = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
-        Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
-
-        TxReceipt receipt0 = Build.A.Receipt.WithLogs(log0a, log0b).TestObject;
-        TxReceipt receipt1 = Build.A.Receipt.WithLogs(log1a).TestObject;
+        (Transaction[] txs, TxReceipt[] receipts) = CreateTwoTransactionsWithLogs();
 
         List<IndexEntry> entries = [];
-        IndexEntryGenerator.GenerateEntries(
-            header, [tx0, tx1], [receipt0, receipt1], parentHash, entries);
+        IndexEntryGenerator.GenerateEntries(header, txs, receipts, parentHash, entries);
 
-        // Verify cumulative log counts via binary encoding of the transaction entries.
-        // Tx0 should have cumulativeLogCount=0, Tx1 should have cumulativeLogCount=2.
-        List<IndexEntry> txEntries = entries.Where(e => e.Type == IndexEntryType.Transaction).ToList();
+        List<IndexEntry> txEntries = [];
+        foreach (IndexEntry e in entries)
+        {
+            if (e.Type == IndexEntryType.Transaction)
+            {
+                txEntries.Add(e);
+            }
+        }
+
         Assert.That(txEntries.Count, Is.EqualTo(2));
 
         // Encode tx0 and check cumulative log count (last 4 bytes)
         byte[] buf0 = new byte[txEntries[0].EncodedLength];
         txEntries[0].Encode(buf0);
-        // Cumulative log count at bytes [46..49] for tx entry (50 bytes total)
         uint cumulativeLogCount0 = (uint)(buf0[46] << 24 | buf0[47] << 16 | buf0[48] << 8 | buf0[49]);
-        Assert.That(cumulativeLogCount0, Is.EqualTo(0u));
 
         // Encode tx1 and check cumulative log count
         byte[] buf1 = new byte[txEntries[1].EncodedLength];
         txEntries[1].Encode(buf1);
         uint cumulativeLogCount1 = (uint)(buf1[46] << 24 | buf1[47] << 16 | buf1[48] << 8 | buf1[49]);
-        Assert.That(cumulativeLogCount1, Is.EqualTo(2u));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cumulativeLogCount0, Is.EqualTo(0u));
+            Assert.That(cumulativeLogCount1, Is.EqualTo(2u));
+        }
     }
 
     [Test]
@@ -138,43 +148,43 @@ public class IndexEntryGeneratorTests
         Hash256 parentHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).TestObject;
 
-        // Tx0 has 2 logs (log indices 0, 1)
-        // Tx1 has 1 log (log index 0 — resets per tx)
-        LogEntry log0a = new(TestItem.AddressA, [], [TestItem.KeccakC]);
-        LogEntry log0b = new(TestItem.AddressB, [], [TestItem.KeccakD]);
-        LogEntry log1a = new(TestItem.AddressC, [], [TestItem.KeccakE]);
-
-        Transaction tx0 = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
-        Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
-
-        TxReceipt receipt0 = Build.A.Receipt.WithLogs(log0a, log0b).TestObject;
-        TxReceipt receipt1 = Build.A.Receipt.WithLogs(log1a).TestObject;
+        (Transaction[] txs, TxReceipt[] receipts) = CreateTwoTransactionsWithLogs();
 
         List<IndexEntry> entries = [];
-        IndexEntryGenerator.GenerateEntries(
-            header, [tx0, tx1], [receipt0, receipt1], parentHash, entries);
+        IndexEntryGenerator.GenerateEntries(header, txs, receipts, parentHash, entries);
 
-        // Extract log address entries and verify log indices via binary encoding
-        List<IndexEntry> logAddressEntries = entries.Where(e => e.Type == IndexEntryType.LogAddress).ToList();
+        List<IndexEntry> logAddressEntries = [];
+        foreach (IndexEntry e in entries)
+        {
+            if (e.Type == IndexEntryType.LogAddress)
+            {
+                logAddressEntries.Add(e);
+            }
+        }
+
         Assert.That(logAddressEntries.Count, Is.EqualTo(3));
 
         // First tx, first log: logIndex=0
-        byte[] buf = new byte[logAddressEntries[0].EncodedLength];
-        logAddressEntries[0].Encode(buf);
-        uint logIndex0 = (uint)(buf[34] << 24 | buf[35] << 16 | buf[36] << 8 | buf[37]);
-        Assert.That(logIndex0, Is.EqualTo(0u));
+        byte[] buf0 = new byte[logAddressEntries[0].EncodedLength];
+        logAddressEntries[0].Encode(buf0);
+        uint logIndex0 = (uint)(buf0[34] << 24 | buf0[35] << 16 | buf0[36] << 8 | buf0[37]);
 
         // First tx, second log: logIndex=1
-        buf = new byte[logAddressEntries[1].EncodedLength];
-        logAddressEntries[1].Encode(buf);
-        uint logIndex1 = (uint)(buf[34] << 24 | buf[35] << 16 | buf[36] << 8 | buf[37]);
-        Assert.That(logIndex1, Is.EqualTo(1u));
+        byte[] buf1 = new byte[logAddressEntries[1].EncodedLength];
+        logAddressEntries[1].Encode(buf1);
+        uint logIndex1 = (uint)(buf1[34] << 24 | buf1[35] << 16 | buf1[36] << 8 | buf1[37]);
 
         // Second tx, first log: logIndex=0 (reset per transaction)
-        buf = new byte[logAddressEntries[2].EncodedLength];
-        logAddressEntries[2].Encode(buf);
-        uint logIndex2 = (uint)(buf[34] << 24 | buf[35] << 16 | buf[36] << 8 | buf[37]);
-        Assert.That(logIndex2, Is.EqualTo(0u));
+        byte[] buf2 = new byte[logAddressEntries[2].EncodedLength];
+        logAddressEntries[2].Encode(buf2);
+        uint logIndex2 = (uint)(buf2[34] << 24 | buf2[35] << 16 | buf2[36] << 8 | buf2[37]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logIndex0, Is.EqualTo(0u));
+            Assert.That(logIndex1, Is.EqualTo(1u));
+            Assert.That(logIndex2, Is.EqualTo(0u));
+        }
     }
 
     [Test]
@@ -192,18 +202,23 @@ public class IndexEntryGeneratorTests
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(header, [tx], [receipt], parentHash, entries);
 
-        List<IndexEntry> topicEntries = entries.Where(e =>
-            e.Type is IndexEntryType.LogTopic0 or IndexEntryType.LogTopic1
-                   or IndexEntryType.LogTopic2 or IndexEntryType.LogTopic3).ToList();
+        List<IndexEntry> topicEntries = [];
+        foreach (IndexEntry e in entries)
+        {
+            if (e.Type is >= IndexEntryType.LogTopic0 and <= IndexEntryType.LogTopic3)
+            {
+                topicEntries.Add(e);
+            }
+        }
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(topicEntries.Count, Is.EqualTo(4));
             Assert.That(topicEntries[0].Type, Is.EqualTo(IndexEntryType.LogTopic0));
             Assert.That(topicEntries[1].Type, Is.EqualTo(IndexEntryType.LogTopic1));
             Assert.That(topicEntries[2].Type, Is.EqualTo(IndexEntryType.LogTopic2));
             Assert.That(topicEntries[3].Type, Is.EqualTo(IndexEntryType.LogTopic3));
-        });
+        }
     }
 
     [Test]
@@ -216,7 +231,16 @@ public class IndexEntryGeneratorTests
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(header, [tx], [Build.A.Receipt.WithLogs().TestObject], TestItem.KeccakA, entries);
 
-        Assert.That(entries.Any(e => e.Type == IndexEntryType.Transaction), Is.True);
+        bool hasTx = false;
+        foreach (IndexEntry e in entries)
+        {
+            if (e.Type == IndexEntryType.Transaction)
+            {
+                hasTx = true;
+                break;
+            }
+        }
+        Assert.That(hasTx, Is.True);
     }
 
     [Test]
@@ -232,9 +256,30 @@ public class IndexEntryGeneratorTests
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(header, [tx], [Build.A.Receipt.WithLogs(log).TestObject], TestItem.KeccakA, entries);
 
-        Assert.That(
-            entries.Count(e => e.Type is >= IndexEntryType.LogTopic0 and <= IndexEntryType.LogTopic3),
-            Is.EqualTo(4));
+        int topicCount = 0;
+        foreach (IndexEntry e in entries)
+        {
+            if (e.Type is >= IndexEntryType.LogTopic0 and <= IndexEntryType.LogTopic3)
+            {
+                topicCount++;
+            }
+        }
+        Assert.That(topicCount, Is.EqualTo(4));
+    }
+
+    private static (Transaction[] Txs, TxReceipt[] Receipts) CreateTwoTransactionsWithLogs()
+    {
+        LogEntry log0a = new(TestItem.AddressA, [], [TestItem.KeccakC]);
+        LogEntry log0b = new(TestItem.AddressB, [], [TestItem.KeccakD]);
+        LogEntry log1a = new(TestItem.AddressC, [], [TestItem.KeccakE]);
+
+        Transaction tx0 = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
+
+        TxReceipt receipt0 = Build.A.Receipt.WithLogs(log0a, log0b).TestObject;
+        TxReceipt receipt1 = Build.A.Receipt.WithLogs(log1a).TestObject;
+
+        return ([tx0, tx1], [receipt0, receipt1]);
     }
 
     [TestCase(1, 0)]

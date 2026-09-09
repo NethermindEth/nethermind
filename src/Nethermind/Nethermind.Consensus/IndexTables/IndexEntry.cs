@@ -183,19 +183,15 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// </remarks>
     public int CompareTo(IndexEntry other)
     {
-        // Compare type IDs first
         int cmp = ((ushort)_type).CompareTo((ushort)other._type);
         if (cmp != 0) return cmp;
 
-        // Compare content bytes
         cmp = _content.AsSpan().SequenceCompareTo(other._content.AsSpan());
         if (cmp != 0) return cmp;
 
-        // Compare block number
         cmp = _blockNumber.CompareTo(other._blockNumber);
         if (cmp != 0) return cmp;
 
-        // Compare remaining position fields (for non-block entries)
         if (_type is not IndexEntryType.Block)
         {
             cmp = _field1.CompareTo(other._field1);

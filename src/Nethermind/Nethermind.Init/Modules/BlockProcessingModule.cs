@@ -77,6 +77,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddSingleton<IIndexTableStore, IndexTableStore>()
             .AddScoped<IIndexTableHandler, IndexTableHandler>()
+            .AddSingleton<IIndexTableHandlerFactory, IndexTableHandlerFactory>()
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))

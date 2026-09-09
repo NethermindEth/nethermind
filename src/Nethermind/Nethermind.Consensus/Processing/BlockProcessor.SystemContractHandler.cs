@@ -26,7 +26,7 @@ public partial class BlockProcessor
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
-        IIndexTableHandler indexTableHandler) : ISystemContractHandler
+        IIndexTableHandler? indexTableHandler = null) : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
@@ -50,7 +50,13 @@ public partial class BlockProcessor
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
-            => indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
+            => (indexTableHandler ?? NullIndexTableHandler.Instance).CommitIndexTableRoots(block, receipts, spec, tracer);
+
+        public void RollbackBlock(Block block)
+            => (indexTableHandler ?? NullIndexTableHandler.Instance).RollbackBlock(block);
+
+        public void UpdateFinalBlockHash(Block block)
+            => (indexTableHandler ?? NullIndexTableHandler.Instance).UpdateFinalBlockHash(block);
     }
 }
 

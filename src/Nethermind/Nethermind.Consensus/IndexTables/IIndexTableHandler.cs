@@ -19,5 +19,17 @@ public interface IIndexTableHandler
     /// <param name="receipts">The block's transaction receipts.</param>
     /// <param name="spec">The active release spec.</param>
     /// <param name="tracer">The transaction tracer.</param>
-    void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer);
+    void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer) { }
+
+    /// <summary>
+    /// Rolls back any cached index tables published by a failed or rejected block.
+    /// </summary>
+    /// <param name="block">The block to roll back.</param>
+    void RollbackBlock(Block block) { }
+
+    /// <summary>
+    /// Updates cached index tables with the block's finalized header hash after post-execution state root calculation.
+    /// </summary>
+    /// <param name="block">The finalized block.</param>
+    void UpdateFinalBlockHash(Block block) { }
 }
