@@ -13,11 +13,13 @@ and post-process it to XML.
 path below follows that choice. **Never compare timings across the two boxes.**
 
 The amd64 box holds the full snapshot set, so it serves every `client`,
-`reference_client` and `state_layout`. The arm64 box carries exactly one kind of
-snapshot set — Nethermind in the **flat** layout — so there `client`,
-`reference_client` and `state_layout` are held to `nethermind` / `none` / `flat`,
-and an image it would have to build is refused as well (that box's ~19G root disk
-dies under a build). `resolve` checks those limits against the selected runner.
+`reference_client` and `state_layout`. The arm64 box carries the Nethermind
+**flat** set plus one directory per additionally provisioned client
+(`/data/<client>/<client>-<block>`), so there any single provisioned `client`
+runs in single-node mode, `reference_client` is held to `none`, `state_layout`
+to `flat`, and an image it would have to build is refused as well (that box's
+small root disk dies under a build). Sweep mode stays Nethermind-only on both
+boxes (below). `resolve` checks those limits against the selected runner.
 
 Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
 Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
