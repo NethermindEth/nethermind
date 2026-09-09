@@ -250,14 +250,10 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
-        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        ValidationResult gasReservationResult = FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(transaction, releaseSpec);
+        if (!gasReservationResult)
         {
-            return FrameTxValidation.FrameGasOverflow;
-        }
-
-        if (executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
-        {
-            return FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap);
+            return gasReservationResult;
         }
 
         // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
@@ -275,6 +271,51 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         }
 
         return ValidationResult.Success;
+    }
+}
+
+/// <summary>The frame-transaction rules of <see cref="FrameTxFieldsTxValidator"/> whose verdict a change of
+/// head specification can flip: the EIP-7906 POST_TX gate and the spec-priced execution-gas reservation.</summary>
+/// <remarks>
+/// Everything else that validator checks is fork-independent frame shape, so re-running it against a new head
+/// could not change the answer. These two can: a POST_TX frame admitted after EIP-7906 is invalid on a head
+/// below it, and a repricing of the intrinsic or floored gas moves the reservation across the EIP-7825 cap
+/// while <see cref="GasLimitCapTxValidator"/> skips frame transactions. This therefore also runs in
+/// <see cref="HeadTxValidator"/>. A transaction carrying no frames — every other type, and a reloaded light
+/// record — passes through; a light record is judged when its body is read back.
+/// </remarks>
+public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
+{
+    public static readonly FrameTxHeadFieldsTxValidator Instance = new();
+    private FrameTxHeadFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null)
+        {
+            return ValidationResult.Success;
+        }
+
+        if (!releaseSpec.IsEip7906Enabled)
+        {
+            foreach (TxFrame frame in frames)
+            {
+                if (frame.Mode == TxFrame.ModePostTx)
+                {
+                    return FrameTxValidation.PostTxNotEnabled;
+                }
+            }
+        }
+
+        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        {
+            return FrameTxValidation.FrameGasOverflow;
+        }
+
+        return executionReservation > Eip7825Constants.DefaultTxGasLimitCap
+            ? FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap)
+            : ValidationResult.Success;
     }
 }
 
@@ -323,7 +364,8 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 /// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
 /// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> also sits in the frame-transaction
 /// composite and enforces it through <see cref="FrameTxValidation.IsWellFormed"/>, on decoder-built and
-/// caller-built transactions alike.</remarks>
+/// caller-built transactions alike. A transaction admitted after EIP-8272 is invalid on a head below it, so this
+/// also runs in <see cref="HeadTxValidator"/> to evict it at the transition.</remarks>
 public sealed class FrameTxEnvelopeTxValidator : ITxValidator
 {
     public static readonly FrameTxEnvelopeTxValidator Instance = new();
