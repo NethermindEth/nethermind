@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -5333,6 +5334,91 @@ namespace Nethermind.TxPool.Test
                 "a bucket whose lowest entry is keyed must not be filtered out wholesale");
             Assert.That(readyForSender, Has.Length.EqualTo(1));
         }
+
+        /// <remarks>A keyed sequence starts at 0, so a blob-carrying frame transaction sorts ahead of the sender's
+        /// type-3 transactions; evicting it consumes no account nonce, so it leaves no gap for them to cascade over.</remarks>
+        [Test]
+        public async Task Evicting_a_keyed_blob_carrying_frame_tx_does_not_cascade_into_the_senders_blob_txs()
+        {
+            const ulong nonceKey = 0xbeef;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
+
+            // The account nonce advances independently of the key, whose sequence stays at 0 and sorts first.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [nonceKey]);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 2), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Control: an all-ordinary sender whose lowest entry goes stale must still cascade into the rest of its bucket.
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Control: the set [0] aliases the account nonce, so this blob-carrying frame tx does spend it and must
+            // cascade like any other type-3 entry — the exemption is the keyed domain, not the frame format.
+            Transaction accountDomainFrame = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true,
+                nonceKeys: [UInt256.Zero], sender: TestItem.PrivateKeyC);
+            Assert.That(_txPool.SubmitTx(accountDomainFrame, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyC, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _stateProvider.Set(KeyedNonceManager.StorageSlot(TestItem.AddressA, nonceKey), [1]);
+            _stateProvider.IncrementNonce(TestItem.AddressB);
+            _stateProvider.IncrementNonce(TestItem.AddressC);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(keyed.Hash!, out _), Is.False,
+                    "the keyed entry must be evicted, or this pins nothing");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA), Has.Length.EqualTo(2),
+                    "a keyed eviction must not take the sender's unrelated blob transactions with it");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressB), Is.Empty,
+                    "an ordinary sender's stale lowest entry must still cascade");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressC), Is.Empty,
+                    "a stale account-domain frame transaction must still cascade");
+            }
+        }
+
+        /// <remarks>GapNonceFilter sizes a sender's nonce window by its pending count, and a keyed frame transaction
+        /// shares the sender's bucket while spending no account nonce — counting it would admit a gap nothing fills.</remarks>
+        [TestCase(true, TestName = "a keyed frame transaction shares the sender's bucket")]
+        [TestCase(false, TestName = "the sender's bucket is empty")]
+        public void Keyed_blob_carrying_frame_tx_does_not_widen_the_senders_nonce_gap_window(bool submitKeyed)
+        {
+            const ulong nonceKey = 0xbeef;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            if (submitKeyed)
+            {
+                Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [nonceKey]);
+                Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 1), TxHandlingOptions.PersistentBroadcast),
+                    Is.EqualTo(AcceptTxResult.NonceGap),
+                    "nothing sits at the account nonce, so nonce 1 is a gap however the bucket is filled");
+                Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 0), TxHandlingOptions.PersistentBroadcast),
+                    Is.EqualTo(AcceptTxResult.Accepted),
+                    "the account's own nonce must still be admitted");
+            }
+        }
+
+        private Transaction OrdinaryBlobTx(PrivateKey sender, ulong nonce) => Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Eip8141Prototype.Instance)
+            .WithNonce(nonce)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
 
         private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
         {

@@ -32,9 +32,11 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             }
 
+            // Keyed entries share the sender's bucket but spend no account nonce, so counting them would widen the
+            // sender's nonce window by nonces nothing behind them will ever fill.
             int numberOfSenderTxsInPending = tx.CarriesBlobs
-                ? _blobTxs.GetBucketCount(tx.SenderAddress!)
-                : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
+                ? _blobTxs.GetAccountDomainBucketCount(tx.SenderAddress!)
+                : _txs.GetAccountDomainBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             ulong currentNonce = state.SenderAccount.Nonce;
             ulong nextNonceInOrder = currentNonce + (ulong)numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
