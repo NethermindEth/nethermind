@@ -163,7 +163,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _ipResolver,
             _nodeStatsManager,
             _timestamper,
-            processExitSource ?? Substitute.For<IProcessExitSource>(),            
+            processExitSource ?? Substitute.For<IProcessExitSource>(),
             new Ecdsa(),
             _logManager)
         {
