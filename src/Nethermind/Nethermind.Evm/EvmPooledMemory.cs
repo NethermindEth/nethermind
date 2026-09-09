@@ -252,6 +252,7 @@ public struct EvmPooledMemory
         return true;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public ReadOnlyMemory<byte> Inspect(in UInt256 location, in UInt256 length)
     {
         if (length.IsZero)
@@ -283,6 +284,7 @@ public struct EvmPooledMemory
         return GetBackingMemory((int)location, (int)length);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private void ClearForTracing(ulong size)
     {
         ulong capacity = GetBackingCapacity();
@@ -584,6 +586,7 @@ public struct EvmPooledMemory
 
     private static readonly TraceMemory EmptyTraceMemory = new(0, default);
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public TraceMemory GetTrace()
     {
         ulong size = Size;
