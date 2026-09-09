@@ -703,7 +703,13 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [SelfVerify(Eip7825Constants.DefaultTxGasLimitCap + 1)],
+            // Split across the two budgets, so the envelope total clears the cap while the execution
+            // reservation that does bound a frame transaction stays well under it.
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                    executionGasLimit: PrefixFrameGas, stateGasLimit: Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, Array.Empty<byte>())
+            ],
             FrameSignatures = [],
         };
         // The decoder, not the caller, derives GasLimit from the frames; mirror it or the cap is never reached.

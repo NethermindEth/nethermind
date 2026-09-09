@@ -3124,7 +3124,7 @@ namespace Nethermind.TxPool.Test
         private static TxFrame SelfVerifyPrefixFrame() =>
             new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>());
 
-        private Transaction SignedFrameTx(TxFrame[] frames)
+        private Transaction SignedFrameTx(TxFrame[] frames, RecentRootReference[] recentRootReferences = null)
         {
             Transaction frameTx = new()
             {
@@ -3134,6 +3134,7 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = TestItem.PrivateKeyA.Address,
                 Frames = frames,
                 FrameSignatures = [],
+                RecentRootReferences = recentRootReferences,
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
@@ -3142,6 +3143,133 @@ namespace Nethermind.TxPool.Test
             frameTx.Hash = frameTx.CalculateHash();
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             return frameTx;
+        }
+
+        /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
+        public enum FrameForkGate { PostTx, RecentRoots, ExecutionGasCap }
+
+        // Each is admitted under a head that allows it, and the block that included it under the next head would
+        // be invalid, so the pool must drop it at the transition. The retained rows hold the same transaction
+        // across the same transition with the gate untouched, so the flipped flag is the only variable.
+        [TestCase(FrameForkGate.PostTx, true, TestName = "post_tx_frame_is_evicted_when_the_new_head_drops_eip7906")]
+        [TestCase(FrameForkGate.PostTx, false, TestName = "post_tx_frame_is_retained_while_eip7906_stays_active")]
+        [TestCase(FrameForkGate.RecentRoots, true, TestName = "recent_root_reference_is_evicted_when_the_new_head_drops_eip8272")]
+        [TestCase(FrameForkGate.RecentRoots, false, TestName = "recent_root_reference_is_retained_while_eip8272_stays_active")]
+        [TestCase(FrameForkGate.ExecutionGasCap, true, TestName = "frame_execution_reservation_is_evicted_when_repriced_over_the_cap")]
+        [TestCase(FrameForkGate.ExecutionGasCap, false, TestName = "frame_execution_reservation_is_retained_while_the_price_holds")]
+        public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
+            {
+                IsEip7906Enabled = gate == FrameForkGate.PostTx,
+                IsEip8272Enabled = gate == FrameForkGate.RecentRoots,
+                IsEip2780Enabled = false
+            };
+            OverridableReleaseSpec postForkSpec = new(Eip8141Prototype.Instance)
+            {
+                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.PostTx),
+                IsEip8272Enabled = preForkSpec.IsEip8272Enabled && !(revokedAtFork && gate == FrameForkGate.RecentRoots),
+                IsEip2780Enabled = revokedAtFork && gate == FrameForkGate.ExecutionGasCap
+            };
+            TestSpecProvider provider = new(preForkSpec)
+            {
+                NextForkSpec = postForkSpec,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, provider);
+            _headInfo.BlockGasLimit = long.MaxValue;
+            Transaction frameTx = ForkGatedFrameTx(gate, preForkSpec, postForkSpec, revokedAtFork);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+
+            await AddEmptyBlock();
+            AssertRevalidatedForHead();
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(revokedAtFork ? 0 : 1));
+        }
+
+        private Transaction ForkGatedFrameTx(FrameForkGate gate, IReleaseSpec preForkSpec, IReleaseSpec postForkSpec, bool revokedAtFork)
+        {
+            switch (gate)
+            {
+                case FrameForkGate.PostTx:
+                    return SelfVerifyFrameTx(
+                        new TxFrame(TxFrame.ModePostTx, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+                case FrameForkGate.RecentRoots:
+                    return SignedFrameTx(
+                        [SelfVerifyPrefixFrame()],
+                        [new RecentRootReference(TestItem.KeccakA, slot: 1, TestItem.KeccakB)]);
+                default:
+                    // Reserving half the EIP-2780 transfer charge below the cap, so pricing the transfer at the
+                    // next head is the whole difference. The half also absorbs the few tokens by which a fresh
+                    // signature's own byte pattern moves the reservation.
+                    Transaction probe = ValueTransferFrameTx(executionGasLimit: 0);
+                    Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, preForkSpec, out ulong baseline, out _), Is.True);
+
+                    Transaction nearCap = ValueTransferFrameTx(
+                        Eip7825Constants.DefaultTxGasLimitCap - baseline - GasCostOf.TxValueCostEip2780 / 2);
+                    // Pins the arithmetic here rather than through the pool sweep it feeds.
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(nearCap, preForkSpec).AsBool(), Is.True);
+                        Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(nearCap, postForkSpec).AsBool(), Is.EqualTo(!revokedAtFork));
+                    }
+
+                    return nearCap;
+            }
+        }
+
+        private Transaction ValueTransferFrameTx(ulong executionGasLimit) =>
+            SignedFrameTx([
+                SelfVerifyPrefixFrame(),
+                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
+            ]);
+
+        // A locally built frame tx skips the decoder that measures its EIP-8272 reference calldata, so admission
+        // has to measure before it prices: head revalidation prices the measured transaction, and anything
+        // admitted on the lighter reading is pooled, unselectable and evicted at the next transition.
+        [TestCase(true, TestName = "frame_tx_over_the_cap_once_its_reference_calldata_is_measured_is_refused")]
+        [TestCase(false, TestName = "frame_tx_under_the_cap_once_its_reference_calldata_is_measured_is_admitted")]
+        public void SubmitTx_LocallyBuiltFrameTx_IsPricedOnMeasuredReferenceCalldata(bool overCapOnceMeasured)
+        {
+            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
+            _headInfo.BlockGasLimit = long.MaxValue;
+
+            RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences];
+            for (int i = 0; i < references.Length; i++)
+            {
+                references[i] = new RecentRootReference(TestItem.KeccakA, (ulong)i + 1, TestItem.KeccakB);
+            }
+
+            Transaction probe = ReferenceFrameTx(0);
+            probe.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(references);
+            Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, spec, out ulong measured, out _), Is.True);
+
+            ulong headroom = Eip7825Constants.DefaultTxGasLimitCap - measured;
+            Transaction frameTx = ReferenceFrameTx(overCapOnceMeasured ? headroom + 1 : headroom);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(!overCapOnceMeasured), result.ToString());
+                Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(frameTx, spec).AsBool(), Is.EqualTo(!overCapOnceMeasured));
+            }
+
+            Transaction ReferenceFrameTx(ulong executionGasLimit) => SignedFrameTx(
+                [
+                    SelfVerifyPrefixFrame(),
+                    new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
+                ],
+                references);
         }
 
         [TestCase(100_000UL, 0UL, 0, true)]
@@ -5474,7 +5602,64 @@ namespace Nethermind.TxPool.Test
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],
             },
+            // The optional frame extensions carry their own fork gates, and each needs a transaction that
+            // uses it before the sweep can see the gate move a verdict.
+            new Transaction
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames =
+                [
+                    FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+                    new TxFrame(TxFrame.ModePostTx, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                ],
+                FrameSignatures = [],
+                NonceKeys = [UInt256.One],
+            },
+            new Transaction
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)],
+                FrameSignatures = [],
+                NonceKeys = [UInt256.One],
+                RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 1, TestItem.KeccakB)],
+            },
+            NearCapFrameTx(),
         ];
+
+        /// <summary>A frame transaction reserving execution gas just under the EIP-7825 cap, so a repricing flag
+        /// moves it across.</summary>
+        /// <remarks>The presence gates above are reached by every corpus entry, but the priced leg of the head
+        /// validator reads far more of the specification than they do and no other entry sits near enough to the
+        /// cap for a price to move its verdict. Sized half the EIP-2780 transfer charge below the cap, so
+        /// enabling that charge is the whole difference between valid and invalid.</remarks>
+        private static Transaction NearCapFrameTx()
+        {
+            ReleaseSpec baseline = SpecChangeMarkerBaseline();
+            if (!FrameTxValidation.TryCalculateBlockGasReservations(ValueTransferFrameTx(0), baseline, out ulong reserved, out _))
+            {
+                throw new InvalidOperationException("the near-cap corpus entry could not be priced");
+            }
+
+            return ValueTransferFrameTx(Eip7825Constants.DefaultTxGasLimitCap - reserved - GasCostOf.TxValueCostEip2780 / 2);
+
+            static Transaction ValueTransferFrameTx(ulong executionGasLimit) => new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames =
+                [
+                    FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+                    new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
+                ],
+                FrameSignatures = [],
+                NonceKeys = [UInt256.One],
+            };
+        }
 
         /// <summary>A stable rendering of how <paramref name="validator"/> judges <paramref name="corpus"/>.</summary>
         private static string Verdicts(ITxValidator validator, IReleaseSpec spec, Transaction[] corpus)
