@@ -113,7 +113,6 @@ internal sealed class XdcConsensusMessageHandler(
 
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
-        // Each certificate stands on its own, so a peer that is behind on one of them still contributes the other.
         SyncInfo syncInfo = syncInfoMsg.SyncInfo;
         LogSkippedCertificate(syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert));
         LogSkippedCertificate(syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert));
