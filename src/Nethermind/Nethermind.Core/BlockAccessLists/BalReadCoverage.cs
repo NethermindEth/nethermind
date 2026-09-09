@@ -47,6 +47,7 @@ public sealed class BalReadCoverage
     /// <summary>Marks a declared read, returning false for slots outside the read plan.</summary>
     public bool TryMark(in StorageCell cell)
     {
+        ObjectDisposedException.ThrowIf(Plan is null, this);
         if (!_hasLastCell || !_lastCell.Equals(cell))
         {
             Plan!.TryGetOrdinal(cell, out _lastOrdinal);
@@ -63,7 +64,9 @@ public sealed class BalReadCoverage
             _slice[word] |= mask;
             _block[word] |= mask;
             if (cell.Address != Eip7002Constants.WithdrawalRequestPredeployAddress
-                && cell.Address != Eip7251Constants.ConsolidationRequestPredeployAddress)
+                && cell.Address != Eip7251Constants.ConsolidationRequestPredeployAddress
+                && cell.Address != Eip8282Constants.BuilderDepositRequestPredeployAddress
+                && cell.Address != Eip8282Constants.BuilderExitRequestPredeployAddress)
                 ChargeableReadCount++;
         }
         return true;
