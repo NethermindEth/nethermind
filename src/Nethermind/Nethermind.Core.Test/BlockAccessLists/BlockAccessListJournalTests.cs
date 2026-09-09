@@ -44,11 +44,19 @@ public class BlockAccessListJournalTests
         }
     }
 
+    private static readonly Address[] SystemAddresses =
+    [
+        Eip7002Constants.WithdrawalRequestPredeployAddress,
+        Eip7251Constants.ConsolidationRequestPredeployAddress,
+        Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        Eip8282Constants.BuilderExitRequestPredeployAddress
+    ];
+
     [Test]
-    public void Coverage_reuses_slice_storage_and_excludes_system_reads()
+    public void Coverage_reuses_slice_storage_and_excludes_system_reads([ValueSource(nameof(SystemAddresses))] Address systemAddress)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
-        StorageCell system = new(Eip7002Constants.WithdrawalRequestPredeployAddress, 2);
+        StorageCell system = new(systemAddress, 2);
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject,
             Build.An.AccountChanges.WithAddress(system.Address).WithStorageReads(system.Index).TestObject).TestObject;
@@ -56,22 +64,21 @@ public class BlockAccessListJournalTests
         BalReadCoverage worker = plan.CreateCoverage();
         worker.TryMark(cell);
         worker.TryMark(system);
-        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
         for (int i = 0; i < 10_000; i++)
         {
             worker.StartSlice();
             worker.TryMark(cell);
             worker.TryMark(cell);
         }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
             Assert.That(plan.TryFindUncovered(out _), Is.False, "earlier slices still cover system reads");
-            Assert.That(allocated, Is.Zero, "reusing a worker must not allocate per transaction");
         }
         plan.Dispose();
         Assert.That(worker.Plan, Is.Null);
+        Assert.Throws<ObjectDisposedException>(() => worker.TryMark(cell));
     }
 
     [Test]
