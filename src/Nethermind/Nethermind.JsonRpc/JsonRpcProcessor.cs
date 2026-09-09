@@ -218,8 +218,19 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         bool handledAsCompleteBody = false;
                         if (options.InputMode == JsonRpcInputMode.SingleDocument && isCompleted && buffer.IsSingleSegment)
                         {
-                            (CompleteBodyOutcome outcome, JsonRpcResult.Entry? entry) =
-                                await TryProcessCompleteBodyAsync(buffer.First, context, sink, startTime, cancellationToken);
+                            CompleteBodyOutcome outcome;
+                            JsonRpcResult.Entry? entry;
+                            try
+                            {
+                                (outcome, entry) = await TryProcessCompleteBodyAsync(buffer.First, context, sink, startTime, cancellationToken);
+                            }
+                            catch
+                            {
+                                // Only dispatch throws out of that call - its decode steps are guarded - and a
+                                // dispatched body is spent, so report it consumed as a normal return would.
+                                advance.Consumed(in buffer);
+                                throw;
+                            }
 
                             if (outcome != CompleteBodyOutcome.NotApplicable)
                             {
@@ -417,7 +428,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime,
         CancellationToken cancellationToken)
     {
-        ReadOnlySequence<byte> bodySequence = new(body);
         JsonRpcRequest? directRequest = null;
         ReadOnlyMemory<byte> batchBody = default;
         bool isBatch = false;
@@ -431,7 +441,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
         {
-            return (CompleteBodyOutcome.ParseError, GetParsingError(startTime, in bodySequence, context, "Error during parsing/validation.", ex));
+            return (CompleteBodyOutcome.ParseError, CreateBodyParsingError(body, context, startTime, ex));
         }
 
         if (directRequest is not null)
@@ -451,10 +461,16 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
         catch (JsonException ex)
         {
-            return (CompleteBodyOutcome.ParseError, GetParsingError(startTime, in bodySequence, context, "Error during parsing/validation.", ex));
+            return (CompleteBodyOutcome.ParseError, CreateBodyParsingError(body, context, startTime, ex));
         }
 
         return (CompleteBodyOutcome.Handled, null);
+    }
+
+    private JsonRpcResult.Entry CreateBodyParsingError(ReadOnlyMemory<byte> body, JsonRpcContext context, long startTime, Exception exception)
+    {
+        ReadOnlySequence<byte> bodySequence = new(body);
+        return GetParsingError(startTime, in bodySequence, context, "Error during parsing/validation.", exception);
     }
 
     private void Handle(ConnectionResetException e)
