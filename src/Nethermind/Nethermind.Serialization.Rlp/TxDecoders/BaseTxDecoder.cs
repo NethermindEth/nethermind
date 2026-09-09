@@ -27,7 +27,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
+        DecodePayload(transaction, ref decoderContext, lastCheck, rlpBehaviors);
 
         if (decoderContext.Position < lastCheck)
         {
@@ -97,6 +97,12 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         int txPayloadLength = Rlp.LengthOfSequence(txContentLength);
         return txPayloadLength;
     }
+
+    /// <summary>Decodes the payload fields, given the end this transaction's payload declares.</summary>
+    /// <remarks>The reader can span a whole message, so a decoder sizing an allocation from the bytes on hand
+    /// must bound it by <paramref name="payloadEnd"/> and not by the reader's length.</remarks>
+    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+        => DecodePayload(transaction, ref decoderContext, rlpBehaviors);
 
     protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
