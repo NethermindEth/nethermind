@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Logging;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Types;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
 /// <summary>
@@ -13,42 +11,48 @@ namespace Nethermind.Xdc;
 internal class SyncInfoManager(
     IXdcConsensusContext xdcContext,
     IQuorumCertificateManager qcManager,
-    ITimeoutCertificateManager timeoutManager,
-    ILogManager logManager) : ISyncInfoManager
+    ITimeoutCertificateManager timeoutManager) : ISyncInfoManager
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<SyncInfoManager>();
-
     public SyncInfo GetSyncInfo() => new(xdcContext.HighestQC, xdcContext.HighestTC);
 
-    public void ProcessSyncInfo(SyncInfo syncInfo)
+    public string? ProcessQuorumCertificate(QuorumCertificate quorumCert)
     {
+        if (quorumCert is null)
+            return "QC is missing";
+
+        ulong knownRound = xdcContext.HighestQC.ProposedBlockInfo.Round;
+        if (quorumCert.ProposedBlockInfo.Round <= knownRound)
+            return $"QC round {quorumCert.ProposedBlockInfo.Round} is not above the already known {knownRound}";
+
+        if (!qcManager.VerifyCertificate(quorumCert, out string error))
+            return $"QC is invalid: {error}";
+
         try
         {
-            timeoutManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
-            qcManager.CommitCertificate(syncInfo.HighestQuorumCert);
+            qcManager.CommitCertificate(quorumCert);
         }
         catch (IncomingMessageBlockNotFoundException e)
         {
             //We can get SyncInfo while syncing
-            if (_logger.IsDebug)
-                _logger.Debug($"Couldn't find {nameof(SyncInfo)} block {e.IncomingBlockHash.ToShortString()} #{e.IncomingBlockNumber} ");
+            return $"QC block {e.IncomingBlockHash.ToShortString()} #{e.IncomingBlockNumber} not found";
         }
+
+        return null;
     }
 
-    public bool VerifySyncInfo(SyncInfo syncInfo, [NotNullWhen(false)] out string error)
+    public string? ProcessTimeoutCertificate(TimeoutCertificate timeoutCert)
     {
-        if (xdcContext.HighestQC.ProposedBlockInfo.Round >= syncInfo.HighestQuorumCert.ProposedBlockInfo.Round &&
-            xdcContext.HighestTC is not null && xdcContext.HighestTC?.Round >= syncInfo.HighestTimeoutCert.Round)
-        {
-            error = $"SyncInfo rounds are equal or lower than already known - QC={xdcContext.HighestQC.ProposedBlockInfo.Round}/{syncInfo.HighestQuorumCert.ProposedBlockInfo.Round} TC={xdcContext.HighestTC.Round}/{syncInfo.HighestTimeoutCert.Round}";
-            return false;
-        }
+        if (timeoutCert is null)
+            return "TC is missing";
 
-        if (!qcManager.VerifyCertificate(syncInfo.HighestQuorumCert, out error) ||
-            !timeoutManager.VerifyTimeoutCertificate(syncInfo.HighestTimeoutCert, out error))
-        {
-            return false;
-        }
-        return true;
+        ulong? knownRound = xdcContext.HighestTC?.Round;
+        if (timeoutCert.Round <= knownRound)
+            return $"TC round {timeoutCert.Round} is not above the already known {knownRound}";
+
+        if (!timeoutManager.VerifyTimeoutCertificate(timeoutCert, out string? error))
+            return $"TC is invalid: {error}";
+
+        timeoutManager.ProcessTimeoutCertificate(timeoutCert);
+        return null;
     }
 }
