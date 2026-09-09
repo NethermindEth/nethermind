@@ -173,8 +173,6 @@ public class XdcSpecProviderTests
         }
     }
 
-    // Mirrors the reference client's --miner-gasprice: a stated floor is used when it is above the default and
-    // raised to the default when it is below, so the network floor can never be weakened.
     [TestCase(null, XdcConstants.DefaultMinGasPrice, TestName = "Unset uses the reference default")]
     [TestCase(1ul, XdcConstants.DefaultMinGasPrice, TestName = "Below the default is raised to it")]
     [TestCase(0ul, XdcConstants.DefaultMinGasPrice, TestName = "Zero is not gasless outside a subnet")]
@@ -196,7 +194,6 @@ public class XdcSpecProviderTests
         }
     }
 
-    // The subnet fork's GetMinGasPrice has no 50x transition and honours a gasless node.
     [Test]
     public void MinimumGasPrice_on_a_subnet_is_raised_from_genesis_and_zero_means_gasless()
     {

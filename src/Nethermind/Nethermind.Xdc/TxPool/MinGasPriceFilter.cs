@@ -60,7 +60,6 @@ internal sealed class MinGasPriceFilter(
         if (minimum.IsZero || tx.IsSpecialTransaction(spec))
             return AcceptTxResult.Accepted;
 
-        // MaxFeePerGas is the fee cap of a 1559 transaction and the gas price of a legacy one.
         UInt256 gasPrice = tx.MaxFeePerGas;
         if (gasPrice.IsZero)
             return Reject(tx, ZeroGasPrice, minimum);

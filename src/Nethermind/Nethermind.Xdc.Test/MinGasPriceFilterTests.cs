@@ -63,7 +63,6 @@ internal class MinGasPriceFilterTests
             Assert.That(result.ToString(), Does.Contain(expectedMessage));
     }
 
-    // A gasless subnet states a zero floor, which disables both checks as common.Gasless does in the reference.
     [TestCase(0ul, TestName = "Gasless accepts a zero gas price")]
     [TestCase(1ul, TestName = "Gasless accepts one wei")]
     public void Accept_ZeroFloor_AcceptsAnything(ulong gasPrice)
@@ -74,8 +73,6 @@ internal class MinGasPriceFilterTests
         Assert.That(Accept(filter, tx), Is.EqualTo(AcceptTxResult.Accepted));
     }
 
-    // The reference client compares tx.GasPrice(), which is the fee cap for a dynamic fee transaction. XDC's base fee
-    // equals the floor, so comparing the priority fee instead would reject everything the reference accepts.
     [TestCase(MinGasPrice, 1ul, true, TestName = "Fee cap at the minimum accepted regardless of priority fee")]
     [TestCase(MinGasPrice - 1, MinGasPrice - 1, false, TestName = "Fee cap below the minimum rejected")]
     public void Accept_Uses1559FeeCap(ulong maxFeePerGas, ulong maxPriorityFeePerGas, bool expectedAccepted)
