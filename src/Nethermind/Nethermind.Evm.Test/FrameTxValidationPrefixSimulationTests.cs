@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -424,7 +425,11 @@ public class FrameTxValidationPrefixSimulationTests
         // work the gas schedule underprices, and it aborts rather than merely recording.
         DeployContract(Sender, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromTicks(1));
+        ManualTimeProvider time = new();
+        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromTicks(1), time);
+        Assert.That(tracer.TimedOut, Is.False, "the bound is measured from the tracer's own clock, which has not moved");
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
 
         Assert.Throws<OperationCanceledException>(() => Run(tx, tracer));
         Assert.That(tracer.TimedOut, Is.True);
@@ -912,8 +917,8 @@ public class FrameTxValidationPrefixSimulationTests
         return (Run(tx, tracer, slotNumber, extraOptions), tracer);
     }
 
-    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default) =>
-        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout);
+    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null) =>
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout, time);
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {
