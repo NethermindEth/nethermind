@@ -132,18 +132,24 @@ public ref partial struct EvmStack
         => Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref slot).ByteSwap());
 
     /// <summary>
-    /// A copy of <paramref name="slots"/> with every word reversed into big-endian bytes, which is how
-    /// tracers and their converters read a stack.
+    /// Writes the slot at <paramref name="slot"/> to <paramref name="word"/> reversed into big-endian
+    /// bytes, which is how tracers and their converters read a stack.
     /// </summary>
-    public static byte[] ToBigEndianWords(ReadOnlySpan<byte> slots)
+    public static void WriteBigEndianWord(ReadOnlySpan<byte> slot, Span<byte> word)
     {
-        byte[] words = new byte[slots.Length];
+        Debug.Assert(slot.Length >= WordSize && word.Length >= WordSize, "Both sides hold a whole word.");
+        Unsafe.WriteUnaligned(
+            ref MemoryMarshal.GetReference(word),
+            Unsafe.ReadUnaligned<EvmWord>(ref MemoryMarshal.GetReference(slot)).ByteSwap());
+    }
+
+    /// <summary><inheritdoc cref="WriteBigEndianWord" path="/summary"/> for every whole slot in <paramref name="slots"/>.</summary>
+    public static void WriteBigEndianWords(ReadOnlySpan<byte> slots, Span<byte> words)
+    {
         for (int offset = 0; offset + WordSize <= slots.Length; offset += WordSize)
         {
-            EvmWord word = Unsafe.ReadUnaligned<EvmWord>(ref MemoryMarshal.GetReference(slots.Slice(offset))).ByteSwap();
-            Unsafe.WriteUnaligned(ref words[offset], word);
+            WriteBigEndianWord(slots.Slice(offset), words.Slice(offset));
         }
-        return words;
     }
 
 

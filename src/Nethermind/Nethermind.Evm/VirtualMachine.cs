@@ -108,6 +108,9 @@ public partial class VirtualMachine<TGasPolicy>(
     private ICodeInfoRepository _codeInfoRepository = null!;
 
     private ReadOnlyMemory<byte> _returnDataBuffer;
+    /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
+    /// <remarks>Reused across instructions, like the stack it mirrors; only a stack-tracing run allocates it.</remarks>
+    private byte[] _tracedStackWords = [];
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -1415,8 +1418,14 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingStack)
         {
-            // Slots hold words in limb layout; tracers read them as the big-endian words the EVM shows.
-            _txTracer.SetOperationStack(new TraceStack(EvmStack.ToBigEndianWords(vmState.MemoryStacks((int)stackValue.Head).Span)));
+            // Slots hold words in limb layout; TraceStack reverses the ones the tracer reads into the
+            // big-endian words the EVM shows.
+            Memory<byte> slots = vmState.MemoryStacks((int)stackValue.Head);
+            if (_tracedStackWords.Length < slots.Length)
+            {
+                _tracedStackWords = new byte[EvmStack.MaxStackSize * EvmStack.WordSize];
+            }
+            _txTracer.SetOperationStack(new TraceStack(slots, _tracedStackWords.AsMemory(0, slots.Length)));
         }
 
         if (_txTracer.IsTracingReturnData)
