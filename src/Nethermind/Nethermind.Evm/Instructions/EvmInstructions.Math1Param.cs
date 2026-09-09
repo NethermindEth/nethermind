@@ -182,10 +182,12 @@ public static partial class EvmInstructions
         ref ulong result = ref As<byte, ulong>(ref topRef);
         ref ulong position = ref Add(ref result, EvmStack.WordSize / sizeof(ulong));
         // Limb layout: the index is limb 0, and big-endian byte `index` is slot byte `31 - index`.
-        nint index = (nint)position;
+        // The limb is ranged unsigned: read as signed, any index with bit 63 set would pass the check
+        // as a negative offset and address outside the value slot.
+        ulong index = position;
         byte selected = (Add(ref position, 1) | Add(ref position, 2) | Add(ref position, 3)) == 0
             && index < EvmStack.WordSize
-            ? Add(ref topRef, EvmStack.WordSize - 1 - index)
+            ? Add(ref topRef, EvmStack.WordSize - 1 - (nint)index)
             : (byte)0;
         result = selected;
         Add(ref result, 1) = 0;
@@ -236,7 +238,8 @@ public static partial class EvmInstructions
         // Limb layout: the index is limb 0; big-endian byte `31 - index` is slot byte `index`, which
         // carries the sign, and every byte above it takes the fill.
         ref ulong index = ref As<byte, ulong>(ref Add(ref bytesRef, EvmStack.WordSize));
-        nint position = (nint)index;
+        // Ranged unsigned for the same reason as BYTE above.
+        ulong position = index;
         if ((Add(ref index, 1) | Add(ref index, 2) | Add(ref index, 3)) != 0 || position >= EvmStack.WordSize - 1)
         {
             // If the index is out-of-range, no extension is needed.
