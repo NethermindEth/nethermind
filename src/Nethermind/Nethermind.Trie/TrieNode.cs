@@ -105,6 +105,12 @@ namespace Nethermind.Trie
 
         internal bool IsWarmerResolved => (ReadBlockAndFlags() & _warmerResolvedMask) != 0;
 
+        /// <summary>Whether this node is owned by the trie warmer and has not yet been resolved with verified RLP.</summary>
+        /// <remarks>Shared parent slots retain the hash of an unresolved warmer-owned child so live readers
+        /// use their own snapshot lookup.</remarks>
+        internal bool IsUnresolvedWarmerOwned =>
+            (ReadBlockAndFlags() & (_warmerOwnedMask | _warmerResolvedMask)) == _warmerOwnedMask;
+
         internal void MarkWarmerOwned()
         {
             byte previousValue = ReadBlockAndFlags();
@@ -1454,7 +1460,8 @@ namespace Nethermind.Trie
                                 Hash256 keccak = rlpReader.DecodeKeccak();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                data = childOrRef = child;
+                                data = child.IsUnresolvedWarmerOwned ? keccak : child;
+                                childOrRef = child;
 
                                 break;
                             }
@@ -1634,7 +1641,8 @@ namespace Nethermind.Trie
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    data = childOrRef = child;
+                                    data = child.IsUnresolvedWarmerOwned ? keccak : child;
+                                    childOrRef = child;
 
                                     break;
                                 }

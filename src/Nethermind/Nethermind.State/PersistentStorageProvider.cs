@@ -699,7 +699,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
-        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public int Count => _dictionary.Count;
@@ -728,7 +728,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count != 0)
             {
                 previousEntries = _dictionary;
-                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(Comparer.Instance);
+                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(UInt256Comparer.Instance);
                 _spare = null;
             }
 
@@ -780,18 +780,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
-
-        private sealed class Comparer : IEqualityComparer<UInt256>
-        {
-            public static Comparer Instance { get; } = new();
-
-            private Comparer() { }
-
-            public bool Equals(UInt256 x, UInt256 y) => x.Equals(in y);
-
-            public int GetHashCode([DisallowNull] UInt256 obj)
-                => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
-        }
 
         public void UnmarkClear() => _missingAreDefault = false;
 

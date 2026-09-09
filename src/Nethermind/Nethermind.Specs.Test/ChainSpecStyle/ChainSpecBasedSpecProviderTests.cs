@@ -136,58 +136,38 @@ public class ChainSpecBasedSpecProviderTests
     }
 
 
-    [TestCase(0ul, null, false, false, false)]
-    [TestCase(0ul, 0ul, false, false, false)]
-    [TestCase(0ul, 4660ul, false, false, false)]
-    [TestCase(1ul, 4660ul, false, false, false)]
-    [TestCase(1ul, 4661ul, false, false, false)]
-    [TestCase(1ul, 4672ul, false, false, false)]
-    [TestCase(2ul, 4673ul, false, false, true)]
-    [TestCase(3ul, 4680ul, false, false, true)]
-    [TestCase(4ul, 4672ul, false, true, false)]
-    [TestCase(5ul, 4672ul, true, true, false)]
-    [TestCase(5ul, 4673ul, true, true, false)]
-    [TestCase(6ul, 4680ul, true, true, false)]
-    [NonParallelizable]
-    public void Logs_warning_when_timestampActivation_happens_before_blockActivation(ulong blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
+    // A chainspec is either misconfigured or it is not, so a verdict that changes with the activation being
+    // queried was never a verdict about the file: (2, 4673) and (3, 4680) - which the predecessor of this test
+    // required the warning for - are a node whose head is below the block-4 fork asking what applies at the
+    // current time, i.e. an ordinary syncing node (#13202).
+    [TestCase(0ul, null)]
+    [TestCase(0ul, 0ul)]
+    [TestCase(0ul, 4660ul)]
+    [TestCase(1ul, 4660ul)]
+    [TestCase(1ul, 4661ul)]
+    [TestCase(1ul, 4672ul)]
+    [TestCase(2ul, 4673ul)]
+    [TestCase(3ul, 4680ul)]
+    [TestCase(4ul, 4672ul)]
+    [TestCase(5ul, 4672ul)]
+    [TestCase(5ul, 4673ul)]
+    [TestCase(6ul, 4680ul)]
+    public void Never_warns_that_the_chainspec_is_misconfigured(ulong blockNumber, ulong? timestamp)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
-        Assert.That(chainSpec.Parameters.Eip2537Transition, Is.Null);
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
         ILogger logger = new(iLogger);
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
-        ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
-            .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
-        expectedSpec.Name = "Genesis_with_non_zero_timestamp";
-        expectedSpec.IsEip3651Enabled = true;
-        expectedSpec.IsEip3198Enabled = isEip3198Enabled;
-        expectedSpec.IsEip3855Enabled = isEip3855Enabled;
-        expectedSpec.Eip1559TransitionBlock = 0;
-        expectedSpec.DifficultyBombDelay = 0;
-        List<ForkActivation> forkActivationsToTest =
-        [
-            (blockNumber, timestamp),
-        ];
 
-        foreach (ForkActivation activation in forkActivationsToTest)
-        {
-            provider.GetSpec(activation);
-        }
+        provider.GetSpec(new ForkActivation(blockNumber, timestamp));
 
-        if (receivesWarning)
-        {
-            iLogger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
-        }
-        else
-        {
-            iLogger.DidNotReceive().Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
-        }
+        iLogger.DidNotReceive().Warn(Arg.Is<string>(static text => text.Contains("misconfigured")));
     }
 
     public static IEnumerable<TestCaseData> SepoliaActivations
@@ -733,6 +713,79 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(activation.Timestamp, Is.Null.Or.LessThanOrEqualTo(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp),
                 $"{chain} schedules a fork above the unscheduled-fork band, which GetFinalSpec would skip");
         }
+    }
+
+    // #13202: "Chainspec file is misconfigured!" was emitted once per eth_estimateGas call on a syncing mainnet
+    // node running the chainspec we ship. eth_estimateGas asks for the spec at (head + 1, wall-clock now) - see
+    // BlockchainBridge's treatBlockHeaderAsParentBlock path - so while the head is below the chain's largest block
+    // transition and the clock is past the first timestamp fork, the old per-call check was always true.
+    [TestCase("foundation")]
+    [TestCase("gnosis")]
+    public void No_misconfiguration_warning_for_a_shipped_chainspec_below_its_last_block_transition(string chain)
+    {
+        ChainSpec chainSpec = LoadChainSpecFromChainFolder(chain);
+        CapturingLogger logger = new();
+        ChainSpecBasedSpecProvider provider = new(chainSpec, new OneLoggerLogManager(new(logger)));
+
+        ulong lastBlockTransition = provider.TransitionActivations
+            .Where(static a => a.Timestamp is null)
+            .Select(static a => a.BlockNumber)
+            .DefaultIfEmpty(0UL)
+            .Max();
+        ulong firstTimestampTransition = provider.TransitionActivations
+            .Where(static a => a.Timestamp is not null)
+            .Select(static a => a.Timestamp!.Value)
+            .Min();
+
+        // A node halfway to the last block-number fork, asked "what spec applies right now?".
+        ulong staleHead = lastBlockTransition / 2;
+        ulong now = firstTimestampTransition + 1;
+        provider.GetSpec(new ForkActivation(staleHead + 1, now));
+
+        Assert.That(
+            logger.Lines.Where(static l => l.Contains("misconfigured")),
+            Is.Empty,
+            $"{chain} is correctly configured; a node below block {lastBlockTransition} is behind, not misconfigured");
+    }
+
+    // The replacement check, which the old one could not express: a block-number transition placed after a timestamp
+    // transition ends up compared by timestamp and can never activate, so it must not load silently.
+    [Test]
+    public void Block_transition_after_a_timestamp_transition_is_rejected_at_load()
+    {
+        (ForkActivation, IReleaseSpec)[] transitions =
+        [
+            (new ForkActivation(0UL), Frontier.Instance),
+            (new ForkActivation(100UL, 1_000UL), Shanghai.Instance),
+            (new ForkActivation(200UL), London.Instance),
+        ];
+
+        Assert.That(
+            () => new TransitionsOnlySpecProvider(transitions),
+            Throws.InstanceOf<ArgumentException>().With.Message.Contains("can never activate"));
+    }
+
+    private sealed class CapturingLogger : InterfaceLogger
+    {
+        public List<string> Lines { get; } = [];
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
+
+        public void Info(string text) => Lines.Add(text);
+        public void Warn(string text) => Lines.Add(text);
+        public void Debug(string text) => Lines.Add(text);
+        public void Trace(string text) => Lines.Add(text);
+        public void Error(string text, Exception? ex = null) => Lines.Add(text);
+    }
+
+    private sealed class TransitionsOnlySpecProvider : SpecProviderBase
+    {
+        public TransitionsOnlySpecProvider((ForkActivation Activation, IReleaseSpec Spec)[] transitions) =>
+            LoadTransitions(transitions);
     }
 
     private ChainSpec LoadChainSpecFromChainFolder(string chain)
