@@ -364,10 +364,11 @@ public class PersistenceManager(
             loader.ConvertAndRegister(baseSnap);
             Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
 
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryCompacted);
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryBase);
+
             ArrayPoolList<StateId> single = new(1) { baseSnap.To };
             await compactor.EnqueueAsync(single, GetCurrentPersistedStateId().BlockNumber, _cts.Token);
-
-            snapshotRepository.RemoveAndReleaseInMemoryKnownState(baseSnap.To, SnapshotTier.InMemoryBase);
         }
         finally
         {
