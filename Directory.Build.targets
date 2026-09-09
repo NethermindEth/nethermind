@@ -1,11 +1,28 @@
 <Project>
 
-  <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
-    <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
+  <PropertyGroup Condition="'$(NethermindPgoProfile)' != '' and '$(PublishReadyToRun)' == 'true'">
+    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--embed-pgo-data;--hot-cold-splitting</PublishReadyToRunCrossgen2ExtraArgs>
+    <PublishReadyToRunCrossgen2ExtraArgs Condition="'$(NethermindPgoCallChain)' == ''">$(PublishReadyToRunCrossgen2ExtraArgs);--method-layout:pettishansen</PublishReadyToRunCrossgen2ExtraArgs>
+    <PublishReadyToRunCrossgen2ExtraArgs Condition="'$(NethermindPgoCallChain)' != ''">$(PublishReadyToRunCrossgen2ExtraArgs);--method-layout:callfrequency;--callchain-profile:&quot;$(NethermindPgoCallChain)&quot;</PublishReadyToRunCrossgen2ExtraArgs>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(PublishReadyToRun)' == 'true' and Exists('$(NethermindPgoProfile)')">
+  <PropertyGroup Condition="'$(NethermindPgoProfile)' != '' and '$(NethermindPgoCrossModule)' == 'true' and '$(PublishReadyToRun)' == 'true'">
+    <PublishReadyToRunCrossgen2ExtraArgs>$(PublishReadyToRunCrossgen2ExtraArgs);--opt-cross-module:*</PublishReadyToRunCrossgen2ExtraArgs>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(NethermindPgoProfile)' != '' and '$(PublishReadyToRun)' == 'true'">
     <PublishReadyToRunPgoFiles Include="$(NethermindPgoProfile)" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(NethermindPgoProfile)' != '' and '$(PublishAot)' == 'true'">
+    <MibcFile Include="$(NethermindPgoProfile)" />
+  </ItemGroup>
+
+  <Target Name="ValidateNethermindPgoProfile" BeforeTargets="PrepareForPublish" Condition="'$(NethermindPgoProfile)' != '' or '$(NethermindPgoCallChain)' != ''">
+    <Error Condition="'$(NethermindPgoCallChain)' != '' and ('$(NethermindPgoProfile)' == '' or '$(PublishReadyToRun)' != 'true')" Text="NethermindPgoCallChain requires NethermindPgoProfile and PublishReadyToRun=true." />
+    <Error Condition="!Exists('$(NethermindPgoProfile)')" Text="PGO profile does not exist: $(NethermindPgoProfile). Download or generate the profile artifact before publishing." />
+    <Error Condition="'$(PublishReadyToRun)' != 'true' and '$(PublishAot)' != 'true'" Text="NethermindPgoProfile requires PublishReadyToRun=true or PublishAot=true." />
+    <Error Condition="'$(NethermindPgoCallChain)' != '' and !Exists('$(NethermindPgoCallChain)')" Text="CallFrequency profile does not exist: $(NethermindPgoCallChain)." />
+  </Target>
 
 </Project>

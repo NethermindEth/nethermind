@@ -24,6 +24,11 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # constructs and compile correctly today, so suspect them first if the guest ever starts
 # failing silently again.
 OPT_FLAGS ?= -Ot
+PGO_PROFILE ?=
+ifneq ($(PGO_PROFILE),)
+PGO_MOUNT := --mount type=bind,source="$(abspath $(PGO_PROFILE))",target=/nethermind/profile.mibc,readonly
+PGO_FLAGS := --mibc /nethermind/profile.mibc
+endif
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -64,9 +69,11 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		$(PGO_MOUNT) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		$(OPT_FLAGS) \
+		$(PGO_FLAGS) \
 		$(TRIM_FLAGS) \
 		--no-pie \
 		--no-pthread \

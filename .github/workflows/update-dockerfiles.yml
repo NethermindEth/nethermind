@@ -50,6 +50,7 @@ jobs:
 
           for file in "${dockerfiles[@]}"; do
             sed -i "s|\(mcr\.microsoft\.com/dotnet/sdk:\)[^[:space:]]*|\1${sdk_tag}@${sdk_digest}|" "$file"
+            sed -i -E "s/(RuntimeFrameworkVersion=)[0-9.]+/\1${runtime_version}/g" "$file"
           done
 
           runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"

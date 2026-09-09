@@ -465,3 +465,8 @@ keystore/
 
 # Clawpatch
 .clawpatch/
+
+# Generated PGO artifacts are supplied explicitly to publish.
+/src/Nethermind/Nethermind.Runner/pgo/*.mibc
+/src/Nethermind/Nethermind.Runner/pgo/*.jit*
+/src/Nethermind/Nethermind.Runner/pgo/*.callchain.json

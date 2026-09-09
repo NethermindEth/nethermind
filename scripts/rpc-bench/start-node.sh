@@ -308,6 +308,11 @@ docker_args=(
 # Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
+if [[ -n "${PGO_OUTPUT_DIR:-}" ]]; then
+  [[ "$CLIENT" == "nethermind" ]] || die "PGO collection requires Nethermind"
+  [[ -d "$PGO_OUTPUT_DIR" ]] || die "PGO_OUTPUT_DIR must already exist"
+  docker_args+=(-v "$PGO_OUTPUT_DIR:/nethermind/pgo:rw")
+fi
 perf_client_env=()
 if [[ "$PERF" == "true" ]]; then
   perf_client_env=(
