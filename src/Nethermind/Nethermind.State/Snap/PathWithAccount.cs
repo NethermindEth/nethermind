@@ -20,6 +20,12 @@ namespace Nethermind.State.Snap
         public ValueHash256 Path { get; set; }
         public Account Account { get; set; }
 
+        /// <summary>
+        /// Consecutive storage-range responses for this account that carried no slots and no proof. Snap sync
+        /// bookkeeping only; not part of the wire format.
+        /// </summary>
+        public int EmptyStorageResponses;
+
         public byte[] ToRlpValue() =>
             (Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(Account)).Bytes;
     }
