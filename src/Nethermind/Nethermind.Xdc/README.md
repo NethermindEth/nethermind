@@ -514,7 +514,6 @@ on the block number *and* the consensus round.
 | --- | --- | --- |
 | `epoch` | blocks | Epoch length; also the modulus for leader rotation. `900` on mainnet and Apothem |
 | `gap` | blocks | Distance before an epoch start at which the candidate snapshot is taken. `450` |
-| `period` | seconds | Nominal block period |
 | `switchBlock` | block | First V2 block; below it, V1 (clique-style) rules apply |
 | `switchEpoch` | epoch | Epoch number corresponding to `switchBlock`, used to number V2 epochs |
 | `reward` | XDC | Per-epoch reward pool used before `TIPUpgradeReward` |
