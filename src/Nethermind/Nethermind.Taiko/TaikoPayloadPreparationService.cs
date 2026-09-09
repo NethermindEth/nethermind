@@ -71,7 +71,7 @@ public class TaikoPayloadPreparationService(
                 }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
-                return new NoBlockProductionContext(block, UInt256.Zero);
+                return new BlockProductionSnapshot(block, UInt256.Zero);
             },
             (payloadId, existing) =>
             {
