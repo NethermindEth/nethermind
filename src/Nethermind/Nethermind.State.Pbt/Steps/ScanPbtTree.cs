@@ -54,8 +54,6 @@ public class ScanPbtTree(
 
         if (_logger.IsInfo) _logger.Info(report.Format());
 
-        if (!report.IsValid && _logger.IsWarn) _logger.Warn("The PBT scan found invalid canonical records or a root mismatch.");
-
-        exitSource.Exit(report.IsValid ? 0 : 1);
+        exitSource.Exit(0);
     }
 }

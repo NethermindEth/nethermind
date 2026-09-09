@@ -1,243 +1,332 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Text;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>Validates typed flat columns and their canonical persisted EIP-8297 tree.</summary>
-/// <remarks>Uses bounded-memory external sorting in the system temporary directory, with disk usage proportional to derived leaves.</remarks>
+/// <summary>Counts persisted flat records and the shape of their stored PBT node groups.</summary>
+/// <remarks>This inventory does not verify hashes, references or reachability and performs no point reads.</remarks>
 public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILogManager logManager)
 {
+    private const int RangesPerWorker = 16;
+    private const int PrefixSpace = 1 << 16;
+    private const int ProgressPublishInterval = 100_000;
+    private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(5);
+    private static readonly int[] PositionDepths = CreatePositionDepths();
     private readonly ILogger _logger = logManager.GetClassLogger<PbtScanner>();
 
-    /// <summary>Scans logical entries and compressed-node records, returning detected violations.</summary>
-    public Task<PbtScanReport> Scan(CancellationToken cancellationToken) => Scan(cancellationToken, null, 0, TimeProvider.System);
-
-    internal Task<PbtScanReport> Scan(CancellationToken cancellationToken, string? temporaryParent, int bufferCapacity, TimeProvider timeProvider)
+    /// <summary>Sweeps each active data column with independent parallel range readers.</summary>
+    public async Task<PbtScanReport> Scan(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (config.ScanTreeConcurrency != 0 && _logger.IsInfo) _logger.Info("PBT scan runs serially; ScanTreeConcurrency is currently ignored.");
+        int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
+        int rangeCount = (int)Math.Min((long)workerCount * RangesPerWorker, PrefixSpace);
         PbtScanReport report = new();
-        Progress progress = new(_logger, timeProvider);
-        using PbtScanLeafSorter leaves = new(temporaryParent, bufferCapacity, progress: progress.Report, cleanupFailure: exception =>
-        {
-            if (_logger.IsWarn) _logger.Warn($"Unable to remove PBT scan temporary files: {exception}");
-        });
-        if (_logger.IsInfo) _logger.Info($"PBT scan uses bounded-memory sorting with temporary files in {leaves.TemporaryDirectory}; scratch disk usage is proportional to derived leaves.");
-        ScanFlatEntries(report, leaves, progress, cancellationToken);
-        report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).Root;
-        long matchedNodes = 0;
-        if (report.InvalidLeafCount == 0)
-        {
-            PbtScanTreeBuilder builder = new((path, encoding) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (MatchesNode(path, encoding)) matchedNodes++;
-                else report.InvalidNodeCount++;
-            });
-            progress.Report("sorting leaves", 0);
-            foreach ((PbtStorageFullKey key, ValueHash256 value) in leaves.GetSorted(cancellationToken))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (report.LeafCount == 0) progress.Report("folding tree", 0);
-                builder.Add(key, value);
-                report.LeafCount++;
-                progress.Report("folding tree", report.LeafCount);
-            }
-            report.ComputedRoot = builder.Finish();
-            report.RootMatches = report.ComputedRoot == report.PersistedRoot;
-        }
-        ScanNodes(report, progress, cancellationToken);
-        // Each expected path is visited exactly once. Every actual node not successfully matched
-        // is corrupt or unreachable, so no database-sized visited set is needed.
-        report.InvalidNodeCount += report.NodeCount - matchedNodes;
-        if (_logger.IsInfo) _logger.Info($"PBT scan completed: {report.LeafCount:N0} full leaves and {report.NodeCount:N0} compressed nodes.");
-        return Task.FromResult(report);
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.NodeGroups })
+            await ScanColumn(column, CreateBounds(column, rangeCount), report, workerCount, cancellationToken);
+        return report;
     }
 
-    private void ScanFlatEntries(PbtScanReport report, PbtScanLeafSorter leaves, Progress progress, CancellationToken cancellationToken)
-    {
-        foreach (PbtColumns columnName in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes })
-        {
-            string phase = $"scanning {columnName}";
-            long entries = 0;
-            progress.Report(phase, 0);
-            using ISortedView view = OpenView(columnName);
-            while (view.MoveNext())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                report.LeafKeyBytes += view.CurrentKey.Length;
-                report.LeafBytes += view.CurrentValue.Length;
-                // Only data decoding is caught here: sort-file I/O failures must abort the scan.
-                Account? account = null;
-                CodeInfo? code = null;
-                ValueHash256 hash = default;
-                bool valid = true;
-                try
-                {
-                    if (columnName == PbtColumns.Storages)
-                    {
-                        if (!IsStorageKey(view.CurrentKey) || view.CurrentValue.Length != ValueHash256.MemorySize
-                            || view.CurrentValue.IndexOfAnyExcept((byte)0) < 0)
-                            throw new InvalidDataException("Invalid persisted PBT storage entry.");
-                    }
-                    else
-                    {
-                        if (view.CurrentKey.Length != ValueHash256.MemorySize)
-                            throw new InvalidDataException("Invalid persisted PBT hash key.");
-                        hash = new(view.CurrentKey);
-                        if (columnName == PbtColumns.Accounts)
-                        {
-                            RlpReader reader = new(view.CurrentValue);
-                            account = AccountDecoder.Instance.Decode(ref reader)
-                                ?? throw new InvalidDataException("Invalid persisted PBT account.");
-                            if (reader.Position != reader.Length) throw new InvalidDataException("Trailing PBT account bytes.");
-                            if (account.HasCode)
-                            {
-                                byte[] bytes = db.GetColumnDb(PbtColumns.Codes).Get(account.CodeHash.Bytes, ReadFlags.HintCacheMiss)
-                                    ?? throw new InvalidDataException("Missing PBT bytecode.");
-                                if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Invalid PBT bytecode hash.");
-                                code = new CodeInfo(bytes) { CodeHash = account.CodeHash.ValueHash256 };
-                            }
-                        }
-                        else if (Keccak.Compute(view.CurrentValue).ValueHash256 != hash)
-                            throw new InvalidDataException("PBT bytecode does not match its content hash.");
-                    }
-                }
-                catch (Exception exception) when (exception is InvalidDataException or RlpException or ArgumentException or IndexOutOfRangeException or OverflowException)
-                {
-                    report.InvalidLeafCount++;
-                    valid = false;
-                }
-                if (valid)
-                {
-                    if (columnName == PbtColumns.Storages)
-                        leaves.Add(new PbtStorageFullKey(view.CurrentKey), new ValueHash256(view.CurrentValue), cancellationToken);
-                    else if (account is not null)
-                        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(hash, account, code))
-                        {
-                            leaves.Add((PbtStorageFullKey)key, value, cancellationToken);
-                            progress.Report(phase, entries);
-                        }
-                }
-                progress.Report(phase, ++entries);
-            }
-        }
-    }
-
-    private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
-        (key.Length == Eip8297KeyDerivation.StorageKeyLength && key[0] == Eip8297KeyDerivation.StorageZone)
-        || (key.Length == Eip8297KeyDerivation.AccountKeyLength && key[0] == Eip8297KeyDerivation.AccountZone
-            && key[^1] >= PbtKeyDerivation.HeaderStorageOffset && key[^1] < PbtKeyDerivation.CodeOffset);
-
-    private bool MatchesNode(IPbtNodePath path, byte[] encoding)
-    {
-        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
-        byte[]? payload = db.GetColumnDb(PbtColumns.NodeGroups).Get(location.GroupKey.Encode(), ReadFlags.HintCacheMiss);
-        if (payload is null) return false;
-        try
-        {
-            PbtNodeGroupReader reader = new(location.GroupKey, payload);
-            return reader.GetNode(location.Position).SequenceEqual(encoding);
-        }
-        catch (Exception exception) when (exception is InvalidDataException or ArgumentException) { return false; }
-    }
-
-    private void ScanNodes(PbtScanReport report, Progress progress, CancellationToken cancellationToken)
-    {
-        progress.Report("scanning node groups", 0);
-        using ISortedView view = OpenView(PbtColumns.NodeGroups);
-        while (view.MoveNext())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                IPbtNodePath groupKey = PbtPathOperations.Decode(view.CurrentKey);
-                PbtNodeGroupReader reader = new(groupKey, view.CurrentValue);
-                PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
-                while (enumerator.MoveNext())
-                {
-                    IPbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, enumerator.CurrentPosition);
-                    report.NodeCount++;
-                    report.NodeKeyBytes += path.Encode().Length;
-                    report.NodeBytes += enumerator.Current.Length;
-                }
-            }
-            catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
-            {
-                report.InvalidNodeCount++;
-            }
-            progress.Report("scanning node groups", report.NodeCount);
-        }
-    }
-
-    private ISortedView OpenView(PbtColumns columnName)
+    private async Task ScanColumn(PbtColumns columnName, byte[][] bounds, PbtScanReport report, int workerCount, CancellationToken cancellationToken)
     {
         IDb column = db.GetColumnDb(columnName);
         if (column is not ISortedKeyValueStore sorted)
             throw new InvalidOperationException($"The PBT {columnName} column is a {column.GetType().Name}, which cannot be range scanned.");
-        byte[] upper = new byte[PbtStorageFullKey.MaxLength + 1];
-        Array.Fill(upper, byte.MaxValue);
-        return sorted.GetViewBetween([], upper, ReadFlags.HintCacheMiss);
+
+        int rangeCount = bounds.Length - 1;
+        workerCount = Math.Min(workerCount, rangeCount);
+        int nextRange = -1, completedRanges = 0;
+        long scanned = 0;
+        using CancellationTokenSource workersCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using CancellationTokenSource loggingCancellation = new();
+        CancellationToken workerToken = workersCancellation.Token;
+        PbtScanReport[] shards = new PbtScanReport[workerCount];
+        Task[] workers = new Task[workerCount];
+        Stopwatch elapsed = Stopwatch.StartNew();
+        long previousCount = 0;
+        double previousSeconds = 0;
+
+        void LogProgress(bool completed)
+        {
+            long count = Interlocked.Read(ref scanned);
+            double seconds = elapsed.Elapsed.TotalSeconds;
+            double interval = seconds - previousSeconds;
+            double rate = interval > 0 ? (count - previousCount) / interval : 0;
+            if (_logger.IsInfo)
+                _logger.Info($"PBT scan {columnName}: {count:N0} entries, elapsed {seconds:N1}s, {rate:N0} entries/s, approximately {(double)Volatile.Read(ref completedRanges) / rangeCount:P1} of ranges{(completed ? " (completed)" : "")}.");
+            previousCount = count;
+            previousSeconds = seconds;
+        }
+
+        async Task LogPeriodically()
+        {
+            try
+            {
+                using PeriodicTimer timer = new(ProgressLogInterval);
+                while (await timer.WaitForNextTickAsync(loggingCancellation.Token)) LogProgress(false);
+            }
+            catch (OperationCanceledException) when (loggingCancellation.IsCancellationRequested) { }
+            catch
+            {
+                workersCancellation.Cancel();
+                throw;
+            }
+        }
+
+        void ScanRanges(PbtScanReport shard)
+        {
+            long pending = 0;
+            PbtScanReport.ColumnStats stats = shard[columnName];
+            try
+            {
+                int range;
+                while ((range = Interlocked.Increment(ref nextRange)) < rangeCount)
+                {
+                    workerToken.ThrowIfCancellationRequested();
+                    using ISortedView view = sorted.GetViewBetween(bounds[range], bounds[range + 1], ReadFlags.HintCacheMiss);
+                    while (view.MoveNext())
+                    {
+                        workerToken.ThrowIfCancellationRequested();
+                        stats.RecordCount++;
+                        stats.KeyBytes += view.CurrentKey.Length;
+                        stats.ValueBytes += view.CurrentValue.Length;
+                        if (columnName == PbtColumns.NodeGroups) ScanGroup(view.CurrentKey, view.CurrentValue, shard.NodeGroups);
+                        if (++pending == ProgressPublishInterval)
+                        {
+                            Interlocked.Add(ref scanned, pending);
+                            pending = 0;
+                        }
+                    }
+                    Interlocked.Increment(ref completedRanges);
+                }
+            }
+            catch
+            {
+                workersCancellation.Cancel();
+                throw;
+            }
+            finally
+            {
+                Interlocked.Add(ref scanned, pending);
+            }
+        }
+
+        Task logging = LogPeriodically();
+        for (int worker = 0; worker < workerCount; worker++)
+        {
+            PbtScanReport shard = shards[worker] = new();
+            workers[worker] = Task.Run(() => ScanRanges(shard), CancellationToken.None);
+        }
+        try
+        {
+            await Task.WhenAll(workers);
+        }
+        finally
+        {
+            await loggingCancellation.CancelAsync();
+            await logging;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (PbtScanReport shard in shards) report.MergeFrom(shard);
+        LogProgress(true);
     }
 
-    private sealed class Progress(ILogger logger, TimeProvider timeProvider)
+    private static void ScanGroup(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats)
     {
-        private readonly long _started = timeProvider.GetTimestamp();
-        private long _lastLog;
-        private string? _phase;
-        private long _lastCount;
-        internal void Report(string phase, long count)
+        IPbtNodePath groupPath = PbtPathOperations.Decode(key);
+        PbtNodeGroupReader reader = new(groupPath, value);
+        stats.GroupsByDepth[groupPath.BitDepth]++;
+        stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
+        stats.GroupsByOccupancy[reader.Count]++;
+        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
+        while (nodes.MoveNext())
         {
-            long now = timeProvider.GetTimestamp();
-            double interval = timeProvider.GetElapsedTime(_lastLog, now).TotalSeconds;
-            if ((_phase == phase || count != 0) && interval < 10) return;
-            double rate = _phase == phase && interval > 0 ? Math.Max(0, count - _lastCount) / interval : 0;
-            _phase = phase;
-            _lastLog = now;
-            _lastCount = count;
-            double elapsed = timeProvider.GetElapsedTime(_started, now).TotalSeconds;
-            if (logger.IsInfo) logger.Info($"PBT scan {phase}: {count:N0} items, elapsed {elapsed:N1}s, {rate:N0} items/s.");
+            stats.NodeCount++;
+            stats.NodeEncodingBytes += nodes.Current.Length;
+            if (nodes.Current[0] == 0) stats.LeafCount++;
+            else stats.BranchCount++;
+            stats.NodesByDepth[groupPath.BitDepth + PositionDepths[nodes.CurrentPosition]]++;
         }
+    }
+
+    private static int[] CreatePositionDepths()
+    {
+        int[] depths = new int[PbtFourLevelGroupGeometry.PositionCount];
+        IPbtNodePath root = new PbtNodePath([], 0);
+        for (int position = 0; position < depths.Length; position++)
+            depths[position] = PbtFourLevelGroupGeometry.PathOf(root, position).BitDepth;
+        return depths;
+    }
+
+    private static byte[][] CreateBounds(PbtColumns column, int rangeCount)
+    {
+        List<byte[]> bounds = [[]];
+        if (column == PbtColumns.NodeGroups)
+        {
+            // Depth precedes the path in group keys; split paths within each depth as well.
+            for (int depth = 0; depth <= PbtFourLevelGroupGeometry.MaxGroupDepth; depth += PbtFourLevelGroupGeometry.LevelsPerGroup)
+            {
+                int zoneBytes = depth >= 8 ? 1 : 0;
+                int prefixBits = Math.Min(depth - zoneBytes * 8, 16);
+                int partitions = Math.Min(rangeCount, 1 << prefixBits);
+                ReadOnlySpan<byte> zones = zoneBytes == 0 ? [0] : [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.CodeZone, Eip8297KeyDerivation.StorageZone];
+                foreach (byte zone in zones)
+                    for (int partition = 0; partition < partitions; partition++)
+                    {
+                        byte[] boundary = new byte[4 + zoneBytes + (prefixBits + 7) / 8];
+                        BinaryPrimitives.WriteUInt32BigEndian(boundary, (uint)depth);
+                        if (zoneBytes != 0) boundary[4] = zone;
+                        int prefix = (int)((long)partition * (1 << prefixBits) / partitions) << (16 - prefixBits);
+                        int prefixOffset = 4 + zoneBytes;
+                        if (boundary.Length > prefixOffset) boundary[prefixOffset] = (byte)(prefix >> 8);
+                        if (boundary.Length > prefixOffset + 1) boundary[prefixOffset + 1] = (byte)prefix;
+                        bounds.Add(boundary);
+                    }
+            }
+        }
+        else if (column == PbtColumns.Storages)
+        {
+            foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
+                for (int partition = 0; partition < rangeCount; partition++)
+                {
+                    byte[] boundary = new byte[3];
+                    boundary[0] = zone;
+                    BinaryPrimitives.WriteUInt16BigEndian(boundary.AsSpan(1), (ushort)((long)partition * PrefixSpace / rangeCount));
+                    bounds.Add(boundary);
+                }
+        }
+        else
+        {
+            for (int partition = 1; partition < rangeCount; partition++)
+            {
+                byte[] boundary = new byte[2];
+                BinaryPrimitives.WriteUInt16BigEndian(boundary, (ushort)((long)partition * PrefixSpace / rangeCount));
+                bounds.Add(boundary);
+            }
+        }
+        byte[] upper = new byte[5 + PbtStorageFullKey.MaxLength];
+        Array.Fill(upper, byte.MaxValue);
+        bounds.Add(upper);
+        return bounds.ToArray();
     }
 }
 
-/// <summary>Summary of a typed flat-state and PBT node-group scan.</summary>
+/// <summary>Inventory of persisted PBT records, without hash or reachability verification.</summary>
 public sealed class PbtScanReport
 {
-    public long LeafCount { get; internal set; }
-    public long LeafKeyBytes { get; internal set; }
-    public long LeafBytes { get; internal set; }
-    public long NodeCount { get; internal set; }
-    public long NodeKeyBytes { get; internal set; }
-    public long NodeBytes { get; internal set; }
-    public long InvalidLeafCount { get; internal set; }
-    public long InvalidNodeCount { get; internal set; }
-    public ValueHash256 ComputedRoot { get; internal set; }
-    public ValueHash256 PersistedRoot { get; internal set; }
-    public bool RootMatches { get; internal set; }
-    public bool IsValid => InvalidLeafCount == 0 && InvalidNodeCount == 0 && RootMatches;
+    /// <summary>Stored whole-account records.</summary>
+    public ColumnStats Accounts { get; } = new();
+    /// <summary>Stored storage-word records.</summary>
+    public ColumnStats Storages { get; } = new();
+    /// <summary>Stored whole-bytecode records, including unreferenced code.</summary>
+    public ColumnStats Codes { get; } = new();
+    /// <summary>Stored node groups and their locally decoded shape.</summary>
+    public NodeGroupStats NodeGroups { get; } = new();
 
-    /// <summary>Formats the diagnostic report for the startup step.</summary>
+    /// <summary>Gets the statistics for an active data column.</summary>
+    public ColumnStats this[PbtColumns column] => column switch
+    {
+        PbtColumns.Accounts => Accounts,
+        PbtColumns.Storages => Storages,
+        PbtColumns.Codes => Codes,
+        PbtColumns.NodeGroups => NodeGroups,
+        _ => throw new ArgumentOutOfRangeException(nameof(column)),
+    };
+
+    internal void MergeFrom(PbtScanReport other)
+    {
+        Accounts.MergeFrom(other.Accounts);
+        Storages.MergeFrom(other.Storages);
+        Codes.MergeFrom(other.Codes);
+        NodeGroups.MergeFrom(other.NodeGroups);
+        NodeGroups.NodeCount += other.NodeGroups.NodeCount;
+        NodeGroups.LeafCount += other.NodeGroups.LeafCount;
+        NodeGroups.BranchCount += other.NodeGroups.BranchCount;
+        NodeGroups.NodeEncodingBytes += other.NodeGroups.NodeEncodingBytes;
+        AddInto(NodeGroups.GroupsByDepth, other.NodeGroups.GroupsByDepth);
+        AddInto(NodeGroups.PayloadBytesByDepth, other.NodeGroups.PayloadBytesByDepth);
+        AddInto(NodeGroups.NodesByDepth, other.NodeGroups.NodesByDepth);
+        AddInto(NodeGroups.GroupsByOccupancy, other.NodeGroups.GroupsByOccupancy);
+    }
+
+    private static void AddInto(long[] target, long[] source)
+    {
+        for (int index = 0; index < target.Length; index++) target[index] += source[index];
+    }
+
+    /// <summary>Formats stored sizes and node-group histograms.</summary>
     public string Format()
     {
         StringBuilder report = new();
         report.AppendLine();
-        report.AppendLine("=== PBT scan ===");
-        report.AppendLine($"Derived leaves: {LeafCount:N0} ({LeafBytes:N0} flat value bytes, {LeafKeyBytes:N0} flat key bytes)");
-        report.AppendLine($"Compressed nodes: {NodeCount:N0} ({NodeBytes:N0} value bytes, {NodeKeyBytes:N0} key bytes)");
-        report.AppendLine($"Computed root: {ComputedRoot}");
-        report.AppendLine($"Persisted root: {PersistedRoot} ({(RootMatches ? "matches" : "MISMATCH")})");
-        report.AppendLine($"Violations: {InvalidLeafCount + InvalidNodeCount:N0} ({InvalidLeafCount:N0} flat entries, {InvalidNodeCount:N0} nodes)");
+        report.AppendLine("=== PBT scan: persisted inventory (not hash or reachability verification) ===");
+        report.AppendLine($"  {"column",-12} {"records",15} {"key bytes",18} {"value bytes",18} {"total bytes",18} {"avg bytes",12}");
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.NodeGroups })
+        {
+            ColumnStats stats = this[column];
+            report.AppendLine($"  {column,-12} {stats.RecordCount,15:N0} {stats.KeyBytes,18:N0} {stats.ValueBytes,18:N0} {stats.TotalBytes,18:N0} {stats.AverageRecordBytes,12:N1}");
+        }
+        report.AppendLine($"Contained nodes: {NodeGroups.NodeCount:N0} ({NodeGroups.LeafCount:N0} leaves, {NodeGroups.BranchCount:N0} branches), {NodeGroups.NodeEncodingBytes:N0} encoding bytes (excluding group keys and footers)");
+        report.AppendLine("Node groups and contained nodes by bit depth");
+        report.AppendLine($"  {"depth",6} {"groups",15} {"payload bytes",18} {"nodes",15}");
+        for (int depth = 0; depth < NodeGroups.NodesByDepth.Length; depth++)
+            if (NodeGroups.GroupsByDepth[depth] != 0 || NodeGroups.NodesByDepth[depth] != 0)
+                report.AppendLine($"  {depth,6} {NodeGroups.GroupsByDepth[depth],15:N0} {NodeGroups.PayloadBytesByDepth[depth],18:N0} {NodeGroups.NodesByDepth[depth],15:N0}");
+        report.AppendLine("Node-group occupancy");
+        report.AppendLine($"  {"nodes",6} {"groups",15}");
+        for (int occupancy = 0; occupancy < NodeGroups.GroupsByOccupancy.Length; occupancy++)
+            if (NodeGroups.GroupsByOccupancy[occupancy] != 0)
+                report.AppendLine($"  {occupancy,6} {NodeGroups.GroupsByOccupancy[occupancy],15:N0}");
         return report.ToString();
+    }
+
+    /// <summary>Actual persisted row sizes, with each key and value counted once.</summary>
+    public class ColumnStats
+    {
+        /// <summary>Number of stored records.</summary>
+        public long RecordCount { get; internal set; }
+        /// <summary>Total stored key bytes.</summary>
+        public long KeyBytes { get; internal set; }
+        /// <summary>Total stored value bytes.</summary>
+        public long ValueBytes { get; internal set; }
+        /// <summary>Total stored key and value bytes.</summary>
+        public long TotalBytes => KeyBytes + ValueBytes;
+        /// <summary>Mean key plus value size, or zero for an empty column.</summary>
+        public double AverageRecordBytes => RecordCount == 0 ? 0 : (double)TotalBytes / RecordCount;
+
+        internal void MergeFrom(ColumnStats other)
+        {
+            RecordCount += other.RecordCount;
+            KeyBytes += other.KeyBytes;
+            ValueBytes += other.ValueBytes;
+        }
+    }
+
+    /// <summary>Persisted group sizes and locally decoded node shape.</summary>
+    public sealed class NodeGroupStats : ColumnStats
+    {
+        /// <summary>Number of contained nodes.</summary>
+        public long NodeCount { get; internal set; }
+        /// <summary>Number of contained leaf nodes.</summary>
+        public long LeafCount { get; internal set; }
+        /// <summary>Number of contained branch nodes.</summary>
+        public long BranchCount { get; internal set; }
+        /// <summary>Contained encoding bytes, excluding group keys and footers.</summary>
+        public long NodeEncodingBytes { get; internal set; }
+        /// <summary>Stored groups by boundary bit depth.</summary>
+        public long[] GroupsByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
+        /// <summary>Whole group payload bytes by boundary bit depth.</summary>
+        public long[] PayloadBytesByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
+        /// <summary>Contained nodes by their position's bit depth.</summary>
+        public long[] NodesByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
+        /// <summary>Stored groups by the number of nodes they contain.</summary>
+        public long[] GroupsByOccupancy { get; } = new long[PbtFourLevelGroupGeometry.PositionCount + 1];
     }
 }
