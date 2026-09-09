@@ -712,11 +712,39 @@ namespace Nethermind.Core.Extensions
 #endif
         private static ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
         {
+#if ZK_EVM
+            // NH (the UMAC/VMAC core) over 32-bit lanes: one product per key word. The guest's target has
+            // no reachable 64x64->128 multiply, so each MultiplyFold costs four muls and a shift chain,
+            // while a 32x32->64 product is a single mul.
+            ulong sum = MixLanes(u0, seeds)
+                + MixLanes(u1, Unsafe.Add(ref seeds, 1))
+                + MixLanes(u2, Unsafe.Add(ref seeds, 2))
+                + MixLanes(u3, Unsafe.Add(ref seeds, 3));
+            // NH's own output carries its entropy high, and a dictionary buckets on the low bits, so the
+            // sum needs a finalizer. Multiply-shift by a seed limb is one more mul. Installing the odd
+            // multiplier at seed time instead measured 215,127 steps worse: the limbs share one base
+            // pointer, so reading another one folds into an offset while a new static does not.
+            ulong hash = sum ^ (sum >> 31);
+            hash *= Unsafe.Add(ref seeds, 1) | 1UL;
+            return hash ^ (hash >> 29);
+#else
             // Mix each seed limb into its key limb before any information is lost to folding.
             ulong a = MultiplyFold(u0 ^ seeds, u1 ^ Unsafe.Add(ref seeds, 1));
             ulong b = MultiplyFold(u2 ^ Unsafe.Add(ref seeds, 2), u3 ^ Unsafe.Add(ref seeds, 3));
             return (ulong)MumFold(a, b);
+#endif
         }
+
+#if ZK_EVM
+        /// <summary>Keys both 32-bit lanes of a key word and multiplies them into one 64-bit product.</summary>
+        /// <remarks>
+        /// The lane keys must be independent per position: sharing one across words would leave the sum
+        /// invariant under permuting them.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MixLanes(ulong word, ulong key)
+            => (ulong)(uint)((uint)word + (uint)key) * (uint)((uint)(word >> 32) + (uint)(key >> 32));
+#endif
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MultiplyFold(ulong a, ulong b)

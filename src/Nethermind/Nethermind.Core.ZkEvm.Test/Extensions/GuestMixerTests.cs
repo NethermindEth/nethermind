@@ -154,23 +154,32 @@ public class GuestMixerTests
     [Test]
     public void Guest_mixer_reseeding_breaks_a_collision_set()
     {
-        HashSet<long> before = [];
-        HashSet<long> after = [];
+        // The set is searched for rather than constructed: it is specific to the seed in force, which is
+        // the property under test, so it cannot be written down.
+        SpanExtensions.SeedHashes(SeedGuestHashes.Seed);
         byte[] key = new byte[32];
-        BinaryPrimitives.WriteUInt64LittleEndian(key, SeedGuestHashes.Seed.u0);
-        for (ulong value = 0; value < 4096; value++)
+        // The bucket a dictionary reads is the 32-bit hash code, so the set is searched for there.
+        Dictionary<int, ulong> seen = [];
+        List<ulong>? collisions = null;
+        for (ulong value = 0; value < 1 << 21 && collisions is null; value++)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(key.AsSpan(8), value);
-            SpanExtensions.SeedHashes(SeedGuestHashes.Seed);
-            before.Add(Hash(key));
-            SpanExtensions.SeedHashes(SecondSeed);
-            after.Add(Hash(key));
+            int hash = SpanExtensions.FastHashFallback(key);
+            if (seen.TryGetValue(hash, out ulong first)) collisions = [first, value];
+            else seen[hash] = value;
         }
-        using (Assert.EnterMultipleScope())
+
+        Assert.That(collisions, Is.Not.Null, "no collision found under the first seed");
+
+        HashSet<int> after = [];
+        SpanExtensions.SeedHashes(SecondSeed);
+        foreach (ulong value in collisions!)
         {
-            Assert.That(before.Count, Is.EqualTo(1), "constructed collision set");
-            Assert.That(after.Count, Is.GreaterThan(4064), "replacement seed");
+            BinaryPrimitives.WriteUInt64LittleEndian(key.AsSpan(8), value);
+            after.Add(SpanExtensions.FastHashFallback(key));
         }
+
+        Assert.That(after, Has.Count.EqualTo(collisions.Count), "replacement seed");
     }
 
     /// <summary>Checks the 32-byte mixer against an independent widening-product reference.</summary>
@@ -181,9 +190,7 @@ public class GuestMixerTests
         SpanExtensions.SeedHashes(seed);
         foreach (UInt256 value in new[] { UInt256.Zero, UInt256.One, UInt256.MaxValue, SecondSeed })
         {
-            ulong a = ReferenceFold(value.u0 ^ seed.u0, value.u1 ^ seed.u1);
-            ulong b = ReferenceFold(value.u2 ^ seed.u2, value.u3 ^ seed.u3);
-            ulong expected = ReferenceFold(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL);
+            ulong expected = ReferenceMix(value, seed);
             byte[] bytes = value.ToLittleEndian();
             using (Assert.EnterMultipleScope())
             {
@@ -238,29 +245,29 @@ public class GuestMixerTests
         }
     }
 
-    [TestCase(0, -220954673)]
-    [TestCase(1, 1365513433)]
-    [TestCase(2, 1215851697)]
-    [TestCase(3, 1062475265)]
-    [TestCase(4, 1800791587)]
-    [TestCase(5, -1439988632)]
-    [TestCase(6, 211467597)]
-    [TestCase(7, 1321382043)]
-    [TestCase(8, -128984591)]
-    [TestCase(9, 1383455619)]
-    [TestCase(10, -1217756578)]
-    [TestCase(11, -2027848051)]
-    [TestCase(12, -1289996763)]
-    [TestCase(13, 751476928)]
-    [TestCase(14, -2043828144)]
-    [TestCase(15, -308078777)]
-    [TestCase(16, -1699459048)]
-    [TestCase(17, -1754749950)]
-    [TestCase(31, -1045709015)]
-    [TestCase(33, 1762330450)]
-    [TestCase(63, 1350296845)]
-    [TestCase(64, -1610973583)]
-    [TestCase(65, -1918792359)]
+    [TestCase(0, 829642253)]
+    [TestCase(1, -1995569106)]
+    [TestCase(2, 1769987572)]
+    [TestCase(3, -1616582951)]
+    [TestCase(4, 1452475728)]
+    [TestCase(5, -1073280757)]
+    [TestCase(6, 526470818)]
+    [TestCase(7, -333637061)]
+    [TestCase(8, 981384108)]
+    [TestCase(9, -1160461789)]
+    [TestCase(10, -1058923909)]
+    [TestCase(11, -631305068)]
+    [TestCase(12, -268664765)]
+    [TestCase(13, 1129042570)]
+    [TestCase(14, 887642953)]
+    [TestCase(15, -1833596490)]
+    [TestCase(16, -843876032)]
+    [TestCase(17, -1085161699)]
+    [TestCase(31, 2051868692)]
+    [TestCase(33, -1984651310)]
+    [TestCase(63, -1935689013)]
+    [TestCase(64, 466906938)]
+    [TestCase(65, 547616034)]
     public void Scalar_hash_preserves_tail_and_block_boundary_vectors(int length, int expected)
     {
         SpanExtensions.SeedHashes(new UInt256(0x243F6A8885A308D3UL, 0x13198A2E03707344UL,
@@ -336,6 +343,23 @@ public class GuestMixerTests
     {
         BigInteger product = (BigInteger)a * b;
         return (ulong)(product & ulong.MaxValue) ^ (ulong)(product >> 64);
+    }
+
+    /// <summary>Recomputes the 32-byte lane mixer in <see cref="BigInteger"/> arithmetic.</summary>
+    private static ulong ReferenceMix(in UInt256 value, in UInt256 seed)
+    {
+        ulong sum = ReferenceLanes(value.u0, seed.u0) + ReferenceLanes(value.u1, seed.u1)
+            + ReferenceLanes(value.u2, seed.u2) + ReferenceLanes(value.u3, seed.u3);
+        ulong hash = sum ^ (sum >> 31);
+        hash = (ulong)((BigInteger)hash * (seed.u1 | 1UL) & ulong.MaxValue);
+        return hash ^ (hash >> 29);
+    }
+
+    private static ulong ReferenceLanes(ulong word, ulong key)
+    {
+        BigInteger low = (word & uint.MaxValue) + (key & uint.MaxValue) & uint.MaxValue;
+        BigInteger high = (word >> 32) + (key >> 32) & uint.MaxValue;
+        return (ulong)(low * high);
     }
 
     private static void AssertWindowsAreDistributed(long[] hashes, string context)
