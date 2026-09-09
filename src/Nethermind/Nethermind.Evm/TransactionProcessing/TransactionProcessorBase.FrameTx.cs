@@ -94,6 +94,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(malformed!);
         }
 
+        if (tx.NonceKeys is { } nonceKeys)
+        {
+            if (!spec.IsEip8250Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
+            }
+
+            // Structural, so it holds even where validation is skipped: the fixed-size buffers keyed on the set
+            // take a well-formed one as their precondition, and eth_call and the simulator arrive without a validator.
+            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+            }
+        }
+
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
         {
             return SimulateFrameValidationPrefix(tx, tracer, opts, header, spec);
@@ -101,18 +116,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
-
-        if (tx.NonceKeys is not null && !spec.IsEip8250Enabled)
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
-        }
-
-        // Structural, so it holds even where validation is skipped: the fixed-size buffers below take a
-        // well-formed set as their precondition, and eth_call arrives without a validator.
-        if (tx.NonceKeys is { } nonceKeys && !KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
-        }
 
         // Follows SkipValidation as the account-nonce path does: eth_call overwrites the supplied nonce.
         if (ShouldValidate(opts))

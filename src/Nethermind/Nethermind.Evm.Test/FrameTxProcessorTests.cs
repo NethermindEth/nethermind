@@ -2646,6 +2646,16 @@ public class FrameTxProcessorTests
         return _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
     }
 
+    private TransactionResult SimulateValidationPrefix(Transaction tx)
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        return _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameValidationPrefixOnly);
+    }
+
     private TransactionResult ProcessWithBlobHeader(Transaction tx, ulong excessBlobGas, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
@@ -2788,11 +2798,15 @@ public class FrameTxProcessorTests
     }
 
     /// <remarks>Only the state half of the check may follow <c>SkipValidation</c>: the RPC view caps nothing,
-    /// so an oversized set would reach fixed-size buffers that assume a well-formed one.</remarks>
-    [Test]
-    public void CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown()
+    /// so an oversized set would reach fixed-size buffers that assume a well-formed one. The in-pool prefix
+    /// simulator is the other such entry point, and <c>TXPARAM 0x0E</c> hashes the set into one of those buffers.</remarks>
+    [TestCase(false, TestName = "CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown")]
+    [TestCase(true, TestName = "SimulateValidationPrefix_KeyedNonceSetOverTheLimit_IsMalformedNotThrown")]
+    public void KeyedNonceSetOverTheLimit_IsMalformedNotThrown(bool validationPrefixOnly)
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeploySmartSender([
+            .. Prepare.EvmCode.PushData(0x0E).Op(Instruction.TXPARAM).Op(Instruction.POP).Done,
+            .. ApproveCode(TxFrame.ApproveExecutionAndPayment)]);
         // Full-width and strictly increasing, so the length is the only thing that is wrong with the set.
         UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
         for (int i = 0; i < keys.Length; i++)
@@ -2803,9 +2817,9 @@ public class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.NonceKeys = keys;
 
-        TransactionResult result = CallAndRestore(tx);
+        TransactionResult result = validationPrefixOnly ? SimulateValidationPrefix(tx) : CallAndRestore(tx);
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(result.ErrorDescription, Is.EqualTo("frame transaction nonce key set is not well-formed"));
     }
 
     // The property the set semantics exist for: one advanced key makes the whole set unusable.
