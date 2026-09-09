@@ -97,6 +97,6 @@ public sealed class BalReadCoverage
         _block = [];
         _slice = [];
         _touchedWords.Clear();
-        _touchedWords.TrimExcess();
+        _touchedWords.Capacity = 0;
     }
 }
