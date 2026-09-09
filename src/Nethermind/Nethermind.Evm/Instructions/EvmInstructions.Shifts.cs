@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -58,17 +59,18 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
-        TGasPolicy.Consume<TOpShift>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpShift>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return ShiftCore<TOpShift, TTracingInst>(ref stack);
+        return ShiftCore<TOpShift, TTracingInst, OnFlag>(ref stack);
     }
 
     /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst>(ref EvmStack stack)
+    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         // On x86 without a 256-bit register the JIT lowers the paired pop/push better than in-place
         // conversion. ARM64 is the other way round for every shift: it reverses a word in vector
@@ -84,7 +86,7 @@ public static partial class EvmInstructions
                 if (TTracingInst.IsActive)
                     return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
 
-                return stack.PushZero<TTracingInst>();
+                return stack.PushZero<TTracingInst, OnFlag>();
             }
 
             TOpShift.Operation(in shift, in value, out UInt256 shifted);
@@ -94,10 +96,10 @@ public static partial class EvmInstructions
         if ((!Vector128.IsHardwareAccelerated || !X86Base.IsSupported) &&
             (typeof(TOpShift) == typeof(OpShl) || typeof(TOpShift) == typeof(OpShr)))
         {
-            return ShiftScalar<TOpShift, TTracingInst>(ref stack);
+            return ShiftScalar<TOpShift, TTracingInst, TCheckDepth>(ref stack);
         }
 
-        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
@@ -120,16 +122,18 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType ShiftScalar<TOpShift, TTracingInst>(ref EvmStack stack)
+    private static EvmExceptionType ShiftScalar<TOpShift, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong amount = swap.Bswap64(Add(ref shift, 3));
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
             value = 0;
@@ -148,14 +152,14 @@ public static partial class EvmInstructions
                 {
                     int source = destination + wordShift;
                     ulong shifted = source < 4
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) << bitShift
+                        ? swap.Bswap64(Add(ref value, source)) << bitShift
                         : 0;
                     if (bitShift != 0 && source + 1 < 4)
                     {
-                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source + 1)) >> (64 - bitShift);
+                        shifted |= swap.Bswap64(Add(ref value, source + 1)) >> (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                    Add(ref value, destination) = swap.Bswap64(shifted);
                 }
             }
             else
@@ -165,14 +169,14 @@ public static partial class EvmInstructions
                     int destination = 3 - offset;
                     int source = destination - wordShift;
                     ulong shifted = source >= 0
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                        ? swap.Bswap64(Add(ref value, source)) >> bitShift
                         : 0;
                     if (bitShift != 0 && source > 0)
                     {
-                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1)) << (64 - bitShift);
+                        shifted |= swap.Bswap64(Add(ref value, source - 1)) << (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                    Add(ref value, destination) = swap.Bswap64(shifted);
                 }
             }
         }
@@ -199,42 +203,64 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
+        return SarCore<TTracingInst, OnFlag>(ref stack);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType SarCore<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
+    {
         if (X86Base.IsSupported)
         {
-            if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
-
-            if (!shift.IsUint64 || shift.u0 >= 256)
+            UInt256 shift, value;
+            scoped ref byte slot = ref NullRef<byte>();
+            if (TCheckDepth.IsActive)
             {
-                if (As<UInt256, Int256>(ref value).Sign < 0)
-                    return stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
-
-                if (TTracingInst.IsActive)
-                    return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
-
-                return stack.PushZero<TTracingInst>();
+                if (!stack.PopUInt256(out shift, out value)) goto StackUnderflow;
+            }
+            else
+            {
+                slot = ref stack.Pop1Peek32BytesUnchecked(out shift);
+                EvmStack.ReadUInt256FromSlot(ref slot, out value);
             }
 
-            As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
-            return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref shifted));
+            UInt256 result;
+            if (!shift.IsUint64 || shift.u0 >= 256)
+                result = As<UInt256, Int256>(ref value).Sign < 0 ? UInt256.MaxValue : UInt256.Zero;
+            else
+            {
+                As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
+                result = As<Int256, UInt256>(ref shifted);
+            }
+
+            if (TCheckDepth.IsActive) return stack.PushUInt256<TTracingInst>(in result);
+            Debug.Assert(!IsNullRef(ref slot), "The unchecked path peeked the destination slot.");
+            EvmStack.WriteUInt256ToSlot(ref slot, in result);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
+            return EvmExceptionType.None;
         }
 
-        return SarScalar<TTracingInst>(ref stack);
+        return SarScalar<TTracingInst, TCheckDepth>(ref stack);
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType SarScalar<TTracingInst>(ref EvmStack stack)
+    private static EvmExceptionType SarScalar<TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong amount = swap.Bswap64(Add(ref shift, 3));
         ulong fill = As<byte, sbyte>(ref topRef) < 0 ? ulong.MaxValue : 0;
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
@@ -252,17 +278,17 @@ public static partial class EvmInstructions
                 int destination = 3 - offset;
                 int source = destination - wordShift;
                 ulong shifted = source >= 0
-                    ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                    ? swap.Bswap64(Add(ref value, source)) >> bitShift
                     : fill;
                 if (bitShift != 0)
                 {
                     ulong upper = source > 0
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1))
+                        ? swap.Bswap64(Add(ref value, source - 1))
                         : fill;
                     shifted |= upper << (64 - bitShift);
                 }
 
-                Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                Add(ref value, destination) = swap.Bswap64(shifted);
             }
         }
 
