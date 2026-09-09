@@ -123,6 +123,22 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
+
+        /// <inheritdoc/>
+        public bool TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
+        {
+            DebugGuardInScope();
+            value = _persistentStorageProvider.GetPureRead(cell);
+            return true;
+        }
+
+        /// <inheritdoc/>
+        public bool TryGetPureReadAccount(Address address, out Account? account)
+        {
+            DebugGuardInScope();
+            account = _stateProvider.GetPureRead(address);
+            return true;
+        }
         public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();

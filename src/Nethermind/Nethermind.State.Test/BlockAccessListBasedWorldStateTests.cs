@@ -37,7 +37,8 @@ public class BlockAccessListBasedWorldStateTests
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
-        Action<IWorldState>? genesisSetup = null)
+        Action<IWorldState>? genesisSetup = null,
+        Func<IWorldState, IWorldState>? decorateParent = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -58,9 +59,57 @@ public class BlockAccessListBasedWorldStateTests
         IDisposable scope = inner.BeginScope(baseBlock);
         // The inner world state, scoped against the genesis root, is itself a valid parent reader
         // — reads against it answer pre-block state directly from the trie.
-        bws.SetParentReader(inner);
+        bws.SetParentReader(decorateParent?.Invoke(inner) ?? inner);
         return (bws, scope);
     }
+
+    [Test]
+    public void DeclaredReads_PreserveOriginalValuesAndSnapshots([Values] bool decorate, [Values(0, 42)] int storedValue)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(cell.Address)
+                .WithStorageReads(cell.Index).TestObject).TestObject;
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(cell.Address, 100);
+                ws.Set(cell, [(byte)storedValue]);
+            },
+            ws =>
+            {
+                parent = ws;
+                return decorate ? new ParentDecorator(ws) : ws;
+            });
+        using (scope)
+        {
+            Snapshot before = parent.TakeSnapshot();
+            Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)100));
+            if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "account read must not journal");
+
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            Assert.That(new UInt256(bws.GetOriginal(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            if (!decorate)
+                Assert.That(parent.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot,
+                    Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot), "storage read must not journal");
+
+            Snapshot snapshot = bws.TakeSnapshot();
+            bws.Set(cell, [99]);
+            bws.Restore(snapshot);
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+
+            bws.ClearParentReader();
+            parent.Set(cell, [77]);
+            parent.Commit(Spec);
+            parent.CommitTree(1);
+            bws.SetParentReader(decorate ? new ParentDecorator(parent) : parent);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)77));
+        }
+    }
+
+    private sealed class ParentDecorator(IWorldState state) : WorldStateDecorator(state);
 
     [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()

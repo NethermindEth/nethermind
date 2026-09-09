@@ -48,6 +48,28 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <returns>Value at cell</returns>
     ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
+    /// <summary>Tries to read a parent-state slot without recording a journal entry.</summary>
+    /// <remarks>
+    /// Only call on an immutable parent reader. The caller must not mutate the returned bytes.
+    /// This does not prepare the slot for <see cref="GetOriginal"/> or subsequent writes.
+    /// Implementations and decorators opt in explicitly; otherwise callers use ordinary reads.
+    /// </remarks>
+    /// <returns>Whether supported; a null or empty value represents a zero slot.</returns>
+    bool TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
+    {
+        value = null;
+        return false;
+    }
+
+    /// <summary>Tries to read a parent-state account without recording a journal entry.</summary>
+    /// <remarks>Only call on an immutable parent reader. Implementations and decorators opt in explicitly.</remarks>
+    /// <returns>Whether supported; a null account means the account does not exist.</returns>
+    bool TryGetPureReadAccount(Address address, out Account? account)
+    {
+        account = null;
+        return false;
+    }
+
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
