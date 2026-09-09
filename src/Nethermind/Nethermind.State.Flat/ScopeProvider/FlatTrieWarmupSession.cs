@@ -149,6 +149,8 @@ internal sealed class FlatTrieWarmupSession :
         return _readOnlySnapshotBundle.GetAccount(address, key);
     }
 
+    // State and storage roots are frozen; every traversal uses the same captured, leased snapshots and pinned persistence.
+    // Find covers the in-memory layers skipped by TryLoadRlp, so a shared unknown can only resolve to this initial state.
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         HashedKey<TreePath> key = new(path);
@@ -192,6 +194,15 @@ internal sealed class FlatTrieWarmupSession :
             ? throw new NodeHashMismatchException($"Node hash mismatch. Address {address}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}")
             : node;
 
+    private static byte[]? ValidateRlp(byte[]? rlp, Hash256? address, in TreePath path, Hash256 hash)
+    {
+#if DEBUG
+        if (rlp is not null && Keccak.Compute(rlp) != hash)
+            throw new NodeHashMismatchException($"Node RLP hash mismatch. Address {address}. Path: {path}. Requested: {hash}");
+#endif
+        return rlp;
+    }
+
     // Each borrower releases one reference; only the final release cancels and drains active operations.
     // Queued jobs retain no lease, so abandoned jobs cannot keep the warming resources alive.
     public void Dispose()
@@ -216,7 +227,7 @@ internal sealed class FlatTrieWarmupSession :
             session.FindStateNodeOrUnknown(in path, hash);
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            session._readOnlySnapshotBundle.TryLoadStateRlp(in path, hash, flags);
+            ValidateRlp(session._readOnlySnapshotBundle.TryLoadStateRlp(in path, hash, flags), address: null, in path, hash);
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null ? this : new StorageResolver(session, address);
@@ -228,7 +239,7 @@ internal sealed class FlatTrieWarmupSession :
             session.FindStorageNodeOrUnknown(address, in path, hash);
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            session._readOnlySnapshotBundle.TryLoadStorageRlp(address, in path, hash, flags);
+            ValidateRlp(session._readOnlySnapshotBundle.TryLoadStorageRlp(address, in path, hash, flags), address, in path, hash);
     }
 
     private sealed class StorageWarmer(

@@ -54,6 +54,30 @@ public class SnapshotBundleWarmerTests
     }
 
     [Test]
+    public void Session_checks_persisted_rlp_hash_before_publication_in_debug([Values] bool storage, [Values] bool matching)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        Hash256 requestedHash = matching ? hash : TestItem.KeccakA;
+        using SessionContext context = new(storage, requestedHash, rlp);
+        context.Hint();
+#if DEBUG
+        if (!matching)
+        {
+            Assert.Throws<NodeHashMismatchException>(() => context.CompleteJob());
+            TrieNode unresolved = context.FindLiveNode(requestedHash);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(unresolved.NodeType, Is.EqualTo(NodeType.Unknown));
+                Assert.That(unresolved.FullRlp.IsNull, Is.True);
+            }
+            return;
+        }
+#endif
+        Assert.That(context.CompleteJob(), Is.True);
+        Assert.That(context.FindLiveNode(requestedHash).FullRlp.ToArray(), Is.EqualTo(rlp));
+    }
+
+    [Test]
     public void Initial_overlay_supplies_session_root_and_storage_account([Values] bool storage)
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
