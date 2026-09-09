@@ -13,12 +13,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public sealed class BalStorageValueCache(int count) : IDisposable
 {
+    private static readonly byte[] Zero = [0];
     private byte[]?[] _values = new byte[count][];
 
-    /// <summary>Publishes a value; null and empty arrays both represent a known-zero slot.</summary>
-    public void Set(int ordinal, byte[]? value) => Volatile.Write(ref _values[ordinal], value ?? []);
+    /// <summary>Publishes a value, normalizing null and empty inputs to a single zero byte.</summary>
+    public void Set(int ordinal, byte[]? value) => Volatile.Write(ref _values[ordinal], value is null or { Length: 0 } ? Zero : value);
 
-    /// <summary>Returns a published value, including an empty array for zero; false means not loaded.</summary>
+    /// <summary>Returns a published value, including a single zero byte for zero; false means not loaded.</summary>
     public bool TryGet(int ordinal, out byte[]? value)
     {
         value = Volatile.Read(ref _values[ordinal]);

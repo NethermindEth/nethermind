@@ -22,13 +22,13 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 public class BlockAccessListJournalTests
 {
     [Test]
-    public void Ordinal_values_distinguish_missing_zero_and_concurrent_publication()
+    public void Ordinal_values_distinguish_missing_zero_and_concurrent_publication([Values] bool empty)
     {
         using BalStorageValueCache values = new(3);
         Assert.That(values.TryGet(0, out _), Is.False);
-        values.Set(0, null);
+        values.Set(0, empty ? [] : null);
         Assert.That(values.TryGet(0, out byte[]? zero), Is.True);
-        Assert.That(zero, Is.Empty);
+        Assert.That(zero, Is.EqualTo(new byte[] { 0 }));
         Parallel.For(0, 1000, _ =>
         {
             values.Set(1, [1, 2, 3]);

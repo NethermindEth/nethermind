@@ -100,17 +100,29 @@ public class BlockAccessListManagerTests
     }
 
     [Test]
-    public void PrepareForProcessing_drops_hint_tracked_for_previous_block()
+    public async Task Prepare_or_dispose_waits_for_pending_hint([Values] bool dispose)
     {
         Harness h = new();
         TaskCompletionSource stale = new(TaskCreationOptions.RunContinuationsAsynchronously);
         h.IssueHint(stale.Task);
 
-        // Re-prepare for a new block with an already-completed hint — the stale TCS is left
-        // unsignaled. If PrepareForProcessing didn't drop it, drain would block on `stale`.
-        h.IssueHint(Task.CompletedTask);
-
-        Task drain = Task.Run(h.Manager.WaitForBalWarmup);
-        Assert.That(drain.Wait(DrainTimeout), Is.True, "a stale hint from the previous block must not be awaited");
+        using ManualResetEventSlim started = new();
+        Task drain = Task.Run(() =>
+        {
+            started.Set();
+            if (dispose) h.Manager.Dispose();
+            else h.IssueHint(Task.CompletedTask);
+        });
+        try
+        {
+            Assert.That(started.Wait(DrainTimeout), Is.True);
+            Assert.That(await Task.WhenAny(drain, Task.Delay(50)), Is.Not.SameAs(drain));
+        }
+        finally
+        {
+            stale.TrySetResult();
+            await drain.WaitAsync(DrainTimeout);
+        }
+        h.Manager.WaitForBalWarmup();
     }
 }
