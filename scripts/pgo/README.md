@@ -54,6 +54,11 @@ unattributed samples and flow-smoothing diagnostics; retain those logs when
 assessing coverage. Flow-smoothing exceptions fail conversion, rather than being
 silently swallowed.
 
+This is not evidence that managed sampling replaces perfcollect without a loss
+in profile quality. Perfcollect-generated MIBCs remain valid compiler inputs.
+Compare both on the same source and workload before choosing a collection method;
+positive counters and successful compilation alone are insufficient.
+
 The converter preserves the full typed graph in MIBC. `CallChainWriter.cs` also
 exports CallFrequency JSON. That format cannot identify overloads or generic
 instantiations reliably, so the export includes only unambiguous, module-qualified names and reports how
@@ -164,3 +169,42 @@ and weighted costs are not GPU proving times.
 
 Profile presence and successful compilation do not establish a speedup. Record
 image/profile hashes, all errors, correctness results and repeated A/B timings.
+
+For the pinned ZisK emulator, retain `output.bin` and `stats.csv` from
+`ziskemu --steps -X --save-stats /n/stats.csv -o /n/output.bin ...` in each arm's
+directory. Check the full public output against an independently known result,
+then reject a candidate whose weighted cost increases:
+
+```sh
+python3 scripts/pgo/check_guest.py --baseline /results/unprofiled \
+  --expected-output "$EXPECTED_PUBLIC_OUTPUT_HEX" /results/profiled
+```
+
+The command emits the measurements as JSON and exits nonzero for wrong/truncated
+output, missing counters or a cost regression. A lower step count does not
+override an increased weighted cost. Keep rejected results in the comparison.
+
+### Historical profiles as comparison controls
+
+The profile at the head of [#10877](https://github.com/NethermindEth/nethermind/pull/10877)
+was replaced after the perfcollect results described in its body. Use immutable
+revisions and inspect the actual data instead of assuming its latest MIBC still
+contains SPGO:
+
+| Profile revision | Actual MIBC contents |
+| --- | --- |
+| `2f370884f8e14be6cf868bbd3d762a6d3d3e643f` | Later mainnet instrumentation; no SPGO blocks or call weights |
+| `2ffe6b514c2e201d84769f84726a5d0844f2fbdb` | Earlier perfcollect-containing profile; 1,380 SPGO methods and 12,385 call edges |
+
+Both are at `src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc` in those
+commits. Extract them into an ignored local directory after fetching the PR's
+history; do not silently substitute either for a fresh collection or commit them.
+The existing `NethermindPgoProfile` and guest `PGO_PROFILE` inputs accept either.
+
+On current-source guest block 25,532,382, the later mainnet profile reduced weighted
+cost by 0.9485%, the earlier perfcollect-containing profile increased it by 0.5050%,
+and their MIBC merge reduced it by 0.6844%, relative to an unprofiled guest. All
+three public outputs matched. The baseline and later-mainnet result repeated
+exactly in reverse order. The synthetic RPC combined profile increased cost by
+0.5574%. These are one-block results, not release-profile selection or proof that
+one collector is better: source revisions and training workloads differ.

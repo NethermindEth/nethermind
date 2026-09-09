@@ -7,9 +7,36 @@ import unittest
 
 from convert import check_profile, convert
 from collect import validate_expb_log
+from check_guest import compare
 
 
 class ProfileValidationTests(unittest.TestCase):
+    def test_guest_requires_correct_output_and_rejects_cost_regressions(self):
+        expected = bytes.fromhex("01020301")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline = root / "baseline"
+            baseline.mkdir()
+            (baseline / "output.bin").write_bytes(expected.ljust(256, b"\0"))
+            (baseline / "stats.csv").write_text("STEPS,100\nCOST,TOTAL,1000,100%\n")
+            for name, cost in (("faster", 999), ("equal", 1000), ("slower", 1001)):
+                candidate = root / name
+                candidate.mkdir()
+                (candidate / "output.bin").write_bytes(expected.ljust(256, b"\0"))
+                # Fewer instructions are insufficient if weighted cost increases.
+                (candidate / "stats.csv").write_text(f"STEPS,90\nCOST,TOTAL,{cost},100%\n")
+                result = compare(baseline, [candidate], expected)["candidates"][0]
+                self.assertEqual(result["accepted"], name != "slower")
+            for name in ("wrong_output", "truncated_output", "missing_cost"):
+                with self.subTest(name=name):
+                    candidate = root / name
+                    candidate.mkdir()
+                    output = b"\0" * 256 if name == "wrong_output" else expected.ljust(256, b"\0")
+                    (candidate / "output.bin").write_bytes(output[:4] if name == "truncated_output" else output)
+                    (candidate / "stats.csv").write_text("STEPS,100\n" if name == "missing_cost" else "STEPS,100\nCOST,TOTAL,999,100%\n")
+                    with self.assertRaises(ValueError):
+                        compare(baseline, [candidate], expected)
+
     def test_expb_rejects_invalid_blocks_even_after_graceful_shutdown(self):
         clean = "Nethermind is shut down\nCleanup completed\n"
         validate_expb_log(clean)
