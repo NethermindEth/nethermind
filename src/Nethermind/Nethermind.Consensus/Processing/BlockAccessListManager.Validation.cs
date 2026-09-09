@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
 
@@ -271,11 +272,20 @@ public partial class BlockAccessListManager
         }
 
         _generatedValidationIndex.Add(slice);
+        _generatedChargeableStorageReads += slice.CoveredStorageReads;
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
         {
             if (!IsSystemContract(ac.Address))
             {
-                _generatedChargeableStorageReads += (ulong)ac.StorageReads.Count;
+                if (_readPlan is null) _generatedChargeableStorageReads += (ulong)ac.StorageReads.Count;
+                else
+                {
+                    // Writes that revert can reinsert declared reads into the slice's materialized set.
+                    // Coverage already counts those; reads of slots written elsewhere in the block still count here.
+                    foreach (UInt256 slot in ac.StorageReads)
+                        if (!_readPlan.TryGetOrdinal(new StorageCell(ac.Address, slot), out _))
+                            _generatedChargeableStorageReads++;
+                }
             }
         }
 
@@ -386,5 +396,7 @@ public partial class BlockAccessListManager
         };
 
         if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
+        if (_readPlan?.TryFindUncovered(out Address? uncovered) == true)
+            throw new InvalidBlockLevelAccessListException(block.Header, $"storage_reads mismatch for {uncovered}.");
     }
 }

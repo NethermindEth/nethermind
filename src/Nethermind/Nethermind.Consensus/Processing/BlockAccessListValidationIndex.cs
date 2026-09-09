@@ -49,7 +49,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     private Address? _generatedOverflowAddress;
     private uint _generatedOverflowIndex;
 
-    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested, int storageReadsCapacity, int storageWritesCapacity)
+    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested, int storageReadsCapacity, int storageWritesCapacity, bool trackStorageReads = true)
     {
         _addressIndex = addressIndex;
         _lastIndex = GetLastIndex(txCount);
@@ -59,7 +59,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         _lanes = new LaneStore(suggested._lanes);
         // Slack covers per-tx duplication before dedup on reads, and invalid wire BALs that push
         // generated past suggested before lane overflow trips.
-        _generatedStorageReads = new(WithSlack(storageReadsCapacity));
+        _generatedStorageReads = trackStorageReads ? new(WithSlack(storageReadsCapacity)) : null;
         _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
         // Start with an empty bitmap; MarkAccount grows it through the pool on first use, so
         // blocks that never call MarkAccount don't rent anything.
@@ -160,7 +160,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
             }
             if (writes.Count != writesCountBefore) _generatedStorageWritesSorted = false;
 
-            if (accountChanges.StorageReads.Count > 0)
+            if (_generatedStorageReads is not null && accountChanges.StorageReads.Count > 0)
             {
                 List<(int, UInt256)> reads = _generatedStorageReads!;
                 foreach (UInt256 read in accountChanges.StorageReads) reads.Add((accountOrdinal, read));
@@ -252,8 +252,11 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         // runs line up with suggested.AccountChanges' address-sorted iteration. Reads/writes
         // walk in lockstep per account, dropping reads whose slot also has a write — mirroring
         // GeneratedBlockAccessList.Merge's read→write promotion.
-        SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
-        SortAndDedupFlat(_generatedStorageWrites, ref _generatedStorageWritesSorted);
+        if (_generatedStorageReads is not null)
+        {
+            SortAndDedupFlat(_generatedStorageReads, ref _generatedStorageReadsSorted);
+            SortAndDedupFlat(_generatedStorageWrites, ref _generatedStorageWritesSorted);
+        }
         ReadOnlySpan<(int Ordinal, UInt256 Slot)> reads = _generatedStorageReads is null
             ? default
             : CollectionsMarshal.AsSpan(_generatedStorageReads);
@@ -271,6 +274,8 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
                 mismatchAddress = suggestedAccount.Address;
                 return StructuralMismatchKind.MissingInGenerated;
             }
+
+            if (_generatedStorageReads is null) continue;
 
             // suggested.AccountChanges is address-sorted and Build() assigns ordinals in that
             // iteration order, so ordinals here are monotonically increasing — the reads/writes

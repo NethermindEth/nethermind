@@ -39,7 +39,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -69,6 +69,7 @@ public partial class BlockAccessListManager
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
         private BlockHeader? _parentStateHeader;
+        private BalReadStoragePlan? _readPlan;
 
         // _inUse[i] is the processor currently bound to balIndex i.
         private TxProcessorWithWorldState?[] _inUse = new TxProcessorWithWorldState?[DefaultTxCount];
@@ -103,8 +104,9 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
         {
+            _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
             _parentStateHeader = null;
@@ -146,7 +148,7 @@ public partial class BlockAccessListManager
             {
                 // Install a fresh BAL before Setup so the worker has somewhere to record changes.
                 processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
-                processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader);
+                processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader, _readPlan);
                 _inUse[idx] = processor;
                 return processor;
             }
@@ -176,7 +178,9 @@ public partial class BlockAccessListManager
             TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
-            _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
+            BlockAccessListAtIndex? slice = processor.WorldState.GetGeneratingBlockAccessList();
+            if (slice is not null) slice.CoveredStorageReads = processor.WorldState.ReadCoverage?.ChargeableReadCount ?? 0;
+            _perTxBal[idx] = slice;
             processor.WorldState.SetGeneratingBlockAccessList(null);
             processor.ClearParentReader();
             _inUse[idx] = null;
@@ -331,7 +335,7 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
             => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
 
         public TxProcessorWithWorldState Get(uint? _)
@@ -362,6 +366,7 @@ public partial class BlockAccessListManager
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
+        private BalReadCoverage? _readCoverage;
 
         public TxProcessorWithWorldState(
             bool parallel,
@@ -382,7 +387,7 @@ public partial class BlockAccessListManager
             (TxProcessor, TxProcessorAdapter) = txProcessorFactory.Create(WorldState, parallel);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan = null)
         {
             if (_parentReader is not null) ThrowParentReaderStillAttached();
 
@@ -395,12 +400,18 @@ public partial class BlockAccessListManager
             {
                 if (parentReader is null) ThrowParentReaderUnavailable();
                 _balWorldState.SetParentReader(parentReader.WorldState);
-                _balWorldState.Setup(block);
+                if (readPlan is not null && !ReferenceEquals(_readCoverage?.Plan, readPlan))
+                    _readCoverage = readPlan.CreateCoverage();
+                BalReadCoverage? coverage = readPlan is null ? null : _readCoverage;
+                coverage?.StartSlice();
+                WorldState.ReadCoverage = coverage;
+                _balWorldState.Setup(block, coverage);
             }
         }
 
         public void ClearParentReader()
         {
+            WorldState.ReadCoverage = null;
             _balWorldState?.ClearParentReader();
             _parentReader?.Dispose();
             _parentReader = null;

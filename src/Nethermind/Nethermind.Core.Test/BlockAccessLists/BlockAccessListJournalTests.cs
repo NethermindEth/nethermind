@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -19,6 +20,60 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 [TestFixture]
 public class BlockAccessListJournalTests
 {
+    [Test]
+    public void Coverage_reduces_workers_and_checks_partial_words(
+        [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast)
+    {
+        UInt256[] slots = new UInt256[count];
+        for (int i = 0; i < count; i++) slots[i] = (UInt256)i;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage[] workers = [plan.CreateCoverage(), plan.CreateCoverage()];
+        int marked = omitLast ? Math.Max(0, count - 1) : count;
+        for (int i = 0; i < marked; i++)
+        {
+            StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+            workers[i % 2].TryMark(cell);
+            workers[i % 2].TryMark(cell);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(workers[0].ChargeableReadCount + workers[1].ChargeableReadCount, Is.EqualTo((ulong)marked));
+            Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
+        }
+    }
+
+    [Test]
+    public void Coverage_reuses_slice_storage_and_excludes_system_reads()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        StorageCell system = new(Eip7002Constants.WithdrawalRequestPredeployAddress, 2);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject,
+            Build.An.AccountChanges.WithAddress(system.Address).WithStorageReads(system.Index).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage worker = plan.CreateCoverage();
+        worker.TryMark(cell);
+        worker.TryMark(system);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10_000; i++)
+        {
+            worker.StartSlice();
+            worker.TryMark(cell);
+            worker.TryMark(cell);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+            Assert.That(plan.TryFindUncovered(out _), Is.False, "earlier slices still cover system reads");
+            Assert.That(allocated, Is.Zero, "reusing a worker must not allocate per transaction");
+        }
+        plan.Dispose();
+        Assert.That(worker.Plan, Is.Null);
+    }
+
     [Test]
     public void AddCodeChange_with_equal_before_after_does_not_create_account_changes()
     {
