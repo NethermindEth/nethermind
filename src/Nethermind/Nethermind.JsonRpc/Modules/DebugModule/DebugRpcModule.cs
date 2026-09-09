@@ -321,8 +321,8 @@ public class DebugRpcModule(
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
     {
         // EIP-8141: a frame transaction always executes at least one frame and always settles on a payer,
-        // so a receipt missing either is malformed. Both still encode but no longer decode, so they are
-        // rejected here rather than persisted as a receipt no node could read back.
+        // so a receipt missing either is malformed. The codec refuses both; rejecting them here answers
+        // invalid params rather than an internal error.
         for (int i = 0; i < receiptForRpc.Length; i++)
         {
             ReceiptForRpc receipt = receiptForRpc[i];

@@ -639,6 +639,32 @@ public class FrameTransactionForRpcTests
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
 
+    /// <summary>And on the frame logs, which ConcatLogs then carries into the receipt's own log set: the element
+    /// annotation does not bind the deserializer, so <c>"logs": [null]</c> reaches the binder here too.</summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ReceiptForRpc_FrameTx_RejectsANullFrameLogEntry(bool withNullEntry)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc
+            {
+                Status = TxFrameReceipt.StatusSuccess,
+                Logs = withNullEntry ? [null!] : [new LogEntry(TestItem.AddressA, [1], [])],
+            }
+        ];
+
+        if (withNullEntry)
+        {
+            Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+        }
+        else
+        {
+            Assert.That(receiptForRpc.ToReceipt().FrameReceipts![0].Logs, Has.Length.EqualTo(1));
+        }
+    }
+
     private const int MaxAggregateLogs = 270_000;
 
     /// <summary>The frame log union is admitted right up to the wire receipt decoder's log ceiling.</summary>

@@ -72,7 +72,9 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.Position < receiptEnd)
             {
                 txReceipt.TxType = TxType.FrameTx;
-                txReceipt.Payer = decoderContext.DecodeAddress();
+                // Null-tolerant like the sender above: an earlier build wrote a payer-less receipt, and
+                // refusing to parse it would take the whole block's receipt array with it.
+                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
                 txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, CompactLogEntryDecoder.Instance);
             }
 

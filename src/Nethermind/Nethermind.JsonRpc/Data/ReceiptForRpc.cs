@@ -184,7 +184,7 @@ namespace Nethermind.JsonRpc.Data
         /// Reached with an unvalidated payload through <c>debug_insertReceipts</c>, so a shape EIP-8141
         /// cannot produce has to be rejected here rather than reaching the receipt store.
         /// </remarks>
-        /// <exception cref="JsonException">An entry is null or carries an undefined status, there are more than EIP-8141's MAX_FRAMES of them, or their logs exceed <see cref="MaxLogs"/> in aggregate.</exception>
+        /// <exception cref="JsonException">An entry is null, carries an undefined status or a null log, there are more than EIP-8141's MAX_FRAMES of them, or their logs exceed <see cref="MaxLogs"/> in aggregate.</exception>
         private TxFrameReceipt[] ToFrameReceipts()
         {
             if (FrameReceipts is not { Length: > 0 } frames)
@@ -209,6 +209,16 @@ namespace Nethermind.JsonRpc.Data
                 if (frameReceipt.Status is not (TxFrameReceipt.StatusFailure or TxFrameReceipt.StatusSuccess or TxFrameReceipt.StatusSkipped))
                 {
                     throw new JsonException($"Frame receipt {i} has status {frameReceipt.Status}, not one of failure, success or skipped.");
+                }
+
+                // As on the top-level logs: a null entry encodes but no read path takes it back, and
+                // ConcatLogs would carry it into the receipt's own log set.
+                for (int j = 0; j < frameReceipt.Logs.Length; j++)
+                {
+                    if (frameReceipt.Logs[j] is null)
+                    {
+                        throw new JsonException($"Log entry {j} of frame receipt {i} is null.");
+                    }
                 }
 
                 logCount += frameReceipt.Logs.Length;
