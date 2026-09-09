@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -51,9 +50,9 @@ public class FrameTxValidationTests
         yield return Case("EmptyFrames_MissingFrames",
             static tx => tx.Frames = [], FrameTxValidation.MissingFrames);
         yield return Case("MaxFramesCount_Valid",
-            static tx => tx.Frames = Enumerable.Repeat(0, Eip8141Constants.MaxFrames).Select(_ => DefaultModeFrame()).ToArray(), null);
+            static tx => tx.Frames = DefaultModeFrames(Eip8141Constants.MaxFrames), null);
         yield return Case("MaxFramesExceeded_MissingFrames",
-            static tx => tx.Frames = Enumerable.Repeat(0, Eip8141Constants.MaxFrames + 1).Select(_ => DefaultModeFrame()).ToArray(),
+            static tx => tx.Frames = DefaultModeFrames(Eip8141Constants.MaxFrames + 1),
             FrameTxValidation.MissingFrames);
 
         // assert len(tx.sender) == 20 — a null sender is the decoded-form equivalent.
@@ -336,6 +335,17 @@ public class FrameTxValidationTests
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
 
     private static TxFrame DefaultModeFrame() => Frame();
+
+    private static TxFrame[] DefaultModeFrames(int count)
+    {
+        TxFrame[] frames = new TxFrame[count];
+        for (int i = 0; i < frames.Length; i++)
+        {
+            frames[i] = DefaultModeFrame();
+        }
+
+        return frames;
+    }
 
     private static TxFrame ExpiryFrame(ulong gasLimit = 30_000) =>
         new(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength]);

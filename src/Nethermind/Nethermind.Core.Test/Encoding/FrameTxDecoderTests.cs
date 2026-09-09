@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using CkzgLib;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -38,17 +37,26 @@ public class FrameTxDecoderTests
     {
         Transaction decoded = EncodeDecode(tx);
 
-        Assert.That(decoded.Type, Is.EqualTo(TxType.FrameTx));
-        Assert.That(decoded.ChainId, Is.EqualTo(tx.ChainId));
-        Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(decoded.ChainId, Is.EqualTo(tx.ChainId));
+            Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
+        }
+
         AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
-        Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
-        // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
-        Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
-        Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
-        Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(tx.DecodedMaxFeePerGas));
-        Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo(tx.MaxFeePerBlobGas ?? UInt256.Zero));
-        Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
+            // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
+            Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
+            Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(tx.DecodedMaxFeePerGas));
+            Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo(tx.MaxFeePerBlobGas ?? UInt256.Zero));
+            Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
+        }
+
         AssertFramesEqual(decoded.Frames!, tx.Frames!);
         AssertSignaturesEqual(decoded.FrameSignatures!, tx.FrameSignatures!);
     }
@@ -62,13 +70,15 @@ public class FrameTxDecoderTests
 
         ShardBlobNetworkWrapper expected = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         ShardBlobNetworkWrapper actual = (ShardBlobNetworkWrapper)decoded.NetworkWrapper!;
-        Assert.That(actual.Version, Is.EqualTo(expected.Version));
-        Assert.That(actual.Blobs, Is.EqualTo(expected.Blobs));
-        Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
-        Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
-        Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
-
-        Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Version, Is.EqualTo(expected.Version));
+            Assert.That(actual.Blobs, Is.EqualTo(expected.Blobs));
+            Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
+            Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
+            Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
+            Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
+        }
     }
 
     [Test]
@@ -81,8 +91,11 @@ public class FrameTxDecoderTests
 
         Rlp consensusWithWrapper = _txDecoder.EncodeTx(withWrapper);
         Rlp consensusWithoutWrapper = _txDecoder.EncodeTx(withoutWrapper);
-        Assert.That(consensusWithWrapper.Bytes, Is.EqualTo(consensusWithoutWrapper.Bytes));
-        Assert.That(FrameTxSigHash.ComputeValue(withWrapper), Is.EqualTo(FrameTxSigHash.ComputeValue(withoutWrapper)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(consensusWithWrapper.Bytes, Is.EqualTo(consensusWithoutWrapper.Bytes));
+            Assert.That(FrameTxSigHash.ComputeValue(withWrapper), Is.EqualTo(FrameTxSigHash.ComputeValue(withoutWrapper)));
+        }
     }
 
     [Test]
@@ -92,8 +105,11 @@ public class FrameTxDecoderTests
 
         Transaction decoded = EncodeDecode(tx, RlpBehaviors.InMempoolForm);
 
-        Assert.That(decoded.NetworkWrapper, Is.Null);
-        Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NetworkWrapper, Is.Null);
+            Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
+        }
     }
 
     // Such a transaction would reach the blob pool with no sidecar to serve.
@@ -255,7 +271,9 @@ public class FrameTxDecoderTests
         {
             Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })
         })).SetName("Decode_ReferenceMissingRoot_Throws");
-        yield return new TestCaseData(Rlp.Encode(Enumerable.Repeat(wellFormed, Eip8272Constants.MaxRecentRootReferences + 1).ToArray()))
+        Rlp[] overTheCap = new Rlp[Eip8272Constants.MaxRecentRootReferences + 1];
+        Array.Fill(overTheCap, wellFormed);
+        yield return new TestCaseData(Rlp.Encode(overTheCap))
             .SetName("Decode_MoreReferencesThanTheCap_Throws");
         yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
             .SetName("Decode_EmptyListAsAReference_Throws");
@@ -318,11 +336,14 @@ public class FrameTxDecoderTests
 
         Assert.That(actual, Is.Not.Null);
         Assert.That(actual!.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
-            Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
-            Assert.That(actual[i].Root, Is.EqualTo(expected[i].Root));
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
+                Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
+                Assert.That(actual[i].Root, Is.EqualTo(expected[i].Root));
+            }
         }
     }
 
@@ -467,7 +488,13 @@ public class FrameTxDecoderTests
     public void Decode_MoreNonceKeysThanTheCap_Throws()
     {
         Transaction keyed = CreateFrameTx();
-        keyed.NonceKeys = [.. Enumerable.Range(1, Eip8250Constants.MaxNonceKeys + 1).Select(static i => (UInt256)i)];
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = (UInt256)(i + 1);
+        }
+
+        keyed.NonceKeys = keys;
 
         Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
     }
@@ -476,7 +503,13 @@ public class FrameTxDecoderTests
     [TestCase(Eip8141Constants.MaxFrames + 1, true)]
     public void Decode_BoundsTheFrameCount(int frameCount, bool rejected)
     {
-        Transaction tx = CreateFrameTx(frames: [.. Enumerable.Range(0, frameCount).Select(static _ => Frame())]);
+        TxFrame[] frames = new TxFrame[frameCount];
+        for (int i = 0; i < frames.Length; i++)
+        {
+            frames[i] = Frame();
+        }
+
+        Transaction tx = CreateFrameTx(frames: frames);
 
         if (rejected)
         {
@@ -495,7 +528,13 @@ public class FrameTxDecoderTests
     {
         Transaction tx = CreateFrameTx();
         tx.MaxFeePerBlobGas = 1;
-        tx.BlobVersionedHashes = [.. Enumerable.Range(0, hashCount).Select(static _ => FilledBytes(Hash256.Size, 0x01))];
+        byte[][] hashes = new byte[hashCount][];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = FilledBytes(Hash256.Size, 0x01);
+        }
+
+        tx.BlobVersionedHashes = hashes;
 
         if (rejected)
         {
@@ -509,21 +548,23 @@ public class FrameTxDecoderTests
 
     // EIP-8141 caps the signature count only through gas, and a list this size is payable well inside a
     // block, so the decoder must not reject it.
-    [TestCase(1024)]
-    [TestCase(1025)]
-    public void Decode_SignatureCountBoundedOnlyByGas_IsAccepted(int signatureCount)
+    [Test]
+    public void Decode_SignatureCountBoundedOnlyByGas_IsAccepted([Values(1024, 1025)] int signatureCount)
     {
-        Transaction tx = CreateFrameTx(signatures:
-            [.. Enumerable.Range(0, signatureCount).Select(static _ =>
-                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, default))]);
+        TxFrameSignature[] signatures = new TxFrameSignature[signatureCount];
+        for (int i = 0; i < signatures.Length; i++)
+        {
+            signatures[i] = new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, default);
+        }
+
+        Transaction tx = CreateFrameTx(signatures: signatures);
 
         Assert.That(EncodeDecode(tx).FrameSignatures!.Length, Is.EqualTo(signatureCount));
     }
 
     // Likewise for the signature length, charged as calldata.
-    [TestCase(65_536)]
-    [TestCase(65_537)]
-    public void Decode_SignatureLengthBoundedOnlyByGas_IsAccepted(int signatureLength)
+    [Test]
+    public void Decode_SignatureLengthBoundedOnlyByGas_IsAccepted([Values(65_536, 65_537)] int signatureLength)
     {
         Transaction tx = CreateFrameTx(signatures: [new TxFrameSignature(
             TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(signatureLength, 0x01))]);
@@ -534,9 +575,8 @@ public class FrameTxDecoderTests
     // The gas budget alone admits 10,000,001 entries at the default MaxBlockGas, so one-byte placeholders would
     // size an array eight times their own length. RlpLimitException, not the RlpException a null element
     // raises, is what distinguishes refusing the count from allocating for it.
-    [TestCase(1_024)]
-    [TestCase(100_000)]
-    public void Decode_SignatureCountTheBytesCannotHold_IsRefusedBeforeAllocating(int count)
+    [Test]
+    public void Decode_SignatureCountTheBytesCannotHold_IsRefusedBeforeAllocating([Values(1_024, 100_000)] int count)
     {
         byte[] payload = TypedPayload(FrameTxBody(signatures: PlaceholderList(count)));
 
@@ -568,11 +608,8 @@ public class FrameTxDecoderTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    public void Decode_DeclaredLengthOverrunsTheBuffer_ReportsTruncatedReferences(int overrun)
+    [Test]
+    public void Decode_DeclaredLengthOverrunsTheBuffer_ReportsTruncatedReferences([Range(1, 4)] int overrun)
     {
         // Inflating the declared payload length without adding bytes leaves the end-of-payload checkpoint
         // past the last real field, so the decoder enters the trailing recent-root-reference list and reads
@@ -633,13 +670,14 @@ public class FrameTxDecoderTests
         }
 
         IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
-        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(
-            [.. Enumerable.Range(1, blobCount).Select(i =>
-            {
-                byte[] blob = new byte[Ckzg.BytesPerBlob];
-                blob[0] = (byte)(i % 256);
-                return blob;
-            })]);
+        byte[][] blobs = new byte[blobCount][];
+        for (int i = 0; i < blobs.Length; i++)
+        {
+            blobs[i] = new byte[Ckzg.BytesPerBlob];
+            blobs[i][0] = (byte)((i + 1) % 256);
+        }
+
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blobs);
         proofsManager.ComputeProofsAndCommitments(wrapper);
 
         Transaction tx = CreateFrameTx();
@@ -652,27 +690,33 @@ public class FrameTxDecoderTests
     private static void AssertFramesEqual(TxFrame[] actual, TxFrame[] expected)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual[i].Mode, Is.EqualTo(expected[i].Mode), $"frame {i} mode");
-            Assert.That(actual[i].Flags, Is.EqualTo(expected[i].Flags), $"frame {i} flags");
-            Assert.That(actual[i].Target, Is.EqualTo(expected[i].Target), $"frame {i} target");
-            Assert.That(actual[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit), $"frame {i} execution gas limit");
-            Assert.That(actual[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit), $"frame {i} state gas limit");
-            Assert.That(actual[i].Value, Is.EqualTo(expected[i].Value), $"frame {i} value");
-            Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"frame {i} data");
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(actual[i].Mode, Is.EqualTo(expected[i].Mode), $"frame {i} mode");
+                Assert.That(actual[i].Flags, Is.EqualTo(expected[i].Flags), $"frame {i} flags");
+                Assert.That(actual[i].Target, Is.EqualTo(expected[i].Target), $"frame {i} target");
+                Assert.That(actual[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit), $"frame {i} execution gas limit");
+                Assert.That(actual[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit), $"frame {i} state gas limit");
+                Assert.That(actual[i].Value, Is.EqualTo(expected[i].Value), $"frame {i} value");
+                Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"frame {i} data");
+            }
         }
     }
 
     private static void AssertSignaturesEqual(TxFrameSignature[] actual, TxFrameSignature[] expected)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual[i].Scheme, Is.EqualTo(expected[i].Scheme), $"signature {i} scheme");
-            Assert.That(actual[i].Signer, Is.EqualTo(expected[i].Signer), $"signature {i} signer");
-            Assert.That(actual[i].Msg.ToArray(), Is.EqualTo(expected[i].Msg.ToArray()), $"signature {i} msg");
-            Assert.That(actual[i].Signature.ToArray(), Is.EqualTo(expected[i].Signature.ToArray()), $"signature {i} bytes");
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(actual[i].Scheme, Is.EqualTo(expected[i].Scheme), $"signature {i} scheme");
+                Assert.That(actual[i].Signer, Is.EqualTo(expected[i].Signer), $"signature {i} signer");
+                Assert.That(actual[i].Msg.ToArray(), Is.EqualTo(expected[i].Msg.ToArray()), $"signature {i} msg");
+                Assert.That(actual[i].Signature.ToArray(), Is.EqualTo(expected[i].Signature.ToArray()), $"signature {i} bytes");
+            }
         }
     }
 

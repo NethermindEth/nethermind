@@ -26,11 +26,15 @@ public class FrameTxReceiptDecoderTests
         RlpReader reader = new(encoded);
         TxReceipt decoded = decoder.Decode(ref reader)!;
 
-        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
-        Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+            Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
+            Assert.That(decoded.StatusCode, Is.EqualTo(expectedStatus),
+                "the transaction status is absent from the wire and must be derived from the frame statuses");
+        }
+
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
-        Assert.That(decoded.StatusCode, Is.EqualTo(expectedStatus),
-            "the transaction status is absent from the wire and must be derived from the frame statuses");
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
@@ -57,12 +61,16 @@ public class FrameTxReceiptDecoderTests
         TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage)!;
 
         Assert.That(decoded, Has.Length.EqualTo(2));
-        Assert.That(decoded[0].Payer, Is.Null, "regular receipts carry no frame extension");
-        Assert.That(decoded[0].FrameReceipts, Is.Null);
 
         TxReceipt decodedFrame = decoded[1];
-        Assert.That(decodedFrame.TxType, Is.EqualTo(TxType.FrameTx));
-        Assert.That(decodedFrame.Payer, Is.EqualTo(frameReceipt.Payer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded[0].Payer, Is.Null, "regular receipts carry no frame extension");
+            Assert.That(decoded[0].FrameReceipts, Is.Null);
+            Assert.That(decodedFrame.TxType, Is.EqualTo(TxType.FrameTx));
+            Assert.That(decodedFrame.Payer, Is.EqualTo(frameReceipt.Payer));
+        }
+
         AssertFrameReceiptsEqual(decodedFrame.FrameReceipts!, frameReceipt.FrameReceipts!);
         AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs!,
             "the stored union must stay the union, not get rebuilt from frame logs");
@@ -96,18 +104,22 @@ public class FrameTxReceiptDecoderTests
 
         Assert.That(decoded, Has.Length.EqualTo(3), "every receipt must decode, including the neighbour after the frame extension");
 
-        Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender), "leading receipt sender");
-        Assert.That(decoded[0].GasUsedTotal, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
-        Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender), "leading receipt sender");
+            Assert.That(decoded[0].GasUsedTotal, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+            Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
 
-        Assert.That(decoded[1].TxType, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
-        Assert.That(decoded[1].GasUsedTotal, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
-        Assert.That(decoded[1].Payer, Is.EqualTo(frameReceipt.Payer), "the payer must be decoded, not skipped by realignment");
+            Assert.That(decoded[1].TxType, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
+            Assert.That(decoded[1].GasUsedTotal, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
+            Assert.That(decoded[1].Payer, Is.EqualTo(frameReceipt.Payer), "the payer must be decoded, not skipped by realignment");
+
+            Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender), "trailing receipt sender proves realignment past the frame extension");
+            Assert.That(decoded[2].GasUsedTotal, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+            Assert.That(decoded[2].TxType, Is.EqualTo(TxType.Legacy));
+        }
+
         AssertFrameReceiptsEqual(decoded[1].FrameReceipts!, frameReceipt.FrameReceipts!);
-
-        Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender), "trailing receipt sender proves realignment past the frame extension");
-        Assert.That(decoded[2].GasUsedTotal, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
-        Assert.That(decoded[2].TxType, Is.EqualTo(TxType.Legacy));
     }
 
     // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts, so a frame-tx receipt must leave
@@ -153,22 +165,26 @@ public class FrameTxReceiptDecoderTests
 
         Assert.That(count, Is.EqualTo(3), "every receipt must decode, including the neighbours");
 
-        Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender!.ToString()), "leading receipt sender");
-        Assert.That(decoded[0].Gas, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
-        Assert.That(decoded[0].Type, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender!.ToString()), "leading receipt sender");
+            Assert.That(decoded[0].Gas, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+            Assert.That(decoded[0].Type, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
 
-        Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
-        Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
-        Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
-        // TxType here is decoder-assigned and only observed by callers that skip recovery; on
-        // eth_getLogs recovery overwrites it from the matching transaction.
-        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
+            Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
+            Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
+            Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
+            // TxType here is decoder-assigned and only observed by callers that skip recovery; on
+            // eth_getLogs recovery overwrites it from the matching transaction.
+            Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
+
+            // The trailing receipt decodes intact only if the reader advanced past the frame extension.
+            Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
+            Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+            Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
+        }
+
         AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
-
-        // The trailing receipt decodes intact only if the reader advanced past the frame extension.
-        Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
-        Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
-        Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
     }
 
     /// <summary>The on-disk storage encoding persists each log twice — in the top-level union sequence and again
@@ -198,10 +214,14 @@ public class FrameTxReceiptDecoderTests
 
         RlpReader reader = new(encoded);
         TxReceipt decoded = decoder.Decode(ref reader, RlpBehaviors.Storage)!;
-        Assert.That(decoded.TxType, Is.EqualTo(TxType.FrameTx));
-        Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
-        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
-        Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.TxType, Is.EqualTo(TxType.FrameTx));
+            Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
+            Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
+        }
+
         AssertLogsEqual(decoded.Logs!, unionLogs, "the top-level union copy of the logs must survive the round-trip");
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, frameReceipts);
         AssertLogsEqual(decoded.FrameReceipts!.SelectMany(static frame => frame.Logs).ToArray(), unionLogs,
@@ -256,9 +276,14 @@ public class FrameTxReceiptDecoderTests
         Assert.That(actual.Length, Is.EqualTo(expected.Length));
         for (int i = 0; i < expected.Length; i++)
         {
-            Assert.That(actual[i].Status, Is.EqualTo(expected[i].Status), $"frame receipt {i} status");
-            Assert.That(actual[i].ExecutionGasUsed, Is.EqualTo(expected[i].ExecutionGasUsed), $"frame receipt {i} execution gas used");
-            Assert.That(actual[i].StateGasUsed, Is.EqualTo(expected[i].StateGasUsed), $"frame receipt {i} state gas used");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i].Status, Is.EqualTo(expected[i].Status), $"frame receipt {i} status");
+                Assert.That(actual[i].ExecutionGasUsed, Is.EqualTo(expected[i].ExecutionGasUsed), $"frame receipt {i} execution gas used");
+                Assert.That(actual[i].StateGasUsed, Is.EqualTo(expected[i].StateGasUsed), $"frame receipt {i} state gas used");
+            }
+
+            // Outside the scope above: its own length guard must stop before the per-log field reads.
             AssertLogsEqual(actual[i].Logs, expected[i].Logs);
         }
     }
@@ -267,11 +292,14 @@ public class FrameTxReceiptDecoderTests
     private static void AssertLogsEqual(LogEntry[] actual, LogEntry[] expected, string? message = null)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length), message);
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
-            Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"log {i} data");
-            Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
+                Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"log {i} data");
+                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
+            }
         }
     }
 
@@ -317,9 +345,13 @@ public class FrameTxReceiptDecoderTests
 
         Assert.That(decoded, Has.Length.EqualTo(1));
         TxReceipt receipt = decoded[0];
-        Assert.That(receipt.TxType, Is.EqualTo(TxType.FrameTx));
-        Assert.That(receipt.GasUsedTotal, Is.EqualTo(51_000UL));
-        Assert.That(receipt.Payer, Is.EqualTo(TestItem.AddressA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.TxType, Is.EqualTo(TxType.FrameTx));
+            Assert.That(receipt.GasUsedTotal, Is.EqualTo(51_000UL));
+            Assert.That(receipt.Payer, Is.EqualTo(TestItem.AddressA));
+        }
+
         AssertFrameReceiptsEqual(receipt.FrameReceipts!,
         [
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, [Log(0x01)]),
@@ -337,20 +369,25 @@ public class FrameTxReceiptDecoderTests
         TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage)!;
 
         Assert.That(decoded, Has.Length.EqualTo(3));
-        Assert.That(decoded[0].Sender, Is.EqualTo(TestItem.AddressD), "leading regular receipt sender");
-        Assert.That(decoded[0].GasUsedTotal, Is.EqualTo(1000UL), "leading regular receipt gas used total");
-        Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy));
 
-        Assert.That(decoded[1].TxType, Is.EqualTo(TxType.FrameTx));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded[0].Sender, Is.EqualTo(TestItem.AddressD), "leading regular receipt sender");
+            Assert.That(decoded[0].GasUsedTotal, Is.EqualTo(1000UL), "leading regular receipt gas used total");
+            Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy));
+
+            Assert.That(decoded[1].TxType, Is.EqualTo(TxType.FrameTx));
+
+            Assert.That(decoded[2].Sender, Is.EqualTo(TestItem.AddressE), "trailing regular receipt sender");
+            Assert.That(decoded[2].GasUsedTotal, Is.EqualTo(2000UL), "trailing regular receipt gas used total");
+            Assert.That(decoded[2].TxType, Is.EqualTo(TxType.Legacy));
+        }
+
         AssertFrameReceiptsEqual(decoded[1].FrameReceipts!,
         [
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, [Log(0x01)]),
             new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [Log(0x02)]),
         ]);
-
-        Assert.That(decoded[2].Sender, Is.EqualTo(TestItem.AddressE), "trailing regular receipt sender");
-        Assert.That(decoded[2].GasUsedTotal, Is.EqualTo(2000UL), "trailing regular receipt gas used total");
-        Assert.That(decoded[2].TxType, Is.EqualTo(TxType.Legacy));
     }
 
     [Test]
@@ -378,8 +415,13 @@ public class FrameTxReceiptDecoderTests
         }
 
         Assert.That(count, Is.EqualTo(3), "every receipt must decode, including the neighbours");
-        Assert.That(seen[0], Is.EqualTo((TestItem.AddressD.ToString(), 1000UL, TxType.Legacy)));
-        Assert.That(seen[2], Is.EqualTo((TestItem.AddressE.ToString(), 2000UL, TxType.Legacy)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seen[0], Is.EqualTo((TestItem.AddressD.ToString(), 1000UL, TxType.Legacy)));
+            Assert.That(seen[1], Is.EqualTo((TestItem.AddressC.ToString(), 51_000UL, TxType.FrameTx)));
+            Assert.That(seen[2], Is.EqualTo((TestItem.AddressE.ToString(), 2000UL, TxType.Legacy)));
+        }
     }
 
     // The payload defines only failure, success and skipped. An out-of-range byte round-trips, so the decoder is
