@@ -44,9 +44,17 @@ internal sealed class FrameTxPayerExposureFilter(
         }
 
         Address? payer = tx.PayerAddress;
+        UInt256 cost = maxCost;
         UInt256 balance;
         if (payer is null || payer == tx.SenderAddress)
         {
+            // TXPARAM(0x06) prices gas alone, so wherever the sender is also what pays, the wei its own frames
+            // move is added to the bound. Only the part no earlier frame could have funded: see the helper.
+            if (UInt256.AddOverflow(maxCost, LeadingSenderFrameValue(tx), out cost))
+            {
+                return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction maximum cost cannot be priced");
+            }
+
             AccountStruct sender = state.SenderAccount;
             // The sender-balance filters defer to this one, so their cumulative bound is taken here. Only what
             // the payer ledger does not already sum is counted, or a self-paid reservation would count twice.
@@ -63,7 +71,7 @@ internal sealed class FrameTxPayerExposureFilter(
             // hold even at zero cost, or a zero-fee prefix buys a pool slot no account could have paid for.
             if (pending > sender.Balance || (sender.Balance.IsZero && !tx.IsFree()))
             {
-                return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance, txHandlingOptions);
+                return RejectUnderfundedSender(tx, pending, cost, sender.Balance, txHandlingOptions);
             }
 
             balance = sender.Balance - pending;
@@ -71,9 +79,9 @@ internal sealed class FrameTxPayerExposureFilter(
             {
                 // Nothing to reserve against, so the sender bound is the whole gate. The price is still recorded:
                 // it is what the bound above sums this transaction at once it is one of the pending ones.
-                if (maxCost > balance) return RejectUnderfundedSender(tx, pending, maxCost, sender.Balance, txHandlingOptions);
+                if (cost > balance) return RejectUnderfundedSender(tx, pending, cost, sender.Balance, txHandlingOptions);
 
-                tx.PayerExposure = maxCost;
+                tx.PayerExposure = cost;
                 return AcceptTxResult.Accepted;
             }
         }
@@ -85,16 +93,33 @@ internal sealed class FrameTxPayerExposureFilter(
 
         // AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
         Hash256? replaced = exposure.GetReserved(payer).IsZero ? null : PendingReplacement.Find(tx, standardPool, blobPool)?.Hash;
-        if (!exposure.TryReserve(payer, tx.Hash!, maxCost, balance, out UInt256 reserved, replaced))
+        if (!exposure.TryReserve(payer, tx.Hash!, cost, balance, out UInt256 reserved, replaced))
         {
             return payer == tx.SenderAddress
-                ? RejectUnderfundedSender(tx, reserved, maxCost, balance, txHandlingOptions)
-                : RejectOverExposed(tx, payer, reserved, maxCost, balance);
+                ? RejectUnderfundedSender(tx, reserved, cost, balance, txHandlingOptions)
+                : RejectOverExposed(tx, payer, reserved, cost, balance);
         }
 
         // Recorded for the restart-time restore; the ledger owns what a removal releases.
-        tx.PayerExposure = maxCost;
+        tx.PayerExposure = cost;
         return AcceptTxResult.Accepted;
+    }
+
+    /// <summary>The wei <paramref name="tx"/>'s SENDER frames move that its sender must already hold.</summary>
+    /// <remarks>Frames run in order and only VERIFY and POST_TX frames are static, so every other frame may credit
+    /// the sender before the frames behind it run — a SENDER frame's own target included, once that frame's value
+    /// has moved. The first frame past the leading static run is therefore the only one this balance bounds;
+    /// summing the rest would refuse a transaction whose later frames are funded by its earlier ones. An
+    /// underfunded SENDER frame reverts rather than invalidating the transaction, so the residue is pool quality.</remarks>
+    private static UInt256 LeadingSenderFrameValue(Transaction tx)
+    {
+        foreach (TxFrame frame in tx.Frames!)
+        {
+            if (frame.Mode is TxFrame.ModeVerify or TxFrame.ModePostTx) continue;
+            return frame.Mode == TxFrame.ModeSender ? frame.Value : UInt256.Zero;
+        }
+
+        return UInt256.Zero;
     }
 
     /// <remarks>Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.</remarks>

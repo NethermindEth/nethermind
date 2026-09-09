@@ -427,6 +427,39 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
+    // TXPARAM(0x06) prices gas alone, so the wei a SENDER frame moves sits outside it. One in the leading static
+    // run needs the balance to already hold it; one behind a DEFAULT frame may be funded by what that frame does.
+    [TestCase(0, false, false, TestName = "the sender covers the fee and the leading frame's value")]
+    [TestCase(-1, true, false, TestName = "the sender falls one wei short of the leading frame's value")]
+    [TestCase(-1, false, true, TestName = "a SENDER frame an earlier DEFAULT frame could fund is not summed")]
+    public void Accept_SelfPayingSender_CountsTheValueOfALeadingSenderFrame(int balanceDelta, bool rejected, bool creditable)
+    {
+        const int frameValue = 4_000;
+        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        Transaction tx = creditable
+            ? FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(), FrameTxTestFrames.Deploy(), senderFrame)
+            : FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(), senderFrame);
+        tx.DecodedMaxFeePerGas = UInt256.One;
+        tx.Hash = TestItem.KeccakA;
+        tx.PayerAddress = TestItem.AddressA;
+
+        // Priced off the fixture rather than a literal, so this pins the bound and not the gas schedule.
+        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, maxCost + (UInt256)(frameValue + balanceDelta));
+
+        PayerExposureCache cache = new();
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), cache, tx, senderAccounts);
+
+        UInt256 expectedReserved = rejected ? UInt256.Zero : creditable ? maxCost : maxCost + (UInt256)frameValue;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+            Assert.That(cache.GetReserved(TestItem.AddressA), Is.EqualTo(expectedReserved),
+                "an admitted leading SENDER frame holds its value alongside the fee, so the bucket sums it next time");
+        }
+    }
+
     // Result equality is by id, so nothing else here would notice the split; a remote submitter never reads the
     // detail, and composing it on the path an unfunded flood walks is what the sibling filters guard against.
     [TestCase(false, TxHandlingOptions.None, false, TestName = "a remote self-paid rejection is message-free")]
