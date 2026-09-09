@@ -44,6 +44,7 @@ public class NodeViewsTests
 
         Assert.That(combined.Hash, Is.EqualTo(whole.RootHash.ValueHash256),
             "every partition's view, combined nibble by nibble up to the root, must hash to exactly what the full trie hashes to");
+        combined.Release();
     }
 
     [Test]
@@ -78,7 +79,9 @@ public class NodeViewsTests
 
         NodeView[] children = new NodeView[BranchRlp.ChildCount];
         for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) children[nibble] = CombineLevel(leaves, prefix.Append(nibble), partitionDepth);
-        return NodeViews.Combine(children);
+        NodeView combined = NodeViews.Combine(children);
+        foreach (NodeView child in children) child.Release();
+        return combined;
     }
 
     private static bool HasPrefix(in ValueHash256 path, in TreePath prefix)

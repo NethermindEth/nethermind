@@ -204,6 +204,11 @@ public class HistoryWalkVerificationCoordinatorTests
         metadata.TryPublishVerifiedCoverage(0, 3, out _, out _);
         metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems);
         metadata.AdvanceTipSeries(2, 8, out _);
+        using (SeriesWriter scratch = new(_historyColumns))
+        {
+            scratch.WriteEmpty(SeriesScope.Accounts.Key(TreePath.FromNibble([0x1, 0x2]), scratch: true), 7);
+        }
+
         availability.PublishWatermark(8, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
@@ -218,6 +223,8 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(coordinator.LastVerdict, Is.Null, "an interrupted catch-up whose blocks the tip has already committed must be dropped, not resumed: resuming costs a scan of the whole key space to find blocks that are already there");
             Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "and its marks must go, or the next restart resumes it again");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().Any(static key => key[0] == SeriesKey.ScratchMarker), Is.False,
+                "the series the interrupted run wrote are unreferenced once it is dropped; nothing else deletes them if the operator turns the flag off afterwards");
         }
     }
 

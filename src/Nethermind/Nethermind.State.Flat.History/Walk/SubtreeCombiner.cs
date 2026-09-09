@@ -8,6 +8,8 @@ namespace Nethermind.State.Flat.History.Walk;
 
 internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartition)
 {
+    private const ulong QuietBlocksPerCancellationCheck = 1 << 10;
+
     private const int RootCursors = BranchRlp.ChildCount * BranchRlp.ChildCount;
 
     public void Combine(
@@ -150,7 +152,11 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 if (block == ulong.MaxValue) break;
 
                 if ((block & (WalkProgress.BlocksPerUpdate - 1)) < (observed & (WalkProgress.BlocksPerUpdate - 1)) || block - observed >= WalkProgress.BlocksPerUpdate) progress.Folding(block);
-                for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = root.OnBlock(quiet, current);
+                for (ulong quiet = observed + 1; quiet < block && observing; quiet++)
+                {
+                    if ((quiet & (QuietBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+                    observing = root.OnBlock(quiet, current);
+                }
 
                 emitter?.BeginBlock(block);
                 for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
@@ -174,7 +180,11 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 observed = block;
             }
 
-            for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = root.OnBlock(quiet, current);
+            for (ulong quiet = observed + 1; quiet <= to && observing; quiet++)
+            {
+                if ((quiet & (QuietBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+                observing = root.OnBlock(quiet, current);
+            }
         }
         finally
         {
@@ -184,14 +194,6 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             foreach (NodeView view in groupViews) view.Release();
         }
 
-        for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
-        {
-            for (int child = 0; child < BranchRlp.ChildCount; child++)
-            {
-                SeriesKey key = grandchildKey(nibble, child);
-                if (key.Scratch) writer.Delete(key);
-            }
-        }
     }
 
     private int RowsPerCursor(int cursors) => (int)Math.Clamp(maxRowsPerPartition / cursors, SeriesReader.SeriesCursor.MinRowsBuffered, int.MaxValue);

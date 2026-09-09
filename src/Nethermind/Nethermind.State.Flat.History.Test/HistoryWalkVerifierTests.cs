@@ -55,11 +55,14 @@ public class HistoryWalkVerifierTests
 
         public Action? OnFirstRead { get; set; }
 
+        public Action<ulong>? OnRead { get; set; }
+
         public ValueHash256? TryGetStateRoot(ulong block)
         {
             Action? hook = OnFirstRead;
             OnFirstRead = null;
             hook?.Invoke();
+            OnRead?.Invoke(block);
             return Roots.TryGetValue(block, out ValueHash256 root) ? root : (ValueHash256?)null;
         }
     }
@@ -267,27 +270,42 @@ public class HistoryWalkVerifierTests
         }
     }
 
-    [Test]
-    public void A_storage_trie_holding_more_slots_than_the_row_budget_is_split_by_slot_nibble_and_still_verifies()
+    private static readonly UInt256[] ThreeSlots = [1, 2, 3];
+    private static readonly byte[][] ThreeSlotsV1 = [[0x01], [0x02], [0x03]];
+    private static readonly byte[][] ThreeSlotsV2 = [[0x11], [0x12], [0x13]];
+
+    private static Account ThreeSlotAccount(ulong nonce, byte[][] values) =>
+        new(nonce, 50, StorageRootOf((ThreeSlots[0], values[0]), (ThreeSlots[1], values[1]), (ThreeSlots[2], values[2])), Keccak.OfAnEmptyString);
+
+    private void RecordThreeSlots(ulong block, byte[][] values, int corruptedSlot = -1)
     {
-        UInt256[] slots = [1, 2, 3];
-        byte[][] v1 = [[0x01], [0x02], [0x03]];
-        byte[][] v2 = [[0x11], [0x12], [0x13]];
-        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
-        Account b2 = new(2, 50, StorageRootOf((slots[0], v2[0]), (slots[1], v2[1]), (slots[2], v2[2])), Keccak.OfAnEmptyString);
+        for (int i = 0; i < ThreeSlots.Length; i++)
+        {
+            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, ThreeSlots[i], block, i == corruptedSlot ? [0xEE] : values[i]);
+        }
+    }
+
+    private FakeHeaders ThreeSlotContractChangedAtBlockTwo(int corruptedSlotAtBlockTwo = -1)
+    {
+        Account b0 = ThreeSlotAccount(1, ThreeSlotsV1);
+        Account b2 = ThreeSlotAccount(2, ThreeSlotsV2);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
-        for (int i = 0; i < slots.Length; i++)
-        {
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, v1[i]);
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 2, v2[i]);
-        }
+        RecordThreeSlots(block: 0, ThreeSlotsV1);
+        RecordThreeSlots(block: 2, ThreeSlotsV2, corruptedSlotAtBlockTwo);
 
         FakeHeaders headers = new();
         headers.Roots[0] = StateRootOf((AddrB, b0));
         headers.Roots[1] = headers.Roots[0];
         headers.Roots[2] = StateRootOf((AddrB, b2));
         MarkAll(headers);
+        return headers;
+    }
+
+    [Test]
+    public void A_storage_trie_holding_more_slots_than_the_row_budget_is_split_by_slot_nibble_and_still_verifies()
+    {
+        FakeHeaders headers = ThreeSlotContractChangedAtBlockTwo();
 
         HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 2, CancellationToken.None);
 
@@ -302,14 +320,9 @@ public class HistoryWalkVerifierTests
     [Test]
     public void A_corrupt_slot_at_the_anchor_of_a_quiet_contract_fails_a_range_that_starts_above_genesis()
     {
-        UInt256[] slots = [1, 2, 3];
-        byte[][] v1 = [[0x01], [0x02], [0x03]];
-        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
+        Account b0 = ThreeSlotAccount(1, ThreeSlotsV1);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
-        for (int i = 0; i < slots.Length; i++)
-        {
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, i == 1 ? [0xEE] : v1[i]);
-        }
+        RecordThreeSlots(block: 0, ThreeSlotsV1, corruptedSlot: 1);
 
         FakeHeaders headers = new();
         headers.Roots[0] = StateRootOf((AddrB, b0));
@@ -325,24 +338,7 @@ public class HistoryWalkVerifierTests
     [Test]
     public void A_corrupted_slot_row_inside_a_split_storage_trie_is_still_caught()
     {
-        UInt256[] slots = [1, 2, 3];
-        byte[][] v1 = [[0x01], [0x02], [0x03]];
-        byte[][] v2 = [[0x11], [0x12], [0x13]];
-        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
-        Account b2 = new(2, 50, StorageRootOf((slots[0], v2[0]), (slots[1], v2[1]), (slots[2], v2[2])), Keccak.OfAnEmptyString);
-        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
-        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
-        for (int i = 0; i < slots.Length; i++)
-        {
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, v1[i]);
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 2, i == 1 ? [0xEE] : v2[i]);
-        }
-
-        FakeHeaders headers = new();
-        headers.Roots[0] = StateRootOf((AddrB, b0));
-        headers.Roots[1] = headers.Roots[0];
-        headers.Roots[2] = StateRootOf((AddrB, b2));
-        MarkAll(headers);
+        FakeHeaders headers = ThreeSlotContractChangedAtBlockTwo(corruptedSlotAtBlockTwo: 1);
 
         HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition: 3).VerifyRange(0, 2, CancellationToken.None);
 
@@ -357,21 +353,15 @@ public class HistoryWalkVerifierTests
     [Test]
     public void A_destruct_inside_a_split_storage_trie_empties_every_sub_partition()
     {
-        UInt256[] slots = [1, 2, 3];
-        byte[][] v1 = [[0x01], [0x02], [0x03]];
-        byte[][] v2 = [[0x11], [0x12], [0x13]];
-        Account b0 = new(1, 50, StorageRootOf((slots[0], v1[0]), (slots[1], v1[1]), (slots[2], v1[2])), Keccak.OfAnEmptyString);
+        Account b0 = ThreeSlotAccount(1, ThreeSlotsV1);
         Account b1 = new(2, 50, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
-        Account b2 = new(3, 50, StorageRootOf((slots[0], v2[0]), (slots[1], v2[1]), (slots[2], v2[2])), Keccak.OfAnEmptyString);
+        Account b2 = ThreeSlotAccount(3, ThreeSlotsV2);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 1, b1);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
         RecordClear(AddrB, block: 1);
-        for (int i = 0; i < slots.Length; i++)
-        {
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 0, v1[i]);
-            HistoryColumnsWriter.RecordStorage(_historyColumns, AddrB, slots[i], block: 2, v2[i]);
-        }
+        RecordThreeSlots(block: 0, ThreeSlotsV1);
+        RecordThreeSlots(block: 2, ThreeSlotsV2);
 
         FakeHeaders headers = new();
         headers.Roots[0] = StateRootOf((AddrB, b0));
@@ -487,6 +477,62 @@ public class HistoryWalkVerifierTests
 
             group.Add(address);
             if (group.Count == count) return [.. group];
+        }
+    }
+
+    [Test]
+    public void A_cancellation_inside_a_quiet_tail_longer_than_one_header_prefetch_is_observed()
+    {
+        Account a0 = new(1, 100);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        ulong to = (ulong)RootHeaderCheck.PrefetchedBlocks + 2048;
+        FakeHeaders headers = new();
+        ValueHash256 root = StateRootOf((AddrA, a0));
+        for (ulong block = 0; block <= to; block++)
+        {
+            headers.Roots[block] = root;
+            HistoryColumnsWriter.MarkBlock(_historyColumns, block, root);
+        }
+
+        using CancellationTokenSource interrupt = new();
+        headers.OnRead = block => { if (block >= (ulong)RootHeaderCheck.PrefetchedBlocks) interrupt.Cancel(); };
+
+        Assert.That(() => CreateVerifier(headers).VerifyRange(0, to, interrupt.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "nothing changes after block 0, so the fold spends the whole range comparing an unchanged root to headers; a stop request arriving inside that quiet tail must end the run, not wait for the tail");
+    }
+
+    [Test]
+    public void A_finished_subtree_whose_series_is_gone_is_replayed_on_resume_rather_than_folded_as_empty()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        Account b0 = new(5, 500);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0), (AddrB, b0));
+        headers.Roots[1] = StateRootOf((AddrA, a1), (AddrB, b0));
+        MarkAll(headers);
+
+        using CancellationTokenSource interrupt = new();
+        headers.OnFirstRead = interrupt.Cancel;
+        Assert.That(() => CreateVerifier(headers).VerifyRange(0, 1, interrupt.Token), Throws.InstanceOf<OperationCanceledException>(),
+            "precondition: the run is cut at the root fold, with every subtree marked finished");
+        using (SeriesWriter scratch = new(_historyColumns))
+        {
+            scratch.DeleteAllScratch();
+        }
+
+        Assert.That(_metadata.IsWalkItemDone(0), Is.True, "precondition: the finished marks survive while their series are gone, the state a crash between the two deletes leaves behind");
+
+        HistoryWalkVerdict resumed = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed.Verified, Is.True, "a finished mark without its series must be replayed, not folded as an empty subtree into a false state-root mismatch");
+            Assert.That(resumed.BlocksCompared, Is.EqualTo(2UL));
         }
     }
 

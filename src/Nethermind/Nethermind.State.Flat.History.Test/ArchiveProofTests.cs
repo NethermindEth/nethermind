@@ -19,6 +19,7 @@ using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.Core.Test;
 using NSubstitute;
 using NUnit.Framework;
@@ -606,8 +607,10 @@ public class ArchiveProofTests
         {
             Assert.That(leaves, Has.Count.EqualTo(accounts.Length),
                 "eight accounts of two hundred versions each must cost a seek or two per account, not a row per version: a proof rebuilds the bottom of the path from these rows, and one busy neighbour would otherwise spend the whole budget before the node is built");
-            Assert.That(leaves.Select(leaf => Rlp.Decode<Account>(leaf.Value)!.Nonce), Is.All.EqualTo((ulong)150),
-                "each account resolves to its newest version at or below the queried block");
+            foreach (TrieLeaf leaf in leaves)
+            {
+                Assert.That(Rlp.Decode<Account>(leaf.Value)!.Nonce, Is.EqualTo(150UL), "each account resolves to its newest version at or below the queried block");
+            }
         }
     }
 
@@ -713,13 +716,14 @@ public class ArchiveProofTests
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 128, ArchiveProofServeEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(windowed, config);
 
+        using CommitmentMetadata windowedMetadata = new(windowed, CommitmentDepthPolicy.Default);
         ArchiveProofSource source = new(
             _flatDb,
             windowed,
             new HistoryReader(_flatDb, windowed, availability, rowFormat, LimboLogs.Instance),
             rowFormat,
             TestPolicy,
-            new CommitmentMetadata(windowed, CommitmentDepthPolicy.Default),
+            windowedMetadata,
             new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
             config,
             LimboLogs.Instance);
@@ -820,7 +824,7 @@ public class ArchiveProofTests
             Assert.That(Metadata(_policy).DroppedThroughEpoch, Is.EqualTo(2ul));
             Assert.That(storages.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier) || IsEpochTier(key, epoch: 1, CommitmentKeyLayout.CoarseTier)), Is.False, "both older epochs are gone");
             Assert.That(actual.Proof, Is.EqualTo(expected.Proof), "a contract untouched since a dropped epoch proves from the rows carried into the retained one, under a budget too small for a rebuild of its slots");
-            Assert.That(actual.StorageProofs!.Select(static proof => proof.Proof), Is.EqualTo(expected.StorageProofs!.Select(static proof => proof.Proof)));
+            AssertStorageProofsMatch(actual, expected, "the carried rows must reproduce every slot proof");
         }
     }
 
@@ -844,7 +848,7 @@ public class ArchiveProofTests
             {
                 AccountProof expected = _chain.ExpectedProof(quiet, block, slots[..4]);
                 AccountProof actual = ProveFromArchive(quiet, block, maxScannedRows: 192, slots[..4]);
-                Assert.That(actual.StorageProofs!.Select(static proof => proof.Proof), Is.EqualTo(expected.StorageProofs!.Select(static proof => proof.Proof)),
+                AssertStorageProofsMatch(actual, expected,
                     $"at block {block}: a later row inside the retained epoch is a delta over the dropped one, so the anchor must still be carried into the retained epoch below every row it holds, or heights before and after the move both fall to a rebuild");
             }
         }
@@ -960,17 +964,24 @@ public class ArchiveProofTests
     [Test]
     public void Floors_only_ever_rise()
     {
-        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        bool retainedRaised = metadata.TryRaiseRetainedFromEpoch(3);
+        bool retainedLowered = metadata.TryRaiseRetainedFromEpoch(2);
+        bool droppedRaised = metadata.TryRaiseDroppedThroughEpoch(3);
+        bool droppedLowered = metadata.TryRaiseDroppedThroughEpoch(2);
+        bool demotedRaised = metadata.TryRaiseDemotedThroughEpoch(3);
+        bool demotedRepeated = metadata.TryRaiseDemotedThroughEpoch(3);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.TryRaiseRetainedFromEpoch(3), Is.True);
-            Assert.That(metadata.TryRaiseRetainedFromEpoch(2), Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
+            Assert.That(retainedRaised, Is.True);
+            Assert.That(retainedLowered, Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
             Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
-            Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
-            Assert.That(metadata.TryRaiseDroppedThroughEpoch(2), Is.False, "the physical floors go through the mirrored path and are just as monotone");
+            Assert.That(droppedRaised, Is.True);
+            Assert.That(droppedLowered, Is.False, "the physical floors go through the mirrored path and are just as monotone");
             Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
-            Assert.That(metadata.TryRaiseDemotedThroughEpoch(3), Is.True);
-            Assert.That(metadata.TryRaiseDemotedThroughEpoch(3), Is.False);
+            Assert.That(demotedRaised, Is.True);
+            Assert.That(demotedRepeated, Is.False);
             Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(3ul));
         }
     }
@@ -978,7 +989,7 @@ public class ArchiveProofTests
     [Test]
     public void A_drop_records_its_carry_so_a_retry_deletes_without_carrying_again_and_completes_in_one_write()
     {
-        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
 
         metadata.MarkCarried(4);
         bool carriedBefore = metadata.IsCarried(4);
@@ -1062,8 +1073,11 @@ public class ArchiveProofTests
                 "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
         });
 
-        Assert.That(joined, Is.True);
-        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined, Is.True);
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        }
     }
 
     [Test]
@@ -1078,8 +1092,106 @@ public class ArchiveProofTests
                 "a walk without a build still excludes the reclaimer through the one metadata both were given, so it must wait behind the held turn");
         });
 
-        Assert.That(joined, Is.True);
-        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a walk on a turn of its own would have begun in the shared columns while the reclaim held the real one");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined, Is.True);
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a walk on a turn of its own would have begun in the shared columns while the reclaim held the real one");
+        }
+    }
+
+    [Test]
+    public void The_historical_seam_serves_the_proof_collector_and_no_other_visitor()
+    {
+        BuildCommitments();
+        ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
+        visitor.IsFullDbScan.Returns(true);
+        ArchiveProofSource source = CreateSource(_policy);
+        StateId covered = _chain.StateIdAt(Blocks / 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.TryRunTreeVisitor(visitor, covered, visitingOptions: null, diagnostics: null), Is.False,
+                "a full scan over commitment columns fans out per node until the budget trips; the seam is for a proof of one path, everything else keeps the fast refusal");
+            Assert.That(source.TryRunTreeVisitor(new AccountProofCollector(_accounts[0]), covered, visitingOptions: null, diagnostics: null), Is.True);
+        }
+    }
+
+    [Test]
+    public void A_child_whose_row_chain_runs_out_is_rebuilt_on_its_own_rather_than_dragging_its_parent_into_a_rebuild()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        CommitmentDepthPolicy policy = CommitmentDepthPolicy.Default;
+        TreePath parent = TreePath.FromHexString("abc");
+        Address[] accounts = AddressesUnderPrefix(0xab, 0xc, count: 48);
+        RawScopedTrieStore store = new(new MemDb());
+        StateTree tree = new(store, LimboLogs.Instance);
+        ushort presence = 0;
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            Account account = new((ulong)(i + 1), (UInt256)(1000 + i));
+            HistoryColumnsWriter.RecordAccount(columns, accounts[i], block: 1, account);
+            tree.Set(accounts[i], account);
+            presence |= (ushort)(1 << (Keccak.Compute(accounts[i].Bytes).Bytes[1] & 0x0F));
+        }
+
+        tree.UpdateRootHash();
+        Hash256 expected = NodeViews.FromRoot(tree.RootRef, parent.Length, store).Hash.ToCommitment();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        ISortedKeyValueStore accountRows = (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        CommitmentStore commitments = new(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
+        const ulong block = 10;
+
+        ResolutionBudget clean = new(maxScannedRows: 0);
+        byte[] cleanRlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, clean, fanOut: 1, cache: null).LoadRlp(parent, expected);
+
+        int child = Keccak.Compute(accounts[0].Bytes).Bytes[1] & 0x0F;
+        ulong window = policy.WindowAtOrBelow(block) + 1;
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        byte[] row = new byte[ParentRowCodec.MaxBranchRowLength];
+        ChildVector references = ChildVector.Rent();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch())
+        {
+            IWriteBatch commitmentBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments);
+            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            {
+                if (((presence >> index) & 1) == 1) references.SetHash(index, TestItem.KeccakA.ValueHash256);
+            }
+
+            int parentPrefix = CommitmentKeyLayout.WritePathPrefix(prefix, parent, exact: false);
+            commitments.Write(prefix.AsSpan(0, parentPrefix), window, row.AsSpan(0, ParentRowCodec.EncodeBranch(block + 1, presence, presence, references, row)), commitmentBatch);
+
+            references.Clear();
+            references.SetHash(0, TestItem.KeccakB.ValueHash256);
+            int childPrefix = CommitmentKeyLayout.WritePathPrefix(prefix, parent.Append(child), exact: false);
+            commitments.Write(prefix.AsSpan(0, childPrefix), window, row.AsSpan(0, ParentRowCodec.EncodeBranch(block - 5, presence: 0b11, changed: 0b01, references, row)), commitmentBatch);
+        }
+
+        ChildVector.Return(references);
+
+        ResolutionBudget truncated = new(maxScannedRows: 0);
+        byte[] rlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, truncated, fanOut: 1, cache: null).LoadRlp(parent, expected);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp, Is.EqualTo(cleanRlp));
+            Assert.That(truncated.ScannedRows, Is.LessThanOrEqualTo(clean.ScannedRows + 16),
+                "the parent moved after the queried block, so its children are re-resolved; the one child whose chain ends before every reference is filled must rebuild itself from its own rows, not read as absent and cost a rebuild of the whole parent on top of the children already rebuilt");
+        }
+    }
+
+    private static Address[] AddressesUnderPrefix(byte firstByte, int thirdNibble, int count)
+    {
+        List<Address> found = [];
+        for (uint seed = 1; found.Count < count; seed++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), 0x3000_0000 + seed);
+            Address candidate = new(bytes);
+            ReadOnlySpan<byte> hash = Keccak.Compute(candidate.Bytes).Bytes;
+            if (hash[0] == firstByte && hash[1] >> 4 == thirdNibble) found.Add(candidate);
+        }
+
+        return [.. found];
     }
 
     private static bool HoldingTheReclaimTurn(CommitmentMetadata metadata, Action whileHeld)
@@ -1152,7 +1264,7 @@ public class ArchiveProofTests
         _recentEpochs = 1;
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1 };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
         CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), EpochPolicy, identityLength: 0);
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
         {
@@ -1325,7 +1437,7 @@ public class ArchiveProofTests
     [Test]
     public void Physical_floors_read_back_what_this_instance_raised_and_what_another_persisted()
     {
-        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
         Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
         Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
         Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
@@ -1375,7 +1487,7 @@ public class ArchiveProofTests
         CommitmentDepthPolicy other = new(CommitmentDepthPolicy.MinIntervalLog2 + 1);
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofFineEpochs = 1 };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        CommitmentMetadata metadata = new(_historyColumns, other);
+        using CommitmentMetadata metadata = new(_historyColumns, other);
         metadata.TryRaiseFineFromEpoch(1);
         using CommitmentReclaimer reclaimer = new(_historyColumns, other, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
 
@@ -1587,6 +1699,15 @@ public class ArchiveProofTests
             new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
             config,
             LimboLogs.Instance);
+    }
+
+    private static void AssertStorageProofsMatch(AccountProof actual, AccountProof expected, string message)
+    {
+        Assert.That(actual.StorageProofs!, Has.Length.EqualTo(expected.StorageProofs!.Length), message);
+        for (int i = 0; i < expected.StorageProofs.Length; i++)
+        {
+            Assert.That(actual.StorageProofs[i].Proof, Is.EqualTo(expected.StorageProofs[i].Proof), message);
+        }
     }
 
     private AccountProof ProveFromArchive(Address address, ulong block, params UInt256[] storageKeys) => ProveFromArchive(address, block, maxScannedRows: 0, storageKeys);

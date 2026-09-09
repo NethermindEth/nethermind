@@ -14,6 +14,8 @@ internal sealed class ResolutionBudget(long maxScannedRows, CancellationToken ca
 
     public CancellationToken CancellationToken => cancellationToken;
 
+    public long ScannedRows => Volatile.Read(ref _scannedRows);
+
     public void ChargeRow()
     {
         cancellationToken.ThrowIfCancellationRequested();

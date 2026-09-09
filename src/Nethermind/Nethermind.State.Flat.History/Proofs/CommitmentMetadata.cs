@@ -403,6 +403,19 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         }
     }
 
+    public void ResetWalkItem(int item)
+    {
+        Span<byte> key = stackalloc byte[WalkItemKeyLength];
+        WriteWalkItemKey(key, item);
+        Span<byte> progressKey = stackalloc byte[WalkItemKeyLength];
+        WriteWalkItemKey(progressKey, item, WalkItemProgressMarker);
+        lock (_lock)
+        {
+            _column.Remove(key);
+            _column.Remove(progressKey);
+        }
+    }
+
     public ReadOnlySpan<byte> WalkItemMismatches(int item)
     {
         Span<byte> key = stackalloc byte[WalkItemKeyLength];

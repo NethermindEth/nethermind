@@ -108,7 +108,7 @@ internal sealed class HistoricalTrieNodeBuilder
                 if (DemotionCannotHideNewerRows(exact.CurrentSuffix) || !NewerCheckpointRowExists(path, ParentRowCodec.LastBlock(exact.CurrentValue)))
                 {
                     if (ParentRowCodec.IsEmptyRow(exact.CurrentValue)) return null;
-                    if (Materialize(exact) is { } fromExact) return fromExact;
+                    if (TryMaterialize(exact, out byte[]? fromExact) && fromExact is not null) return fromExact;
                 }
             }
         }
@@ -131,7 +131,10 @@ internal sealed class HistoricalTrieNodeBuilder
         if (!chain.MoveNext()) return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
         if (!ParentRowCodec.IsValid(chain.CurrentValue)) return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
         if (path.Length == 0) _scope.NoteRootLastBlock(ParentRowCodec.LastBlock(chain.CurrentValue));
-        if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= _block) return Materialize(chain);
+        if (chain.CurrentSuffix <= anchor || ParentRowCodec.LastBlock(chain.CurrentValue) <= _block)
+        {
+            return TryMaterialize(chain, out byte[]? settled) ? settled : allowRebuild ? RebuildRlp(path, parallelChildren) : null;
+        }
 
         ReadOnlySpan<byte> movedRow = chain.CurrentValue;
         if (!ParentRowCodec.IsBranchRow(movedRow)) return allowRebuild ? RebuildRlp(path, parallelChildren) : null;
@@ -267,13 +270,21 @@ internal sealed class HistoricalTrieNodeBuilder
         return true;
     }
 
-    private byte[]? Materialize(CommitmentStore.RowChain chain)
+    private bool TryMaterialize(CommitmentStore.RowChain chain, out byte[]? rlp)
     {
         ReadOnlySpan<byte> newest = chain.CurrentValue;
-        if (!ParentRowCodec.IsBranchRow(newest)) return ParentRowCodec.IsWholeNodeRow(newest) ? ParentRowCodec.WholeNodeRlp(newest).ToArray() : null;
+        if (!ParentRowCodec.IsBranchRow(newest))
+        {
+            rlp = ParentRowCodec.IsWholeNodeRow(newest) ? ParentRowCodec.WholeNodeRlp(newest).ToArray() : null;
+            return true;
+        }
 
         ushort presence = ParentRowCodec.Presence(newest);
-        if (presence == 0) return null;
+        if (presence == 0)
+        {
+            rlp = null;
+            return true;
+        }
 
         ChildVector children = ChildVector.Rent();
         try
@@ -287,7 +298,8 @@ internal sealed class HistoricalTrieNodeBuilder
                 missing = (ushort)(missing & ~ParentRowCodec.Fill(older, missing, children));
             }
 
-            return missing == 0 ? BranchRlp.Encode(children) : null;
+            rlp = missing == 0 ? BranchRlp.Encode(children) : null;
+            return missing == 0;
         }
         finally
         {

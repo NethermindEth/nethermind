@@ -104,12 +104,19 @@ internal sealed class HistoryWalkRun
             }
             else
             {
+                SeriesReader reader = new(_history, _emitterSource?.Policy ?? CommitmentDepthPolicy.Default);
                 for (int item = 0; item < WorkItems; item++)
                 {
                     if (_metadata.IsWalkItemDone(item))
                     {
-                        _sink.Decode(_metadata.WalkItemMismatches(item));
-                        continue;
+                        if (item >= AccountPartitions || reader.HasRowAtOrBelow(AccountSeriesKey(TreePath.FromNibble([(byte)(item >> 4), (byte)(item & 0x0F)])), _from))
+                        {
+                            _sink.Decode(_metadata.WalkItemMismatches(item));
+                            continue;
+                        }
+
+                        _metadata.ResetWalkItem(item);
+                        if (_logger.IsWarn) _logger.Warn($"History walk resuming: subtree {item} was marked finished but its series is gone, so it is replayed rather than folded as empty.");
                     }
 
                     if (item < AccountPartitions)
@@ -170,16 +177,16 @@ internal sealed class HistoryWalkRun
             RunParallel(partitions, workers);
 
             if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed; folding the root and comparing every block in [{_from}, {_to}] to its header.");
-            using RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger);
+            using RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger, _token);
             using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
                 _combiner.CombineRoot((nibble, child) => AccountSeriesKey(TreePath.FromNibble([(byte)nibble, (byte)child])), _from, _to, emitter, series, root, _progress, _token);
                 emitter?.FlushOpenWindows();
+                _metadata.ClearWalk(WorkItems);
                 series.DeleteAllScratch();
             }
 
-            _metadata.ClearWalk(WorkItems);
             List<HistoryWalkMismatch> mismatches = _sink.Drain();
             return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
         }

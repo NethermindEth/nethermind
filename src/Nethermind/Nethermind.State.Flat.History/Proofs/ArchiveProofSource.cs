@@ -50,7 +50,7 @@ public sealed class ArchiveProofSource(
     public bool TryRunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
-        if (!CanServe(stateId)) return false;
+        if (treeVisitor is not AccountProofCollector || !CanServe(stateId)) return false;
 
         RunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics);
         return true;

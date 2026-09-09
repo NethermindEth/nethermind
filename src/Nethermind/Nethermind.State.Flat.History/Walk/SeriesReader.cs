@@ -28,6 +28,15 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, Commi
         return state;
     }
 
+    public bool HasRowAtOrBelow(in SeriesKey key, ulong from)
+    {
+        Span<byte> prefix = stackalloc byte[SeriesKey.MaxKeyLength];
+        int prefixLength = key.WritePrefix(prefix);
+        CommitmentStore store = key.Column == FlatHistoryColumns.StorageCommitments ? _storageStore : _accountStore;
+        using CommitmentStore.RowChain chain = key.Scratch ? store.OpenScratchAtOrBelow(prefix[..prefixLength], from) : store.OpenAtOrBelow(prefix[..prefixLength], from);
+        return chain.MoveNext();
+    }
+
     public SeriesCursor Open(in SeriesKey key, ulong fromExclusive, ulong toInclusive, int maxRowsBuffered, CancellationToken token)
     {
         ISortedKeyValueStore column = key.Column == FlatHistoryColumns.StorageCommitments ? _storageColumn : _accountColumn;

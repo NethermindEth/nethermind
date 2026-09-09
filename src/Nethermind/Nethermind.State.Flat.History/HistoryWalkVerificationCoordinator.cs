@@ -99,6 +99,12 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     {
         if (!_metadata.TryGetWalkInProgress(out ulong from, out ulong to)) return;
 
+        DiscardWalk();
+        if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint and scratch series are deleted and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
+    }
+
+    private void DiscardWalk()
+    {
         _metadata.ClearWalk(HistoryWalkRun.WorkItems);
         using (SeriesWriter scratch = new(_history))
         {
@@ -106,7 +112,6 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         }
 
         _retrofit?.ResumeReclaim();
-        if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint and scratch series are deleted and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
     }
 
     /// <summary>Whether this instance actually started its background verification - false means
@@ -143,7 +148,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                     {
                         if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom))
                         {
-                            _metadata.ClearWalk(HistoryWalkRun.WorkItems);
+                            DiscardWalk();
                             if (_logger.IsInfo) _logger.Info(
                                 $"History walk verification dropped its unfinished run over [{pendingFrom}, {pendingTo}]: the tip has committed those blocks itself, and a walk over them would scan the whole key space to find them.");
                             return;

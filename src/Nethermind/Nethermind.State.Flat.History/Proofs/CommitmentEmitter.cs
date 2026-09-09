@@ -22,7 +22,7 @@ public sealed class CommitmentEmitter : IDisposable
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
     private const int EmptyRecord = -1;
-    private const int MaxSpareWindowsCeiling = 1 << 16;
+    private const int MaxSpareWindowsCeiling = 1 << 12;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly CommitmentDepthPolicy _policy;
@@ -420,7 +420,6 @@ public sealed class CommitmentEmitter : IDisposable
 
         merged.Clear();
         ushort presence;
-        ushort carried;
         if (existingNewer)
         {
             presence = ParentRowCodec.Presence(existing);
@@ -429,17 +428,14 @@ public sealed class CommitmentEmitter : IDisposable
             {
                 if (((existingChanged >> index) & 1) == 0 && state.Latest.IsPresent(index)) merged.Set(index, state.Latest[index]);
             }
-
-            carried = (ushort)(existingChanged | merged.Presence);
         }
         else
         {
             presence = state.Presence;
             merged.CopyFrom(state.Latest);
-            carried = ushort.MaxValue;
         }
 
-        ushort written = (ushort)((full ? (ushort)(presence | changed) : changed) & carried);
+        ushort written = full ? (ushort)(presence | changed) : changed;
         return ParentRowCodec.EncodeBranch(lastBlock, presence, written, merged, row);
     }
 

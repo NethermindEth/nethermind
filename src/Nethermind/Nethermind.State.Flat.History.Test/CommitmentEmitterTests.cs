@@ -71,6 +71,43 @@ public class CommitmentEmitterTests
             Assert.That(carried[1].ToArray(), Is.EqualTo(newer[1].ToArray()), "a child both writers carried resolves to the newer block's reference");
             Assert.That(carried[5].ToArray(), Is.EqualTo(newer[5].ToArray()), "a child only the newer block carried is present in the merged row");
         }
+
+        ChildVector.Return(carried);
+        ChildVector.Return(newer);
+        ChildVector.Return(older);
+    }
+
+    [Test]
+    public void A_child_that_vanished_before_the_window_closed_keeps_its_changed_bit_when_the_other_writer_is_newer()
+    {
+        const ulong window = 3;
+        ulong closing = window * Policy.Interval;
+        ChildVector tipChildren = Children(0, 1, 2);
+        ChildVector walkChildren = Children(0, 1, 2);
+        WriteWindow(CommitmentEmitter.ForTip(_historyColumns, Policy, _metadata), closing, tipChildren);
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(closing - 1);
+            walk.RecordAccountNode(CheckpointedPath, BranchRlp.Encode(walkChildren), changedChildren: (ushort)(0b111 | (1 << 5)));
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        byte[] row = WindowRow(CheckpointedPath, window)!;
+        ChildVector merged = ChildVector.Rent();
+        ParentRowCodec.Fill(row, ParentRowCodec.Changed(row), merged);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ParentRowCodec.LastBlock(row), Is.EqualTo(closing), "the tip's later block keeps the row");
+            Assert.That((ParentRowCodec.Changed(row) >> 5) & 1, Is.EqualTo(1),
+                "child 5 appeared and vanished inside the window before the newer writer started observing; its changed bit must survive the merge or a proof at a block where it lived takes the anchor's reference and fails its parent's check");
+            Assert.That(merged.IsPresent(5), Is.False, "a vanished child carries no reference");
+        }
+
+        ChildVector.Return(merged);
+        ChildVector.Return(tipChildren);
+        ChildVector.Return(walkChildren);
     }
 
     [Test]
@@ -149,6 +186,7 @@ public class CommitmentEmitterTests
 
         Assert.That(() => BranchRlp.ReadChildren(valued, children), Throws.InstanceOf<InvalidDataException>(),
             "state and storage tries key by fixed-width hashes, so no branch can carry a value; one that does is not a node of these tries and must not round-trip to a different node");
+        ChildVector.Return(children);
     }
 
     private static void WriteWindow(CommitmentEmitter emitter, ulong block, ChildVector children)

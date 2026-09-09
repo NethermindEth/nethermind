@@ -9,9 +9,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availableBlocks, MismatchSink sink, ILogger logger) : ViewObserver, IDisposable
+internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availableBlocks, MismatchSink sink, ILogger logger, CancellationToken token = default) : ViewObserver, IDisposable
 {
     public const int PrefetchedBlocks = 16_384;
+    private const int PrefetchedBlocksPerCancellationCheck = 1 << 10;
 
     private readonly ValueHash256?[] _roots = new ValueHash256?[PrefetchedBlocks];
     private ulong _firstPrefetched;
@@ -49,7 +50,11 @@ internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availabl
         {
             _firstPrefetched = block;
             _prefetched = block > ulong.MaxValue - PrefetchedBlocks ? (int)(ulong.MaxValue - block) + 1 : PrefetchedBlocks;
-            for (int i = 0; i < _prefetched; i++) _roots[i] = headers.TryGetStateRoot(block + (ulong)i);
+            for (int i = 0; i < _prefetched; i++)
+            {
+                if ((i & (PrefetchedBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+                _roots[i] = headers.TryGetStateRoot(block + (ulong)i);
+            }
         }
 
         return _roots[block - _firstPrefetched];
