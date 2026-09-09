@@ -52,18 +52,20 @@ public static class KeyedNonceManager
     public static bool IsFirstUse(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey) =>
         !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
 
-    /// <summary>The state-growth surcharge <c>APPROVE</c> owes for the keys this set uses for the first time.</summary>
-    /// <remarks>Charged against the approving frame's gas by every path that grants payment approval, or the
-    /// cost would depend on whether the approver carries code.</remarks>
-    public static ulong FirstUseSurcharge(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
+    /// <summary>How many of <paramref name="nonceKeys"/> are unused, so consuming the set creates that many
+    /// <c>NONCE_MANAGER</c> slots.</summary>
+    /// <remarks>EIP-8250 prices each fresh slot as one storage-set state charge against the approving frame,
+    /// so every path that grants payment approval owes the same count regardless of whether the approver
+    /// carries code. The set <c>[0]</c> writes no slot and counts zero.</remarks>
+    public static int FirstUseCount(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
     {
-        ulong firstUseCount = 0;
+        int firstUseCount = 0;
         foreach (ref readonly UInt256 nonceKey in nonceKeys)
         {
             if (IsFirstUse(state, sender, in nonceKey)) firstUseCount++;
         }
 
-        return firstUseCount * Eip8250Constants.KeyedNonceFirstUseGas;
+        return firstUseCount;
     }
 
     public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)

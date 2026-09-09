@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -214,6 +215,16 @@ public sealed class FrameTxContext(
         plan = new FrameApprovalPlan(approvesExecution, approvesPayment, createsSender);
         return FrameApprovalOutcome.Approved;
     }
+
+    /// <summary>EIP-8250 <c>nonce_state_gas</c>: the state gas the approval's nonce consumption owes.</summary>
+    /// <remarks>The branches are exclusive: a keyed set writes <c>NONCE_MANAGER</c> slots and never the sender's
+    /// account, so <see cref="FrameApprovalPlan.CreatesSender"/> is set only for the account-nonce set.</remarks>
+    internal long NonceStateGas<TGasPolicy>(in FrameApprovalPlan plan, IReadOnlyStateProvider state)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+        plan.CreatesSender ? TGasPolicy.GetNewAccountStateCost()
+            : plan.ApprovesPayment
+                ? KeyedNonceManager.FirstUseCount(state, Sender, NonceKeys) * TGasPolicy.GetStorageSetStateCost()
+                : 0;
 
     /// <summary>
     /// Applies an approval admitted by <see cref="PlanApproval"/>, journaled so the boundary that restores

@@ -904,7 +904,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>
     /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require a canonical-hash
     /// SECP256K1 signature signed by the target, then APPROVE. The default code draws no execution gas of
-    /// its own beyond the EIP-8250 surcharge; the frame's entry access charge is already accounted for.
+    /// its own beyond the frame's entry access charge, which is already accounted for.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// </summary>
@@ -947,31 +947,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
-        // Owes APPROVE's charges out of the frame's declared limits, which the default code never draws on otherwise.
-        if (plan.ApprovesPayment && frameContext.NonceKeys is { } nonceKeys)
+        // Owes APPROVE's state charge out of the frame's declared limits, which the default code never draws on otherwise.
+        long nonceStateGas = frameContext.NonceStateGas<TGasPolicy>(in plan, WorldState);
+        if ((ulong)nonceStateGas > frame.StateGasLimit)
         {
-            ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
-            if (surcharge > frame.ExecutionGasLimit - entryExecution)
-            {
-                gasUsed = frame.ExecutionGasLimit;
-                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-            }
-
-            gasUsed = entryExecution + surcharge;
+            gasUsed = frame.ExecutionGasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
-        if (plan.CreatesSender)
-        {
-            long newAccountCost = TGasPolicy.GetNewAccountStateCost();
-            if ((ulong)newAccountCost > frame.StateGasLimit)
-            {
-                gasUsed = frame.ExecutionGasLimit;
-                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-            }
-
-            stateGasUsed = newAccountCost;
-            gasUsed += (ulong)newAccountCost;
-        }
+        stateGasUsed = nonceStateGas;
+        gasUsed += (ulong)nonceStateGas;
 
         frameContext.ApplyApproval(in plan, resolvedTarget, WorldState, spec, in accessTracker);
         return DefaultCodeSuccess();

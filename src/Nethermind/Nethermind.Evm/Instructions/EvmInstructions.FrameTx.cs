@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -48,13 +47,6 @@ public static unsafe partial class EvmInstructions
             return EvmExceptionType.OutOfGas;
         }
 
-        // Consumption happens at payment approval, so first use is charged against this frame's gas.
-        if (plan.ApprovesPayment && ctx.NonceKeys is { } nonceKeys
-            && !TGasPolicy.TryConsume(ref gas, KeyedNonceManager.FirstUseSurcharge(vm.WorldState, ctx.Sender, nonceKeys)))
-        {
-            return EvmExceptionType.OutOfGas;
-        }
-
         // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
@@ -62,8 +54,9 @@ public static unsafe partial class EvmInstructions
             return EvmExceptionType.OutOfGas;
         }
 
-        // Charged immediately before the nonce increment that would create the sender.
-        if (plan.CreatesSender && !TGasPolicy.TryConsumeStateGas(ref gas, TGasPolicy.GetNewAccountStateCost()))
+        // Charged immediately before the consumption that writes the new state, after every execution charge.
+        long nonceStateGas = ctx.NonceStateGas<TGasPolicy>(in plan, vm.WorldState);
+        if (nonceStateGas != 0 && !TGasPolicy.TryConsumeStateGas(ref gas, nonceStateGas))
         {
             return EvmExceptionType.OutOfGas;
         }
