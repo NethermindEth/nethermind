@@ -1661,8 +1661,7 @@ namespace Nethermind.TxPool
                             if (!keyedValidation.Validation)
                             {
                                 invalidatedByFork++;
-                                // Keyed sequences advance independently, so no unconditional cascade here; a
-                                // blob-carrying frame tx still cascades through MarkForEviction's CarriesBlobs arm.
+                                // Keyed sequences advance independently, so removing this leaves no nonce gap to cascade over.
                                 MarkForEviction(tx, revalidation.RecordEviction(tx, keyedValidation));
                                 continue;
                             }
@@ -1765,8 +1764,9 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
-                // evict all following txs to prevent nonce gaps between blob tx
-                evictNextTxs |= tx.CarriesBlobs || evictFollowingTransactions;
+                // Evict all following txs to prevent nonce gaps between blob tx, but a keyed tx spends no account
+                // nonce, so removing it leaves no gap for the account-domain txs sorted behind it.
+                evictNextTxs |= (tx.CarriesBlobs && !KeyedNonceManager.UsesKeyedNonce(tx)) || evictFollowingTransactions;
             }
         }
 
@@ -2431,31 +2431,21 @@ namespace Nethermind.TxPool
             relevantPool.UpdateGroup(address, (_, transactions) =>
             {
                 // This is under the assumption that the addressTransactions are sorted by Nonce.
-                if (transactions.Count > 0)
+                // A keyed transaction's Nonce is an EIP-8250 nonce_seq in its own domain: it consumes no account
+                // nonce, so it neither advances the count nor bounds the bucket's highest account nonce.
+                foreach (Transaction transaction in transactions)
                 {
-                    // if we don't have any gaps we can easily calculate the nonce
-                    Transaction lastTransaction = transactions.Max!;
-                    ulong pendingCount = (ulong)transactions.Count;
-                    if (maxPendingNonce + pendingCount - 1 == lastTransaction.Nonce)
+                    if (KeyedNonceManager.UsesKeyedNonce(transaction))
                     {
-                        maxPendingNonce = lastTransaction.Nonce + 1;
+                        continue;
                     }
 
-                    // we have a gap, need to scan the transactions
-                    else
+                    if (transaction.Nonce != maxPendingNonce)
                     {
-                        foreach (Transaction transaction in transactions)
-                        {
-                            if (transaction.Nonce == maxPendingNonce)
-                            {
-                                maxPendingNonce++;
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
+                        break;
                     }
+
+                    maxPendingNonce++;
                 }
 
                 // we won't do any actual changes

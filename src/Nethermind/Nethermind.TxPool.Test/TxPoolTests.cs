@@ -5044,6 +5044,36 @@ namespace Nethermind.TxPool.Test
                 "a valid plain transaction must survive an over-value keyed transaction sharing its sender bucket");
         }
 
+        /// <remarks>Feeds <c>eth_getTransactionCount(pending)</c> and the <c>eth_sendTransaction</c> auto-nonce. A keyed
+        /// transaction's <c>Nonce</c> is a nonce_seq in its own domain, so counting it hands a wallet a nonce gap.</remarks>
+        [TestCase(4ul, TestName = "keyed sequence sorting behind the account nonce")]
+        [TestCase(0ul, TestName = "keyed sequence sorting ahead of the account nonce")]
+        public void Pending_nonce_ignores_a_keyed_frame_tx_sharing_the_senders_bucket(ulong keyedSequence)
+        {
+            const ulong accountNonce = 3;
+            const ulong nonceKey = 1;
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            _stateProvider.CreateAccount(sender, 100.Ether, accountNonce);
+            if (keyedSequence > 0)
+            {
+                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, nonceKey), [(byte)keyedSequence]);
+            }
+
+            Transaction plain = Build.A.Transaction
+                .WithNonce(accountNonce)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey, seq: keyedSequence, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Assert.That(_txPool.GetLatestPendingNonce(sender), Is.EqualTo(accountNonce + 1));
+        }
+
         /// <remarks>Admission sums a sender's keyed and account-domain liabilities against one balance; the
         /// per-head sweep has to price them the same way, or a balance drop leaves both pending and announced.</remarks>
         [TestCase(true, 1, TestName = "the balance covers each alone but not both")]
