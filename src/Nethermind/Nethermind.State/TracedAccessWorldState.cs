@@ -118,6 +118,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is null) { base.SetNonce(address, nonce); return; }
 
+        // Deliberately no AddAccountRead: this probe belongs to the tracer, not to the caller, so a write
+        // leaving the nonce unchanged must leave the BAL untouched (EIP-7928 `if nonce_changed(addr)`).
         ulong oldNonce = GetNonceInternal(address);
         base.SetNonce(address, nonce);
         if (nonce != oldNonce)

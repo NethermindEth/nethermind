@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -20,6 +21,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -60,6 +62,48 @@ namespace Nethermind.TxPool.Test
                 ? AcceptTxResult.Accepted
                 : AcceptTxResult.NotSupportedTxType));
         }
+
+        // A type-3 declaring no blobs is the only shape on which Transaction.SupportsBlobs (type-3) and
+        // Transaction.CarriesBlobs (blob present) disagree, so pin that no pool path can hold one.
+        [Test]
+        public void should_reject_blob_tx_with_empty_blob_hashes()
+        {
+            _txPool = CreatePool(new TxPoolConfig(), GetCancunSpecProvider());
+
+            Transaction tx = BuildBlobTxDeclaringNoBlobs([])
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result.ToString(), Does.Contain(TxErrorMessages.BlobTxMissingBlobs));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        // The absent-hash-list variant never reaches the pool at all: it cannot be encoded, so it cannot be
+        // signed, hashed, gossiped or stored. Decoding always yields a list, so only the empty one arrives.
+        [Test]
+        public void blob_tx_with_absent_blob_hashes_cannot_be_encoded()
+        {
+            Transaction tx = BuildBlobTxDeclaringNoBlobs(null).TestObject;
+
+            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>());
+        }
+
+        private static TransactionBuilder<Transaction> BuildBlobTxDeclaringNoBlobs(byte[][] blobVersionedHashes) =>
+            Build.A.Transaction
+                .WithType(TxType.Blob)
+                .WithNonce(0)
+                .WithTo(TestItem.AddressB)
+                .WithMaxFeePerBlobGas(1)
+                .WithBlobVersionedHashes(blobVersionedHashes)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei);
 
         [Test]
         public void should_reject_blob_tx_if_max_size_is_exceeded([Values(true, false)] bool sizeExceeded, [Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
