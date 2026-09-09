@@ -307,8 +307,9 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
 
-        // Not disposing blockTrace itself: disposing the collection would also dispose the trace
-        // we are about to return.
+        // Not disposing blockTrace itself: DisposableResettableList<T>.Dispose() only disposes its
+        // items, and the backing List<T> holds no pooled or unmanaged resource, so abandoning it
+        // leaks nothing. Disposing it would also double-dispose the trace we are about to return.
         GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
 
         if (transactionTrace is null)
