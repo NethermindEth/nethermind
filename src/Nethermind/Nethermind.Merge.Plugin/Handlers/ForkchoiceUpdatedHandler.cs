@@ -51,8 +51,8 @@ public class ForkchoiceUpdatedHandler(
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
     ILogManager logManager,
-    IReceiptConfig? receiptConfig = null,
-    IStateReader? stateReader = null,
+    IReceiptConfig receiptConfig,
+    IStateReader stateReader,
     FlatStateActivationPolicy? flatStateActivationPolicy = null,
     ITimestamper? timestamper = null) : IForkchoiceUpdatedHandler
 {
@@ -60,11 +60,11 @@ public class ForkchoiceUpdatedHandler(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
-    private readonly bool _recoverPrunedState = flatStateActivationPolicy?.ShouldTurnOnFlatDb() is true && stateReader is not null;
+    private readonly bool _recoverPrunedState = flatStateActivationPolicy?.ShouldTurnOnFlatDb() is true;
     private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
     // Re-executing a pruned head walks the branch down to the nearest state, so the parent-on-main-chain shortcut is off.
     private readonly ProcessingOptions _reExecutionOptions =
-        (receiptConfig?.StoreReceipts is true ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge)
+        (receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge)
         & ~ProcessingOptions.IgnoreParentNotOnMainChain;
     private readonly TimeSpan _reExecutionTimeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
     private RecoveryFailure? _lastRecoveryFailure;
@@ -123,9 +123,6 @@ public class ForkchoiceUpdatedHandler(
     {
         // if a head is unknown we are syncing
         bool isDefinitelySyncing = newHeadHeader is null;
-        using ThreadExtensions.Disposable handle = isDefinitelySyncing ?
-            default : // Don't boost priority if we are definitely syncing
-            Thread.CurrentThread.BoostPriority();
 
         if (invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
@@ -282,7 +279,7 @@ public class ForkchoiceUpdatedHandler(
         }
 
         // Canonical historical FCUs remain valid without state; orphan eviction only removes side branches.
-        if (_recoverPrunedState && !_blockTree.IsMainChain(newHeadHeader) && !stateReader!.HasStateForBlock(newHeadHeader))
+        if (_recoverPrunedState && !_blockTree.IsMainChain(newHeadHeader) && !stateReader.HasStateForBlock(newHeadHeader))
         {
             bool? restored = await TryRestoreState(newHeadHeader);
             if (restored is not true)
@@ -298,6 +295,8 @@ public class ForkchoiceUpdatedHandler(
             }
         }
 
+        // Thread priority must only span synchronous work; an await can resume on a different thread.
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
         // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and

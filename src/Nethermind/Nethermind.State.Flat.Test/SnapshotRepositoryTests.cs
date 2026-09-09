@@ -862,6 +862,36 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
+    public void RemoveOrphanedStates_UnknownProtectedAncestry_RateLimitsWarnings([Values] bool missingCommittedHead)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger wrappedLogger = new(logger);
+        logs.GetClassLogger<SnapshotRepository>().Returns(wrappedLogger);
+        using FlatTestContainer tier = new(configure: builder => builder.AddSingleton(logs));
+        SnapshotRepository repository = tier.Repository;
+        StateId head = CreateStateId(2);
+        Assert.That(repository.TryAdd(tier.ResourcePool.CreateSnapshot(CreateStateId(1), head, ResourcePool.Usage.ReadOnlyProcessingEnv), SnapshotTier.InMemoryBase), Is.True);
+        repository.AddStateId(head);
+        StateId committed = missingCommittedHead ? CreateStateId(3) : head;
+        StateId start = CreateStateId(0);
+        Assert.That(repository.TryAdd(tier.ResourcePool.CreateSnapshot(StateId.PreGenesis, start, ResourcePool.Usage.ReadOnlyProcessingEnv), SnapshotTier.InMemoryBase), Is.True);
+        repository.AddStateId(start);
+        long skipped = Metrics.SnapshotOrphanPruningSkipped;
+
+        Assert.That(repository.RemoveOrphanedStates(committed, committed), Is.Zero);
+        Assert.That(repository.RemoveOrphanedStates(committed, committed), Is.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.HasState(head), Is.True);
+            Assert.That(Metrics.SnapshotOrphanPruningSkipped, Is.GreaterThanOrEqualTo(skipped + 2));
+            logger.Received(1).Warn(Arg.Is<string>(message => message.Contains("Skipped snapshot orphan pruning") && message.Contains("protected ancestry")));
+        }
+    }
+
+    [Test]
     public void RemoveOrphanedStates_AncestryGapAboveTheLowerBound_PrunesNothing()
     {
         AddSnapshotToRepository(CreateStateId(0), CreateStateId(1));

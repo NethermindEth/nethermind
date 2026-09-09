@@ -1369,6 +1369,8 @@ public class PersistenceManagerTests
         repository.SnapshotCount.Returns(3);
         repository.GetLastCommittedStateId().Returns(latest);
         repository.GetStatesUpToBlock(long.MaxValue).Returns(_ => new ArrayPoolList<StateId>(3) { first, second, latest });
+        repository.When(r => r.CollectCommittedAncestry(latest, Arg.Any<ISet<StateId>>()))
+            .Do(call => call.Arg<ISet<StateId>>().UnionWith([first, second, latest]));
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.CurrentState.Returns(persisted);
         IPersistence persistence = Substitute.For<IPersistence>();
@@ -1382,7 +1384,7 @@ public class PersistenceManagerTests
         await container.Resolve<IPersistenceManager>().AddToPersistence(latest);
 
         repository.Received(siblings ? 1 : 0).RemoveOrphanedStates(latest, latest, preGenesis ? 0UL : 1UL);
-        repository.DidNotReceiveWithAnyArgs().CollectCommittedAncestry(default, default!);
+        repository.ReceivedWithAnyArgs(siblings ? 0 : 1).CollectCommittedAncestry(default, default!);
     }
 
     [Test]
@@ -1502,6 +1504,30 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.InRange(40, 40 + 2 * Iterations / 4), "the canonical chain converts; siblings do not accumulate on disk");
         }
     }
+
+    [Test]
+    public async Task AddToPersistence_OrphanWithPersistedRival_IsPruned()
+    {
+        _config.MaxInMemoryBaseSnapshotCount = 1;
+        ResetPersistenceManager(useRealCompactor: true);
+        StateId canonical = CreateStateId(1);
+        PersistBase(Block0, canonical);
+        StateId orphan = CreateStateId(1, 1);
+        CreateSnapshot(Block0, orphan);
+        StateId head = CreateStateId(2);
+        CreateSnapshot(canonical, head);
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        await _persistenceManager.AddToPersistence(head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasState(orphan), Is.False);
+            Assert.That(_snapshotRepository.HasState(canonical), Is.True);
+            Assert.That(_snapshotRepository.HasState(head), Is.True);
+        }
+    }
+
     [Test]
     public async Task AddToPersistence_ForkChoiceHead_OffTheCommittedAncestry_IsRetained()
     {

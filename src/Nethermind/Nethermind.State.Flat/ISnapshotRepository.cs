@@ -167,11 +167,11 @@ public interface ISnapshotRepository
     /// <param name="committedHead">The last state the main processing scope committed.</param>
     /// <param name="forkChoiceHead">The state the chain currently follows; equal to <paramref name="committedHead"/> when unknown.</param>
     /// <param name="minBlockNumber">The first eligible height; callers must exclude the current persisted state and older history.</param>
-    int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber = 0) => 0;
+    int RemoveOrphanedStates(in StateId committedHead, in StateId forkChoiceHead, ulong minBlockNumber = 0);
 
     /// <summary>Collects the committed, fork-choice, recent-commit, and active-view ancestry in memory.</summary>
     /// <remarks>An empty set means ancestry is unknown and candidates must not be rejected.</remarks>
     /// <param name="forkChoiceHead">The state currently selected by fork choice.</param>
     /// <param name="retained">An initially empty set populated once for a conversion pass.</param>
-    void CollectCommittedAncestry(in StateId forkChoiceHead, ISet<StateId> retained) { }
+    void CollectCommittedAncestry(in StateId forkChoiceHead, ISet<StateId> retained);
 }

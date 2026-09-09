@@ -51,6 +51,26 @@ public static class Metrics
     [Description("Number of snapshots")]
     public static long SnapshotCount { get; set; }
 
+    internal static long _snapshotOrphanPruningSkipped;
+
+    [CounterMetric]
+    [Description("Snapshot orphan pruning sweeps skipped because protected ancestry is unavailable")]
+    public static long SnapshotOrphanPruningSkipped
+    {
+        get => Volatile.Read(ref _snapshotOrphanPruningSkipped);
+        set => Volatile.Write(ref _snapshotOrphanPruningSkipped, value);
+    }
+
+    internal static long _snapshotOrphanPrunedEntries;
+
+    [CounterMetric]
+    [Description("Orphaned snapshot entries removed across in-memory and persisted tiers")]
+    public static long SnapshotOrphanPrunedEntries
+    {
+        get => Volatile.Read(ref _snapshotOrphanPrunedEntries);
+        set => Volatile.Write(ref _snapshotOrphanPrunedEntries, value);
+    }
+
     [GaugeMetric]
     [Description("Number of compacted snapshots")]
     public static long CompactedSnapshotCount { get; set; }

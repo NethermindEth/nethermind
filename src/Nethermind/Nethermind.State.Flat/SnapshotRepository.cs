@@ -57,6 +57,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly StateId[] _recentlyCommitted = new StateId[RecentlyCommittedRetention];
     private int _recentlyCommittedCount;
     private int _recentlyCommittedNext;
+    private long? _lastSkippedPruningWarning;
 
     public SnapshotRepository(
         IArenaManager arenaManager,
@@ -498,7 +499,17 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using PooledSet<StateId> retained = [];
         using ArrayPoolList<(long First, long Last)> gaps = new(0);
         CollectRetainedAncestry(retained, committedHead, forkChoiceHead, includePersisted: true, minBlockNumber, gaps);
-        if (retained.Count == 0) return 0;
+        if (retained.Count == 0)
+        {
+            Interlocked.Increment(ref Metrics._snapshotOrphanPruningSkipped);
+            long now = Stopwatch.GetTimestamp();
+            if (_logger.IsWarn && (_lastSkippedPruningWarning is not { } last || Stopwatch.GetElapsedTime(last, now) >= TimeSpan.FromMinutes(1)))
+            {
+                _lastSkippedPruningWarning = now;
+                _logger.Warn($"Skipped snapshot orphan pruning because protected ancestry is unavailable above boundary {minBlockNumber}; snapshot memory may exceed its budget. Committed head: {committedHead}, fork-choice head: {forkChoiceHead}.");
+            }
+            return 0;
+        }
         ReadOnlySpan<(long First, long Last)> ambiguousHeights = MergeGaps(gaps.AsSpan());
 
         int gapIndex = 0;
@@ -559,6 +570,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         foreach (StateId stateId in persisted)
             if (orphans.Contains(stateId) && RemovePersistedStateExact(stateId, deferred)) pruned++;
         LogAmbiguousCandidates();
+        Interlocked.Add(ref Metrics._snapshotOrphanPrunedEntries, pruned);
         return pruned;
 
         void LogAmbiguousCandidates()

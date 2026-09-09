@@ -318,8 +318,22 @@ public class PersistenceManager(
             hasCompetingStates = ordered[i - 1].BlockNumber == ordered[i].BlockNumber;
         if (!hasCompetingStates)
         {
+            // A sibling's rival may already be on disk, leaving no duplicate in-memory height.
+            using PooledSet<StateId> retained = [];
+            snapshotRepository.CollectCommittedAncestry(ForkChoiceHead(committedHead.Value), retained);
+            hasCompetingStates = retained.Count == 0;
+            if (retained.Count > 0)
+                foreach (StateId state in ordered)
+                    if (!retained.Contains(state))
+                    {
+                        hasCompetingStates = true;
+                        break;
+                    }
+        }
+        if (!hasCompetingStates)
+        {
             if (_logger.IsTrace)
-                _logger.Trace($"Skipped orphan pruning: {snapshotCount} in-memory base snapshots exceed budget {_maxInMemoryBaseSnapshotCount}, but indexed states have no competing roots at the same height.");
+                _logger.Trace($"Skipped orphan pruning: {snapshotCount} in-memory base snapshots exceed budget {_maxInMemoryBaseSnapshotCount}, but all indexed states belong to protected ancestry.");
             return;
         }
 

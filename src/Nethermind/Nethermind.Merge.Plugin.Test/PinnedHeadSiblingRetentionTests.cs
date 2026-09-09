@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -74,7 +75,8 @@ public class PinnedHeadSiblingRetentionTests : BaseEngineModuleTests
             maxBases = Math.Max(maxBases, snapshots.SnapshotCount);
         }
 
-        Assert.That(() => snapshots.SnapshotCount, Is.LessThan(budget).After(10000, 10), "orphaned sibling snapshots must be pruned");
+        await chain.Container.Resolve<IPersistenceManager>().AddToPersistence(snapshots.GetLastCommittedStateId()!.Value);
+        Assert.That(snapshots.SnapshotCount, Is.LessThan(budget), "orphaned sibling snapshots must be pruned");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(maxBases, Is.LessThan(2 * budget), "the in-memory tier must never run far past the budget");
@@ -195,7 +197,8 @@ public class EvictedSiblingRecoveryTests : BaseEngineModuleTests
             await SiblingPayloads.ForkchoiceUpdated(chain, rpc, sibling.BlockHash, finalized);
         }
 
-        Assert.That(() => snapshots.HasState(forkState), Is.False.After(10000, 10), "precondition: the unselected fork block was pruned");
+        await chain.Container.Resolve<IPersistenceManager>().AddToPersistence(snapshots.GetLastCommittedStateId()!.Value);
+        Assert.That(snapshots.HasState(forkState), Is.False, "precondition: the unselected fork block was pruned");
         return (forkHeader, child, finalized);
     }
 }
@@ -280,7 +283,11 @@ internal static class SiblingPayloads
     {
         bool headChanges = chain.BlockTree.Head!.Hash != head;
         Task txPoolHead = headChanges ? chain.WaitForTxPoolHead(head) : Task.CompletedTask;
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, finalized, finalized));
+        Thread caller = Thread.CurrentThread;
+        ThreadPriority priority = caller.Priority;
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> update = rpc.engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, finalized, finalized));
+        Assert.That(caller.Priority, Is.EqualTo(priority), "fork choice must restore caller priority before yielding");
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await update;
         Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid), result.Data.PayloadStatus.ValidationError);
         await txPoolHead;
     }
