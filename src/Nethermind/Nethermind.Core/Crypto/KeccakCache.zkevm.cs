@@ -11,7 +11,7 @@ namespace Nethermind.Core.Crypto;
 public static partial class KeccakCache
 {
     // Direct-mapped memo for the zkEVM guest. A keccak permutation is a precompile costing 38,454
-    // prover units against ~16 for a word read (unaligned here), and 47% of the inputs reaching here in one
+    // prover units against ~16 for a word read (unaligned here), and 47% of the in-range inputs in one
     // mainnet block repeat: log addresses and topics, account addresses, low storage-slot indices and
     // the keccak(key || slot) of a mapping access. The guest runs one block on one thread, so the
     // seqlock the host form needs is not required, and one slot per key is enough — a collision just
