@@ -105,6 +105,11 @@
     "hash": "sha256-JLom3mbO4NCUXDHoU86l720QXlRx52+ROb5wBwcC5nM="
   },
   {
+    "pname": "FodyHelpers",
+    "version": "6.9.3",
+    "hash": "sha256-2F6jkmn7Ja0cM86avL+FFDHaWTBsV8e+M06vNb26LGU="
+  },
+  {
     "pname": "Fractions",
     "version": "7.3.0",
     "hash": "sha256-wr4I1mj1qrXjD2Z3dca70OBe14zZNGagDLW9/8xQtCU="
