@@ -2,76 +2,73 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
+/// <summary>Accumulates SSZ chunks using one scratch entry per tree depth.</summary>
 public ref struct Merkleizer
 {
-    private readonly bool IsKthBitSet(int k) => (_filled & (1UL << k)) != 0;
-
-    private void SetKthBit(int k) => _filled |= 1UL << k;
-
-    private void UnsetKthBit(int k) => _filled &= ~(1UL << k);
-
     private readonly Span<UInt256> _chunks;
+    private readonly ulong _capacity;
     private ulong _filled;
 
+    /// <summary>Creates an accumulator whose tree depth is one less than the scratch length.</summary>
+    /// <remarks>Scratch needs 1 to 65 entries and does not need to be initialized.</remarks>
     public Merkleizer(Span<UInt256> chunks)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(chunks.Length, 1, nameof(chunks));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(chunks.Length, 65, nameof(chunks));
         _chunks = chunks;
+        _capacity = chunks.Length == 65 ? ulong.MaxValue : 1UL << (chunks.Length - 1);
         _filled = 0;
     }
 
+    /// <summary>Creates an accumulator with allocated scratch for a tree of the given depth.</summary>
     public Merkleizer(int depth)
     {
-        _chunks = new UInt256[depth + 1];
-        _filled = 0;
+        ArgumentOutOfRangeException.ThrowIfNegative(depth);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 64);
+        this = new Merkleizer(new UInt256[depth + 1]);
     }
 
-    public void Feed(UInt256 chunk) => FeedAtLevel(chunk, 0);
-
-    private void FeedAtLevel(UInt256 chunk, int level)
+    /// <summary>Appends a chunk, rejecting input that exceeds the tree capacity.</summary>
+    public void Feed(UInt256 chunk)
     {
-        for (int i = level; i < _chunks.Length; i++)
+        if (_filled == _capacity)
         {
-            if (IsKthBitSet(i))
-            {
-                chunk = Merkle.HashConcatenation(_chunks[i], chunk, i);
-                UnsetKthBit(i);
-            }
-            else
-            {
-                _chunks[i] = chunk;
-                SetKthBit(i);
-                break;
-            }
+            throw new InvalidOperationException("Merkle tree capacity exceeded.");
         }
+
+        // The leaf count is also the bitmap of occupied subtrees; appending carries its low bits.
+        int level = BitOperations.TrailingZeroCount(~_filled);
+        for (int i = 0; i < level; i++)
+        {
+            chunk = Merkle.HashConcatenation(_chunks[i], chunk, i);
+        }
+
+        _chunks[level] = chunk;
+        _filled++;
     }
 
-    public void CalculateRoot(out UInt256 root)
+    /// <summary>Returns the zero-padded root without changing the accumulated chunks.</summary>
+    public readonly void CalculateRoot(out UInt256 root)
     {
-        int lowestSet = 0;
-        while (true)
+        int depth = _chunks.Length - 1;
+        if (_filled == 0)
         {
-            for (int i = lowestSet; i < _chunks.Length; i++)
-            {
-                if (IsKthBitSet(i))
-                {
-                    lowestSet = i;
-                    break;
-                }
-            }
-
-            if (lowestSet == _chunks.Length - 1)
-            {
-                break;
-            }
-
-            UInt256 chunk = Merkle.ZeroHash(lowestSet);
-            FeedAtLevel(chunk, lowestSet);
+            root = Merkle.ZeroHash(depth);
+            return;
         }
 
-        root = _chunks[^1];
+        int level = BitOperations.TrailingZeroCount(_filled);
+        root = _chunks[level];
+        for (int i = level; i < depth; i++)
+        {
+            root = i != level && (_filled & (1UL << i)) != 0
+                ? Merkle.HashConcatenation(_chunks[i], root, i)
+                : Merkle.HashConcatenation(root, Merkle.ZeroHash(i), i);
+        }
     }
 }

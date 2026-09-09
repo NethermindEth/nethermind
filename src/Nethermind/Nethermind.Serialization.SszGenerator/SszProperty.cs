@@ -248,8 +248,8 @@ class SszProperty
 
             return Kind switch
             {
-                Kind.Vector => Length!.Value * Type.StaticLength,
-                Kind.BitVector => (Length!.Value + 7) / 8,
+                Kind.Vector => checked(Length!.Value * Type.StaticLength),
+                Kind.BitVector => Length!.Value / 8 + (Length.Value % 8 == 0 ? 0 : 1),
                 _ => Type.StaticLength,
             };
         }

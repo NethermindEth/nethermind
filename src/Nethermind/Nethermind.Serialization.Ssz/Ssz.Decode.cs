@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.IO;
+using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.Ssz;
 
@@ -20,7 +22,7 @@ public static partial class Ssz
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(vectorLength, nameof(vectorLength));
 
-        int expectedBytes = (vectorLength + 7) / 8;
+        int expectedBytes = (int)(((uint)vectorLength + 7) / 8);
         if (span.Length != expectedBytes)
         {
             throw new InvalidDataException(
@@ -36,8 +38,8 @@ public static partial class Ssz
             }
         }
 
-        BitArray value = new(span.ToArray());
-        value.Length = vectorLength;
+        BitArray value = new(vectorLength);
+        span.CopyTo(CollectionsMarshal.AsBytes(value));
         return value;
     }
 
@@ -53,16 +55,12 @@ public static partial class Ssz
             throw new InvalidDataException("Invalid bitlist: last byte is zero (missing sentinel bit)");
         }
 
-        BitArray value = new(span.ToArray());
-        int length = value.Length - 1;
-        int lastByte = span[^1];
-        int mask = 0x80;
-        while ((lastByte & mask) == 0 && mask > 0)
-        {
-            length--;
-            mask >>= 1;
-        }
-        value.Length = length;
+        int lastBit = BitOperations.Log2(span[^1]);
+        int length = checked((span.Length - 1) * 8 + lastBit);
+        BitArray value = new(length);
+        Span<byte> destination = CollectionsMarshal.AsBytes(value);
+        span[..destination.Length].CopyTo(destination);
+        if (lastBit != 0) destination[^1] &= (byte)((1 << lastBit) - 1);
         return value;
     }
 
@@ -70,7 +68,7 @@ public static partial class Ssz
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(vectorLength, nameof(vectorLength));
 
-        int byteLength = (vectorLength + 7) / 8;
+        int byteLength = (int)(((uint)vectorLength + 7) / 8);
         if (data.Length != byteLength)
         {
             throw new InvalidDataException(
@@ -101,7 +99,7 @@ public static partial class Ssz
             list = DecodeBitlist(data.FirstSpan);
             return;
         }
-        int byteLength = (int)data.Length;
+        int byteLength = checked((int)data.Length);
         byte[] rented = ArrayPool<byte>.Shared.Rent(byteLength);
         try
         {

@@ -15,6 +15,82 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 public class SszGeneratorDiagnosticTest
 {
     [Test]
+    public void Types_with_equal_names_in_different_namespaces_generate_distinct_codecs()
+    {
+        const string source = """
+            using Nethermind.Serialization.Ssz;
+            namespace First
+            {
+                [SszContainer]
+                public partial struct Item { public byte Value { get; set; } }
+            }
+            namespace Second
+            {
+                [SszContainer]
+                public partial struct Item { public ulong Value { get; set; } }
+            }
+            [SszContainer]
+            public partial struct Container
+            {
+                public First.Item First { get; set; }
+                public Second.Item Second { get; set; }
+            }
+            """;
+
+        AssertGeneratedEncodingLength(source, nameof(Types_with_equal_names_in_different_namespaces_generate_distinct_codecs), 9);
+    }
+
+    [Test]
+    public void Converters_for_generic_arguments_in_different_namespaces_remain_distinct()
+    {
+        string source = """
+            using System;
+            using Nethermind.Serialization.Ssz;
+            using Nethermind.Serialization.Ssz.Merkleization;
+            namespace First { public struct Item { } }
+            namespace Second { public struct Item { } }
+            public struct Wrapper<T> { }
+            [SszContainer]
+            public partial struct Container
+            {
+                public Wrapper<First.Item> First { get; set; }
+                public Wrapper<Second.Item> Second { get; set; }
+            }
+            """;
+        source += ConverterSource("First", 1) + ConverterSource("Second", 8);
+
+        AssertGeneratedEncodingLength(source, nameof(Converters_for_generic_arguments_in_different_namespaces_remain_distinct), 9);
+    }
+
+    private static string ConverterSource(string name, int length) => $$"""
+
+        [SszVectorTypeConverter<Wrapper<{{name}}.Item>>]
+        public static class {{name}}Converter
+        {
+            public const int Length = {{length}};
+            public static Wrapper<{{name}}.Item> FromSpan(ReadOnlySpan<byte> span) => default;
+            public static void FromSpan(ReadOnlySpan<byte> span, Span<Wrapper<{{name}}.Item>> values) => values.Clear();
+            public static void ToSpan(Span<byte> span, Wrapper<{{name}}.Item> value) => span.Clear();
+            public static void ToSpan(Span<byte> span, ReadOnlySpan<Wrapper<{{name}}.Item>> values) => span.Clear();
+            public static void Feed(ref Merkleizer merkleizer, Wrapper<{{name}}.Item> value) => merkleizer.Feed(default);
+        }
+        """;
+
+    private static void AssertGeneratedEncodingLength(string source, string assemblyName, int expectedLength)
+    {
+        GeneratorDriverRunResult result = RunGenerator(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview), assemblyName, out Compilation output);
+        Assert.That(result.Diagnostics, Is.Empty);
+        using MemoryStream assemblyStream = new();
+        Microsoft.CodeAnalysis.Emit.EmitResult emit = output.Emit(assemblyStream);
+        Assert.That(emit.Success, Is.True, string.Join("\n", emit.Diagnostics));
+        Assembly assembly = Assembly.Load(assemblyStream.ToArray());
+        Type containerType = assembly.GetType("Container", throwOnError: true)!;
+        object value = Activator.CreateInstance(containerType)!;
+        byte[] bytes = (byte[])containerType.GetMethod("Encode", [containerType])!.Invoke(null, [value])!;
+        Assert.That(bytes, Is.EqualTo(new byte[expectedLength]));
+    }
+
+    [Test]
     public void Converter_without_public_const_length_reports_diagnostic()
     {
         const string source = """
@@ -289,14 +365,14 @@ public class SszGeneratorDiagnosticTest
             Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<long>"));
             Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.ToSpan"));
             Assert.That(generated, Does.Contain("UInt128SszBasicTypeConverter.FromSpan"));
-            Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<UInt128>"));
+            Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<global::System.UInt128>"));
             Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.ToSpan"));
             Assert.That(generated, Does.Contain("UInt32SszBasicTypeConverter.FromSpan"));
             Assert.That(generated, Does.Contain("MerkleizeBasicVectorWithConverter<uint>"));
             Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeVector"));
             Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeList"));
             Assert.That(generated, Does.Not.Contain("SszBasicTypeConverter.MerkleizeProgressiveList"));
-            Assert.That(generated, Does.Contain("MemoryMarshal.Cast<PrimitiveEnum, uint>"));
+            Assert.That(generated, Does.Contain("MemoryMarshal.Cast<global::PrimitiveEnum, uint>"));
             Assert.That(generated, Does.Not.Contain("EncodeItemsWithConverter"));
             Assert.That(generated, Does.Not.Contain("DecodeItemsWithConverter"));
             Assert.That(generated, Does.Not.Contain("SszLib.Encode"));
@@ -309,7 +385,7 @@ public class SszGeneratorDiagnosticTest
 
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)
     {
-        GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName);
+        GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName, out _);
 
         foreach (Diagnostic candidate in result.Diagnostics)
         {
@@ -325,7 +401,7 @@ public class SszGeneratorDiagnosticTest
 
     private static string GetGeneratedSource(string source, CSharpParseOptions parseOptions, string assemblyName, string hintName)
     {
-        GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName);
+        GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName, out _);
 
         foreach (SyntaxTree generatedTree in result.GeneratedTrees)
         {
@@ -339,7 +415,7 @@ public class SszGeneratorDiagnosticTest
         return string.Empty;
     }
 
-    private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName)
+    private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName, out Compilation output)
     {
         SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
         CSharpCompilation compilation = CSharpCompilation.Create(
@@ -350,7 +426,7 @@ public class SszGeneratorDiagnosticTest
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateSszGenerator())
             .WithUpdatedParseOptions(parseOptions);
-        driver = driver.RunGenerators(compilation);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out output, out _);
 
         return driver.GetRunResult();
     }

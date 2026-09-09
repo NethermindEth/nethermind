@@ -22,6 +22,8 @@ Supports vectors, lists, bitvectors, bitlists, compatible unions, progressive co
 - Mark SSZ root types as `partial` and annotate them with `SszContainer` or `SszCompatibleUnion`.
 - The generator adds `ISszCodec<T>` and static `GetLength`, `Encode`, `Decode`, and `Merkleize` methods for single values and spans of values.
 
+The destination passed to `Encode(Span<byte>, ...)` must have exactly `GetLength(...)` bytes. Length arithmetic is checked, and decoders validate collection offsets and declared bounds before allocating their destination. `List<T>` properties with fixed-size converters decode directly into their final backing storage.
+
 Collection properties must be arrays, spans, memory types, `List<T>`, or custom collection types that expose public `AsSpan()` and a public constructor from `ReadOnlySpan<T>`. Collection properties must also be marked with `SszVector`, `SszList`, `SszProgressiveList`, or `SszProgressiveBitlist`. For `BitArray`, `SszVector` means bitvector and `SszList` means bitlist.
 
 ## Examples
@@ -172,3 +174,11 @@ public static class MyBytes32SszVectorTypeConverter
 `Length` must be `public const int` with a positive value so the generator can calculate fixed offsets at compile time. Missing or invalid converter members are reported as `SSZ003` diagnostics during source generation.
 
 More examples in Nethermind.Serialization.SszGenerator.Test project.
+
+## Implementation and performance
+
+`SszGenerator` discovers symbols and reports diagnostics. `SszType` and `SszProperty` describe the wire layout. `SszCodecEmitter` emits scalar operations and one shared set of collection operations for containers, collection wrappers, and unions. `SszRuntimeHelpers` emits the shared validation and converter helpers once per consuming assembly; their namespace is unique to that assembly.
+
+Ordinary container and collection roots use a streaming `Merkleizer` with stack scratch proportional to tree depth. Basic converter collections encode bounded batches, and progressive lists retain only subtree roots. Fixed null defaults are rooted from their schema without constructing decoded objects. Progressive containers preserve inactive field positions as zero roots. Bit-array serialization and hashing operate on the backing bytes, masking unused bits without modifying the input. The regular .NET runtime hashes inputs of at least 32,768 padded chunks (about 1 MiB) using at most four workers; smaller inputs and zkVM execution stay sequential.
+
+`Nethermind.Benchmark/Ssz/SszBenchmarks.cs` covers generated collection encoding, decoding, and Merkleization, bit-array operations, and large byte inputs around the parallel threshold. Run it through `Nethermind.Benchmark.Runner` with `--filter '*Ssz*Benchmarks*'`; the memory diagnoser reports allocation costs alongside timings. Correctness coverage includes the SSZ runtime and generator suites and `Ethereum.Ssz.Test`, which pins the consensus fixtures to `v1.7.0-alpha.13`.

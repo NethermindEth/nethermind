@@ -104,6 +104,45 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Items { get; set; }
     }
 
+    [SszContainer]
+    public partial struct ListDestinations
+    {
+        [SszList(1024)]
+        public List<ulong> Numbers { get; set; }
+
+        [SszList(1024)]
+        public List<PrimitiveEnum> Enums { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct MaximumLimitList
+    {
+        [SszList(ulong.MaxValue)]
+        public ulong[] Items { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct SmallBitList
+    {
+        [SszList(8)]
+        public BitArray Bits { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct DynamicBeforeBoolean
+    {
+        [SszList(65536)]
+        public byte[] Bytes { get; set; }
+        public bool Flag { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ProgressiveConverterList
+    {
+        [SszProgressiveList]
+        public TestBytes4[] Items { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial struct ByteListItself
     {
@@ -473,6 +512,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszContainer]
+    public partial struct SparseProgressiveContainer
+    {
+        [SszField(255)]
+        public ulong Value { get; set; }
+    }
+
+    [SszContainer]
     public partial struct ProgressiveListContainer
     {
         [SszProgressiveList]
@@ -543,6 +589,69 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(1_099_511_627_776)]
         public FixedC[] Items { get; set; }
+    }
+
+    public sealed class SszOwnedUlongCollection : IDisposable
+    {
+        private readonly ArrayPoolList<ulong> _items;
+
+        public static int CreatedCount { get; private set; }
+        public static int DisposedCount { get; private set; }
+
+        public SszOwnedUlongCollection(ReadOnlySpan<ulong> items)
+        {
+            _items = new(items);
+            CreatedCount++;
+        }
+
+        public Span<ulong> AsSpan() => _items.AsSpan();
+
+        public void Dispose()
+        {
+            _items.Dispose();
+            DisposedCount++;
+        }
+
+        public static void ResetCounts() => CreatedCount = DisposedCount = 0;
+    }
+
+    [SszContainer]
+    public partial class ZeroRootLeaf
+    {
+        public ulong First { get; set; }
+        public ulong Second { get; set; }
+    }
+
+    [SszContainer]
+    public partial class OwnedZeroRootContainer
+    {
+        [SszVector(3)]
+        public SszOwnedUlongCollection? Items { get; set; }
+
+        public ZeroRootLeaf Child { get; set; } = null!;
+
+        [SszVector(2)]
+        public TestBytes48[]? Commitments { get; set; }
+
+        [SszVector(10)]
+        public BitArray? Bits { get; set; }
+    }
+
+    [SszContainer]
+    public partial class OwnedZeroProgressiveContainer
+    {
+        [SszField(0), SszVector(3)]
+        public SszOwnedUlongCollection? Items { get; set; }
+
+        [SszField(2)]
+        public ZeroRootLeaf Child { get; set; } = null!;
+    }
+
+    [SszContainer]
+    public partial struct OwnedZeroRootParent
+    {
+        public OwnedZeroRootContainer? Optional { get; set; }
+        public OwnedZeroRootContainer Required { get; set; }
     }
 
 }

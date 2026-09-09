@@ -13,6 +13,7 @@ internal sealed class SszTypeConverterInfo
 {
     private const string LengthMemberName = "Length";
 
+    public required ITypeSymbol TargetType { get; init; }
     public required string TargetName { get; init; }
     public required string TargetNamespace { get; init; }
     public required string TargetTypeReferenceName { get; init; }
@@ -31,7 +32,7 @@ internal sealed class SszTypeConverterInfo
             return [];
         }
 
-        Dictionary<string, SszTypeConverterInfo> result = new(StringComparer.Ordinal);
+        Dictionary<ITypeSymbol, SszTypeConverterInfo> result = new(SymbolEqualityComparer.Default);
         foreach (INamedTypeSymbol converterType in EnumerateAvailableTypes(compilation))
         {
             SszTypeConverterInfo? basicTypeConverter = basicTypeConverterAttribute is null
@@ -48,18 +49,16 @@ internal sealed class SszTypeConverterInfo
             SszTypeConverterInfo? converter = basicTypeConverter ?? vectorTypeConverter;
             if (converter is not null)
             {
-                string key = converter.TargetNamespace + "." + converter.TargetTypeReferenceName;
-                if (result.TryGetValue(key, out SszTypeConverterInfo? existingConverter))
+                if (result.TryGetValue(converter.TargetType, out SszTypeConverterInfo? existingConverter))
                 {
-                    throw new InvalidOperationException($"Multiple SSZ converters found for {key}: {existingConverter.ConverterDisplayName} and {converter.ConverterDisplayName}.");
+                    throw new InvalidOperationException($"Multiple SSZ converters found for {converter.TargetType.ToDisplayString()}: {existingConverter.ConverterDisplayName} and {converter.ConverterDisplayName}.");
                 }
 
-                result.Add(key, converter);
+                result.Add(converter.TargetType, converter);
             }
         }
 
-        return result.Values.OrderBy(x => x.TargetNamespace, StringComparer.Ordinal)
-            .ThenBy(x => x.TargetTypeReferenceName, StringComparer.Ordinal);
+        return result.Values.OrderBy(x => x.TargetType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), StringComparer.Ordinal);
     }
 
     private static IEnumerable<INamedTypeSymbol> EnumerateAvailableTypes(Compilation compilation)
@@ -163,6 +162,7 @@ internal sealed class SszTypeConverterInfo
 
         return new()
         {
+            TargetType = targetType,
             TargetName = GetTypeName(targetType),
             TargetNamespace = GetNamespace(targetType),
             TargetTypeReferenceName = targetType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),

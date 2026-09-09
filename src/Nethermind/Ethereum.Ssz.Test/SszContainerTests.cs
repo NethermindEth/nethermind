@@ -51,7 +51,14 @@ public class SszContainerTests
         .Add<ComplexTestStruct>()
         .Add<BitsStruct>()
         .Add<ProgressiveTestStruct>()
-        .Add<ProgressiveBitsStruct>();
+        .Add<ProgressiveBitsStruct>()
+        .Add<ProgressiveSingleFieldContainerTestStruct>()
+        .Add<ProgressiveSingleListContainerTestStruct>()
+        .Add<ProgressiveVarTestStruct>()
+        .Add<ProgressiveComplexTestStruct>()
+        .Add<CompatibleUnionA>()
+        .Add<CompatibleUnionBC>()
+        .Add<CompatibleUnionABCA>();
 
     [TestCaseSource(nameof(ValidContainerCases))]
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
@@ -83,27 +90,28 @@ public class SszContainerTests
         return separatorIndex >= 0 ? caseName[..separatorIndex] : caseName;
     }
 
-    // --- Test case sources ---
-    // Structure: containers/valid/{case_name}/ and containers/invalid/{case_name}/
-    // Case names: "{ContainerType}_{descriptor}" e.g. "BitsStruct_lengthy_0"
+    private static IEnumerable<TestCaseData> ValidContainerCases() => GetCases("valid");
+    private static IEnumerable<TestCaseData> InvalidContainerCases() => GetCases("invalid");
 
-    private static IEnumerable<TestCaseData> ValidContainerCases() => GetCases("containers", "valid");
-    private static IEnumerable<TestCaseData> InvalidContainerCases() => GetCases("containers", "invalid");
-
-    private static IEnumerable<TestCaseData> GetCases(string handler, string validity)
+    private static IEnumerable<TestCaseData> GetCases(string validity)
     {
-        string handlerPath = SszConsensusTestLoader.GetHandlerPath(handler);
-        string validityPath = Path.Combine(handlerPath, validity);
-        if (!Directory.Exists(validityPath))
-            yield break;
-
-        foreach (string casePath in Directory.GetDirectories(validityPath))
+        foreach (string handler in new[] { "containers", "progressive_containers", "compatible_unions" })
         {
-            string caseName = Path.GetFileName(casePath);
-            string containerType = ExtractContainerType(caseName);
+            string validityPath = Path.Combine(SszConsensusTestLoader.GetHandlerPath(handler), validity);
+            string[] casePaths = Directory.GetDirectories(validityPath);
+            if (casePaths.Length == 0)
+            {
+                throw new InvalidOperationException($"No SSZ reference cases found in {validityPath}.");
+            }
 
-            yield return new TestCaseData(casePath, containerType)
-                .SetName($"containers/{validity}/{caseName}");
+            foreach (string casePath in casePaths)
+            {
+                string caseName = Path.GetFileName(casePath);
+                string containerType = ExtractContainerType(caseName);
+
+                yield return new TestCaseData(casePath, containerType)
+                    .SetName($"{handler}/{validity}/{caseName}");
+            }
         }
     }
 }

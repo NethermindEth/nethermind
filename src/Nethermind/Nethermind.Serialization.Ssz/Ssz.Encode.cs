@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Serialization.Ssz;
 
@@ -25,10 +26,14 @@ public static partial class Ssz
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void EncodeVector(Span<byte> span, BitArray value)
     {
-        int byteLength = (value.Length + 7) / 8;
-        byte[] bytes = new byte[byteLength];
-        value.CopyTo(bytes, 0);
+        ReadOnlySpan<byte> bytes = CollectionsMarshal.AsBytes(value);
         bytes.CopyTo(span);
+        int remainder = value.Length & 7;
+        if (remainder != 0)
+        {
+            // AsBytes exposes unused backing bits; SSZ requires zero padding.
+            span[bytes.Length - 1] &= (byte)((1 << remainder) - 1);
+        }
     }
 
     public static void Encode(Span<byte> span, BitArray? list, int limit)
@@ -44,10 +49,11 @@ public static partial class Ssz
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void EncodeList(Span<byte> span, BitArray value)
     {
-        int byteLength = (value.Length + 8) / 8;
-        byte[] bytes = new byte[byteLength];
-        value.CopyTo(bytes, 0);
-        bytes[byteLength - 1] |= (byte)(1 << (value.Length % 8));
-        bytes.CopyTo(span);
+        int sentinelIndex = value.Length / 8;
+        Span<byte> destination = span[..(sentinelIndex + 1)];
+        EncodeVector(destination, value);
+        int remainder = value.Length & 7;
+        if (remainder == 0) destination[sentinelIndex] = 1;
+        else destination[sentinelIndex] |= (byte)(1 << remainder);
     }
 }

@@ -185,3 +185,114 @@ public partial struct ProgressiveBitsStruct
     [SszProgressiveBitlist]
     public BitArray? L { get; set; }
 }
+
+// Schemas: https://github.com/ethereum/consensus-specs/blob/v1.7.0-alpha.13/tests/formats/ssz_generic/README.md#progressive_containers
+[SszContainer]
+public partial struct ProgressiveSingleFieldContainerTestStruct
+{
+    [SszField(0)]
+    public byte A { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveSingleListContainerTestStruct
+{
+    [SszField(4)]
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveVarTestStruct
+{
+    [SszField(0)]
+    public byte A { get; set; }
+
+    [SszField(2)]
+    [SszList(123)]
+    public ushort[]? B { get; set; }
+
+    [SszField(4)]
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+}
+
+[SszContainer]
+public partial struct ProgressiveComplexTestStruct
+{
+    [SszField(0)]
+    public byte A { get; set; }
+
+    [SszField(2)]
+    [SszList(123)]
+    public ushort[]? B { get; set; }
+
+    [SszField(4)]
+    [SszProgressiveBitlist]
+    public BitArray? C { get; set; }
+
+    [SszField(8)]
+    [SszProgressiveList]
+    public ulong[]? D { get; set; }
+
+    [SszField(12)]
+    [SszProgressiveList]
+    public SmallTestStruct[]? E { get; set; }
+
+    [SszField(13)]
+    [SszProgressiveList]
+    public ProgressiveVarTestStructList[]? F { get; set; }
+
+    [SszField(20)]
+    [SszList(10)]
+    public ProgressiveSingleFieldContainerTestStruct[]? G { get; set; }
+
+    [SszField(21)]
+    [SszProgressiveList]
+    public ProgressiveVarTestStruct[]? H { get; set; }
+}
+
+// Schemas: https://github.com/ethereum/consensus-specs/blob/v1.7.0-alpha.13/tests/formats/ssz_generic/README.md#compatible_unions
+[SszCompatibleUnion]
+public partial struct CompatibleUnionA
+{
+    public CompatibleUnionASelector Selector { get; set; }
+    public ProgressiveSingleFieldContainerTestStruct A { get; set; }
+}
+
+public enum CompatibleUnionASelector : byte
+{
+    A = 1,
+}
+
+[SszCompatibleUnion]
+public partial struct CompatibleUnionBC
+{
+    public CompatibleUnionBCSelector Selector { get; set; }
+    public ProgressiveSingleListContainerTestStruct B { get; set; }
+    public ProgressiveVarTestStruct C { get; set; }
+}
+
+public enum CompatibleUnionBCSelector : byte
+{
+    B = 2,
+    C = 3,
+}
+
+[SszCompatibleUnion]
+public partial struct CompatibleUnionABCA
+{
+    public CompatibleUnionABCASelector Selector { get; set; }
+    public ProgressiveSingleFieldContainerTestStruct A { get; set; }
+    public ProgressiveSingleListContainerTestStruct B { get; set; }
+    public ProgressiveVarTestStruct C { get; set; }
+    public ProgressiveSingleFieldContainerTestStruct A2 { get; set; }
+}
+
+public enum CompatibleUnionABCASelector : byte
+{
+    A = 1,
+    B = 2,
+    C = 3,
+    A2 = 4,
+}

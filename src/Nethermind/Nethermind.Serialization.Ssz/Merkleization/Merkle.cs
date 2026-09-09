@@ -31,7 +31,7 @@ public static partial class Merkle
 
         private static UInt256[] Build()
         {
-            UInt256[] hashes = new UInt256[64];
+            UInt256[] hashes = new UInt256[65];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = ZeroHash(i);
@@ -171,9 +171,11 @@ public static partial class Merkle
         0x3a, 0x14, 0x46, 0x73, 0x71, 0x86, 0xd2, 0x1a, 0xeb, 0x8b, 0xc7, 0xae, 0x59, 0xe1, 0xfd, 0x21,
         0xec, 0xc5, 0x02, 0xc9, 0xb1, 0x14, 0x5f, 0x39, 0x50, 0xcb, 0x7d, 0x3e, 0x38, 0x42, 0x44, 0x6f,
         0x81, 0xa4, 0xf0, 0xdf, 0x1d, 0xf5, 0x37, 0xce, 0xe1, 0x39, 0xef, 0x64, 0xea, 0x98, 0x4b, 0xd9,
+        0xc8, 0x85, 0xc2, 0x36, 0x14, 0x02, 0x49, 0xc9, 0xe1, 0x64, 0x0e, 0x5e, 0x99, 0xfb, 0x97, 0x2d,
+        0x81, 0xfb, 0xb3, 0x1e, 0xa5, 0xe2, 0x9f, 0xbd, 0xde, 0x06, 0x36, 0x27, 0xf0, 0xd6, 0xbd, 0xc8,
     ];
 
-    public static int NextPowerOfTwoExponent(ulong v) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
+    public static int NextPowerOfTwoExponent(ulong v) => v <= 1 ? 0 : 64 - BitOperations.LeadingZeroCount(v - 1);
 
     internal static UInt256 HashConcatenation(UInt256 left, UInt256 right, int level)
     {
@@ -223,56 +225,63 @@ public static partial class Merkle
     }
 
     // EIP-7495 / EIP-7916 progressive merkleization keeps generalized indices stable across extensions.
-    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1)
+    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1) =>
+        MerkleizeProgressive(out root, chunks, ReadOnlySpan<UInt256>.Empty, numLeaves);
+
+    /// <summary>Returns the progressive SSZ root of bytes padded to whole chunks.</summary>
+    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<byte> bytes)
+    {
+        int partialChunkLength = bytes.Length % 32;
+        if (partialChunkLength == 0)
+        {
+            MerkleizeProgressive(out root, MemoryMarshal.Cast<byte, UInt256>(bytes));
+            return;
+        }
+
+        Span<byte> lastChunk = stackalloc byte[32];
+        lastChunk.Clear();
+        bytes[^partialChunkLength..].CopyTo(lastChunk);
+        MerkleizeProgressive(out root, MemoryMarshal.Cast<byte, UInt256>(bytes[..^partialChunkLength]), MemoryMarshal.Cast<byte, UInt256>(lastChunk), 1);
+    }
+
+    private static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ReadOnlySpan<UInt256> lastChunk, ulong numLeaves)
     {
         ArgumentOutOfRangeException.ThrowIfZero(numLeaves, nameof(numLeaves));
 
-        if (chunks.Length == 0)
+        if (chunks.IsEmpty && lastChunk.IsEmpty)
         {
             root = UInt256.Zero;
             return;
         }
 
-        // The `numLeaves`-sized subtree is the left child; the remaining chunks recurse into the right.
-        int subtreeChunkCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
-        Merkleize(out UInt256 subtree, chunks[..subtreeChunkCount], numLeaves);
-
-        ReadOnlySpan<UInt256> remainingChunks = chunks[subtreeChunkCount..];
         UInt256 continuation = UInt256.Zero;
-        if (!remainingChunks.IsEmpty)
+        UInt256 subtree;
+        if ((ulong)chunks.Length < numLeaves)
         {
-            MerkleizeProgressive(out continuation, remainingChunks, checked(numLeaves * 4));
+            Merkleize(out subtree, chunks, lastChunk, numLeaves);
+        }
+        else
+        {
+            int subtreeChunkCount = (int)numLeaves;
+            Merkleize(out subtree, chunks[..subtreeChunkCount], numLeaves);
+            if (subtreeChunkCount < chunks.Length || !lastChunk.IsEmpty)
+            {
+                MerkleizeProgressive(out continuation, chunks[subtreeChunkCount..], lastChunk, checked(numLeaves * 4));
+            }
         }
 
         root = HashConcatenation(subtree, continuation, 0);
     }
 
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
+    /// <summary>Merkleizes bytes with zero padding to whole chunks and the requested tree capacity.</summary>
+    /// <remarks>A zero chunk count derives the capacity from the input length. Large inputs may use up to four parallel workers.</remarks>
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount = 0)
     {
-        const int typeSize = 1;
-        int partialChunkLength = value.Length % (32 / typeSize);
+        int partialChunkLength = value.Length % 32;
         if (partialChunkLength > 0)
         {
             ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
-            Span<byte> lastChunk = stackalloc byte[32 / typeSize];
-            lastChunk.Clear();
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value));
-        }
-    }
-
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
-    {
-        const int typeSize = 1;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
-            Span<byte> lastChunk = stackalloc byte[32 / typeSize];
+            Span<byte> lastChunk = stackalloc byte[32];
             lastChunk.Clear();
             value[^partialChunkLength..].CopyTo(lastChunk);
             Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
@@ -285,14 +294,31 @@ public static partial class Merkle
 
     private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
-        if (limit == 0 && (value.Length + lastChunk.Length == 1))
+        ulong count = (ulong)value.Length + (ulong)lastChunk.Length;
+        if (limit != 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(count, limit, nameof(value));
+        }
+
+        int depth = NextPowerOfTwoExponent(limit == 0 ? count : limit);
+        if (count == 0)
+        {
+            root = ZeroHash(depth);
+            return;
+        }
+
+        if (depth == 0)
         {
             root = value.Length == 0 ? lastChunk[0] : value[0];
             return;
         }
 
-        int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
-        Merkleizer merkleizer = new(depth);
+        MerkleizeChunks(out root, value, lastChunk, depth);
+    }
+
+    private static void MerkleizeSequential(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, int depth)
+    {
+        Merkleizer merkleizer = new(stackalloc UInt256[depth + 1]);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {
@@ -307,22 +333,8 @@ public static partial class Merkle
         merkleizer.CalculateRoot(out root);
     }
 
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
-    {
-        if (limit == 0 && value.Length == 1)
-        {
-            root = value[0];
-            return;
-        }
-
-        int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Merkleizer merkleizer = new(depth);
-        int length = value.Length;
-        for (int i = 0; i < length; i++)
-        {
-            merkleizer.Feed(value[i]);
-        }
-
-        merkleizer.CalculateRoot(out root);
-    }
+    /// <summary>Merkleizes chunks with zero padding to the requested tree capacity.</summary>
+    /// <remarks>A zero limit derives the capacity from the input length. Large inputs may use up to four parallel workers.</remarks>
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0) =>
+        Merkleize(out root, value, ReadOnlySpan<UInt256>.Empty, limit);
 }

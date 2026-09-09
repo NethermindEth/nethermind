@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.Merkleization;
@@ -101,6 +103,59 @@ namespace Nethermind.Serialization.Ssz.Test
 
             // Assert
             Assert.That(hashTreeRoot.ToArray(), Is.EqualTo(expectedHashTreeRoot));
+        }
+
+        [Test]
+        public void Merkleize_bitlist_rejects_bits_above_limit([Values(0UL, 1UL, 255UL, 256UL)] ulong limit)
+        {
+            BitArray bits = new((int)limit + 1);
+
+            Assert.That(() => Merkle.Merkleize(out _, bits, limit), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
+        public void Merkleize_bitlist_supports_full_ulong_limit()
+        {
+            BitArray bits = new(new[] { true });
+            UInt256 subtree = MerkleTests.ReferenceRoot(new byte[] { 1 }, 1UL << 56);
+            UInt256 expected = new(HashUtility.Hash(subtree.ToLittleEndian(), HashUtility.Chunk(new byte[] { 1 })));
+
+            Merkle.Merkleize(out UInt256 actual, bits, ulong.MaxValue);
+
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Merkleize_ignores_unused_bits_without_modifying_input(
+            [Values(1, 7, 8, 9, 255, 256, 257, 1279, 1280, 1281, 8388607)] int bitLength,
+            [Values] bool progressive)
+        {
+            BitArray bits = new(bitLength);
+            Span<byte> storage = CollectionsMarshal.AsBytes(bits);
+            storage.Fill(0xFF);
+            byte[] packed = storage.ToArray();
+            if (bitLength % 8 != 0)
+            {
+                packed[^1] &= (byte)((1 << (bitLength % 8)) - 1);
+            }
+
+            UInt256 expected = progressive ? MerkleTests.ReferenceProgressiveRoot(packed) : MerkleTests.ReferenceRoot(packed);
+            UInt256 actual;
+            if (progressive)
+            {
+                expected = new UInt256(HashUtility.Hash(expected.ToLittleEndian(), new UInt256((uint)bitLength).ToLittleEndian()));
+                Merkle.MerkleizeProgressive(out actual, bits);
+            }
+            else
+            {
+                Merkle.Merkleize(out actual, bits);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That(CollectionsMarshal.AsBytes(bits).ToArray(), Is.All.EqualTo(0xFF));
+            }
         }
 
         public static IEnumerable<TestCaseData> GetBitvectorData()

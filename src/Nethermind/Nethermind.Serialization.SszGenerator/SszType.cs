@@ -15,9 +15,11 @@ class SszType
         {
             types.Add(new()
             {
+                Symbol = converter.TargetType,
                 Namespace = converter.TargetNamespace,
                 Name = converter.TargetName,
                 TypeReferenceName = converter.TargetTypeReferenceName,
+                StaticMemberAccess = GetStaticMemberAccess(converter.TargetType, converter.TargetTypeReferenceName),
                 Kind = Kind.Basic,
                 StaticLength = converter.Length,
                 ConverterKind = converter.Kind,
@@ -37,6 +39,7 @@ class SszType
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
     public required Kind Kind { get; init; }
+    public ITypeSymbol? Symbol { get; init; }
 
     private string? _typeReferenceName;
     /// <summary>
@@ -51,7 +54,7 @@ class SszType
 
     private string? _staticMemberAccess;
     /// <summary>
-    /// Fully-qualified spelling used as the receiver for static-member access in generated code
+    /// Fully-qualified spelling used for type references and static-member access in generated code
     /// (e.g. <c>global::Ns.Foo.Encode(...)</c>). Must be used at every <c>{Type}.{StaticMethod}(...)</c>
     /// emission site so the call cannot be shadowed by an instance property of the same simple name
     /// declared on the enclosing partial.
@@ -84,13 +87,8 @@ class SszType
     /// <summary><c>true</c> when this <see cref="SszType"/> represents an open type parameter (forces variable-size encoding).</summary>
     public bool IsTypeParameter { get; init; }
 
-    /// <summary>Filename-safe form of <see cref="TypeReferenceName"/> used as the <c>AddSource</c> hint.</summary>
-    public string HintName => TypeReferenceName
-        .Replace('<', '_')
-        .Replace('>', '_')
-        .Replace(',', '_')
-        .Replace(' ', '_')
-        .Replace('.', '_');
+    /// <summary>Namespace-qualified metadata name used as the <c>AddSource</c> hint.</summary>
+    public string HintName => (string.IsNullOrEmpty(Namespace) ? string.Empty : Namespace + ".") + (Symbol?.MetadataName ?? Name);
 
     public SszProperty[]? Members { get; set; }
     public byte[]? ActiveFieldsBytes { get; set; }
@@ -133,11 +131,9 @@ class SszType
         string typeReferenceName = GetTypeReferenceName(type);
         string staticMemberAccess = GetStaticMemberAccess(type, typeReferenceName);
 
-        // Hand-registered basic types (e.g. byte, Int32) use BCL casing in Name while a
-        // user-site reference comes back in keyword form ("byte", "int") via MinimallyQualifiedFormat —
-        // so reconcile to the basic-type entry by Name in that case.
-        SszType? existingType = types.FirstOrDefault(t => t.Namespace == @namespace
-            && (t.TypeReferenceName == typeReferenceName || (t.Kind == Kind.Basic && t.Name == name)));
+        SszType? existingType = types.FirstOrDefault(t => t.Symbol is null
+            ? t.Namespace == @namespace && t.Name == name
+            : SymbolEqualityComparer.Default.Equals(t.Symbol, type));
         if (existingType is not null)
         {
             return existingType;
@@ -148,6 +144,7 @@ class SszType
 
         SszType result = new()
         {
+            Symbol = type,
             Namespace = @namespace,
             Name = name,
             TypeReferenceName = typeReferenceName,

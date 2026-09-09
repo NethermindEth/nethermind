@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.IO;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -16,6 +17,55 @@ namespace Nethermind.Serialization.Ssz.Test
     [TestFixture]
     public class SszTests
     {
+        [Test]
+        public void Bit_encoding_masks_unused_storage_without_mutating_input(
+            [Values(1, 7, 8, 9, 255, 256, 257)] int length, [Values] bool list)
+        {
+            BitArray bits = new(length, true);
+            for (int i = 0; i < length; i += 3) bits[i] = false;
+            Span<byte> storage = CollectionsMarshal.AsBytes(bits);
+            if (length % 8 != 0) storage[^1] |= (byte)(0xFF << (length % 8));
+            byte[] originalStorage = storage.ToArray();
+            byte[] encoded = new byte[list ? length / 8 + 1 : (length + 7) / 8];
+            Array.Fill(encoded, (byte)0xCD);
+            byte[] expected = new byte[encoded.Length];
+            for (int i = 0; i < length; i++)
+            {
+                if (i % 3 != 0) expected[i / 8] |= (byte)(1 << (i % 8));
+            }
+            if (list) expected[length / 8] |= (byte)(1 << (length % 8));
+
+            if (list) Ssz.Encode(encoded, bits, length);
+            else Ssz.Encode(encoded, bits);
+            BitArray decoded = list ? Ssz.DecodeBitlist(encoded) : Ssz.DecodeBitvector(encoded, length);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(encoded, Is.EqualTo(expected));
+                Assert.That(decoded, Is.EqualTo(bits));
+                Assert.That(storage.ToArray(), Is.EqualTo(originalStorage));
+            }
+        }
+
+        [Test]
+        public void Bit_encoding_does_not_allocate_temporary_arrays([Values] bool list)
+        {
+            BitArray bits = new(8191, true);
+            byte[] output = new byte[1024];
+            for (int i = 0; i < 10; i++)
+            {
+                if (list) Ssz.Encode(output, bits, bits.Length);
+                else Ssz.Encode(output, bits);
+            }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10; i++)
+            {
+                if (list) Ssz.Encode(output, bits, bits.Length);
+                else Ssz.Encode(output, bits);
+            }
+            Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+        }
+
         [TestCase(0, "0x00")]
         [TestCase(1, "0x01")]
         [TestCase(byte.MaxValue, "0xff")]

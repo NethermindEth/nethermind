@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -31,6 +33,8 @@ public class MerkleTests
     [TestCase(4UL, 2UL)]
     [TestCase(ulong.MaxValue / 2, 63UL)]
     [TestCase(ulong.MaxValue / 2 + 1, 63UL)]
+    [TestCase(ulong.MaxValue / 2 + 2, 64UL)]
+    [TestCase(ulong.MaxValue, 64UL)]
     public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwoExponent(value), Is.EqualTo(expectedResult));
 
     [Test]
@@ -47,7 +51,7 @@ public class MerkleTests
         byte[] expected = new byte[32];
         Span<byte> actual = stackalloc byte[32];
 
-        for (int level = 0; level < 64; level++)
+        for (int level = 0; level < Merkle.ZeroHashes.Length; level++)
         {
             Merkle.ZeroHashes[level].ToLittleEndian(actual);
             Assert.That(actual.ToArray(), Is.EqualTo(expected), $"ZeroHashes[{level}]");
@@ -170,6 +174,191 @@ public class MerkleTests
         Merkle.Merkleize(out UInt256 actual, data);
 
         Assert.That(actual, Is.EqualTo(new UInt256(padded)));
+    }
+
+    [Test]
+    public void Merkleize_matches_independent_tree(
+        [Values(0, 1, 31, 32, 33, 63, 64, 65, 511, 512, 513, 1024, 8193)] int byteLength,
+        [Values] bool extendLimit)
+    {
+        byte[] bytes = new byte[byteLength];
+        new Random(42).NextBytes(bytes);
+        ulong limit = extendLimit ? (ulong)(byteLength / 32 + 17) : 0;
+
+        Merkle.Merkleize(out UInt256 actual, bytes, limit);
+
+        Assert.That(actual, Is.EqualTo(ReferenceRoot(bytes, limit)));
+    }
+
+    [Test]
+    public void Merkleize_supports_full_ulong_limit([Values(0, 1, 33)] int byteLength)
+    {
+        byte[] bytes = new byte[byteLength];
+        bytes.AsSpan().Fill(0xA5);
+
+        Merkle.Merkleize(out UInt256 actual, bytes, ulong.MaxValue);
+
+        Assert.That(actual, Is.EqualTo(ReferenceRoot(bytes, ulong.MaxValue)));
+    }
+
+    [TestCase(33, 1UL)]
+    [TestCase(128, 3UL)]
+    [TestCase(1048576, 1UL)]
+    public void Merkleize_rejects_chunk_count_above_limit(int byteLength, ulong limit) =>
+        Assert.That(() => Merkle.Merkleize(out _, new byte[byteLength], limit), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void Merkleizer_empty_root_ignores_scratch_contents([Values(0, 1, 6, 63, 64)] int depth)
+    {
+        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
+        scratch.Fill(UInt256.MaxValue);
+        Merkleizer merkleizer = new(scratch);
+
+        merkleizer.CalculateRoot(out UInt256 actual);
+
+        Assert.That(actual, Is.EqualTo(ReferenceRoot(ReadOnlySpan<byte>.Empty, depth == 64 ? ulong.MaxValue : 1UL << depth)));
+    }
+
+    [Test]
+    public void Merkleizer_rejects_more_leaves_than_capacity([Values(0, 1, 3)] int depth) =>
+        Assert.That(() => OverfillMerkleizer(depth), Throws.TypeOf<InvalidOperationException>());
+
+    [Test]
+    public void Merkleizer_rejects_invalid_depth([Values(-1, 65, int.MaxValue)] int depth) =>
+        Assert.That(() => { _ = new Merkleizer(depth); }, Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void Merkleizer_rejects_invalid_scratch_length([Values(0, 66)] int length) =>
+        Assert.That(() => { _ = new Merkleizer(new UInt256[length]); }, Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    private static void OverfillMerkleizer(int depth)
+    {
+        Merkleizer merkleizer = new(depth);
+        for (int i = 0; i <= (1 << depth); i++)
+        {
+            merkleizer.Feed(new UInt256((ulong)i + 1));
+        }
+    }
+
+    [Test]
+    public void Merkleizer_root_does_not_modify_accumulated_leaves()
+    {
+        Span<UInt256> scratch = stackalloc UInt256[4];
+        Merkleizer merkleizer = new(scratch);
+        byte[] leaves = new byte[4 * 32];
+        new Random(42).NextBytes(leaves);
+
+        for (int i = 0; i < 4; i++)
+        {
+            merkleizer.Feed(new UInt256(leaves.AsSpan(i * 32, 32)));
+            merkleizer.CalculateRoot(out UInt256 actual);
+            Assert.That(actual, Is.EqualTo(ReferenceRoot(leaves.AsSpan(0, (i + 1) * 32), 8)));
+        }
+    }
+
+    [Test]
+    public void Merkleize_progressive_matches_independent_tree(
+        [Values(0, 1, 2, 5, 6, 21, 22, 85, 86, 341, 342)] int chunks,
+        [Values(0, 1, 31)] int remainder)
+    {
+        byte[] bytes = new byte[chunks * 32 + remainder];
+        new Random(42).NextBytes(bytes);
+
+        Merkle.MerkleizeProgressive(out UInt256 actual, bytes);
+
+        Assert.That(actual, Is.EqualTo(ReferenceProgressiveRoot(bytes)));
+    }
+
+    internal static UInt256 ReferenceProgressiveRoot(ReadOnlySpan<byte> bytes, int subtreeBytes = 32)
+    {
+        if (bytes.IsEmpty)
+        {
+            return UInt256.Zero;
+        }
+
+        int count = Math.Min(subtreeBytes, bytes.Length);
+        UInt256 left = ReferenceRoot(bytes[..count], (ulong)subtreeBytes / 32);
+        UInt256 right = ReferenceProgressiveRoot(bytes[count..], subtreeBytes * 4);
+        return new UInt256(HashUtility.Hash(left.ToLittleEndian(), right.ToLittleEndian()));
+    }
+
+    [Test]
+    public void Merkleize_large_input_matches_independent_tree(
+        [Values(1048544, 1048575, 1048576, 1048577, 1048608, 2097185)] int byteLength,
+        [Values(0UL, 65539UL, ulong.MaxValue)] ulong limit,
+        [Values] bool allZero)
+    {
+        byte[] bytes = new byte[byteLength];
+        if (!allZero) new Random(42).NextBytes(bytes);
+        UInt256 expected = ReferenceRoot(bytes, limit);
+        byte[] original = (byte[])bytes.Clone();
+
+        Merkle.Merkleize(out UInt256 actual, bytes, limit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(bytes, Is.EqualTo(original));
+        }
+    }
+
+    [Test]
+    public void Merkleize_large_inputs_are_independent_under_concurrency()
+    {
+        byte[][] inputs = new byte[4][];
+        UInt256[] expected = new UInt256[inputs.Length];
+        for (int i = 0; i < inputs.Length; i++)
+        {
+            inputs[i] = new byte[1048576 + i];
+            new Random(i).NextBytes(inputs[i]);
+            expected[i] = ReferenceRoot(inputs[i]);
+        }
+
+        Parallel.For(0, 16, i =>
+        {
+            int index = i % inputs.Length;
+            Merkle.Merkleize(out UInt256 actual, inputs[index]);
+            Assert.That(actual, Is.EqualTo(expected[index]));
+        });
+    }
+
+    internal static UInt256 ReferenceRoot(ReadOnlySpan<byte> bytes, ulong limit = 0)
+    {
+        int width = 1;
+        while (width < (bytes.Length + 31) / 32)
+        {
+            width *= 2;
+        }
+
+        byte[] nodes = new byte[width * 32];
+        bytes.CopyTo(nodes);
+        byte[] zero = new byte[32];
+        int depth = 0;
+        for (int count = width; count > 1; count /= 2)
+        {
+            for (int i = 0; i < count / 2; i++)
+            {
+                SHA256.HashData(nodes.AsSpan(i * 64, 64), nodes.AsSpan(i * 32, 32));
+            }
+
+            zero = HashUtility.Hash(zero, zero);
+            depth++;
+        }
+
+        int limitDepth = 0;
+        for (ulong remaining = limit > 0 ? limit - 1 : 0; remaining > 0; remaining >>= 1)
+        {
+            limitDepth++;
+        }
+
+        byte[] root = nodes.AsSpan(0, 32).ToArray();
+        while (depth++ < limitDepth)
+        {
+            root = HashUtility.Hash(root, zero);
+            zero = HashUtility.Hash(zero, zero);
+        }
+
+        return new UInt256(root);
     }
 
     [Test]

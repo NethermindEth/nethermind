@@ -22,6 +22,183 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 public class EncodingTest
 {
     [Test]
+    public void Decode_rejects_invalid_collections_before_allocating_items([Values] bool bitlist)
+    {
+        byte[] data = new byte[65536];
+        if (bitlist)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(data, 4);
+            data[^1] = 1;
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(data, data.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(4), data.Length - 1);
+        }
+        Action decode = bitlist ? () => SmallBitList.Decode(data, out SmallBitList _) : () => ByteListItself.Decode(data, out ByteListItself[] _);
+        AssertRejectsBeforeAllocation(decode);
+    }
+
+    [Test]
+    public void Decode_validates_fixed_fields_before_variable_collections()
+    {
+        byte[] data = new byte[65536];
+        BinaryPrimitives.WriteInt32LittleEndian(data, 5);
+        data[4] = 2;
+        AssertRejectsBeforeAllocation(() => DynamicBeforeBoolean.Decode(data, out DynamicBeforeBoolean _));
+    }
+
+    private static void AssertRejectsBeforeAllocation(Action decode)
+    {
+        Assert.That(decode, Throws.InstanceOf<InvalidDataException>());
+        InvalidDataException? error = null;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        try { decode(); }
+        catch (InvalidDataException exception) { error = exception; }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(error, Is.Not.Null);
+        Assert.That(allocated, Is.LessThan(16384), "Invalid input must be rejected before its declared collection is materialized.");
+    }
+
+    [Test]
+    public void Lists_decode_directly_to_their_destination_and_hash_packed_bytes(
+        [Values(0, 1, 31, 32, 33, 255, 256, 257, 1024)] int count)
+    {
+        ListDestinations value = new() { Numbers = new(count), Enums = new(count) };
+        byte[] numberBytes = new byte[count * sizeof(ulong)];
+        byte[] enumBytes = new byte[count * sizeof(uint)];
+        for (int i = 0; i < count; i++)
+        {
+            value.Numbers.Add((ulong)(i * 17 + 1));
+            value.Enums.Add((PrimitiveEnum)(uint)(i * 31 + 2));
+            BinaryPrimitives.WriteUInt64LittleEndian(numberBytes.AsSpan(i * sizeof(ulong)), value.Numbers[i]);
+            BinaryPrimitives.WriteUInt32LittleEndian(enumBytes.AsSpan(i * sizeof(uint)), (uint)value.Enums[i]);
+        }
+        byte[] encoded = ListDestinations.Encode(value);
+        ListDestinations.Decode(encoded, out ListDestinations decoded);
+        ListDestinations.Merkleize(value, out UInt256 root);
+        UInt256 expectedNumbers = HashConcat(MerkleizePackedSpec(numberBytes, 256), new UInt256((ulong)count));
+        UInt256 expectedEnums = HashConcat(MerkleizePackedSpec(enumBytes, 128), new UInt256((ulong)count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Numbers, Is.EqualTo(value.Numbers));
+            Assert.That(decoded.Enums, Is.EqualTo(value.Enums));
+            Assert.That(encoded.AsSpan(8, numberBytes.Length).ToArray(), Is.EqualTo(numberBytes));
+            Assert.That(encoded.AsSpan(8 + numberBytes.Length).ToArray(), Is.EqualTo(enumBytes));
+            Assert.That(root, Is.EqualTo(HashConcat(expectedNumbers, expectedEnums)));
+        }
+    }
+
+    [Test]
+    public void Basic_list_root_supports_full_ulong_limit([Values(0, 1)] int count)
+    {
+        MaximumLimitList value = new() { Items = new ulong[count] };
+        MaximumLimitList.Merkleize(value, out UInt256 root);
+        UInt256 expected = UInt256.Zero;
+        for (int depth = 0; depth < 62; depth++) expected = HashConcat(expected, expected);
+        Assert.That(root, Is.EqualTo(HashConcat(expected, new UInt256((ulong)count))));
+    }
+
+    [Test]
+    public void Progressive_converter_collections_hash_without_materializing_item_roots(
+        [Values(0, 1, 4, 5, 6, 20, 21, 22, 84, 85, 86, 1024)] int count)
+    {
+        TestBytes4[] items = new TestBytes4[count];
+        UInt256[] roots = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            items[i] = new((uint)i + 1);
+            roots[i] = new((ulong)i + 1);
+        }
+        ProgressiveConverterList.Merkleize(new() { Items = items }, out UInt256 root);
+        MerkleizeProgressiveSpec(roots, out UInt256 expected);
+        Assert.That(root, Is.EqualTo(HashConcat(expected, new UInt256((ulong)count))));
+    }
+
+    private static UInt256 MerkleizePackedSpec(byte[] bytes, int capacity)
+    {
+        UInt256[] nodes = new UInt256[capacity];
+        PackToChunks(bytes).CopyTo(nodes, 0);
+        for (int count = capacity; count > 1; count /= 2)
+        {
+            for (int i = 0; i < count / 2; i++) nodes[i] = HashConcat(nodes[i * 2], nodes[i * 2 + 1]);
+        }
+        return nodes[0];
+    }
+
+    [Test]
+    public void Encode_requires_exact_destination_length([Values(-1, 1)] int difference, [Values] bool collection)
+    {
+        AssertExactDestination(new FixedC { Fixed1 = 1, Fixed2 = 2 }, difference, collection);
+        AssertExactDestination(new VariableC { Fixed1 = 3, Fixed2 = [4, 5] }, difference, collection);
+        AssertExactDestination(new ByteListItself { Bytes = [6, 7] }, difference, collection);
+        AssertExactDestination(new CompatibleNumberUnion { Selector = CompatibleNumberUnionSelector.CurrentValue, CurrentValue = 8 }, difference, collection);
+    }
+
+    private static void AssertExactDestination<T>(T value, int difference, bool collection) where T : ISszCodec<T>
+    {
+        T[] items = [value, value];
+        int length = collection ? T.GetLength(items) : T.GetLength(value);
+        byte[] data = new byte[length + difference];
+        Array.Fill(data, (byte)0xCD);
+        Assert.That(() =>
+        {
+            if (collection) T.Encode(data, items);
+            else T.Encode(data, value);
+        }, Throws.InstanceOf<InvalidDataException>(), typeof(T).Name);
+        Assert.That(data, Is.All.EqualTo(0xCD), "Reject the destination before writing any bytes.");
+    }
+
+    [Test]
+    public void Merkleize_fixed_class_collection_null_matches_zero_encoded_value([Values(0, 1, 2)] int nullIndex)
+    {
+        NullableStaticChild[] items = [new() { Fixed1 = 1, Fixed2 = 2 }, new() { Fixed1 = 3, Fixed2 = 4 }, new() { Fixed1 = 5, Fixed2 = 6 }];
+        items[nullIndex] = null!;
+        AssertCollectionRootsMatchEncodedValue(items);
+    }
+
+    [Test]
+    public void Merkleize_collection_wrapper_null_matches_empty_encoded_value([Values(0, 1, 2)] int nullIndex)
+    {
+        ByteListClassItself[] items = [new() { Bytes = [1] }, new() { Bytes = [2, 3] }, new() { Bytes = [4, 5, 6] }];
+        items[nullIndex] = null!;
+        AssertCollectionRootsMatchEncodedValue(items);
+    }
+
+    [Test]
+    public void Collections_reject_null_variable_containers()
+    {
+        NullableVariableChild[] items = [null!];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => NullableVariableChild.GetLength(items), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => NullableVariableChild.Encode(items), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => NullableVariableChild.MerkleizeVector(items, out _), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => NullableVariableChild.MerkleizeList(items, 4, out _), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => NullableVariableChild.MerkleizeProgressiveList(items, out _), Throws.InstanceOf<InvalidDataException>());
+        }
+    }
+
+    private static void AssertCollectionRootsMatchEncodedValue<T>(T[] items) where T : ISszCodec<T>
+    {
+        byte[] bytes = T.Encode(items);
+        T.Decode(bytes, out T[] decoded);
+        T.MerkleizeVector(items, out UInt256 vectorRoot);
+        T.MerkleizeVector(decoded, out UInt256 decodedVectorRoot);
+        T.MerkleizeList(items, 4, out UInt256 listRoot);
+        T.MerkleizeList(decoded, 4, out UInt256 decodedListRoot);
+        T.MerkleizeProgressiveList(items, out UInt256 progressiveRoot);
+        T.MerkleizeProgressiveList(decoded, out UInt256 decodedProgressiveRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vectorRoot, Is.EqualTo(decodedVectorRoot));
+            Assert.That(listRoot, Is.EqualTo(decodedListRoot));
+            Assert.That(progressiveRoot, Is.EqualTo(decodedProgressiveRoot));
+        }
+    }
+
+    [Test]
     public void Test_ComplexStructure_EncodingRoundTrip()
     {
         ComplexStruct test = new()
@@ -769,8 +946,24 @@ public class EncodingTest
 
         UInt256 headRoot = MerkleizeWithConverter(container.Head, UInt64SszBasicTypeConverter.Feed);
         UInt256 tailRoot = MerkleizeWithConverter(container.Tail, UInt64SszBasicTypeConverter.Feed);
-        MerkleizeProgressiveSpec([headRoot, tailRoot], out UInt256 expected);
+        MerkleizeProgressiveSpec([headRoot, UInt256.Zero, tailRoot], out UInt256 expected);
         expected = MixInActiveFieldsSpec(expected, 0b00000101);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Merkleize_progressive_container_preserves_the_last_field_index()
+    {
+        SparseProgressiveContainer container = new() { Value = 7 };
+        UInt256[] fields = new UInt256[256];
+        fields[^1] = new UInt256(7);
+        MerkleizeProgressiveSpec(fields, out UInt256 expected);
+        byte[] activeFields = new byte[32];
+        activeFields[^1] = 0x80;
+        expected = HashConcat(expected, new UInt256(activeFields));
+
+        SparseProgressiveContainer.Merkleize(container, out UInt256 actual);
 
         Assert.That(actual, Is.EqualTo(expected));
     }
@@ -1071,5 +1264,65 @@ public class EncodingTest
         feed(ref merkleizer, value);
         merkleizer.CalculateRoot(out UInt256 root);
         return root;
+    }
+
+    [Test, NonParallelizable]
+    public void Null_fixed_collection_roots_do_not_construct_owned_fields([Values(1, 33, 86)] int count)
+    {
+        SszOwnedUlongCollection.ResetCounts();
+        AssertNullCollectionRoots<OwnedZeroRootContainer>(count, ExpectedOwnedZeroRoot());
+        MerkleizeProgressiveSpec([UInt256.Zero, UInt256.Zero, HashConcat(UInt256.Zero, UInt256.Zero)], out UInt256 progressive);
+        AssertNullCollectionRoots<OwnedZeroProgressiveContainer>(count, MixInActiveFieldsSpec(progressive, 5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SszOwnedUlongCollection.CreatedCount, Is.Zero);
+            Assert.That(SszOwnedUlongCollection.DisposedCount, Is.Zero);
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Null_fixed_fields_hash_their_zero_encoding_without_constructing_owned_fields()
+    {
+        SszOwnedUlongCollection.ResetCounts();
+        OwnedZeroRootParent.Merkleize(default, out UInt256 parentRoot);
+        OwnedZeroRootContainer.Merkleize(new(), out UInt256 itemRoot);
+        UInt256 expectedItem = ExpectedOwnedZeroRoot();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentRoot, Is.EqualTo(HashConcat(expectedItem, expectedItem)));
+            Assert.That(itemRoot, Is.EqualTo(expectedItem));
+            Assert.That(SszOwnedUlongCollection.CreatedCount, Is.Zero);
+            Assert.That(SszOwnedUlongCollection.DisposedCount, Is.Zero);
+        }
+    }
+
+    private static UInt256 ExpectedOwnedZeroRoot()
+    {
+        UInt256 child = HashConcat(UInt256.Zero, UInt256.Zero);
+        UInt256 commitments = HashConcat(child, child);
+        return HashConcat(HashConcat(UInt256.Zero, child), HashConcat(commitments, UInt256.Zero));
+    }
+
+    private static void AssertNullCollectionRoots<T>(int count, UInt256 itemRoot) where T : class, ISszCodec<T>
+    {
+        T[] items = new T[count];
+        UInt256[] roots = new UInt256[count];
+        Array.Fill(roots, itemRoot);
+        Merkle.Merkleize(out UInt256 expectedVector, roots);
+        Merkle.Merkleize(out UInt256 expectedList, roots, 128);
+        MerkleizeProgressiveSpec(roots, out UInt256 expectedProgressive);
+
+        T.MerkleizeVector(items, out UInt256 vector);
+        T.MerkleizeList(items, 128, out UInt256 list);
+        T.MerkleizeProgressiveList(items, out UInt256 progressive);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vector, Is.EqualTo(expectedVector));
+            Assert.That(list, Is.EqualTo(HashConcat(expectedList, new UInt256((uint)count))));
+            Assert.That(progressive, Is.EqualTo(HashConcat(expectedProgressive, new UInt256((uint)count))));
+        }
     }
 }
