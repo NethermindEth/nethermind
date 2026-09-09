@@ -95,6 +95,9 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     private readonly Entry[] _entries;
 
+    /// <summary>The total number of entries across both cache ways.</summary>
+    public int Capacity => _entries.Length;
+
     /// <summary>
     /// Current epoch counter (unshifted, informational / debugging).
     /// </summary>

@@ -54,11 +54,12 @@ namespace Nethermind.Blockchain.Test;
 public class BlockProcessorTests
 {
     [Test]
-    public void Read_coverage_validates_system_slices_and_preserves_read_budget([Values] bool omitRead, [Values] bool revertWrite)
+    public void Read_coverage_validates_system_slices_and_preserves_read_budget([Values] bool omitRead, [Values] bool revertWrite, [Values] bool denseCache)
     {
         List<TracedAccessWorldState> workers = [];
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = denseCache ? 1 : 18 })
             .AddDecorator<CodeInfoRepositoryFactory>((_, factory) => state =>
             {
                 if (state is TracedAccessWorldState traced) workers.Add(traced);
@@ -66,12 +67,14 @@ public class BlockProcessorTests
             })
             .Build();
         using ILifetimeScope lifetime = container.BeginLifetimeScope(builder => builder
-            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState)
+            .AddModule(new PrewarmerModule.PrewarmerMainProcessingModule(new BlocksConfig())));
         IWorldState state = lifetime.Resolve<IWorldState>();
         BlockHeader parent;
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.AddressA, 100);
+            state.Set(new StorageCell(TestItem.AddressA, 1), [42]);
             state.Commit(Amsterdam.Instance, isGenesis: true);
             state.CommitTree(0);
             parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
@@ -79,16 +82,19 @@ public class BlockProcessorTests
         using IDisposable scope = state.BeginScope(parent);
         BlockAccessListManager manager = (BlockAccessListManager)lifetime.Resolve<IBlockAccessListManager>();
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
-            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2)
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2, (UInt256)4, (UInt256)5, (UInt256)6)
                 .WithStorageChanges(3, new StorageChange(1, 7u)).TestObject).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
         PrepareSetup(manager, block, Amsterdam.Instance);
+        manager.WaitForBalWarmup();
         Assert.That(manager.ParallelExecutionEnabled, Is.True);
         manager.GetTxProcessor(0);
         TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
         Assert.That(pre.ReadCoverage, Is.Not.Null);
-        pre.Get(new StorageCell(TestItem.AddressA, 1));
-        pre.Get(new StorageCell(TestItem.AddressA, 3));
+        Assert.That(pre.ReadCoverage!.Plan!.StorageValues is not null, Is.EqualTo(denseCache));
+        if (denseCache)
+            Assert.That(pre.ReadCoverage.Plan.StorageValues!.TryGet(0, out _), Is.True, "warming must fill the ordinal destination");
+        foreach (UInt256 slot in new UInt256[] { 1, 3, 4, 5, 6 }) pre.Get(new StorageCell(TestItem.AddressA, slot));
         if (revertWrite)
         {
             Snapshot snapshot = pre.TakeSnapshot();

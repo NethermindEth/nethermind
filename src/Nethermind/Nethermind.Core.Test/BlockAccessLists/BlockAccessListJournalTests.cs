@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -20,6 +21,32 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 [TestFixture]
 public class BlockAccessListJournalTests
 {
+    [Test]
+    public void Ordinal_values_distinguish_missing_zero_and_concurrent_publication()
+    {
+        using BalStorageValueCache values = new(3);
+        Assert.That(values.TryGet(0, out _), Is.False);
+        values.Set(0, null);
+        Assert.That(values.TryGet(0, out byte[]? zero), Is.True);
+        Assert.That(zero, Is.Empty);
+        Parallel.For(0, 1000, _ =>
+        {
+            values.Set(1, [1, 2, 3]);
+            Assert.That(values.TryGet(1, out byte[]? read), Is.True);
+            Assert.That(read, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        });
+        Assert.That(values.TryGet(2, out _), Is.False);
+    }
+
+    [Test]
+    public void Ordinal_values_are_allocated_only_above_cache_capacity([Values(0, 1, 2, 3)] int capacity)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal, capacity);
+        Assert.That(plan.StorageValues is not null, Is.EqualTo(capacity < 2));
+    }
+
     [Test]
     public void Coverage_reduces_workers_and_checks_partial_words(
         [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast)

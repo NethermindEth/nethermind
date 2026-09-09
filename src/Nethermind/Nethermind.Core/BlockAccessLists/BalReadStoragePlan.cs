@@ -19,6 +19,15 @@ public sealed class BalReadStoragePlan : IDisposable
     /// <summary>The number of declared storage reads.</summary>
     public int TotalReads { get; }
 
+    /// <summary>Optional value destination for read sets larger than the shared associative cache.</summary>
+    public BalStorageValueCache? StorageValues { get; }
+
+    /// <summary>Builds a read plan, allocating a value destination only above the supplied cache capacity.</summary>
+    public BalReadStoragePlan(ReadOnlyBlockAccessList bal, int storageCacheCapacity) : this(bal)
+    {
+        if (TotalReads > storageCacheCapacity) StorageValues = new(TotalReads);
+    }
+
     /// <summary>Builds an index over the validated, sorted storage reads of a suggested BAL.</summary>
     public BalReadStoragePlan(ReadOnlyBlockAccessList bal)
     {
@@ -89,6 +98,7 @@ public sealed class BalReadStoragePlan : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        StorageValues?.Dispose();
         while (_workers.TryDequeue(out BalReadCoverage? worker)) worker.Release();
         _accounts.Clear();
     }

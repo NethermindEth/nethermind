@@ -27,6 +27,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     IDisposable BeginScope(BlockHeader? baseBlock);
     Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <summary>Hints BAL reads, optionally delivering prefetched values to a block-owned destination.</summary>
+    /// <remarks>
+    /// Await completion before releasing the sink or its block plan. Implementations that do not support
+    /// a destination retain ordinary warming; execution must resolve destination misses itself.
+    /// </remarks>
+    Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink) => HintBal(bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

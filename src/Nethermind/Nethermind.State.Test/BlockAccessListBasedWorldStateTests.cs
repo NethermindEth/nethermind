@@ -37,7 +37,9 @@ public class BlockAccessListBasedWorldStateTests
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
-        Action<IWorldState>? genesisSetup = null)
+        Action<IWorldState>? genesisSetup = null,
+        BalReadCoverage? coverage = null,
+        Action<IWorldState>? captureParent = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -54,12 +56,41 @@ public class BlockAccessListBasedWorldStateTests
         BlockAccessListBasedWorldState bws = new(inner, Logger);
         bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
-        bws.Setup(block);
+        bws.Setup(block, coverage);
         IDisposable scope = inner.BeginScope(baseBlock);
         // The inner world state, scoped against the genesis root, is itself a valid parent reader
         // — reads against it answer pre-block state directly from the trie.
         bws.SetParentReader(inner);
+        captureParent?.Invoke(inner);
         return (bws, scope);
+    }
+
+    [Test]
+    public void Ordinal_reads_use_prefetch_or_fill_on_miss([Values] bool prefilled, [Values(0, 42)] int storedValue)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index)
+                .WithStorageChanges(2, new StorageChange(0, 77u)).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal, 0);
+        if (prefilled) plan.StorageValues!.Set(0, storedValue == 0 ? [] : [(byte)storedValue]);
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(cell.Address, 100);
+                ws.Set(cell, [(byte)storedValue]);
+            }, plan.CreateCoverage(), ws => parent = ws);
+        using (scope)
+        {
+            Snapshot before = parent.TakeSnapshot();
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            Assert.That(new UInt256(bws.GetOriginal(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            if (prefilled) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "prefetched values must bypass the parent reader");
+            Assert.That(plan.StorageValues!.TryGet(0, out byte[]? cached), Is.True);
+            Assert.That(new UInt256(cached, isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            Assert.That(new UInt256(bws.Get(new StorageCell(cell.Address, 2)), isBigEndian: true), Is.EqualTo((UInt256)77));
+        }
     }
 
     [Test]

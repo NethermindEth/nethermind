@@ -98,7 +98,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                     .WithoutLeadingZeros();
             }
 
-            return parentReader.Get(storageCell);
+            return slotChanges is null ? GetDeclaredRead(parentReader, storageCell) : parentReader.Get(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
@@ -118,7 +118,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                     .WithoutLeadingZeros();
             }
 
-            return parentReader.GetOriginal(storageCell);
+            return slotChanges is null && _readCoverage?.Plan?.StorageValues is not null
+                ? GetDeclaredRead(parentReader, storageCell)
+                : parentReader.GetOriginal(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
@@ -126,6 +128,19 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
+
+    private ReadOnlySpan<byte> GetDeclaredRead(IWorldState parentReader, in StorageCell cell)
+    {
+        BalReadStoragePlan? plan = _readCoverage?.Plan;
+        if (plan?.StorageValues is not { } values || !plan.TryGetOrdinal(cell, out int ordinal))
+            return parentReader.Get(cell);
+        if (!values.TryGet(ordinal, out byte[]? value))
+        {
+            value = parentReader.Get(cell).ToArray();
+            values.Set(ordinal, value);
+        }
+        return value;
+    }
 
     public override void SetNonce(Address address, in ulong nonce) { }
 

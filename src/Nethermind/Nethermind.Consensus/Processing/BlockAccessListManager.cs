@@ -126,6 +126,7 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
+        WaitForBalWarmup();
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -148,7 +149,9 @@ public partial class BlockAccessListManager(
             Reset();
             _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
             if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
-                _readPlan = new BalReadStoragePlan(bal);
+                _readPlan = new BalReadStoragePlan(bal, BatchReadEnabled && preBlockCaches is not null
+                    ? preBlockCaches.StorageCache.Capacity
+                    : int.MaxValue);
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
@@ -181,7 +184,9 @@ public partial class BlockAccessListManager(
 
         try
         {
-            return stateProvider.HintBal(suggestedBlock.BlockAccessList);
+            return _readPlan is { StorageValues: not null } plan && preBlockCaches is not null
+                ? stateProvider.HintBal(suggestedBlock.BlockAccessList, new StorageReadSink(plan, preBlockCaches))
+                : stateProvider.HintBal(suggestedBlock.BlockAccessList);
         }
         catch (Exception ex)
         {
@@ -275,6 +280,7 @@ public partial class BlockAccessListManager(
 
     public void Dispose()
     {
+        WaitForBalWarmup();
         DisposableExtensions.DisposeAndNull(ref _readPlan);
         if (ExecutionFlags.ParallelExecution && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {

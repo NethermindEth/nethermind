@@ -302,6 +302,13 @@ namespace Nethermind.State
             return _currentScope.HintBal(bal);
         }
 
+        /// <inheritdoc/>
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink)
+        {
+            GuardInScope();
+            return _currentScope.HintBal(bal, sink);
+        }
+
         public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
