@@ -4,10 +4,8 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -244,20 +242,29 @@ public static partial class EvmInstructions
             // If the index is out-of-range, no extension is needed.
             return EvmExceptionType.None;
         }
-        sbyte sign = (sbyte)Add(ref bytesRef, position);
-        ulong fillWord = (ulong)(long)(sign >> 7);
+        // The sign byte is read out of its limb, and the limb is extended in place with an
+        // arithmetic shift down and up: no byte load, no mask. The limbs above it take the fill.
         ref ulong word = ref As<byte, ulong>(ref bytesRef);
         int wordIndex = (int)(position >> 3);
-        int keptBytes = (int)(position & (sizeof(ulong) - 1)) + 1;
-        if (keptBytes != sizeof(ulong))
+        int keep = (int)(position & (sizeof(ulong) - 1)) * 8 + 8;
+        ref ulong partialWord = ref Add(ref word, wordIndex);
+        long extended = ((long)partialWord << (64 - keep)) >> (64 - keep);
+        partialWord = (ulong)extended;
+        ulong fillWord = (ulong)(extended >> 63);
+        switch (wordIndex)
         {
-            ulong keepMask = (1UL << (keptBytes * 8)) - 1;
-            ref ulong partialWord = ref Add(ref word, wordIndex);
-            partialWord = (partialWord & keepMask) | (fillWord & ~keepMask);
-        }
-        for (int limb = wordIndex + 1; limb < 4; limb++)
-        {
-            Add(ref word, limb) = fillWord;
+            case 0:
+                Add(ref word, 1) = fillWord;
+                Add(ref word, 2) = fillWord;
+                Add(ref word, 3) = fillWord;
+                break;
+            case 1:
+                Add(ref word, 2) = fillWord;
+                Add(ref word, 3) = fillWord;
+                break;
+            case 2:
+                Add(ref word, 3) = fillWord;
+                break;
         }
         return EvmExceptionType.None;
     StackUnderflow:
