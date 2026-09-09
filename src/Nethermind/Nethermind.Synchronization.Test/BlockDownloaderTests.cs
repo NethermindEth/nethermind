@@ -906,6 +906,8 @@ public partial class BlockDownloaderTests(bool useFlatDb)
         Block genesis = Build.A.Block.Genesis.TestObject;
         ContainerBuilder b = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
+            // Synthetic empty-root blocks have available state without processing or flat persistence.
+            .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<ISpecProvider>(new MainnetSpecProvider())
