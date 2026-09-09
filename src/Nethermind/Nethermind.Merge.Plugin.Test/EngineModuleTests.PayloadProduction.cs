@@ -459,8 +459,14 @@ public partial class EngineModuleTests
         await anyWait;
         Assert.That(minTxWait.IsCompleted, Is.False, "an empty improvement must not satisfy minTransactions");
 
+        IBlockImprovementContext emptyImprovement = chain.StoringBlockImprovementContextFactory.SnapshotCreatedContexts()[^1];
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 1, 10, out _, out _));
         await minTxWait;
+
+        // An improvement is published to the payload store only after its build finishes, so the wait above
+        // can fire while retrieval would still return the empty one. The replaced context is disposed as it
+        // is swapped out, and retrieval is one-shot, so wait for that before asking for the payload.
+        Assert.That(() => emptyImprovement.Disposed, Is.True.After(5000, 10));
 
         ExecutionPayload payload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
         Assert.That(payload.TryGetTransactions().Data!, Has.Length.AtLeast(1));
