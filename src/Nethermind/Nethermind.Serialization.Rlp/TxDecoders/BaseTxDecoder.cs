@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -95,38 +96,51 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.Nonce = DecodeNonce(ref decoderContext);
+        ReadOnlySpan<byte> rlp = decoderContext.Data;
+        decoderContext.Position = DecodeNonce(rlp, decoderContext.Position, out ulong nonce);
+        transaction.Nonce = nonce;
+
+        // The gas price is a virtual extension point, so the cursor goes back to the reader here.
         DecodeGasPrice(transaction, ref decoderContext);
-        transaction.GasLimit = decoderContext.DecodeULong();
-        transaction.To = decoderContext.DecodeAddressOrNull();
-        transaction.Value = decoderContext.DecodeUInt256();
+
+        int position = RlpHelpers.DecodeULong(rlp, decoderContext.Position, out ulong gasLimit);
+        transaction.GasLimit = gasLimit;
+        (position, transaction.To) = RlpHelpers.DecodeAddressOrNull(rlp, position);
+        position = RlpHelpers.DecodeUInt256(rlp, position, out UInt256 value);
+        transaction.Value = value;
+        decoderContext.Position = position;
+
+        // The Memory-returning byte-string decode is reader-only, so it takes the cursor back.
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    private static ulong DecodeNonce(ref RlpReader decoderContext)
+    private static int DecodeNonce(ReadOnlySpan<byte> rlp, int position, out ulong nonce)
     {
-        if (decoderContext.PeekPrefixAndContentLength().ContentLength <= sizeof(ulong))
+        (_, int contentLength) = RlpHelpers.PeekPrefixAndContentLength(rlp, position);
+        if (contentLength <= sizeof(ulong))
         {
-            return decoderContext.DecodeULong();
+            return RlpHelpers.DecodeULong(rlp, position, out nonce);
         }
 
-        int position = decoderContext.Position;
-        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.DefaultLimit);
+        RlpHelpers.DecodeByteArraySpan(rlp, position, out ReadOnlySpan<byte> nonceBytes, RlpLimit.DefaultLimit);
         if (nonceBytes[0] == 0)
         {
             RlpHelpers.ThrowNonCanonicalInteger(position);
         }
 
-        return RlpHelpers.ThrowNonceTooWide(position);
+        nonce = RlpHelpers.ThrowNonceTooWide(position);
+        return position;
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
 
     protected Signature? DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        ulong v = decoderContext.DecodeULong();
-        ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
-        ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        ReadOnlySpan<byte> rlp = decoderContext.Data;
+        int position = RlpHelpers.DecodeULong(rlp, decoderContext.Position, out ulong v);
+        position = RlpHelpers.DecodeByteArraySpan(rlp, position, out ReadOnlySpan<byte> rBytes, RlpLimit.L32);
+        position = RlpHelpers.DecodeByteArraySpan(rlp, position, out ReadOnlySpan<byte> sBytes, RlpLimit.L32);
+        decoderContext.Position = position;
         return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
     }
 

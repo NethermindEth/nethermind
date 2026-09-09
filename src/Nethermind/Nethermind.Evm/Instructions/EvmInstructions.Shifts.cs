@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -127,12 +127,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong amount = swap.Bswap64(Add(ref shift, 3));
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
             value = 0;
@@ -151,14 +152,14 @@ public static partial class EvmInstructions
                 {
                     int source = destination + wordShift;
                     ulong shifted = source < 4
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) << bitShift
+                        ? swap.Bswap64(Add(ref value, source)) << bitShift
                         : 0;
                     if (bitShift != 0 && source + 1 < 4)
                     {
-                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source + 1)) >> (64 - bitShift);
+                        shifted |= swap.Bswap64(Add(ref value, source + 1)) >> (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                    Add(ref value, destination) = swap.Bswap64(shifted);
                 }
             }
             else
@@ -168,14 +169,14 @@ public static partial class EvmInstructions
                     int destination = 3 - offset;
                     int source = destination - wordShift;
                     ulong shifted = source >= 0
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                        ? swap.Bswap64(Add(ref value, source)) >> bitShift
                         : 0;
                     if (bitShift != 0 && source > 0)
                     {
-                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1)) << (64 - bitShift);
+                        shifted |= swap.Bswap64(Add(ref value, source - 1)) << (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                    Add(ref value, destination) = swap.Bswap64(shifted);
                 }
             }
         }
@@ -253,12 +254,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong amount = swap.Bswap64(Add(ref shift, 3));
         ulong fill = As<byte, sbyte>(ref topRef) < 0 ? ulong.MaxValue : 0;
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
@@ -276,17 +278,17 @@ public static partial class EvmInstructions
                 int destination = 3 - offset;
                 int source = destination - wordShift;
                 ulong shifted = source >= 0
-                    ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                    ? swap.Bswap64(Add(ref value, source)) >> bitShift
                     : fill;
                 if (bitShift != 0)
                 {
                     ulong upper = source > 0
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1))
+                        ? swap.Bswap64(Add(ref value, source - 1))
                         : fill;
                     shifted |= upper << (64 - bitShift);
                 }
 
-                Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                Add(ref value, destination) = swap.Bswap64(shifted);
             }
         }
 
