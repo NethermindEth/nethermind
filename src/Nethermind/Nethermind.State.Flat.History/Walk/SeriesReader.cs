@@ -24,7 +24,16 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, Commi
         int prefixLength = key.WritePrefix(prefix);
         CommitmentStore store = key.Column == FlatHistoryColumns.StorageCommitments ? _storageStore : _accountStore;
         using CommitmentStore.RowChain chain = key.Scratch ? store.OpenScratchAtOrBelow(prefix[..prefixLength], from) : store.OpenAtOrBelow(prefix[..prefixLength], from);
-        if (chain.MoveNext()) state.MaterializeStart(chain);
+        try
+        {
+            if (chain.MoveNext()) state.MaterializeStart(chain);
+        }
+        catch
+        {
+            state.Dispose();
+            throw;
+        }
+
         return state;
     }
 

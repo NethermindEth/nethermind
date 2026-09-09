@@ -150,6 +150,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                     metadata.MarkCarried(dropped);
                 }
 
+                history.SyncWal();
                 _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);
                 _accounts.RemoveEpoch(dropped, CommitmentKeyLayout.CoarseTier);
                 _storages.RemoveEpoch(dropped, CommitmentKeyLayout.FineTier);

@@ -829,6 +829,58 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void The_carried_anchors_are_synced_to_the_log_before_the_epoch_they_replace_is_unlinked()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        BuildCommitments();
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        int syncsWithTheDroppedEpochStillOnDisk = 0;
+        WalSyncObservingColumns observing = new(_historyColumns, () =>
+        {
+            ulong dropping = retrofit.Metadata.DroppedThroughEpoch;
+            bool carried = retrofit.Metadata.IsCarried(dropping);
+            bool stillOnDisk = accounts.GetAllKeys().Any(key => IsEpochTier(key, dropping, CommitmentKeyLayout.CoarseTier));
+            if (carried && stillOnDisk) syncsWithTheDroppedEpochStillOnDisk++;
+        });
+        using CommitmentReclaimer reclaimer = new(observing, _policy, retrofit.Metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+
+        retrofit.PruneBelow(_chain.Head);
+        reclaimer.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.GreaterThan(0ul), "precondition: at least one epoch was dropped");
+            Assert.That(syncsWithTheDroppedEpochStillOnDisk, Is.GreaterThanOrEqualTo((int)retrofit.Metadata.DroppedThroughEpoch),
+                "the carried anchors are ordinary batch writes and the epoch delete unlinks files: a crash between the two must not keep the unlink and lose the anchors, so every drop syncs the log after the carry and before the delete");
+        }
+    }
+
+    private sealed class WalSyncObservingColumns(IColumnsDb<FlatHistoryColumns> inner, Action onSync) : IColumnsDb<FlatHistoryColumns>
+    {
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => inner.StartWriteBatch();
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false)
+        {
+            if (onlyWal) onSync();
+            inner.Flush(onlyWal);
+        }
+
+        public void SyncWal()
+        {
+            onSync();
+            inner.SyncWal();
+        }
+
+        public void Dispose() { }
+    }
+
+    [Test]
     public void A_node_that_moves_once_inside_the_retained_epoch_still_gets_its_anchor_carried()
     {
         _policy = EpochPolicy;
