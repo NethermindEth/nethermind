@@ -56,8 +56,17 @@ public static partial class ZkEvmBitOperations
         r = Swap(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, 24)), m8, m16);
     }
 
+    /// <summary>Loads the swap masks into locals, so a run of <see cref="Swap"/> calls shares them.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Swap(ulong x, ulong m8, ulong m16)
+    internal static void LoadSwapMasks(out ulong m8, out ulong m16)
+    {
+        ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
+        m8 = masks;
+        m16 = Unsafe.Add(ref masks, 1);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong Swap(ulong x, ulong m8, ulong m16)
     {
         x = ((x & m8) << 8) | ((x >> 8) & m8);
         x = ((x & m16) << 16) | ((x >> 16) & m16);

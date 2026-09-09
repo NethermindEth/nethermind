@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -40,7 +41,7 @@ public static partial class EvmInstructions
             Add(ref parts, 2) = 0;
         }
 
-        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), ByteSwap.Reverse(value));
+        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), Bytes.Bswap64(value));
     }
 
     /// <summary>

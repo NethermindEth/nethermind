@@ -75,24 +75,24 @@ public static partial class EvmInstructions
         // is four dependent adds either way.
         if (typeof(TOpMath) == typeof(OpAdd))
         {
-            ByteSwap.Swapper swap = ByteSwap.Hoist();
+            Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte addTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
-            System.UInt128 sum = (System.UInt128)swap.Reverse(Add(ref top, 3)) +
-                swap.Reverse(Add(ref popped, 3));
-            Add(ref top, 3) = swap.Reverse((ulong)sum);
-            sum = (sum >> 64) + swap.Reverse(Add(ref top, 2)) +
-                swap.Reverse(Add(ref popped, 2));
-            Add(ref top, 2) = swap.Reverse((ulong)sum);
-            sum = (sum >> 64) + swap.Reverse(Add(ref top, 1)) +
-                swap.Reverse(Add(ref popped, 1));
-            Add(ref top, 1) = swap.Reverse((ulong)sum);
-            sum = (sum >> 64) + swap.Reverse(top) +
-                swap.Reverse(popped);
-            top = swap.Reverse((ulong)sum);
+            System.UInt128 sum = (System.UInt128)swap.Bswap64(Add(ref top, 3)) +
+                swap.Bswap64(Add(ref popped, 3));
+            Add(ref top, 3) = swap.Bswap64((ulong)sum);
+            sum = (sum >> 64) + swap.Bswap64(Add(ref top, 2)) +
+                swap.Bswap64(Add(ref popped, 2));
+            Add(ref top, 2) = swap.Bswap64((ulong)sum);
+            sum = (sum >> 64) + swap.Bswap64(Add(ref top, 1)) +
+                swap.Bswap64(Add(ref popped, 1));
+            Add(ref top, 1) = swap.Bswap64((ulong)sum);
+            sum = (sum >> 64) + swap.Bswap64(top) +
+                swap.Bswap64(popped);
+            top = swap.Bswap64((ulong)sum);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;
@@ -100,34 +100,34 @@ public static partial class EvmInstructions
 
         if (typeof(TOpMath) == typeof(OpSub))
         {
-            ByteSwap.Swapper swap = ByteSwap.Hoist();
+            Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte subtractTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
             ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
-            ulong minuendPart = swap.Reverse(Add(ref minuend, 3));
-            ulong difference = minuendPart - swap.Reverse(Add(ref subtrahend, 3));
+            ulong minuendPart = swap.Bswap64(Add(ref minuend, 3));
+            ulong difference = minuendPart - swap.Bswap64(Add(ref subtrahend, 3));
             ulong borrow = difference > minuendPart ? 1UL : 0UL;
-            Add(ref subtrahend, 3) = swap.Reverse(difference);
+            Add(ref subtrahend, 3) = swap.Bswap64(difference);
 
-            minuendPart = swap.Reverse(Add(ref minuend, 2));
-            difference = minuendPart - swap.Reverse(Add(ref subtrahend, 2));
+            minuendPart = swap.Bswap64(Add(ref minuend, 2));
+            difference = minuendPart - swap.Bswap64(Add(ref subtrahend, 2));
             ulong withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 2) = swap.Reverse(difference);
+            Add(ref subtrahend, 2) = swap.Bswap64(difference);
 
-            minuendPart = swap.Reverse(Add(ref minuend, 1));
-            difference = minuendPart - swap.Reverse(Add(ref subtrahend, 1));
+            minuendPart = swap.Bswap64(Add(ref minuend, 1));
+            difference = minuendPart - swap.Bswap64(Add(ref subtrahend, 1));
             withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 1) = swap.Reverse(difference);
+            Add(ref subtrahend, 1) = swap.Bswap64(difference);
 
-            difference = swap.Reverse(minuend) -
-                swap.Reverse(subtrahend) - borrow;
-            subtrahend = swap.Reverse(difference);
+            difference = swap.Bswap64(minuend) -
+                swap.Bswap64(subtrahend) - borrow;
+            subtrahend = swap.Bswap64(difference);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
             return EvmExceptionType.None;
@@ -175,15 +175,15 @@ public static partial class EvmInstructions
     private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
         where TOpMath : struct, IOpMath2Param
     {
-        ByteSwap.Swapper swap = ByteSwap.Hoist();
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
         bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
 
         // Only the most significant limb carries the sign; the rest always compare unsigned.
         if (a != b)
         {
-            ulong aHigh = swap.Reverse(a);
-            ulong bHigh = swap.Reverse(b);
+            ulong aHigh = swap.Bswap64(a);
+            ulong bHigh = swap.Bswap64(b);
             bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
             return lessThan ? less : !less;
         }
@@ -196,10 +196,10 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool CompareLimb(in ByteSwap.Swapper swap, ulong a, ulong b, bool lessThan)
+    private static bool CompareLimb(in Bytes.Bswap64Hoist swap, ulong a, ulong b, bool lessThan)
     {
-        ulong aPart = swap.Reverse(a);
-        ulong bPart = swap.Reverse(b);
+        ulong aPart = swap.Bswap64(a);
+        ulong bPart = swap.Bswap64(b);
         return lessThan ? aPart < bPart : aPart > bPart;
     }
 
