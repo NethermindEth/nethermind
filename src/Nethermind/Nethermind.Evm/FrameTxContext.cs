@@ -354,8 +354,12 @@ public sealed class FrameTxContext(
     /// receipt kinds, the previous approval stage for <see cref="FrameJournalKind.ApprovalAdvanced"/>.</summary>
     private readonly record struct FrameJournalEntry(FrameJournalKind Kind, StorageCell Slot, int Value, long Amount);
 
+    /// <exception cref="ArgumentOutOfRangeException">The set is longer than a well-formed one, which the
+    /// fixed-size preimage buffer cannot hold.</exception>
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(nonceKeys.Length, Eip8250Constants.MaxNonceKeys);
+
         Span<byte> input = stackalloc byte[(1 + Eip8250Constants.MaxNonceKeys) * 32];
         new UInt256((ulong)nonceKeys.Length).ToBigEndian(input[..32]);
         for (int i = 0; i < nonceKeys.Length; i++)

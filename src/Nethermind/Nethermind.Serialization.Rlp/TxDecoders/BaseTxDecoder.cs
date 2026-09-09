@@ -27,7 +27,10 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         int transactionLength = decoderContext.ReadSequenceLength();
         int lastCheck = decoderContext.Position + transactionLength;
 
-        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
+        // ReadSequenceLength does not check the declared length against the bytes on hand, so the payload
+        // extent is the envelope this transaction was handed, not what its own header claims.
+        DecodePayload(transaction, ref decoderContext,
+            Math.Min(lastCheck, txSequenceStart + transactionSequence.Length), rlpBehaviors);
 
         if (decoderContext.Position < lastCheck)
         {
@@ -98,7 +101,10 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         return txPayloadLength;
     }
 
-    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <summary>Decodes the payload fields, up to <paramref name="payloadEnd"/>.</summary>
+    /// <remarks>The reader can span a whole message, so a decoder sizing an allocation from the bytes on hand
+    /// must bound it by <paramref name="payloadEnd"/> and not by the reader's length.</remarks>
+    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
     {
         transaction.Nonce = DecodeNonce(ref decoderContext);
         DecodeGasPrice(transaction, ref decoderContext);
