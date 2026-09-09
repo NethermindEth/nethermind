@@ -1967,8 +1967,9 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
-            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
-            echo "Continuing multi-image run (fail-fast is disabled)."
+            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
+            echo "Sibling matrix jobs still run to completion (fail-fast is disabled)."
+            exit 1
           fi
           if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
             echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
