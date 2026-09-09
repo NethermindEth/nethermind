@@ -529,10 +529,7 @@ namespace Nethermind.Serialization.Rlp
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfLength(int value)
-        {
-            int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
-            return (bits + 7) >>> 3;
-        }
+            => sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes((uint)value | 1);
 
         public static Rlp Encode(Hash256? keccak)
         {
@@ -676,7 +673,7 @@ namespace Nethermind.Serialization.Rlp
                 size = 1 + sizeof(ulong);
             }
 
-            return size - (BitOperations.LeadingZeroCount(value) / 8);
+            return size - Core.Extensions.Bytes.LeadingZeroBytes(value);
         }
 
         public static int LengthOfByteArrayList(IByteArrayList? list)
@@ -723,7 +720,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount(value) / 8);
+                return 1 + sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes(value);
             }
         }
 
