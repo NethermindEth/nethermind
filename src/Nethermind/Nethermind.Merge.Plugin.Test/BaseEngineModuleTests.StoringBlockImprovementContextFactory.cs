@@ -33,7 +33,7 @@ public partial class BaseEngineModuleTests
             {
                 if (_skipDuplicatedContext
                     && CreatedContexts.Count > 0
-                    && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)
+                    && CreatedContexts[^1].Best.CurrentBestBlock == blockImprovementContext.Best.CurrentBestBlock)
                 {
                     return blockImprovementContext;
                 }

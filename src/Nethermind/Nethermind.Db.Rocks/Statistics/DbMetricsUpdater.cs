@@ -177,7 +177,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
     private void LogMemoryProfile()
     {
-        if (!logger.IsInfo) return;
+        if (!logger.IsDebug) return;
 
         long Prop(string name)
         {
@@ -210,7 +210,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             ? $"block_cache={Mb(blockCache)}(shared)"
             : $"block_cache={Mb(blockCache)}(pinned {Mb(blockCachePinned)})";
 
-        logger.Info($"[RocksDbMem] {dbName}: table_readers={Mb(tableReaders)} memtables={Mb(memtables)} " +
+        logger.Debug($"[RocksDbMem] {dbName}: table_readers={Mb(tableReaders)} memtables={Mb(memtables)} " +
                     $"{blockCacheField} " +
                     $"live_sst={Gb(liveSst)} sst_files={liveFiles} keys={(numKeys < 0 ? "n/a" : numKeys.ToString())}");
     }
