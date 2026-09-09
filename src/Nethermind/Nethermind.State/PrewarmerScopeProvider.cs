@@ -56,70 +56,60 @@ public class PrewarmerScopeProvider(
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
-        PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
-        IWorldStateScopeProvider.IScope? scope = null;
-        bool consumerScopeOpened = false;
-        bool registeredMainScope = false;
-        try
+        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
+        if (!isPrewarmer)
         {
-            scope = baseProvider.BeginScope(baseBlock, metrics);
-            if (isPrewarmer)
-            {
-                if (storageReadCapture is null)
-                {
-                    lock (preBlockCaches)
-                    {
-                        trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
-                    }
-                }
-            }
-            else
+            try
             {
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
-                consumerScopeOpened = true;
                 preBlockCaches.BeginConsumerScope();
                 lock (preBlockCaches)
                 {
                     preBlockCaches.MainScope = scope;
-                    registeredMainScope = true;
                 }
                 // The consumer reads the state at baseBlock through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
+                return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, null, null, metrics, baseBlock?.StateRoot);
             }
-
-            ScopeWrapper wrapper = new(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
-            scope = null;
-            trieWarmupSession = null;
-            consumerScopeOpened = false;
-            registeredMainScope = false;
-            return wrapper;
-        }
-        finally
-        {
-            if (registeredMainScope)
+            catch
             {
                 lock (preBlockCaches)
                 {
                     if (ReferenceEquals(preBlockCaches.MainScope, scope)) preBlockCaches.MainScope = null;
                 }
-            }
-
-            try
-            {
-                scope?.Dispose();
-            }
-            finally
-            {
                 try
                 {
-                    trieWarmupSession?.Dispose();
+                    scope.Dispose();
                 }
                 finally
                 {
-                    if (consumerScopeOpened) preBlockCaches.EndConsumerScope();
+                    preBlockCaches.EndConsumerScope();
                 }
+                throw;
             }
+        }
+
+        IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
+        try
+        {
+            lock (preBlockCaches)
+            {
+                trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
+            }
+            PreBlockCaches.StorageReadCapture? storageReadCapture = preBlockCaches.CurrentStorageReadCapture;
+            return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
+        }
+        catch
+        {
+            try
+            {
+                trieWarmupSession?.Dispose();
+            }
+            finally
+            {
+                scope.Dispose();
+            }
+            throw;
         }
     }
 
@@ -287,8 +277,9 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        // Capturing (discovery) scopes execute on placeholder values, so their hinted addresses and slots can be
-        // fictitious. Populator hints otherwise target the borrowed session for this build's base state.
+        // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
+        // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
+        // values, so their hinted addresses and slots can be fictitious — never forward them.
         public void HintWarmAccount(in ValueAddress address)
         {
             if (storageReadCapture is not null) return;

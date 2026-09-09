@@ -1417,7 +1417,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_PopulatorHintWarmSlot_RoutesToMainScopeWarmupSession()
+    public void Test_PopulatorHintWarmSlot_RoutesToMainScopeWarmupSession([Values] bool captureStorageReads)
     {
         using Context ctx = new(useFlat);
 
@@ -1428,6 +1428,7 @@ public class ScopeProviderTests(bool useFlat)
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
+        using PreBlockCaches.StorageReadCapture capture = captureStorageReads ? caches.BeginStorageReadCapture(new StrongBox<int>(16)) : null;
         ValueAddress addressA = new(TestItem.AddressA.Bytes);
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(null))
         {
@@ -1435,7 +1436,9 @@ public class ScopeProviderTests(bool useFlat)
             scope.HintWarmSlot(in addressA, (UInt256)1);
         }
 
-        trieWarmupSession.Received(1).HintWarmSlot(addressA, (UInt256)1);
+        mainScope.Received(1).CreateTrieWarmupSession();
+        trieWarmupSession.Received(captureStorageReads ? 0 : 1).HintWarmSlot(addressA, (UInt256)1);
+        trieWarmupSession.Received(1).Dispose();
     }
 
     [Test]
