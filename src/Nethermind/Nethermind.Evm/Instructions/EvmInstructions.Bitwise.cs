@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -41,7 +40,7 @@ public static partial class EvmInstructions
             Add(ref parts, 2) = 0;
         }
 
-        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), BinaryPrimitives.ReverseEndianness(value));
+        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), ByteSwap.Reverse(value));
     }
 
     /// <summary>
