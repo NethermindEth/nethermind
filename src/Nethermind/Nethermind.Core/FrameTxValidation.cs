@@ -32,8 +32,10 @@ public static class FrameTxValidation
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     /// <summary>The EIP-7825 gas-cap failure message, which names the offending amounts rather than being a
     /// fixed constant.</summary>
-    /// <remarks>The cap is spec-dependent, so the check itself lives in the release-spec-aware validator; only
-    /// its wording is kept here alongside the other messages.</remarks>
+    /// <remarks>The cap is the fixed <see cref="Eip7825Constants.DefaultTxGasLimitCap"/>, applied unconditionally
+    /// as EIP-8141 § Constraints specifies. The check sits in the release-spec-aware validator only because
+    /// <see cref="TryCalculateBlockGasReservations"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
+    /// so just its wording is kept here alongside the other messages.</remarks>
     public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
         $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
@@ -57,9 +59,10 @@ public static class FrameTxValidation
     /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="postTxEnabled"/>: it
     /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
     /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
-    /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob-count limit and the
-    /// versioned-hash version byte — are left to <c>FrameTxFieldsTxValidator</c>, so passing this is necessary but
-    /// not sufficient for validity.
+    /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
+    /// EIP-7825 gas cap among them — are left to the validators in <c>TxValidator</c>'s frame composite, which is
+    /// also the only place several of this type's own message constants are raised, so passing this is necessary
+    /// but not sufficient for validity.
     /// </remarks>
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>

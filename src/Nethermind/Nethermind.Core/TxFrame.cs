@@ -28,10 +28,11 @@ public class TxFrame(byte mode, byte flags, Address? target, ulong executionGasL
     /// instead of merely reverting.</summary>
     /// <remarks>
     /// Ordinarily the transaction's validation prefix, where <see cref="Flags"/> lets it approve execution or
-    /// payment; the approval scope comes from the flags, not from this mode. Consensus fixes no position for a
-    /// VERIFY frame and permits one behind the prefix. Confining them to the leading run is a public-mempool rule
-    /// (<see cref="FrameTxValidation.HasVerifyFrameAfterPrefix"/>): a later VERIFY frame can revert on state the
-    /// pool never simulated, invalidating an already-announced transaction.
+    /// payment; the approval scope comes from the flags, not from this mode. Consensus does not confine a VERIFY
+    /// frame to that prefix — one may sit behind a body frame — though it may neither follow a POST_TX frame nor
+    /// directly follow an atomic-batch one. The public mempool additionally refuses a VERIFY frame behind the
+    /// first frame flagged to approve payment (<see cref="FrameTxValidation.HasVerifyFrameAfterPrefix"/>): its
+    /// revert would invalidate an already-announced transaction on state the pool never simulated.
     /// </remarks>
     public const byte ModeVerify = 1;
 

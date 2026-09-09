@@ -20,9 +20,10 @@ public static class FrameTxSigHash
 
     /// <summary>The digest a canonical-hash signature entry of <paramref name="transaction"/> signs.</summary>
     /// <remarks>
-    /// Independent of the signature bytes themselves, so every canonical-hash entry of one transaction shares a
-    /// digest and it need be computed only once per transaction. An entry carrying an explicit
-    /// <see cref="TxFrameSignature.Msg"/> signs that digest instead and does not consult this.
+    /// The preimage elides the <see cref="TxFrameSignature.Signature"/> bytes of canonical-hash entries alone, so
+    /// every such entry of one transaction shares this digest and it is computed only once. An entry carrying an
+    /// explicit <see cref="TxFrameSignature.Msg"/> signs that digest instead, and its own signature bytes stay in
+    /// the preimage (EIP-8141 § Signature Hash), so they must be final before this is computed.
     /// </remarks>
     public static ValueHash256 ComputeValue(Transaction transaction)
     {

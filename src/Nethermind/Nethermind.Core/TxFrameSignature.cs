@@ -13,8 +13,9 @@ public class TxFrameSignature(byte scheme, Address? signer, ReadOnlyMemory<byte>
 {
     /// <summary>An entry the protocol does not verify: opaque bytes whose meaning is left to the frame code
     /// that reads them.</summary>
-    /// <remarks>Only the structural rules apply — it must name no <see cref="Signer"/>, and nothing constrains
-    /// <see cref="Signature"/>. A frame relying on such an entry must verify the witness itself.</remarks>
+    /// <remarks>Only the structural rules apply — it must name no <see cref="Signer"/>, and <see cref="Msg"/> is
+    /// still held to the empty-or-non-zero-32-byte rule though nothing reads it; <see cref="Signature"/> alone is
+    /// unconstrained. A frame relying on such an entry must verify the witness itself.</remarks>
     public const byte SchemeArbitrary = 0x0;
 
     /// <summary>An ECDSA signature over secp256k1, verified against the recovered address.</summary>
@@ -48,10 +49,13 @@ public class TxFrameSignature(byte scheme, Address? signer, ReadOnlyMemory<byte>
     /// <summary>The raw signature bytes, whose layout and required length are fixed by <see cref="Scheme"/>.</summary>
     public ReadOnlyMemory<byte> Signature { get; } = signature;
 
-    /// <summary>Whether this entry signs the transaction's canonical signature hash rather than a digest of
-    /// its own.</summary>
+    /// <summary>Whether this entry leaves <see cref="Msg"/> empty, so a protocol-verified scheme signs the
+    /// transaction's canonical signature hash rather than a digest of its own.</summary>
     /// <remarks>Every such entry of one transaction shares a digest, so it is computed once; entries carrying an
     /// explicit <see cref="Msg"/> never need it at all. The canonical hash elides these entries' own
-    /// <see cref="Signature"/> bytes, which is what lets them sign a transaction that contains them.</remarks>
+    /// <see cref="Signature"/> bytes, which is what lets them sign a transaction that contains them. EIP-8141
+    /// § Signature Hash keys that elision on the empty <c>msg</c> alone, so a <see cref="SchemeArbitrary"/> entry
+    /// — which signs nothing the protocol checks — is elided too, and its bytes stay rewritable without
+    /// disturbing any canonical-hash signature.</remarks>
     public bool SignsCanonicalHash => Msg.IsEmpty;
 }
