@@ -241,8 +241,9 @@ namespace Nethermind.Core
         public Address? PayerAddress { get; set; }
 
         /// <summary>
-        /// Exposure reserved against <see cref="PayerAddress"/> at mempool admission, released unchanged when the
-        /// transaction leaves the pool. In-memory only (not encoded).
+        /// The maximum cost mempool admission priced this transaction at, released unchanged from
+        /// <see cref="PayerAddress"/>'s exposure when the transaction leaves the pool. Recorded with no payer too,
+        /// where it reserves nothing and only prices the sender's pending total. In-memory only (not encoded).
         /// </summary>
         /// <remarks>
         /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light

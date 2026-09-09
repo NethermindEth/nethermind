@@ -32,6 +32,20 @@ internal sealed class PayerExposureCache
         }
     }
 
+    /// <summary>What <paramref name="key"/> holds reserved, less the reservation <paramref name="replacedHash"/> still holds for it.</summary>
+    /// <remarks>The bound <see cref="TryReserve"/> measures against, for the caller that reserves nothing and so
+    /// has to read it here; the discount is granted on the same terms, so a released reservation is not counted twice.</remarks>
+    public UInt256 GetReservedNetOf(AddressAsKey key, Hash256? replacedHash)
+    {
+        lock (_lock)
+        {
+            if (!_reserved.TryGetValue(key, out UInt256 reserved)) return UInt256.Zero;
+
+            UInt256 discount = Discount(key, replacedHash);
+            return reserved > discount ? reserved - discount : UInt256.Zero;
+        }
+    }
+
 #if DEBUG
     /// <summary>Every reservation currently held, for the owning pool's bookkeeping check.</summary>
     public IEnumerable<KeyValuePair<AddressAsKey, UInt256>> Reservations
@@ -61,14 +75,7 @@ internal sealed class PayerExposureCache
         {
             bool held = _reserved.TryGetValue(key, out UInt256 existing);
 
-            // The discount holds only while the displaced reservation is still live: once released its room
-            // is free for anyone, and counting it a second time would let the payer exceed its balance.
-            UInt256 discount = replacedHash is not null
-                               && _live.TryGetValue(replacedHash, out Reservation replaced)
-                               && replaced.Payer.Equals(key)
-                ? replaced.Cost
-                : UInt256.Zero;
-
+            UInt256 discount = Discount(key, replacedHash);
             UInt256 bound = existing > discount ? existing - discount : UInt256.Zero;
             if (UInt256.AddOverflow(existing, cost, out UInt256 updated) || bound + cost > balance)
             {
@@ -99,6 +106,16 @@ internal sealed class PayerExposureCache
             return true;
         }
     }
+
+    /// <summary>What a transaction displacing <paramref name="replacedHash"/> may exclude from <paramref name="key"/>'s bound.</summary>
+    /// <remarks>Held only while the displaced reservation is still live: once released its room is free for
+    /// anyone, and counting it a second time would let the payer exceed its balance. Callers hold the lock.</remarks>
+    private UInt256 Discount(AddressAsKey key, Hash256? replacedHash) =>
+        replacedHash is not null
+        && _live.TryGetValue(replacedHash, out Reservation replaced)
+        && replaced.Payer.Equals(key)
+            ? replaced.Cost
+            : UInt256.Zero;
 
     /// <summary>Re-takes a reservation a restored pending transaction already holds, without re-gating it against its payer's balance.</summary>
     /// <remarks>The bound was enforced when that transaction was first admitted, and rejecting it here would leave a

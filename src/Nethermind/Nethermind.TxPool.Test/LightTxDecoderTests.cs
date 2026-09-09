@@ -290,8 +290,8 @@ public class LightTxDecoderTests
         }
     }
 
-    // A payer that never reached the exposure gate holds no reservation, which this record cannot tell from a
-    // zero one: reserving, releasing and restoring zero are all no-ops. The payer itself must still survive.
+    // A payer that never reached the exposure gate holds no reservation, and the slot cannot tell that from a
+    // zero one, so the placeholder reads back as absent. The payer itself must still survive.
     [Test]
     public void Round_trip_of_a_payer_without_a_reservation_keeps_the_payer()
     {
@@ -304,7 +304,45 @@ public class LightTxDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            Assert.That(decoded.PayerExposure, Is.EqualTo(UInt256.Zero));
+            Assert.That(decoded.PayerExposure, Is.Null);
+        }
+    }
+
+    // The shape an earlier build wrote for a sponsored transaction admitted without simulation: the paymaster
+    // is what makes the group exist, and the exposure slot holds the placeholder. Read as a zero price it
+    // would charge the sender nothing for the record.
+    [Test]
+    public void A_record_whose_exposure_slot_holds_the_placeholder_decodes_as_unpriced()
+    {
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // [keys: [], payer: absent, exposure: placeholder, paymaster: AddressC]
+        byte[] group = [0xD8, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
+            Assert.That(decoded.PayerAddress, Is.Null);
+            Assert.That(decoded.PayerExposure, Is.Null);
+        }
+    }
+
+    // A payer-less frame tx reserves nothing but is still summed at the price admission recorded, and a
+    // restored record is frameless and cannot be re-priced, so the exposure has to open the group alone.
+    [Test]
+    public void Round_trip_of_a_payerless_record_keeps_the_price_admission_recorded()
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx);
+        tx.PayerExposure = 12_345;
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.PayerAddress, Is.Null, "the record must name no payer, or this pins the payer slot instead");
+            Assert.That(decoded.PayerAddress, Is.Null);
+            Assert.That(decoded.PayerExposure, Is.EqualTo((UInt256)12_345));
         }
     }
 
@@ -350,6 +388,7 @@ public class LightTxDecoderTests
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
             Assert.That(FrameTxValidation.GetPrefixPaymaster(decoded), Is.EqualTo(TestItem.AddressC));
             Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+            Assert.That(decoded.PayerExposure, Is.EqualTo(withPayer ? (UInt256)12_345 : null));
             Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
         }
     }
@@ -402,7 +441,7 @@ public class LightTxDecoderTests
         Assert.That(grownBy, Is.EqualTo(1 + 1 + 1 + 1 + 21));
     }
 
-    // The group is written only for a payer or a paymaster, so a keys-only record keeps the flat list every
+    // The group is written only for a slot that has a value, so a keys-only record keeps the flat list every
     // earlier build writes — and stays readable by one, which a nested form would not be.
     [Test]
     public void A_keys_only_record_keeps_the_flat_list()
@@ -418,6 +457,29 @@ public class LightTxDecoderTests
             // The flat list alone: 0xc2 over two single-byte keys, with no outer group header.
             Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
             Assert.That(LightTxDecoder.Decode(encoded).NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
+    // A zero price is what the decoder hands back as absent, so it cannot be a record's only claim on the group:
+    // one written for it costs the header and three slots for nothing, and forfeits the flat list.
+    [Test]
+    public void A_zero_price_alone_keeps_the_flat_list()
+    {
+        UInt256[] keys = [1, 2];
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        // What admission records for a zero-cost transaction no payer resolved for.
+        tx.PayerExposure = UInt256.Zero;
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+
+        byte[] encoded = LightTxDecoder.Encode(tx);
+        LightTransaction decoded = LightTxDecoder.Decode(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+            Assert.That(decoded.PayerExposure, Is.Null);
+            Assert.That(LightTxDecoder.Encode(decoded), Is.EqualTo(encoded), "a group the decoder discards leaves the round trip without a fixed point");
         }
     }
 
