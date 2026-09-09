@@ -38,6 +38,12 @@ public static partial class KeccakCache
     // digest and the length word ever stop fitting in one slot - which would silently alias the next.
     private const nuint MemoSlotHeadroom = MemoSlotWords - (MemoLengthWord + 1);
 
+    // "Fits" is not the whole invariant: a MaxMemoLength that is not a whole number of words would put
+    // a partial input's tail word at MemoValueWord, where the store lays the digest over it and the
+    // probe then compares against that digest. This underflows if either constant moves off its
+    // precondition - MinMemoLength below one word is what MemoLastKeyWord's offset needs.
+    private const nuint MemoKeyAligned = (MinMemoLength - sizeof(ulong)) - MaxMemoLength % sizeof(ulong);
+
     private static readonly ulong[] Memo = new ulong[MemoSlotCount * MemoSlotWords];
 
     [SkipLocalsInit]
