@@ -44,6 +44,7 @@ public class SpecFlagsTests
     [
         ("Eip150", "Use63Over64Rule", static s => s.Use63Over64Rule),
         ("Eip158", "ClearEmptyAccountWhenTouched", static s => s.ClearEmptyAccountWhenTouched),
+        ("Eip160", "UseExpDDosProtection", static s => s.UseExpDDosProtection),
         ("Eip2200", "UseNetGasMeteringWithAStipendFix", static s => s.UseNetGasMeteringWithAStipendFix),
         ("Eip2780", nameof(IReleaseSpec.IsEip2780Enabled), static s => s.IsEip2780Enabled),
         ("Eip2929", "UseHotAndColdStorage", static s => s.UseHotAndColdStorage),
