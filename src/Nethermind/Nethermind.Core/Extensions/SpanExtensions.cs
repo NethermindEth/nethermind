@@ -704,65 +704,15 @@ namespace Nethermind.Core.Extensions
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)), ref seeds);
         }
 
-#if ZK_EVM
-        // Keep a call boundary: the RISC-V backend can omit the int truncation after an inlined multiply-fold.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-#else
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
-        private static ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
-        {
-#if ZK_EVM
-            // NH (the UMAC/VMAC core) over 32-bit lanes: one product per key word. The guest's target has
-            // no reachable 64x64->128 multiply, so each MultiplyFold costs four muls and a shift chain,
-            // while a 32x32->64 product is a single mul.
-            ulong sum = MixLanes(u0, seeds)
-                + MixLanes(u1, Unsafe.Add(ref seeds, 1))
-                + MixLanes(u2, Unsafe.Add(ref seeds, 2))
-                + MixLanes(u3, Unsafe.Add(ref seeds, 3));
-            // NH's own output carries its entropy high, and a dictionary buckets on the low bits, so the
-            // sum needs a finalizer. Multiply-shift by a seed limb is one more mul. Installing the odd
-            // multiplier at seed time instead measured 215,127 steps worse: the limbs share one base
-            // pointer, so reading another one folds into an offset while a new static does not.
-            ulong hash = sum ^ (sum >> 31);
-            hash *= Unsafe.Add(ref seeds, 1) | 1UL;
-            return hash ^ (hash >> 29);
-#else
-            // Mix each seed limb into its key limb before any information is lost to folding.
-            ulong a = MultiplyFold(u0 ^ seeds, u1 ^ Unsafe.Add(ref seeds, 1));
-            ulong b = MultiplyFold(u2 ^ Unsafe.Add(ref seeds, 2), u3 ^ Unsafe.Add(ref seeds, 3));
-            return (ulong)MumFold(a, b);
-#endif
-        }
+        /// <summary>Mixes four key words with their seed limbs into one 64-bit hash.</summary>
+        /// <remarks>The construction differs by build: see the <c>std</c> and <c>zkevm</c> partials.</remarks>
+        private static partial ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds);
 
-#if ZK_EVM
-        /// <summary>Keys both 32-bit lanes of a key word and multiplies them into one 64-bit product.</summary>
+        /// <summary>Multiplies two words to twice their width and folds the halves together.</summary>
         /// <remarks>
-        /// The lane keys must be independent per position: sharing one across words would leave the sum
-        /// invariant under permuting them.
+        /// The product is non-linear in both operands, so neither survives into the result on its own.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MixLanes(ulong word, ulong key)
-            => (ulong)(uint)((uint)word + (uint)key) * (uint)((uint)(word >> 32) + (uint)(key >> 32));
-#endif
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MultiplyFold(ulong a, ulong b)
-        {
-#if ZK_EVM
-            uint al = (uint)a, ah = (uint)(a >> 32);
-            uint bl = (uint)b, bh = (uint)(b >> 32);
-            ulong lower = (ulong)al * bl;
-            ulong middle = (ulong)ah * bl + (lower >> 32);
-            ulong carry = (ulong)al * bh + (uint)middle;
-            ulong low = (carry << 32) | (uint)lower;
-            ulong high = (ulong)ah * bh + (middle >> 32) + (carry >> 32);
-            return low ^ high;
-#else
-            ulong high = Math.BigMul(a, b, out ulong low);
-            return low ^ high;
-#endif
-        }
+        private static partial ulong MultiplyFold(ulong a, ulong b);
 
         private static ulong[] CreateShortHashSeeds(in UInt256 seed)
         {

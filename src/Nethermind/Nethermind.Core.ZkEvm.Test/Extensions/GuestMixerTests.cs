@@ -245,29 +245,29 @@ public class GuestMixerTests
         }
     }
 
-    [TestCase(0, 829642253)]
-    [TestCase(1, -1995569106)]
-    [TestCase(2, 1769987572)]
-    [TestCase(3, -1616582951)]
-    [TestCase(4, 1452475728)]
-    [TestCase(5, -1073280757)]
-    [TestCase(6, 526470818)]
-    [TestCase(7, -333637061)]
-    [TestCase(8, 981384108)]
-    [TestCase(9, -1160461789)]
-    [TestCase(10, -1058923909)]
-    [TestCase(11, -631305068)]
-    [TestCase(12, -268664765)]
-    [TestCase(13, 1129042570)]
-    [TestCase(14, 887642953)]
-    [TestCase(15, -1833596490)]
-    [TestCase(16, -843876032)]
-    [TestCase(17, -1085161699)]
-    [TestCase(31, 2051868692)]
-    [TestCase(33, -1984651310)]
-    [TestCase(63, -1935689013)]
-    [TestCase(64, 466906938)]
-    [TestCase(65, 547616034)]
+    [TestCase(0, -1484263088)]
+    [TestCase(1, -1437334993)]
+    [TestCase(2, 546991680)]
+    [TestCase(3, 631479625)]
+    [TestCase(4, 2147352365)]
+    [TestCase(5, 1767956899)]
+    [TestCase(6, 1977685397)]
+    [TestCase(7, 80136087)]
+    [TestCase(8, 1837388150)]
+    [TestCase(9, 652902647)]
+    [TestCase(10, -1585083149)]
+    [TestCase(11, 724197958)]
+    [TestCase(12, 836101102)]
+    [TestCase(13, 558865327)]
+    [TestCase(14, 710723939)]
+    [TestCase(15, 1376555104)]
+    [TestCase(16, 703589929)]
+    [TestCase(17, -381711026)]
+    [TestCase(31, 686656626)]
+    [TestCase(33, -174859442)]
+    [TestCase(63, 2140830044)]
+    [TestCase(64, -1120339129)]
+    [TestCase(65, -499937045)]
     public void Scalar_hash_preserves_tail_and_block_boundary_vectors(int length, int expected)
     {
         SpanExtensions.SeedHashes(new UInt256(0x243F6A8885A308D3UL, 0x13198A2E03707344UL,
@@ -351,7 +351,8 @@ public class GuestMixerTests
         ulong sum = ReferenceLanes(value.u0, seed.u0) + ReferenceLanes(value.u1, seed.u1)
             + ReferenceLanes(value.u2, seed.u2) + ReferenceLanes(value.u3, seed.u3);
         ulong hash = sum ^ (sum >> 31);
-        hash = (ulong)((BigInteger)hash * (seed.u1 | 1UL) & ulong.MaxValue);
+        ulong finalizer = ReferenceFold(seed.u0 ^ 0x9E3779B97F4A7C15UL, seed.u3 ^ ~0x9E3779B97F4A7C15UL) | 1UL;
+        hash = (ulong)((BigInteger)hash * finalizer & ulong.MaxValue);
         return hash ^ (hash >> 29);
     }
 
