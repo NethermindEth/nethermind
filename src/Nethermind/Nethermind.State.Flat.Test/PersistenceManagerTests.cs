@@ -52,7 +52,8 @@ public class PersistenceManagerTests
         // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store, wired the
         // production way through FlatWorldStateModule; the container pairs it with its loader (load on
         // build, teardown on dispose).
-        _tier = new FlatTestContainer();
+        _tier = new FlatTestContainer(configure: builder => builder
+            .AddSingleton<IFinalizedStateProvider>(_finalizedStateProvider));
         _snapshotRepository = _tier.Repository;
         _persistence = Substitute.For<IPersistence>();
 
@@ -153,12 +154,11 @@ public class PersistenceManagerTests
         }
     }
 
-    [TestCase(0ul, 2ul)]
-    [TestCase(1ul, 2ul)]
-    [TestCase(2ul, 0ul)]
-    [TestCase(2ul, 1ul)]
-    [TestCase(2ul, 2ul)]
-    public async Task AddToPersistence_PrunesOnlyKnownFinalizedPersistedForks(ulong finalizedBlock, ulong rootLookupCeiling)
+    [Test]
+    public async Task AddToPersistence_PrunesOnlyKnownFinalizedPersistedForks(
+        [Values(0ul, 1ul, 2ul)] ulong finalizedBlock,
+        [Values(0ul, 1ul, 2ul)] ulong rootLookupCeiling,
+        [Values] bool pruneDirectly)
     {
         StateId canonical1 = CreateStateId(1, 1);
         StateId canonical2 = CreateStateId(2, 1);
@@ -185,7 +185,8 @@ public class PersistenceManagerTests
         int expectedCount = 6 - (pruneParent ? 1 : 0) - (pruneChild ? 1 : 0);
         using (reader)
         {
-            await _persistenceManager.AddToPersistence(tip);
+            if (pruneDirectly) _snapshotRepository.RemoveFinalizedPersistedForks(Block0);
+            else await _persistenceManager.AddToPersistence(tip);
 
             using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(tip, Block0, 3);
             List<CatalogEntry> catalog = [.. _tier.Resolve<ISnapshotCatalog>().Load()];
@@ -251,7 +252,7 @@ public class PersistenceManagerTests
         }
         else
         {
-            _snapshotRepository.RemoveFinalizedPersistedForks(_finalizedStateProvider, tip);
+            _snapshotRepository.RemoveFinalizedPersistedForks(tip);
         }
         await _persistenceManager.AddToPersistence(tip);
         using (Assert.EnterMultipleScope())
@@ -335,7 +336,7 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedBlockNumber(TipBlock);
 
         // Direct call: at this depth AddToPersistence would also take the finalized RocksDB persist path.
-        _snapshotRepository.RemoveFinalizedPersistedForks(_finalizedStateProvider, Block0);
+        _snapshotRepository.RemoveFinalizedPersistedForks(Block0);
 
         using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(parent, Block0, (int)TipBlock);
         using (Assert.EnterMultipleScope())

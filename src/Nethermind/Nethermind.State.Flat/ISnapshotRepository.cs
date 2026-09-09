@@ -6,7 +6,6 @@ using Nethermind.Core.Collections;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence.BloomFilter;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -88,7 +87,7 @@ public interface ISnapshotRepository
     /// Known roots are cached until their heights are pruned or fall below the current persisted state;
     /// conflicting roots are invalidated and unknown roots are retried on later passes. Ancestry verified
     /// against a committed head is reused while later heads extend it.</remarks>
-    void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState);
+    void RemoveFinalizedPersistedForks(in StateId currentPersistedState);
 
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
     /// <paramref name="targetStateId"/> across both tiers, returning the in-memory and persisted snapshots

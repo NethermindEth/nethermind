@@ -26,6 +26,7 @@ namespace Nethermind.State.Flat;
 public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
     private readonly ILogger _logger;
+    private readonly IFinalizedStateProvider _finalizedStateProvider;
 
     // ---- Persisted tier: four buckets keyed by StateId.To. Each bucket is self-contained and
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
@@ -64,9 +65,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         BlobArenaManager blobArenaManager,
         ISnapshotCatalog catalog,
         IFlatDbConfig config,
+        IFinalizedStateProvider finalizedStateProvider,
         ILogManager logManager)
     {
         _catalog = catalog;
+        _finalizedStateProvider = finalizedStateProvider;
         _logger = logManager.GetClassLogger<SnapshotRepository>();
         _base = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedBase, _logger);
         _smallCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedSmallCompacted, _logger);
@@ -666,7 +669,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     /// <inheritdoc />
-    public void RemoveFinalizedPersistedForks(IFinalizedStateProvider finalizedStateProvider, in StateId currentPersistedState)
+    public void RemoveFinalizedPersistedForks(in StateId currentPersistedState)
     {
         StateId persisted = currentPersistedState;
         ulong firstBlock = persisted == StateId.PreGenesis ? 0 : persisted.BlockNumber;
@@ -675,7 +678,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         PruneFinalityCachesBefore(firstBlock);
 
         StateId? committed = GetLastCommittedStateId();
-        ulong finalizedBlock = finalizedStateProvider.FinalizedBlockNumber;
+        ulong finalizedBlock = _finalizedStateProvider.FinalizedBlockNumber;
         if (committed is null || committed == StateId.PreGenesis || finalizedBlock > committed.Value.BlockNumber) return;
         StateId head = committed.Value;
         RebaseReachabilityCache(head);
@@ -743,7 +746,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         {
             if (_finalizedRoots.TryGetValue(height, out Hash256? root)) return root;
             if (unavailableHeights.Contains(height)) return null;
-            root = finalizedStateProvider.GetFinalizedStateRootAt(height);
+            root = _finalizedStateProvider.GetFinalizedStateRootAt(height);
             if (root is not null) _finalizedRoots.Add(height, root);
             else unavailableHeights.Add(height);
             return root;

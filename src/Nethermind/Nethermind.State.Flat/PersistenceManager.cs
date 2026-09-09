@@ -276,7 +276,7 @@ public class PersistenceManager(
             }
 
             // Finality can rule out forks before the depth/compaction gates allow a RocksDB persist.
-            snapshotRepository.RemoveFinalizedPersistedForks(finalizedStateProvider, GetCurrentPersistedStateId());
+            snapshotRepository.RemoveFinalizedPersistedForks(GetCurrentPersistedStateId());
         }
         finally
         {
