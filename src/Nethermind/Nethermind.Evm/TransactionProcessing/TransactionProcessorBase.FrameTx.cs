@@ -947,7 +947,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
-        // Owes APPROVE's state charge out of the frame's declared limits, which the default code never draws on otherwise.
+        // The declared limit still is state_gas_left: default code writes no state before the approval, so
+        // it never draws on the state dimension. A state charge added ahead of this would silently undercharge.
         long nonceStateGas = frameContext.NonceStateGas<TGasPolicy>(in plan, WorldState);
         if ((ulong)nonceStateGas > frame.StateGasLimit)
         {

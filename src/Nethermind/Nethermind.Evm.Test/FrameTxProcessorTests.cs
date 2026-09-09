@@ -2831,15 +2831,20 @@ public class FrameTxProcessorTests
         Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
         keyed.NonceKeys = [UInt256.Zero];
 
-        CallOutputTracer keyedTracer = new();
+        FrameReceiptTracer keyedTracer = new();
         Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
 
-        CallOutputTracer plainTracer = new();
+        FrameReceiptTracer plainTracer = new();
         Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer).TransactionExecuted, Is.True);
-        Assert.That(keyedTracer.GasSpent - plainTracer.GasSpent,
-            Is.LessThan(GasCostOf.SSetState),
-            "the legacy key owes no first-use charge");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keyedTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the legacy key owes no first-use charge");
+            Assert.That(keyedTracer.FrameReceipts![0].ExecutionGasUsed,
+                Is.EqualTo(plainTracer.FrameReceipts![0].ExecutionGasUsed),
+                "the [0] set approves exactly as the absent set does");
+        }
     }
 
     // A payment approval's effects are journaled outside the atomic-batch snapshot, so an approval taken
@@ -2912,20 +2917,29 @@ public class FrameTxProcessorTests
     {
         UInt256[] keys = [1, 7];
         ulong nonceStateGas = (ulong)keys.Length * (ulong)GasCostOf.SSetState;
-        Transaction tx = KeyedNonceTx(approveOpcode, keys, executionGasLimit: 30_000, stateGasLimit: nonceStateGas);
+        DeployKeyedNonceSender(approveOpcode);
 
         FrameReceiptTracer tracer = new();
-        TransactionResult result = Process(tx, tracer: tracer);
+        TransactionResult result = Process(KeyedNonceTx(approveOpcode, nonce: 0, keys, executionGasLimit: 30_000, stateGasLimit: nonceStateGas), tracer: tracer);
+
+        // The identical transaction over the now-used keys isolates the execution gas the charge must not touch.
+        FrameReceiptTracer reuseTracer = new();
+        Assert.That(Process(KeyedNonceTx(approveOpcode, nonce: 1, keys, executionGasLimit: 30_000, stateGasLimit: nonceStateGas),
+            tracer: reuseTracer).TransactionExecuted, Is.True);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.True, "the state dimension covers the fresh slots");
             Assert.That(tracer.FrameReceipts![0].StateGasUsed, Is.EqualTo(nonceStateGas),
                 "the approving frame's receipt carries the whole charge in the state dimension");
+            Assert.That(reuseTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the slots already exist");
+            Assert.That(tracer.FrameReceipts![0].ExecutionGasUsed,
+                Is.EqualTo(reuseTracer.FrameReceipts![0].ExecutionGasUsed),
+                "EIP-8250: the charge does not consume execution gas, so no part of it leaks into that dimension");
             foreach (UInt256 key in keys)
             {
                 Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
-                    Is.EqualTo(UInt256.One), $"key {key} was consumed");
+                    Is.EqualTo((UInt256)2), $"key {key} was consumed by both transactions");
             }
         }
     }
@@ -2938,9 +2952,9 @@ public class FrameTxProcessorTests
     {
         UInt256[] keys = [1, 7];
         ulong nonceStateGas = (ulong)keys.Length * (ulong)GasCostOf.SSetState;
-        Transaction tx = KeyedNonceTx(approveOpcode, keys, executionGasLimit: 200_000, stateGasLimit: nonceStateGas - 1);
+        DeployKeyedNonceSender(approveOpcode);
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(KeyedNonceTx(approveOpcode, nonce: 0, keys, executionGasLimit: 200_000, stateGasLimit: nonceStateGas - 1));
 
         using (Assert.EnterMultipleScope())
         {
@@ -2954,21 +2968,51 @@ public class FrameTxProcessorTests
         }
     }
 
+    // EIP-8250: once the approving frame succeeds a later frame's failure must not revert the consumption,
+    // so the state gas it was priced at cannot be given back with the body either.
+    [Test]
+    public void Execute_KeyedNonce_FirstUseSurvivesAFailedPostTxFrame()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        UInt256[] keys = [1, 7];
+
+        Transaction tx = FrameTx(nonce: 0,
+            KeyedSelfVerifyFrame(keys.Length),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+        tx.NonceKeys = keys;
+
+        FrameReceiptTracer tracer = new();
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![0].StateGasUsed,
+                Is.EqualTo((ulong)(keys.Length * GasCostOf.SSetState)),
+                "the assertion rewinds the body down to the prefix, which the charge sits inside");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.One), $"key {key} stays consumed, so its slot stays paid for");
+            }
+        }
+    }
+
+    /// <summary>Gives <see cref="Sender"/> the code the chosen approval path needs: the <c>APPROVE</c>
+    /// contract, or none at all so the default code runs.</summary>
+    private void DeployKeyedNonceSender(bool approveOpcode) =>
+        DeployContract(Sender, approveOpcode ? ApproveCode(TxFrame.ApproveExecutionAndPayment) : [], 1.Ether);
+
     /// <summary>A single-VERIFY-frame keyed-nonce transaction approved either by <c>APPROVE</c> or, from a
     /// codeless sender, by the default code, so one case body covers both approval paths.</summary>
-    private Transaction KeyedNonceTx(bool approveOpcode, UInt256[] keys, ulong executionGasLimit, ulong stateGasLimit)
+    private static Transaction KeyedNonceTx(bool approveOpcode, ulong nonce, UInt256[] keys, ulong executionGasLimit, ulong stateGasLimit)
     {
         TxFrame verify = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
             executionGasLimit, stateGasLimit, UInt256.Zero, default);
 
-        if (!approveOpcode)
-        {
-            DeployContract(Sender, [], 1.Ether);
-            return SelfSignedSelfVerifyTx(nonce: 0, keys, verify);
-        }
+        if (!approveOpcode) return SelfSignedSelfVerifyTx(nonce, keys, verify);
 
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, verify);
+        Transaction tx = FrameTx(nonce, verify);
         tx.NonceKeys = keys;
         return tx;
     }

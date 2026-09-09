@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -220,11 +221,16 @@ public sealed class FrameTxContext(
     /// <remarks>The branches are exclusive: a keyed set writes <c>NONCE_MANAGER</c> slots and never the sender's
     /// account, so <see cref="FrameApprovalPlan.CreatesSender"/> is set only for the account-nonce set.</remarks>
     internal long NonceStateGas<TGasPolicy>(in FrameApprovalPlan plan, IReadOnlyStateProvider state)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-        plan.CreatesSender ? TGasPolicy.GetNewAccountStateCost()
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        Debug.Assert(!plan.CreatesSender || NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys),
+            "a keyed set never creates the sender, so the two branches must stay exclusive");
+
+        return plan.CreatesSender ? TGasPolicy.GetNewAccountStateCost()
             : plan.ApprovesPayment
                 ? KeyedNonceManager.FirstUseCount(state, Sender, NonceKeys) * TGasPolicy.GetStorageSetStateCost()
                 : 0;
+    }
 
     /// <summary>
     /// Applies an approval admitted by <see cref="PlanApproval"/>, journaled so the boundary that restores
