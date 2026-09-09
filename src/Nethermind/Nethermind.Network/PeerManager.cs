@@ -274,7 +274,9 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        if (ShouldContactPeer(peer))
+                        // The queueing side checked capacity before this hand-off, and the hand-off blocks
+                        // while the workers are busy, so the slot it saw may be gone by now.
+                        if (HasAvailableActivePeerSlot() && ShouldContactPeer(peer))
                         {
                             await SetupOutgoingPeerConnection(peer);
                         }
@@ -499,9 +501,11 @@ namespace Nethermind.Network
             }
         }
 
+        private bool HasAvailableActivePeerSlot() => AvailableActivePeersCount - _pending > 0;
+
         private async Task<bool> EnsureAvailableActivePeerSlotAsync()
         {
-            if (AvailableActivePeersCount - _pending > 0)
+            if (HasAvailableActivePeerSlot())
             {
                 return true;
             }
@@ -511,13 +515,13 @@ namespace Nethermind.Network
             // the active peer count to go down within this time window.
             DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            while (DateTimeOffset.UtcNow < deadline && !HasAvailableActivePeerSlot())
             {
                 // Wait for a signal or poll every 100ms.
                 await _peerUpdateRequested.WaitAsync(TimeSpan.FromMilliseconds(100), _cancellationTokenSource.Token);
             }
 
-            return AvailableActivePeersCount - _pending > 0;
+            return HasAvailableActivePeerSlot();
         }
 
         private void SelectAndRankCandidates()

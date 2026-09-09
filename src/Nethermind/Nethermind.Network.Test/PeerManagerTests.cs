@@ -213,16 +213,23 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_only_connect_up_to_max_peers()
         {
+            const int candidateCount = 50;
+            const int expectedConnectCount = 25;
+
             await using Context ctx = new(1);
-            ctx.SetupPersistedPeers(50);
+            ctx.SetupPersistedPeers(candidateCount);
             ctx.PeerPool.Start();
+
+            // Feed the pool before the manager subscribes to PeerAdded: the quick-connect fast path claims
+            // its slot only after an await, so a candidate arriving mid-saturation can dial past the cap.
+            Assert.That(() => ctx.PeerPool.PeerCount, Is.EqualTo(candidateCount).After(_delayLonger, 10));
+
             ctx.PeerManager.Start();
 
-            const int expectedConnectCount = 25;
             await ctx.RlpxPeer.WaitForConnectCallsAsync(expectedConnectCount, TimeSpan.FromSeconds(30));
             await Task.Delay(_delayLong);
 
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(expectedConnectCount, expectedConnectCount + 1));
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(expectedConnectCount));
         }
 
         [Test]
