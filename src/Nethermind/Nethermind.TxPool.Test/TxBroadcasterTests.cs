@@ -456,6 +456,74 @@ public class TxBroadcasterTests
         Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
+    /// <remarks>EIP-8250 sequences advance per domain, so a persistent transaction whose sequence is numerically
+    /// at or below the included one is superseded only when the two share a domain.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_only_the_included_transactions_nonce_domain([Values] bool includeKeyed)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction keyOne = PersistentTx(TestItem.KeccakA, 0, [(UInt256)1]);
+        Transaction keyTwo = PersistentTx(TestItem.KeccakB, 0, [(UInt256)2]);
+        Transaction accountDomain = PersistentTx(TestItem.KeccakC, 0, null);
+        foreach (Transaction tx in new[] { keyOne, keyTwo, accountDomain })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(includeKeyed ? keyOne : accountDomain);
+
+        Assert.That(_broadcaster.GetSnapshot(),
+            Is.EquivalentTo(includeKeyed ? new[] { keyTwo, accountDomain } : new[] { keyOne, keyTwo }));
+    }
+
+    /// <remarks>The control for the case above: inside one domain every sequence at or below the included one
+    /// is still superseded.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_stops_the_account_domain_up_to_the_included_nonce()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction first = PersistentTx(TestItem.KeccakA, 0, null);
+        Transaction included = PersistentTx(TestItem.KeccakB, 1, null);
+        Transaction later = PersistentTx(TestItem.KeccakC, 2, null);
+        foreach (Transaction tx in new[] { first, included, later })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(included);
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { later }));
+    }
+
+    /// <remarks>Inclusion consumes every key the transaction names, so a persistent entry that shares one is
+    /// permanently unmineable however the two key sets differ; a disjoint one is untouched.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_a_persistent_transaction_sharing_a_nonce_key()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction overlapping = PersistentTx(TestItem.KeccakA, 5, [(UInt256)1]);
+        Transaction disjoint = PersistentTx(TestItem.KeccakB, 5, [(UInt256)3]);
+        foreach (Transaction tx in new[] { overlapping, disjoint })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(PersistentTx(TestItem.KeccakC, 5, [(UInt256)1, (UInt256)2]));
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { disjoint }));
+    }
+
+    /// <summary>A locally submitted transaction of one sender, distinguished from its siblings by hash and by
+    /// which nonce domain <paramref name="nonceKeys"/> selects.</summary>
+    private static Transaction PersistentTx(Hash256 hash, ulong nonce, UInt256[] nonceKeys) =>
+        Build.A.Transaction
+            .WithType(nonceKeys is null ? TxType.EIP1559 : TxType.FrameTx)
+            .WithNonce(nonce)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithHash(hash)
+            .TestObject;
+
     [Test]
     public void should_broadcast_local_tx_immediately_after_receiving_it()
     {

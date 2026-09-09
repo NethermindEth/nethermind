@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -15,6 +16,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Test;
 
@@ -42,10 +44,10 @@ internal class DelegatedAccountFilterTest
             stateProvider ?? Substitute.For<IReadOnlyStateProvider>(),
             delegationCache ?? new DelegationCache());
 
-    private static TestReadOnlyStateProvider CreateDelegatedStateProvider()
+    private static TestReadOnlyStateProvider CreateDelegatedStateProvider(ulong accountNonce = 0)
     {
         TestReadOnlyStateProvider stateProvider = new();
-        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressA, 0, accountNonce);
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. TestItem.PrivateKeyA.Address.Bytes];
         stateProvider.InsertCode(code, TestItem.AddressA);
         return stateProvider;
@@ -99,6 +101,70 @@ internal class DelegatedAccountFilterTest
 
         Assert.That(result, Is.EqualTo(expected));
     }
+
+    private static IEnumerable<TestCaseData> KeyedNonceDelegationCases()
+    {
+        yield return new TestCaseData((UInt256[])null, AcceptTxResult.NotCurrentNonceForDelegation).SetName("the account nonce domain");
+        yield return new TestCaseData(new UInt256[] { UInt256.Zero }, AcceptTxResult.NotCurrentNonceForDelegation).SetName("the [0] set, which aliases the account nonce");
+        yield return new TestCaseData(new UInt256[] { 0xbeef }, AcceptTxResult.Accepted).SetName("a fresh keyed domain");
+    }
+
+    /// <remarks>An EIP-8250 keyed transaction carries its domain's sequence, not an account nonce, so gating it on
+    /// the account nonce rejects a sender's every fresh key as a delegation nonce gap.</remarks>
+    [TestCaseSource(nameof(KeyedNonceDelegationCases))]
+    public void Accept_SenderIsDelegated_AppliesTheAccountNonceGateToTheAccountDomainOnly(UInt256[] nonceKeys, AcceptTxResult expected)
+    {
+        const ulong accountNonce = 7;
+        (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
+        TestReadOnlyStateProvider stateProvider = CreateDelegatedStateProvider(accountNonce);
+        DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, stateProvider);
+        // Sequence 0 against account nonce 7: only in a keyed domain is that the next one to execute.
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.FrameTx)
+            .WithNonce(0)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(TestItem.AddressA)
+            .TestObject;
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
+
+        AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
+
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TestCaseData> KeyedNonceDelegationBoundCases()
+    {
+        yield return new TestCaseData(new UInt256[] { 0xbeef }, AcceptTxResult.Accepted).SetName("a replacement of the pending entry");
+        yield return new TestCaseData(new UInt256[] { 0xf00d }, AcceptTxResult.NotCurrentNonceForDelegation).SetName("a second domain alongside it");
+    }
+
+    /// <remarks>Every fresh key is current at sequence 0, so nothing in the keyed path holds a delegated sender
+    /// to the one pending transaction the account-nonce gate allowed, and one authorization would invalidate a
+    /// bucketful at once.</remarks>
+    [TestCaseSource(nameof(KeyedNonceDelegationBoundCases))]
+    public void Accept_SenderIsDelegated_BoundsKeyedDomainsToOnePendingTransaction(UInt256[] nonceKeys, AcceptTxResult expected)
+    {
+        (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
+        Transaction pending = KeyedFrameTx([0xbeef], TestItem.KeccakA);
+        standardPool.TryInsert(pending.Hash, pending);
+        TestReadOnlyStateProvider stateProvider = CreateDelegatedStateProvider();
+        DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, stateProvider);
+        Transaction transaction = KeyedFrameTx(nonceKeys, TestItem.KeccakB);
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
+
+        AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
+
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    private static Transaction KeyedFrameTx(UInt256[] nonceKeys, Hash256 hash) =>
+        Build.A.Transaction
+            .WithType(TxType.FrameTx)
+            .WithNonce(0)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithHash(hash)
+            .TestObject;
 
     private static readonly object[] Eip7702ActivationCases =
     {

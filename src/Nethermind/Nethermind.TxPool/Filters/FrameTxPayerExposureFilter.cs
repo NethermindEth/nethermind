@@ -51,7 +51,7 @@ internal sealed class FrameTxPayerExposureFilter(
             // The sender-balance filters defer to this one, so their cumulative bound is taken here. Only what
             // the payer ledger does not already sum is counted, or a self-paid reservation would count twice.
             TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-            if (tx.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, out UInt256 pending)
+            if (tx.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, spec.IsEip8250Enabled, out UInt256 pending)
                 // Reserving nothing, a payer-less transaction is the only one that has to read the other
                 // half of that split itself; TryReserve sums it for the rest.
                 || (payer is null && UInt256.AddOverflow(pending, SenderReservedAsPayer(tx), out pending)))

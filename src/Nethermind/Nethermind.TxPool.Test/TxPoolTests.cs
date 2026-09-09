@@ -5044,6 +5044,38 @@ namespace Nethermind.TxPool.Test
                 "a valid plain transaction must survive an over-value keyed transaction sharing its sender bucket");
         }
 
+        /// <remarks>Admission sums a sender's keyed and account-domain liabilities against one balance; the
+        /// per-head sweep has to price them the same way, or a balance drop leaves both pending and announced.</remarks>
+        [TestCase(true, 1, TestName = "the balance covers each alone but not both")]
+        [TestCase(false, 2, TestName = "the balance covers both")]
+        public async Task Retention_sums_a_senders_keyed_and_account_domain_costs_against_one_balance(bool underfunded, int expectedPending)
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            Transaction plain = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(1.Ether)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: 1.Ether, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Assert.That(keyed.PayerExposure, Is.Not.Null, "admission must have recorded the price the sweep reads");
+            UInt256 keyedCost = keyed.PayerExposure.Value;
+            UInt256 plainCost = 1.Ether + 21_000 * 1.GWei;
+            EnsureSenderBalance(sender, underfunded ? UInt256.Max(keyedCost, plainCost) : keyedCost + plainCost);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+        }
+
         [Test]
         public async Task Keyed_tx_that_can_no_longer_fund_its_gas_is_evicted_and_may_re_enter()
         {

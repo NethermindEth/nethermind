@@ -354,22 +354,29 @@ public class FrameTxPayerExposureFilterTests
     }
 
     // The exposure ledger holds frame reservations only, so a plain transaction pooled first is invisible to
-    // it and the sender's balance would be booked twice.
-    [TestCase(TestCost + OrdinaryCost, false, TestName = "the sender covers both")]
-    [TestCase(TestCost + OrdinaryCost - 1, true, TestName = "the sender covers only one")]
-    public void Accept_SelfPayingFrameTx_SumsTheSendersOrdinaryPending(int senderBalance, bool rejected)
+    // it and the sender's balance would be booked twice. An EIP-8250 sequence does not order against the
+    // account nonce, so that ordinary liability is not the walk's to skip however the two compare numerically.
+    [TestCase(TestCost + OrdinaryCost, false, false, TestName = "the sender covers both")]
+    [TestCase(TestCost + OrdinaryCost - 1, true, false, TestName = "the sender covers only one")]
+    [TestCase(TestCost + OrdinaryCost, false, true, TestName = "a keyed sequence and the sender covers both")]
+    [TestCase(TestCost + OrdinaryCost - 1, true, true, TestName = "a keyed sequence and the sender covers only one")]
+    public void Accept_SelfPayingFrameTx_SumsTheSendersOrdinaryPending(int senderBalance, bool rejected, bool keyed)
     {
+        // A fresh key is current at sequence 0, below the account nonce the ordinary transaction sits at.
+        const ulong accountNonce = 7;
+
         // A legacy transaction, so its cost is exactly gas_limit * gas_price.
         Transaction ordinary = Build.A.Transaction.WithSenderAddress(TestItem.AddressA)
-            .WithNonce(0).WithGasLimit(OrdinaryCost).WithGasPrice(1).WithValue(0).TestObject;
+            .WithNonce(keyed ? accountNonce : 0).WithGasLimit(OrdinaryCost).WithGasPrice(1).WithValue(0).TestObject;
         ordinary.Hash = TestItem.KeccakA;
 
         Transaction tx = FrameTxCostingExactly(TestCost, payer: TestItem.AddressA);
-        tx.Nonce = 1;
+        tx.Nonce = keyed ? 0ul : 1ul;
+        if (keyed) tx.NonceKeys = [(UInt256)0xbeef];
         tx.Hash = TestItem.KeccakB;
 
         TestReadOnlyStateProvider senderAccounts = new();
-        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance, keyed ? accountNonce : 0);
 
         AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts, Pool(blobs: false, ordinary));
 
