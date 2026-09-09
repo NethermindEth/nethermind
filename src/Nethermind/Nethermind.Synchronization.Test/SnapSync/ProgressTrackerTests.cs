@@ -268,34 +268,41 @@ public class ProgressTrackerTests
         pivot.Received(shouldMove ? 1 : 0).UpdateHeaderForcefully();
     }
 
-    // A refresh answered with an expired root re-queues itself before its worker is released, so an unconditional
-    // priority for that queue hands it every dispatcher slot while it cannot drain. Code requests are keyed by hash
-    // and succeed against a peer behind the pivot, so they must still get served.
-    [Test]
-    public void Will_not_let_account_refreshes_take_every_dispatcher_slot()
+    // A refresh answered with an expired root re-queues itself, so an unconditional priority for that queue hands it
+    // every dispatcher slot while it cannot drain. Code requests are keyed by hash and succeed against a peer behind
+    // the pivot, so they must still get served. The bound is on refreshes served in a row rather than on refreshes in
+    // flight, which is why the two cases below - all four in flight, and never more than one in flight - behave the
+    // same: a dispatcher running fewer workers than the cap would never reach an in-flight bound at all.
+    [TestCase(false, TestName = "Refreshes yield after their turn (nothing reported finished, all in flight)")]
+    [TestCase(true, TestName = "Refreshes yield after their turn at one worker (each reported finished first)")]
+    public void Will_not_let_account_refreshes_take_every_dispatcher_slot(bool oneWorker)
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
         DrainAccountRangePartition(progressTracker);
 
-        for (int i = 0; i < ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES + 4; i++)
+        for (int i = 0; i < ProgressTracker.MAX_CONSECUTIVE_ACCOUNT_REFRESHES + 4; i++)
         {
             progressTracker.EnqueueAccountRefresh(new PathWithAccount { Path = TestItem.ValueKeccaks[i] }, null, null);
         }
 
         progressTracker.EnqueueCodeHashes([TestItem.ValueKeccaks[0]]);
 
-        // Nothing is ever reported finished, so every dequeued refresh stays in flight.
-        for (int i = 0; i < ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES; i++)
+        for (int i = 0; i < ProgressTracker.MAX_CONSECUTIVE_ACCOUNT_REFRESHES; i++)
         {
             progressTracker.IsFinished(out SnapSyncBatch? refresh);
-            Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null, $"request {i} is within the cap");
-            refresh.Dispose();
+            using (refresh)
+            {
+                Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null, $"request {i} is within the turn");
+            }
+
+            // One worker: the request is finished before the next scheduling decision, so nothing is ever in flight.
+            if (oneWorker) progressTracker.ReportAccountRefreshFinished();
         }
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         using (request)
         {
-            Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the cap is reached, so the refresh queue must yield");
+            Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the turn is over, so the refresh queue must yield");
             Assert.That(request.CodesRequest, Is.Not.Null);
         }
     }
@@ -306,18 +313,18 @@ public class ProgressTrackerTests
         using ProgressTracker progressTracker = CreateProgressTracker();
         DrainAccountRangePartition(progressTracker);
 
-        for (int i = 0; i < ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES + 1; i++)
+        for (int i = 0; i < ProgressTracker.MAX_CONSECUTIVE_ACCOUNT_REFRESHES + 1; i++)
         {
             progressTracker.EnqueueAccountRefresh(new PathWithAccount { Path = TestItem.ValueKeccaks[i] }, null, null);
         }
 
-        for (int i = 0; i <= ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES; i++)
+        for (int i = 0; i <= ProgressTracker.MAX_CONSECUTIVE_ACCOUNT_REFRESHES; i++)
         {
             progressTracker.IsFinished(out SnapSyncBatch? refresh);
             using (refresh)
             {
                 Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null,
-                    $"request {i}: the tail of the sync must not run at {ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES} requests");
+                    $"request {i}: with nothing else queued the tail of the sync must not stall on the turn limit");
             }
         }
     }

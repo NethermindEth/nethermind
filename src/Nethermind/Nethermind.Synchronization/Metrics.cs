@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization
         public static long ForcedStatePivotUpdates;
 
         [CounterMetric]
-        [Description("Forced state sync pivot updates skipped because the head had not moved far enough to be worth invalidating in-flight ranges")]
+        [Description("Forced state sync pivot updates skipped because the head had not moved far enough past the pivot for a new target to be worth re-issuing the outstanding ranges against")]
         public static long ForcedStatePivotUpdatesSuppressed;
 
         [CounterMetric]
