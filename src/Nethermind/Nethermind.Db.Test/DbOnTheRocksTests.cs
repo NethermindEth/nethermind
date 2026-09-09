@@ -793,13 +793,11 @@ namespace Nethermind.Db.Test
                 }
             }
 
-            using (DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance))
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), new DbConfig(), _rocksdbConfigFactory, LimboLogs.Instance);
+            using (Assert.EnterMultipleScope())
             {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(GetValue(reopened, [20]), Is.EqualTo(new byte[] { 9 }));
-                    Assert.That(GetValue(reopened, [40]), Is.EqualTo(new byte[] { 4 }));
-                }
+                Assert.That(GetValue(reopened, [20]), Is.EqualTo(new byte[] { 9 }));
+                Assert.That(GetValue(reopened, [40]), Is.EqualTo(new byte[] { 4 }));
             }
         }
 
