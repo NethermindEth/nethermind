@@ -1187,7 +1187,9 @@ public class ArchiveProofTests
         }
 
         tree.UpdateRootHash();
-        Hash256 expected = NodeViews.FromRoot(tree.RootRef, parent.Length, store).Hash.ToCommitment();
+        NodeView parentView = NodeViews.FromRoot(tree.RootRef, parent.Length, store);
+        Hash256 expected = parentView.Hash.ToCommitment();
+        parentView.Release();
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
         ISortedKeyValueStore accountRows = (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory);
         CommitmentStore commitments = new(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
