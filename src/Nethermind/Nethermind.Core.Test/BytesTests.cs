@@ -752,15 +752,18 @@ namespace Nethermind.Core.Test
 
 #if !ZK_EVM
         [TestCase(false, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_PublicPath")]
-        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_XxHash3Fallback")]
-        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceXxHash3)
+        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_ScalarFallback")]
+        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceScalar)
         {
             const int count = 1024;
-            const long seed = 0x510E527FADE682D1L;
             ulong pairedDelta = SolveCrcInput(0);
             byte[] input0 = new byte[sizeof(ulong)];
             byte[] input1 = new byte[sizeof(ulong)];
             int equalPairs = 0;
+
+            foreach (uint seed in HashSeeds)
+                Assert.That(SpanExtensions.CombineHash(seed, pairedDelta),
+                    Is.EqualTo(SpanExtensions.CombineHash(seed, 0)), "raw CRC collision survives changing the seed");
 
             for (uint value = 0; value < count; value++)
             {
@@ -768,16 +771,16 @@ namespace Nethermind.Core.Test
                 BinaryPrimitives.WriteUInt64LittleEndian(input0, word);
                 BinaryPrimitives.WriteUInt64LittleEndian(input1, word ^ pairedDelta);
 
-                int hash0 = forceXxHash3
-                    ? SpanExtensions.FastHashXxHash3(input0, seed)
+                int hash0 = forceScalar
+                    ? SpanExtensions.FastHashFallback(input0)
                     : input0.FastHash();
-                int hash1 = forceXxHash3
-                    ? SpanExtensions.FastHashXxHash3(input1, seed)
+                int hash1 = forceScalar
+                    ? SpanExtensions.FastHashFallback(input1)
                     : input1.FastHash();
-                if (hash0 == hash1) equalPairs++;
+                if (SpanExtensions.CombineHash(0, (uint)hash0) == SpanExtensions.CombineHash(0, (uint)hash1)) equalPairs++;
             }
 
-            Assert.That(equalPairs, Is.LessThan(4), $"structured pairs produced {equalPairs}/{count} equal hashes");
+            Assert.That(equalPairs, Is.LessThan(2), $"structured pairs produced {equalPairs}/{count} equal chained hashes");
         }
 #endif
 
@@ -1014,21 +1017,20 @@ namespace Nethermind.Core.Test
             }, "mirrored-block inputs");
         }
 
-        // Exercise correlated values in two words feeding the same CRC lane.
+        // These paired words cancel within a CRC lane; the scalar mixer must separate them.
         [Test]
-        public void FastHashCrc_StructuredLaneInputsAreDistributed()
+        public void FastHashScalar_StructuredLaneInputsAreDistributed()
         {
-            const int length = 64;    // one 64-byte unrolled iteration: words 0 and 32 both feed lane h0
+            const int length = 64;
             byte[] input = new byte[length];
-            AssertIntHashesAreDistributedForSeeds((value, seed) =>
+            AssertIntHashesAreDistributed(value =>
             {
                 ulong delta0 = (uint)value;
                 uint target = BitOperations.Crc32C(BitOperations.Crc32C(0u, delta0), 0UL);
                 ulong f = SolveCrcInput(target);
                 BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(0), delta0);
                 BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(32), f);
-                return SpanExtensions.FastHashCrc(
-                    ref MemoryMarshal.GetArrayDataReference(input), length, seed);
+                return SpanExtensions.FastHashFallback(input);
             }, "CRC intra-lane inputs");
         }
 
@@ -1054,25 +1056,22 @@ namespace Nethermind.Core.Test
                 $"{context} collapsed to {hashes.Count}/{HashDistributionSampleCount} distinct hashes");
         }
 
-        // Exercise correlated values across two lanes of the fixed-size CRC path.
+        // These correlated words cancel across CRC lanes.
         [Test]
-        public void FastHash64For32BytesCrc_StructuredLaneInputsAreDistributed()
+        public void FastHash64For32BytesScalar_StructuredLaneInputsAreDistributed()
         {
-            foreach (uint seed in HashSeeds)
+            byte[] input = new byte[32];
+            long[] hashes = new long[HashDistributionSampleCount];
+            for (ulong c = 0; c < HashDistributionSampleCount; c++)
             {
-                byte[] input = new byte[32];
-                long[] hashes = new long[HashDistributionSampleCount];
-                for (ulong c = 0; c < HashDistributionSampleCount; c++)
-                {
-                    ulong e = SolveCrcInput(BitOperations.Crc32C(0u, c));
-                    BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(0), c);
-                    BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(16), e);
-                    hashes[c] = SpanExtensions.FastHash64For32BytesCrc(
-                        ref MemoryMarshal.GetArrayDataReference(input), seed);
-                }
-
-                AssertHash64WindowsAreDistributed(hashes, $"32-byte CRC lane inputs for seed {seed}");
+                ulong e = SolveCrcInput(BitOperations.Crc32C(0u, c));
+                BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(0), c);
+                BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(16), e);
+                hashes[c] = SpanExtensions.FastHash64For32BytesFallback(
+                    ref MemoryMarshal.GetArrayDataReference(input));
             }
+
+            AssertHash64WindowsAreDistributed(hashes, "32-byte CRC lane inputs");
         }
 
         [Test]
@@ -1081,11 +1080,7 @@ namespace Nethermind.Core.Test
             const int count = 4096;
             byte[] input = new byte[length];
             long[] hashes = new long[count];
-            long[] crcHashes = new long[count];
-#if !ZK_EVM
-            long[] xxHashes = new long[count];
-#endif
-            uint seed = SpanExtensions.ComputeSeed(length);
+            long[] scalarHashes = new long[count];
             for (ulong value = 0; value < count; value++)
             {
                 BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(length - 8), value);
@@ -1093,19 +1088,13 @@ namespace Nethermind.Core.Test
                 hashes[value] = length == 20
                     ? SpanExtensions.FastHash64For20Bytes(ref start)
                     : SpanExtensions.FastHash64For32Bytes(ref start);
-                crcHashes[value] = length == 20
-                    ? SpanExtensions.FastHash64For20BytesCrc(ref start, seed)
-                    : SpanExtensions.FastHash64For32BytesCrc(ref start, seed);
-#if !ZK_EVM
-                xxHashes[value] = SpanExtensions.FastHash64XxHash3(ref start, length, seed);
-#endif
+                scalarHashes[value] = length == 20
+                    ? SpanExtensions.FastHash64For20BytesFallback(ref start)
+                    : SpanExtensions.FastHash64For32BytesFallback(ref start);
             }
 
             AssertHash64WindowsAreDistributed(hashes, $"{length}-byte hashes");
-            AssertHash64WindowsAreDistributed(crcHashes, $"{length}-byte CRC hashes");
-#if !ZK_EVM
-            AssertHash64WindowsAreDistributed(xxHashes, $"{length}-byte XXH3 hashes");
-#endif
+            AssertHash64WindowsAreDistributed(scalarHashes, $"{length}-byte scalar hashes");
         }
 
         private static void AssertHash64WindowsAreDistributed(long[] hashes, string context)
