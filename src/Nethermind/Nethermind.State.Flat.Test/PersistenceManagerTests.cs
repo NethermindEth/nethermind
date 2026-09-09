@@ -52,8 +52,7 @@ public class PersistenceManagerTests
         // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store, wired the
         // production way through FlatWorldStateModule; the container pairs it with its loader (load on
         // build, teardown on dispose).
-        _tier = new FlatTestContainer(configure: builder => builder
-            .AddSingleton<IFinalizedStateProvider>(_finalizedStateProvider));
+        _tier = new FlatTestContainer(finalizedStateProvider: _finalizedStateProvider);
         _snapshotRepository = _tier.Repository;
         _persistence = Substitute.For<IPersistence>();
 
