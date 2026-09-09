@@ -85,6 +85,12 @@ public class SimpleDispatcherTests
             LimboLogs.Instance);
     }
 
+    /// <summary>
+    /// How long the gated worker is held after the cancellation, i.e. how long Run is given to prove it does not
+    /// return. Paid only when the assertion fails.
+    /// </summary>
+    private static readonly TimeSpan WorkerHold = TimeSpan.FromMilliseconds(500);
+
     [Test, CancelAfter(30_000)]
     public async Task Cancelled_run_waits_for_in_flight_handle_response(CancellationToken cancellationToken)
     {
@@ -111,11 +117,18 @@ public class SimpleDispatcherTests
             // (in production: writing state-sync nodes into RocksDB).
             cts.Cancel();
 
-            // The loop has left PrepareRequest with the cancellation, so everything Run does from here is its drain
-            // path and releasing the gate below cannot be mistaken for a normal second lap.
+            // PrepareRequest has thrown the cancellation, so everything Run does from here is its exit path.
             await feed.PrepareRequestCancelled.Task.WaitAsync(cancellationToken);
 
-            Assert.That(feed.HandleResponseCompleted, Is.EqualTo(0));
+            // The worker holds the permit Run's drain has to reclaim, so Run cannot get back to its caller: the
+            // whole point of #13154. Hold the gate over the window instead of opening it here - if the drain sits
+            // after the loop rather than in the finally, the OperationCanceledException carries straight out of
+            // Run and this is what catches it. Only the failing path pays the wait, and the unwind it is racing
+            // is a handful of continuations with no IO, so the margin is four orders of magnitude.
+            Assert.That(await Task.WhenAny(runTask, Task.Delay(WorkerHold, cancellationToken)), Is.Not.SameAs(runTask),
+                "Run returned while a worker was still inside HandleResponse");
+
+            Assert.That(feed.HandleResponseCompleted, Is.EqualTo(0), "the gate is still closed");
         }
         finally
         {

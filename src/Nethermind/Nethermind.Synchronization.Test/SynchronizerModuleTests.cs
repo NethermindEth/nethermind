@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
@@ -21,6 +16,7 @@ using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -75,26 +71,15 @@ public class SynchronizerModuleTests
     [Test]
     public async Task Synchronizer_dispose_is_idempotent()
     {
-        // The class under test is constructed directly: the assert needs a substituted feed, and the
-        // module registers the feed components in their own keyed lifetime scopes, which an outer
-        // override cannot reach.
         ISyncFeed<BlocksRequest> fullSyncFeed = Substitute.For<ISyncFeed<BlocksRequest>>();
-        static SyncFeedComponent<T> FeedOnly<T>(ISyncFeed<T> feed) => new(feed, null!, null!, null!, null!);
-        Synchronizer synchronizer = BuildSynchronizer(
-            Substitute.For<ISyncConfig>(),
-            Substitute.For<IBlockTree>(),
-            Substitute.For<IStateSyncRunner>(),
-            FeedOnly(fullSyncFeed),
-            FeedOnly(Substitute.For<ISyncFeed<BlocksRequest>>()),
-            FeedOnly(Substitute.For<ISyncFeed<HeadersSyncBatch>>()),
-            FeedOnly(Substitute.For<ISyncFeed<BodiesSyncBatch>>()),
-            FeedOnly(Substitute.For<ISyncFeed<ReceiptsSyncBatch>>()),
-            FeedOnly(Substitute.For<ISyncFeed<BlockAccessListsSyncBatch>>()));
+        await using IContainer container = BuildSyncContainer(fullSyncFeed: fullSyncFeed);
+
+        ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
 
         await synchronizer.DisposeAsync();
         await synchronizer.DisposeAsync();
 
-        // Container teardown disposes twice (dispose tracking); the second run must not wait on
+        // Container teardown can dispose this more than once, and a repeat run would wait on
         // the feed tasks again - with a stuck feed it would pay the full termination timeout twice.
         _ = fullSyncFeed.Received(1).FeedTask;
     }
@@ -114,7 +99,11 @@ public class SynchronizerModuleTests
             return runnerGate.Task;
         });
 
-        Synchronizer synchronizer = BuildStartableSynchronizer(stateSyncRunner);
+        await using IContainer container = BuildSyncContainer(stateSyncRunner);
+
+        // Resolved rather than constructed: the join only runs on a real node because Autofac owns the concrete
+        // Synchronizer and disposes it in reverse activation order, ahead of the databases.
+        ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
 
         synchronizer.Start();
         _ = stateSyncRunner.Received(1).Run(Arg.Any<CancellationToken>());
@@ -159,10 +148,12 @@ public class SynchronizerModuleTests
 
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
         const int budgetMs = 50;
-        Synchronizer synchronizer = BuildStartableSynchronizer(
-            stateSyncRunner,
-            new OneLoggerLogManager(new(logger)),
-            budgetMs);
+
+        await using IContainer container = BuildSyncContainer(stateSyncRunner, logManager: new OneLoggerLogManager(new(logger)));
+
+        // The budget is an internal test knob with no DI surface, so this one Synchronizer is constructed rather than
+        // resolved - out of the container's own components, so the graph under test is still the production one.
+        await using Synchronizer synchronizer = ResolveSynchronizer(container, budgetMs);
 
         synchronizer.Start();
 
@@ -183,54 +174,61 @@ public class SynchronizerModuleTests
         }
     }
 
-    // The full rig, as opposed to BuildSynchronizer's bare construction: Start() drives the feed components, so
-    // these tests need real dispatchers behind the substituted feeds rather than the null! placeholders.
-    private static Synchronizer BuildStartableSynchronizer(
-        IStateSyncRunner stateSyncRunner,
-        ILogManager? logManager = null,
-        int stateSyncTerminationTimeout = Synchronizer.DefaultStateSyncTerminationTimeout)
+    /// <summary>
+    /// A production container: SynchronizerModule wires the feeds, their dispatchers and the lifetime scopes that own
+    /// them, and the join added for #13154 relies on Autofac owning the concrete <see cref="Synchronizer"/>. Only the
+    /// collaborators a test drives are substituted, and a feed override is applied inside the keyed scope that owns it
+    /// rather than on the outer container, which cannot reach in.
+    /// </summary>
+    private static IContainer BuildSyncContainer(
+        IStateSyncRunner? stateSyncRunner = null,
+        ISyncFeed<BlocksRequest>? fullSyncFeed = null,
+        ILogManager? logManager = null)
     {
-        logManager ??= LimboLogs.Instance;
-        TestSyncConfig syncConfig = new() { FastSync = true };
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.CanAcceptNewBlocks.Returns(true);
-        ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
-        BlockDownloader blockDownloader = new(
-            blockTree,
-            Substitute.For<IBlockValidator>(),
-            Substitute.For<ISyncReport>(),
-            Substitute.For<IReceiptStorage>(),
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IBetterPeerStrategy>(),
-            Substitute.For<IFullStateFinder>(),
-            Substitute.For<IForwardHeaderProvider>(),
-            peerPool,
-            Substitute.For<IReceiptsRecovery>(),
-            Substitute.For<IBlockProcessingQueue>(),
-            syncConfig,
-            LimboLogs.Instance);
+        SyncConfig syncConfig = new() { FastSync = true };
 
-        SyncFeedComponent<T> Component<T>()
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig)))
+            .AddModule(new SynchronizerModule(syncConfig))
+            .AddSingleton(stateSyncRunner ?? Substitute.For<IStateSyncRunner>())
+            .AddSingleton(Substitute.For<IWorldStateManager>());
+
+        if (fullSyncFeed is not null)
         {
-            ISyncFeed<T> feed = Substitute.For<ISyncFeed<T>>();
-            ISyncDownloader<T> downloader = Substitute.For<ISyncDownloader<T>>();
-            SyncDispatcher<T> dispatcher = new(syncConfig, feed, downloader, peerPool, Substitute.For<IPeerAllocationStrategyFactory<T>>(), LimboLogs.Instance);
-            return new SyncFeedComponent<T>(feed, dispatcher, downloader, new Lazy<BlockDownloader>(() => blockDownloader), Substitute.For<ILifetimeScope>());
+            builder.RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(
+                nameof(FullSyncFeed), cfg => cfg.AddSingleton(fullSyncFeed));
         }
 
-        return BuildSynchronizer(
-            syncConfig,
-            blockTree,
-            stateSyncRunner,
-            Component<BlocksRequest>(),
-            Component<BlocksRequest>(),
-            Component<HeadersSyncBatch>(),
-            Component<BodiesSyncBatch>(),
-            Component<ReceiptsSyncBatch>(),
-            Component<BlockAccessListsSyncBatch>(),
-            logManager,
-            stateSyncTerminationTimeout);
+        if (logManager is not null) builder.AddSingleton(logManager);
+
+        return builder.Build();
     }
+
+    /// <summary>
+    /// <see cref="Synchronizer"/> out of the container's own components, for the one test that has to set
+    /// <see cref="Synchronizer.StateSyncTerminationTimeout"/> - an <c>init</c> member with no registration to override.
+    /// </summary>
+    private static Synchronizer ResolveSynchronizer(IContainer container, int stateSyncTerminationTimeout) =>
+        new(container.Resolve<ISyncModeSelector>(),
+            container.Resolve<ISyncReport>(),
+            container.Resolve<ISyncConfig>(),
+            container.Resolve<IBlockTree>(),
+            container.Resolve<ISyncPivotResolver>(),
+            container.Resolve<ILogManager>(),
+            container.Resolve<INodeStatsManager>(),
+            container.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed)),
+            container.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed)),
+            container.Resolve<IStateSyncRunner>(),
+            container.ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed)),
+            container.Resolve<SyncFeedComponent<BodiesSyncBatch>>(),
+            container.Resolve<SyncFeedComponent<ReceiptsSyncBatch>>(),
+            container.Resolve<SyncFeedComponent<BlockAccessListsSyncBatch>>(),
+            container.Resolve<SyncDbTuner>(),
+            container.Resolve<MallocTrimmer>(),
+            container.Resolve<IProcessExitSource>())
+        {
+            StateSyncTerminationTimeout = stateSyncTerminationTimeout,
+        };
 
     private static async Task WaitForCancellation(CancellationToken watched, CancellationToken cancellationToken)
     {
@@ -240,41 +238,4 @@ public class SynchronizerModuleTests
             await cancelled.Task.WaitAsync(cancellationToken);
         }
     }
-
-    // Both dispose tests construct the class under test directly: the asserts need substituted feeds, and
-    // SynchronizerModule registers the feed components in their own keyed lifetime scopes, which an outer override
-    // cannot reach. Only the collaborators the tests actually drive are parameters here, so the constructor's other
-    // arguments live in one place instead of being repeated per test.
-    private static Synchronizer BuildSynchronizer(
-        ISyncConfig syncConfig,
-        IBlockTree blockTree,
-        IStateSyncRunner stateSyncRunner,
-        SyncFeedComponent<BlocksRequest> fullSync,
-        SyncFeedComponent<BlocksRequest> fastSync,
-        SyncFeedComponent<HeadersSyncBatch> fastHeaders,
-        SyncFeedComponent<BodiesSyncBatch> oldBodies,
-        SyncFeedComponent<ReceiptsSyncBatch> oldReceipts,
-        SyncFeedComponent<BlockAccessListsSyncBatch> oldBlockAccessLists,
-        ILogManager? logManager = null,
-        int stateSyncTerminationTimeout = Synchronizer.DefaultStateSyncTerminationTimeout) =>
-        new(Substitute.For<ISyncModeSelector>(),
-            Substitute.For<ISyncReport>(),
-            syncConfig,
-            blockTree,
-            Substitute.For<ISyncPivotResolver>(),
-            logManager ?? LimboLogs.Instance,
-            Substitute.For<INodeStatsManager>(),
-            fullSync,
-            fastSync,
-            stateSyncRunner,
-            fastHeaders,
-            oldBodies,
-            oldReceipts,
-            oldBlockAccessLists,
-            null!,
-            null!,
-            Substitute.For<IProcessExitSource>())
-        {
-            StateSyncTerminationTimeout = stateSyncTerminationTimeout,
-        };
 }

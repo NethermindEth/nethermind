@@ -91,13 +91,10 @@ public class SimpleDispatcher<T>(
         }
         finally
         {
-            // Wait for in-flight tasks to complete, also when the loop exits by cancellation: the caller
-            // tears down the databases right after this returns, and a worker still inside HandleResponse
-            // would then write to a disposed RocksDB. This has to be a finally rather than a statement after
-            // the loop - PrepareRequest throws OperationCanceledException on cancellation, which is precisely
-            // the shutdown path #13154 is about, and that would carry straight past a trailing drain. The throw
-            // out of the wait above lands here too, so a cancelled dispatch still joins its workers.
-            // CancellationToken.None so peer allocations are always freed in DoDispatch even when the caller cancels.
+            // The caller tears down the databases right after this returns, so no worker may still be inside
+            // HandleResponse by then. A finally rather than a statement after the loop: PrepareRequest and the
+            // semaphore wait both throw OperationCanceledException on shutdown, and that would carry straight
+            // past a trailing drain. CancellationToken.None so the join itself cannot be cancelled.
             for (int i = 0; i < maxThreads; i++)
                 await semaphore.WaitAsync(CancellationToken.None);
         }

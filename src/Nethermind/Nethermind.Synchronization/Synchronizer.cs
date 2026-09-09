@@ -54,17 +54,12 @@ namespace Nethermind.Synchronization
         private const int FeedsTerminationTimeout = 5_000;
 
         /// <remarks>
-        /// The state sync drain is a memory-safety barrier, not a tidy-shutdown courtesy like the feed tasks: the
-        /// databases are disposed the moment this returns, and a dispatcher worker still inside HandleResponse then
-        /// writes to a freed native handle (#13154). It gets a budget of its own rather than the feeds' advisory one,
-        /// and it stays bounded because the runner sets ProcessTerminationTimeout to infinite - a wait with no ceiling
-        /// here is a node that never exits.
-        /// <para>
-        /// The budget therefore bounds the race rather than closing it: a runner that outlives it is warned about and
-        /// then left running while the databases go away, so #13154 remains reachable under an IO stall. Closing it
-        /// properly means making this an <c>IStoppableService</c> so teardown is ordered after sync, which is a
-        /// larger change than this fix.
-        /// </para>
+        /// The state sync join is a memory-safety barrier, not a tidy-shutdown courtesy like the feed tasks: the
+        /// databases are disposed the moment <see cref="DisposeAsync"/> returns, and a dispatcher worker still inside
+        /// HandleResponse then writes to a freed native handle (#13154). It is bounded because the runner sets
+        /// ProcessTerminationTimeout to infinite - a wait with no ceiling here is a node that never exits - so the
+        /// budget bounds the race rather than closing it. Ordering teardown after sync (making this an
+        /// <c>IStoppableService</c>) is what closes it, and is out of scope here.
         /// </remarks>
         internal const int DefaultStateSyncTerminationTimeout = 60_000;
 
