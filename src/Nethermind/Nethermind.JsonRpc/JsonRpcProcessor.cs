@@ -226,8 +226,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                             }
                             catch
                             {
-                                // Only dispatch throws out of that call - its decode steps are guarded - and a
-                                // dispatched body is spent, so report it consumed as a normal return would.
+                                // Whatever throws out of that call - a dispatch or a sink write - ends the read
+                                // loop, and this branch already knows the buffer holds the whole body, so report
+                                // it consumed as a normal return would.
                                 advance.Consumed(in buffer);
                                 throw;
                             }
@@ -783,7 +784,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
 
         JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "parse error");
-        if (_logger.IsTrace) _diagnostics.TraceResult(response);
+        _diagnostics.TraceResult(response);
         return _diagnostics.RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
@@ -852,7 +853,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     if (_logger.IsWarn) _logger.Warn(DescribeErrorResponse(request, responseError));
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Error when handling {request} | {JsonRpcDiagnostics.SerializeResponseForDiagnostics(response)}");
+                _diagnostics.TraceRequestError(request, response);
             }
             Metrics.JsonRpcErrors++;
         }
@@ -864,7 +865,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             response,
             new RpcReport(reportMethod, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
 
-        if (_logger.IsTrace) _diagnostics.TraceResult(result);
+        _diagnostics.TraceResult(result);
         return result;
     }
 

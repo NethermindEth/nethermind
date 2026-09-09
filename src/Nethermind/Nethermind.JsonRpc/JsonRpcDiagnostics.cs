@@ -78,6 +78,11 @@ internal sealed class JsonRpcDiagnostics
         if (_logger.IsTrace) TraceResultSlow(response);
     }
 
+    public void TraceRequestError(JsonRpcRequest request, JsonRpcResponse response)
+    {
+        if (_logger.IsTrace) TraceRequestErrorSlow(request, response);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RecordRequestSlow(ReadOnlyMemory<byte> requestBody) =>
         _recorder!.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
@@ -106,7 +111,11 @@ internal sealed class JsonRpcDiagnostics
     private void TraceResultSlow(JsonRpcErrorResponse response) =>
         _logger.Trace($"Sending JSON RPC response: {SerializeResponseForDiagnostics(response)}");
 
-    public static string SerializeResponseForDiagnostics(JsonRpcResponse response)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceRequestErrorSlow(JsonRpcRequest request, JsonRpcResponse response) =>
+        _logger.Trace($"Error when handling {request} | {SerializeResponseForDiagnostics(response)}");
+
+    private static string SerializeResponseForDiagnostics(JsonRpcResponse response)
     {
         ArrayBufferWriter<byte> writer = new();
         JsonRpcResponseWriter.Write(writer, response, EthereumJsonSerializer.JsonOptionsIndented);

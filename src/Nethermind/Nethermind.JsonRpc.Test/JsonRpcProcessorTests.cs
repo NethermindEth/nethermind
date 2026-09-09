@@ -783,22 +783,22 @@ public class JsonRpcProcessorTests
     }
 
     /// <remarks>
-    /// <paramref name="endpoint"/> picks the batch item source the limit is enforced from: an HTTP body arrives as
-    /// one complete document and takes the raw-bytes path, a WS body goes through the incremental parser and the
-    /// parsed-document path.
+    /// <paramref name="transport"/> picks the entry point, and with it the batch item source the limit is enforced
+    /// from: an HTTP body arrives as one complete document and takes the raw-bytes path - over the
+    /// <see cref="ReadOnlyMemory{T}"/> overload production HTTP calls as well as over a pipe - while a WS body goes
+    /// through the incremental parser and the parsed-document path.
     /// </remarks>
     [Test]
     public async Task Batch_size_limit_respects_authentication(
         [Values] bool isAuthenticated,
-        [Values(RpcEndpoint.Http, RpcEndpoint.Ws)] RpcEndpoint endpoint)
+        [Values] RequestTransport transport)
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = 1 });
-        using JsonRpcContext context = isAuthenticated
-            ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, []))
-            : new JsonRpcContext(endpoint);
+        using JsonRpcContext context = CreateContext(transport, isAuthenticated);
 
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor, Encoding.UTF8.GetBytes(CreateTransactionCountBatchRequest(2)), transport, context: context);
 
         CollectedJsonRpcResult response = AssertOnlyResult(result);
         if (!isAuthenticated)
@@ -1035,21 +1035,140 @@ public class JsonRpcProcessorTests
         Assert.That(thrown, Is.SameAs(expected), "the server fault must surface, not be reframed as a client parse error");
     }
 
+    /// <summary>The endpoint a transport arrives on, optionally on an authenticated URL.</summary>
+    private static JsonRpcContext CreateContext(RequestTransport transport, bool isAuthenticated = false)
+    {
+        RpcEndpoint endpoint = transport == RequestTransport.WsPipe ? RpcEndpoint.Ws : RpcEndpoint.Http;
+        return isAuthenticated
+            ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, []))
+            : new JsonRpcContext(endpoint);
+    }
+
+    /// <remarks>
+    /// The input mode is pinned per transport rather than derived from the context's endpoint, so an arm cannot
+    /// silently change which entry point and which batch item source it exercises.
+    /// </remarks>
     private static async ValueTask<CollectedJsonRpcResponses> ProcessAsync(
         JsonRpcProcessor processor,
         byte[] request,
         RequestTransport transport,
-        CollectingJsonRpcResponseSink? sink = null)
+        CollectingJsonRpcResponseSink? sink = null,
+        JsonRpcContext? context = null)
     {
+        sink ??= new CollectingJsonRpcResponseSink();
+        context ??= CreateContext(transport);
+        JsonRpcProcessingOptions options = new(transport == RequestTransport.WsPipe
+            ? JsonRpcInputMode.MultipleDocuments
+            : JsonRpcInputMode.SingleDocument);
+
         if (transport == RequestTransport.HttpMemory)
         {
-            sink ??= new CollectingJsonRpcResponseSink();
-            await processor.ProcessAsync(request.AsMemory(), CreateHttpContext(), sink, new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
-            return sink.Responses;
+            await processor.ProcessAsync(request.AsMemory(), context, sink, options);
+        }
+        else
+        {
+            await processor.ProcessAsync(PipeReader.Create(new ReadOnlySequence<byte>(request)), context, sink, options);
         }
 
-        JsonRpcContext context = transport == RequestTransport.HttpPipe ? CreateHttpContext() : new JsonRpcContext(RpcEndpoint.Ws);
-        return await ProcessAsync(processor, PipeReader.Create(new ReadOnlySequence<byte>(request)), context, sink);
+        return sink.Responses;
+    }
+
+    /// <remarks>
+    /// A single-document body ends at its root value, so anything but whitespace after it is a framing error and not a
+    /// second request - the body is answered with one parse error and none of it is dispatched.
+    /// </remarks>
+    [Test]
+    public async Task Trailing_data_after_a_single_document_request_is_a_parse_error(
+        [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport)
+    {
+        bool dispatched = false;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched = true;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor, Encoding.UTF8.GetBytes(CreateRequest("1", "eth_blockNumber") + " garbage"), transport);
+
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+            Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
+            Assert.That(dispatched, Is.False, "a body that is not one document must not be dispatched");
+        }
+    }
+
+    /// <remarks>
+    /// The complete-body fast path reports its buffer consumed on the way out of a throwing dispatch as well: the read
+    /// loop ends either way, and reporting examined-only would ask a reader with nothing left to give for another read.
+    /// </remarks>
+    [Test]
+    public void Complete_body_is_reported_consumed_when_dispatch_throws()
+    {
+        Exception expected = new InvalidOperationException("module went away");
+        IJsonRpcService service = CreateService(_ => throw expected);
+        JsonRpcProcessor processor = CreateProcessor(service);
+        AdvanceRecordingPipeReader reader = new("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray());
+
+        Exception? thrown = Assert.CatchAsync(async () =>
+        {
+            using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, reader, CreateHttpContext());
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(thrown, Is.SameAs(expected));
+            Assert.That(reader.ConsumedLength, Is.EqualTo(reader.ReadLength), "the dispatched body must be reported consumed");
+        }
+    }
+
+    /// <summary>Records how much of the last read buffer the processor reported consumed.</summary>
+    private sealed class AdvanceRecordingPipeReader(byte[] body) : PipeReader
+    {
+        private readonly PipeReader _inner = Create(new ReadOnlySequence<byte>(body));
+        private ReadOnlySequence<byte> _lastRead;
+
+        public long ReadLength { get; private set; }
+
+        public long? ConsumedLength { get; private set; }
+
+        public override void AdvanceTo(SequencePosition consumed) => AdvanceTo(consumed, consumed);
+
+        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+        {
+            ConsumedLength = _lastRead.Slice(_lastRead.Start, consumed).Length;
+            _inner.AdvanceTo(consumed, examined);
+        }
+
+        public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default) =>
+            Record(await _inner.ReadAsync(cancellationToken));
+
+        public override bool TryRead(out ReadResult result)
+        {
+            bool read = _inner.TryRead(out result);
+            if (read)
+            {
+                Record(result);
+            }
+
+            return read;
+        }
+
+        public override void CancelPendingRead() => _inner.CancelPendingRead();
+
+        public override void Complete(Exception? exception = null) => _inner.Complete(exception);
+
+        public override ValueTask CompleteAsync(Exception? exception = null) => _inner.CompleteAsync(exception);
+
+        private ReadResult Record(ReadResult result)
+        {
+            _lastRead = result.Buffer;
+            ReadLength = result.Buffer.Length;
+            return result;
+        }
     }
 
     [Test]
