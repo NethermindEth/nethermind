@@ -1,7 +1,7 @@
 name: Run nethtest (EEST tests)
 
 # Reusable EEST fixture-execution workflow ("nethtest"). Callers (nethermind-tests.yml,
-# nethermind-tests-flat.yml) invoke it via workflow_call in place of the former
+# nethermind-tests-checked.yml) invoke it via workflow_call in place of the former
 # Ethereum.Blockchain.Pyspec.Test NUnit shards; workflow_dispatch supports manual runs.
 #
 # The fixture set is split into deterministic interleaved file chunks (--chunk NofM) so

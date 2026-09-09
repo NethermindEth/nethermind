@@ -1,5 +1,12 @@
 name: Nethermind tests (Trie DB)
 
+# Mirror of nethermind-tests.yml pinned to the patricia-trie backend via TEST_USE_TRIE. Flat is the
+# production default and so the default everywhere else; this workflow keeps patricia validated across
+# the same project matrix. Kept to a single Linux runner and without coverage plumbing: the multi-OS and
+# codecov legs are backend-independent, and duplicating them would only collide on artifact names.
+# EEST fixtures are not run here — nethermind-tests.yml calls run-nethtest.yml with setup_group "all",
+# which covers both the patricia and flat configuration groups.
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,6 +21,10 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_USE_TRIE: 1
+
+defaults:
+  run:
+    shell: bash
 
 permissions:
   contents: read
@@ -32,59 +43,73 @@ jobs:
     timeout-minutes: 20
     env:
       DOTNET_GCConserveMemory: 9
-      # Only these fixture tests read the src/tests submodule at runtime.
-      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
         project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
+          - Nethermind.Abi.Test
+          - Nethermind.Analyzers.Test
+          - Nethermind.Api.Test
+          - Nethermind.AuRa.Test
+          - Nethermind.BalRecorder.Test
+          - Nethermind.Blockchain.Test
+          - Nethermind.CensorshipDetector.Plugin.Test
+          - Nethermind.Clique.Test
+          - Nethermind.Config.Test
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
           - Nethermind.Db.Test
+          - Nethermind.Era1.Test
+          - Nethermind.EraE.Test
+          - Nethermind.Ethash.Test
+          - Nethermind.EthStats.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Facade.Test
+          - Nethermind.Flashbots.Test
+          - Nethermind.HealthChecks.Test
+          - Nethermind.History.Test
+          - Nethermind.Hive.Test
+          - Nethermind.Init.Snapshot.Test
+          - Nethermind.JsonRpc.Test
+          - Nethermind.JsonRpc.TraceStore.Test
+          - Nethermind.KeyStore.Test
+          - Nethermind.Logging.NLog.Test
+          - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
+          - Nethermind.Mining.Test
+          - Nethermind.Monitoring.Test
+          - Nethermind.Network.Discovery.Test
+          - Nethermind.Network.Dns.Test
+          - Nethermind.Network.Enr.Test
+          - Nethermind.Network.Test
+          - Nethermind.OpcodeTracing.Plugin.Test
+          - Nethermind.Optimism.Test
+          - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
+          - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Serialization.SszGenerator.Test
+          - Nethermind.Shutter.Test
+          - Nethermind.Sockets.Test
+          - Nethermind.Specs.Test
+          - Nethermind.State.Flat.History.Test
+          - Nethermind.State.Flat.Test
+          - Nethermind.State.Test
+          - Nethermind.State.Test.Runner.Test
+          - Nethermind.StateDiffsWriter.Test
+          - Nethermind.Taiko.Test
+          - Nethermind.Trie.Test
+          - Nethermind.TxPool.Test
+          - Nethermind.Wallet.Test
+          - Nethermind.Xdc.Test
         chunk: ['']
-        include:
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 1of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 2of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 3of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 4of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 5of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 6of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 7of8
-          - project: Ethereum.Legacy.Blockchain.Test
-            chunk: 8of8
+        include: # Synchronization.Test is chunked on every runner in the main suite — its unchunked variant hits the wall.
+          - { project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
-      # Submodule only for fixture tests; the checkout also serves other source files (e.g. Chains/*.json).
-      - name: Fetch submodules
-        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
-        uses: ./.github/actions/fetch-submodules
-        with:
-          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -94,7 +119,7 @@ jobs:
         with:
           variant: release
 
-      - name: ${{ matrix.project }}
+      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
@@ -115,17 +140,125 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  # EEST fixtures under the patricia state layout run through the reusable nethtest workflow.
-  nethtest:
-    name: EEST nethtest (trie)
-    uses: ./.github/workflows/run-nethtest.yml
-    with:
-      test_types: engineTest,blockTest,stateTest,syncTest
-      setup_group: sequential
+  tests-spec:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Only these EF fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
+          - Ethereum.Legacy.Blockchain.Block.Test
+          - Ethereum.Legacy.Transition.Test
+          - Ethereum.Legacy.VM.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Ssz.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Trie.Test
+        chunk: ['']
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
+
+      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          dotnet restore ${{ matrix.project }}.csproj
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  tests-chunked:
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
+
+      - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
+        id: test
+        working-directory: src/Nethermind/${{ matrix.test.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.test.chunk }}
+        run: |
+          dotnet restore ${{ matrix.test.project }}.csproj
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release --no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-hang-dump
+          path: src/Nethermind/${{ matrix.test.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   tests-summary:
     name: Tests summary
-    needs: [tests, nethtest]
+    needs: [tests, tests-spec, tests-chunked]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -133,5 +266,6 @@ jobs:
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.nethtest.result }}" == "success" \
+            "${{ needs.tests-spec.result }}" == "success" && \
+            "${{ needs.tests-chunked.result }}" == "success" \
           ]]

@@ -142,12 +142,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public Builder<T> WithTrieDb()
-            {
-                _blockchain.UseFlatDb = false;
-                return this;
-            }
-
             public Builder<T> WithEthRpcModule(Func<TestRpcBlockchain, IEthRpcModule> builder)
             {
                 _blockchain._ethRpcModuleBuilder = builder;

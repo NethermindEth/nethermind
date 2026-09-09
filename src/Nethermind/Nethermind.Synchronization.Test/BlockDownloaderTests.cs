@@ -899,6 +899,9 @@ public partial class BlockDownloaderTests
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
+        // Pinned to patricia: 17 of these fixtures fail under flat (Happy_path sees the downloaded head
+        // already on the main chain at BlockDownloaderTests.cs:114, and the timeout/partial-bodies cases
+        // never reach the expected best-suggested header). Tracked by #13325; unpin once fixed.
         configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
 
         Block genesis = Build.A.Block.Genesis.TestObject;

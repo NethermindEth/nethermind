@@ -16,7 +16,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -86,32 +85,8 @@ public class MergePluginTests
         _consensusPlugin = new(_chainSpec);
     }
 
-    [Test]
-    public void Build_container_preserves_explicit_backend_selection([Values] bool enabled)
+    private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
     {
-        FlatDbConfig flatDbConfig = new() { Enabled = enabled };
-        ConfigProvider configProvider = new(_mergeConfig, _jsonRpcConfig, flatDbConfig);
-
-        using IContainer container = BuildContainer(configProvider, preserveFlatDbConfig: true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
-            Assert.That(flatDbConfig.Enabled, Is.EqualTo(enabled));
-        }
-    }
-
-    private IContainer BuildContainer(
-        IConfigProvider? configProvider = null,
-        Action<ContainerBuilder>? configure = null,
-        bool preserveFlatDbConfig = false)
-    {
-        IConfigProvider effectiveConfigProvider = configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig);
-        if (!preserveFlatDbConfig)
-        {
-            effectiveConfigProvider.GetConfig<IFlatDbConfig>().Enabled = false;
-        }
-
         // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
         // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
         ContainerBuilder builder = new ContainerBuilder()
@@ -119,7 +94,7 @@ public class MergePluginTests
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
-                effectiveConfigProvider,
+                configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))

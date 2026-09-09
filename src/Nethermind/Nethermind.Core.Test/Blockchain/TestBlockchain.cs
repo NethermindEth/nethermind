@@ -202,8 +202,14 @@ public class TestBlockchain : IDisposable
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IConfig[] configs = [.. CreateConfigs()];
+        IConfigProvider configProvider = new ConfigProvider(configs);
+        // A fixture that returns its own IFlatDbConfig from CreateConfigs has pinned the backend (and often
+        // HistoryEnabled with it), so UseFlatDb must not be stamped over it.
+        if (!TestStateBackend.PinsBackend(configs))
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        }
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
@@ -237,16 +243,18 @@ public class TestBlockchain : IDisposable
     }
 
     /// <summary>
-    /// Whether this test chain uses the flat state backend. Defaults to flat (matching the production
-    /// default); set the <c>TEST_USE_TRIE=1</c> environment variable to run the suite under patricia, or set
-    /// this to <c>true</c>/<c>false</c> per fixture.
+    /// Whether this test chain uses the flat state backend. Defaults to the suite-wide selection
+    /// (<see cref="TestStateBackend.UseFlatDb"/>, i.e. flat unless <c>TEST_USE_TRIE=1</c>); set this to
+    /// <c>true</c>/<c>false</c> per fixture to pin a backend.
     /// </summary>
     /// <remarks>
     /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
     /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
-    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
+    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix. A fixture that
+    /// returns its own <see cref="IFlatDbConfig"/> from <see cref="CreateConfigs"/> pins the backend that way
+    /// instead, and this property is not applied over it.
     /// </remarks>
-    public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_TRIE") != "1";
+    public bool UseFlatDb { get; set; } = TestStateBackend.UseFlatDb;
 
     protected virtual ChainSpec CreateChainSpec() => new();
 
