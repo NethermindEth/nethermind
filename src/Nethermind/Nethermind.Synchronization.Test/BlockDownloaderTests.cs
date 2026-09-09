@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Network;
@@ -51,8 +52,10 @@ using IContainer = Autofac.IContainer;
 
 namespace Nethermind.Synchronization.Test;
 
+[TestFixture(false)]
+[TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public partial class BlockDownloaderTests
+public partial class BlockDownloaderTests(bool useFlatDb)
 {
     private const int FullBatch = 24;
     private const ulong SyncBatchSizeMax = 128;
@@ -898,6 +901,7 @@ public partial class BlockDownloaderTests
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = useFlatDb;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         ContainerBuilder b = new ContainerBuilder()
