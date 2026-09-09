@@ -20,6 +20,8 @@ namespace Nethermind.Core.ZkEvm.Test.Crypto;
 /// digest serves just as well: what the memo owes its caller is the digest stored for <em>that</em>
 /// input, whatever the digest happens to be.
 /// </remarks>
+// Every case writes the process-wide memo, and one fills every slot, hence NonParallelizable.
+[NonParallelizable]
 public class KeccakMemoTests
 {
     private const int MinLength = (int)KeccakCache.MinMemoLength;
