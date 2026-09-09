@@ -309,16 +309,7 @@ public class DebugRpcModule(
 
         // Not disposing blockTrace itself: disposing the collection would also dispose the trace
         // we are about to return.
-        GethLikeTxTrace? transactionTrace = null;
-        if (blockTrace is not null)
-        {
-            int index = 0;
-            foreach (GethLikeTxTrace trace in blockTrace)
-            {
-                if (index++ == txIndex) transactionTrace = trace;
-                else trace.Dispose();
-            }
-        }
+        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
 
         if (transactionTrace is null)
         {
@@ -326,6 +317,49 @@ public class DebugRpcModule(
         }
 
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+
+    // A throwing Dispose() on one discarded trace must not stop the rest from being drained, or a single
+    // bad trace leaks the whole collection. If any dispose failed, the selected trace is disposed here too
+    // (the caller returns it, not us) and the failure is surfaced rather than swallowed.
+    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    {
+        GethLikeTxTrace? selected = null;
+        Exception? disposeException = null;
+        int index = 0;
+        foreach (GethLikeTxTrace trace in blockTrace)
+        {
+            if (index++ == txIndex)
+            {
+                selected = trace;
+                continue;
+            }
+
+            try
+            {
+                trace.Dispose();
+            }
+            catch (Exception ex)
+            {
+                disposeException = disposeException is null ? ex : new AggregateException(disposeException, ex);
+            }
+        }
+
+        if (disposeException is null)
+        {
+            return selected;
+        }
+
+        try
+        {
+            selected?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            disposeException = new AggregateException(disposeException, ex);
+        }
+
+        throw disposeException;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
