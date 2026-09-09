@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -81,18 +80,18 @@ public static partial class EvmInstructions
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
-            System.UInt128 sum = (System.UInt128)BinaryPrimitives.ReverseEndianness(Add(ref top, 3)) +
-                BinaryPrimitives.ReverseEndianness(Add(ref popped, 3));
-            Add(ref top, 3) = BinaryPrimitives.ReverseEndianness((ulong)sum);
-            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 2)) +
-                BinaryPrimitives.ReverseEndianness(Add(ref popped, 2));
-            Add(ref top, 2) = BinaryPrimitives.ReverseEndianness((ulong)sum);
-            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(Add(ref top, 1)) +
-                BinaryPrimitives.ReverseEndianness(Add(ref popped, 1));
-            Add(ref top, 1) = BinaryPrimitives.ReverseEndianness((ulong)sum);
-            sum = (sum >> 64) + BinaryPrimitives.ReverseEndianness(top) +
-                BinaryPrimitives.ReverseEndianness(popped);
-            top = BinaryPrimitives.ReverseEndianness((ulong)sum);
+            System.UInt128 sum = (System.UInt128)ByteSwap.Reverse(Add(ref top, 3)) +
+                ByteSwap.Reverse(Add(ref popped, 3));
+            Add(ref top, 3) = ByteSwap.Reverse((ulong)sum);
+            sum = (sum >> 64) + ByteSwap.Reverse(Add(ref top, 2)) +
+                ByteSwap.Reverse(Add(ref popped, 2));
+            Add(ref top, 2) = ByteSwap.Reverse((ulong)sum);
+            sum = (sum >> 64) + ByteSwap.Reverse(Add(ref top, 1)) +
+                ByteSwap.Reverse(Add(ref popped, 1));
+            Add(ref top, 1) = ByteSwap.Reverse((ulong)sum);
+            sum = (sum >> 64) + ByteSwap.Reverse(top) +
+                ByteSwap.Reverse(popped);
+            top = ByteSwap.Reverse((ulong)sum);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;
@@ -105,28 +104,28 @@ public static partial class EvmInstructions
 
             ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
             ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
-            ulong minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 3));
-            ulong difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 3));
+            ulong minuendPart = ByteSwap.Reverse(Add(ref minuend, 3));
+            ulong difference = minuendPart - ByteSwap.Reverse(Add(ref subtrahend, 3));
             ulong borrow = difference > minuendPart ? 1UL : 0UL;
-            Add(ref subtrahend, 3) = BinaryPrimitives.ReverseEndianness(difference);
+            Add(ref subtrahend, 3) = ByteSwap.Reverse(difference);
 
-            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 2));
-            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 2));
+            minuendPart = ByteSwap.Reverse(Add(ref minuend, 2));
+            difference = minuendPart - ByteSwap.Reverse(Add(ref subtrahend, 2));
             ulong withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 2) = BinaryPrimitives.ReverseEndianness(difference);
+            Add(ref subtrahend, 2) = ByteSwap.Reverse(difference);
 
-            minuendPart = BinaryPrimitives.ReverseEndianness(Add(ref minuend, 1));
-            difference = minuendPart - BinaryPrimitives.ReverseEndianness(Add(ref subtrahend, 1));
+            minuendPart = ByteSwap.Reverse(Add(ref minuend, 1));
+            difference = minuendPart - ByteSwap.Reverse(Add(ref subtrahend, 1));
             withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 1) = BinaryPrimitives.ReverseEndianness(difference);
+            Add(ref subtrahend, 1) = ByteSwap.Reverse(difference);
 
-            difference = BinaryPrimitives.ReverseEndianness(minuend) -
-                BinaryPrimitives.ReverseEndianness(subtrahend) - borrow;
-            subtrahend = BinaryPrimitives.ReverseEndianness(difference);
+            difference = ByteSwap.Reverse(minuend) -
+                ByteSwap.Reverse(subtrahend) - borrow;
+            subtrahend = ByteSwap.Reverse(difference);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
             return EvmExceptionType.None;
@@ -180,8 +179,8 @@ public static partial class EvmInstructions
         // Only the most significant limb carries the sign; the rest always compare unsigned.
         if (a != b)
         {
-            ulong aHigh = BinaryPrimitives.ReverseEndianness(a);
-            ulong bHigh = BinaryPrimitives.ReverseEndianness(b);
+            ulong aHigh = ByteSwap.Reverse(a);
+            ulong bHigh = ByteSwap.Reverse(b);
             bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
             return lessThan ? less : !less;
         }
@@ -196,8 +195,8 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CompareLimb(ulong a, ulong b, bool lessThan)
     {
-        ulong aPart = BinaryPrimitives.ReverseEndianness(a);
-        ulong bPart = BinaryPrimitives.ReverseEndianness(b);
+        ulong aPart = ByteSwap.Reverse(a);
+        ulong bPart = ByteSwap.Reverse(b);
         return lessThan ? aPart < bPart : aPart > bPart;
     }
 

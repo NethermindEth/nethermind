@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
@@ -132,7 +131,7 @@ public static partial class EvmInstructions
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong amount = ByteSwap.Reverse(Add(ref shift, 3));
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
             value = 0;
@@ -151,14 +150,14 @@ public static partial class EvmInstructions
                 {
                     int source = destination + wordShift;
                     ulong shifted = source < 4
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) << bitShift
+                        ? ByteSwap.Reverse(Add(ref value, source)) << bitShift
                         : 0;
                     if (bitShift != 0 && source + 1 < 4)
                     {
-                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source + 1)) >> (64 - bitShift);
+                        shifted |= ByteSwap.Reverse(Add(ref value, source + 1)) >> (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                    Add(ref value, destination) = ByteSwap.Reverse(shifted);
                 }
             }
             else
@@ -168,14 +167,14 @@ public static partial class EvmInstructions
                     int destination = 3 - offset;
                     int source = destination - wordShift;
                     ulong shifted = source >= 0
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                        ? ByteSwap.Reverse(Add(ref value, source)) >> bitShift
                         : 0;
                     if (bitShift != 0 && source > 0)
                     {
-                        shifted |= BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1)) << (64 - bitShift);
+                        shifted |= ByteSwap.Reverse(Add(ref value, source - 1)) << (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                    Add(ref value, destination) = ByteSwap.Reverse(shifted);
                 }
             }
         }
@@ -258,7 +257,7 @@ public static partial class EvmInstructions
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = BinaryPrimitives.ReverseEndianness(Add(ref shift, 3));
+        ulong amount = ByteSwap.Reverse(Add(ref shift, 3));
         ulong fill = As<byte, sbyte>(ref topRef) < 0 ? ulong.MaxValue : 0;
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
@@ -276,17 +275,17 @@ public static partial class EvmInstructions
                 int destination = 3 - offset;
                 int source = destination - wordShift;
                 ulong shifted = source >= 0
-                    ? BinaryPrimitives.ReverseEndianness(Add(ref value, source)) >> bitShift
+                    ? ByteSwap.Reverse(Add(ref value, source)) >> bitShift
                     : fill;
                 if (bitShift != 0)
                 {
                     ulong upper = source > 0
-                        ? BinaryPrimitives.ReverseEndianness(Add(ref value, source - 1))
+                        ? ByteSwap.Reverse(Add(ref value, source - 1))
                         : fill;
                     shifted |= upper << (64 - bitShift);
                 }
 
-                Add(ref value, destination) = BinaryPrimitives.ReverseEndianness(shifted);
+                Add(ref value, destination) = ByteSwap.Reverse(shifted);
             }
         }
 
