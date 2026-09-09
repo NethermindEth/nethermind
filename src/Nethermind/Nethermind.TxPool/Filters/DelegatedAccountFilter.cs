@@ -1,5 +1,6 @@
 using Nethermind.Core;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters
@@ -22,7 +23,9 @@ namespace Nethermind.TxPool.Filters
                 && !pendingDelegations.HasPending(tx.SenderAddress!))
                 return AcceptTxResult.Accepted;
             //If the account is delegated or has pending delegation we only accept the next transaction nonce
-            if (state.SenderAccount.Nonce != tx.Nonce)
+            // An EIP-8250 keyed sequence is not the account nonce; KeyedNonceFilter pins it to its own domain's
+            // current value, which is the same immediately-executable property this gate holds for.
+            if (!KeyedNonceManager.UsesKeyedNonce(tx) && state.SenderAccount.Nonce != tx.Nonce)
             {
                 return AcceptTxResult.NotCurrentNonceForDelegation;
             }

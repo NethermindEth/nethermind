@@ -953,7 +953,7 @@ namespace Nethermind.TxPool
         private bool RemoveIncludedTransaction(Transaction tx)
         {
             bool removed = RemoveTransaction(tx.Hash);
-            _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
+            _broadcaster.EnsureStopBroadcastUpToNonce(tx);
             return removed;
         }
 
