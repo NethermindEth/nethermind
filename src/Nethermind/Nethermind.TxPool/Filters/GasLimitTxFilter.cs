@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
@@ -21,12 +20,13 @@ namespace Nethermind.TxPool.Filters
         {
             ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
 
-            IReleaseSpec spec = chainHeadInfoProvider.SpecProvider.GetCurrentHeadSpec();
             bool exceedsLimit;
             ulong rejectedBudget;
             if (tx.SupportsFrames)
             {
-                bool calculated = FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation);
+                // The spec pinned for the submission, not the head's: a head that moves mid-pipeline would
+                // otherwise price this transaction under rules no other filter, nor AddCore, judged it by.
+                bool calculated = FrameTxValidation.TryCalculateBlockGasReservations(tx, state.HeadSpec, out ulong executionReservation, out ulong stateReservation);
                 rejectedBudget = calculated ? Math.Max(executionReservation, stateReservation) : ulong.MaxValue;
                 exceedsLimit = !calculated || executionReservation > gasLimit || stateReservation > gasLimit;
             }

@@ -427,6 +427,98 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
+    /// <summary>Where the SENDER frame whose value is bounded sits, relative to the validation prefix.</summary>
+    public enum SenderFramePosition
+    {
+        /// <summary>[self_verify, user_op]: the basic self-relay layout.</summary>
+        BehindTheApprovingFrame,
+
+        /// <summary>[deploy, self_verify, user_op]: the deploy-new-account layout, EIP-8141's other self-relay prefix.</summary>
+        BehindThePrologueDeployFrame,
+
+        /// <summary>[expiry_verify, deploy, self_verify, user_op]: the same, behind the optional expiry frame.</summary>
+        BehindTheExpiryAndDeployFrames,
+
+        /// <summary>[self_verify, DEFAULT, user_op]: a DEFAULT frame past the prefix runs arbitrary code.</summary>
+        BehindAPostPrefixDefaultFrame,
+    }
+
+    // TXPARAM(0x06) prices gas alone, so the wei a SENDER frame moves sits outside it. One in the leading prologue
+    // needs the balance to already hold it; one behind a DEFAULT frame the prefix does not cover may be funded by
+    // what that frame does. Payer-less and self-paid alike: neither leg reserves the sender's value anywhere else.
+    [TestCase(0, false, SenderFramePosition.BehindTheApprovingFrame, false, TestName = "the sender covers the fee and the leading frame's value")]
+    [TestCase(-1, true, SenderFramePosition.BehindTheApprovingFrame, false, TestName = "the sender falls one wei short of the leading frame's value")]
+    [TestCase(0, false, SenderFramePosition.BehindTheApprovingFrame, true, TestName = "a payer-less sender covers the fee and the leading frame's value")]
+    [TestCase(-1, true, SenderFramePosition.BehindTheApprovingFrame, true, TestName = "a payer-less sender falls one wei short of the leading frame's value")]
+    [TestCase(-1, true, SenderFramePosition.BehindThePrologueDeployFrame, false, TestName = "a deploy frame opening the prefix moves no wei, so the value is still summed")]
+    [TestCase(-1, true, SenderFramePosition.BehindTheExpiryAndDeployFrames, false, TestName = "an expiry frame ahead of that deploy frame does not lift the bound either")]
+    [TestCase(-1, true, SenderFramePosition.BehindThePrologueDeployFrame, true, TestName = "a payer-less deploy-and-use layout is bounded too")]
+    [TestCase(-1, false, SenderFramePosition.BehindAPostPrefixDefaultFrame, false, TestName = "a SENDER frame a post-prefix DEFAULT frame could fund is not summed")]
+    public void Accept_SelfPayingSender_CountsTheValueOfALeadingSenderFrame(int balanceDelta, bool rejected, SenderFramePosition position, bool payerless)
+    {
+        const int frameValue = 4_000;
+        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        Transaction tx = FrameTxTestFrames.FrameTx(FramesFor(position, senderFrame));
+        tx.DecodedMaxFeePerGas = UInt256.One;
+        tx.Hash = TestItem.KeccakA;
+        tx.PayerAddress = payerless ? null : TestItem.AddressA;
+
+        // Priced off the fixture rather than a literal, so this pins the bound and not the gas schedule.
+        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, maxCost + (UInt256)(frameValue + balanceDelta));
+
+        PayerExposureCache cache = new();
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), cache, tx, senderAccounts);
+
+        UInt256 expectedPriced = position == SenderFramePosition.BehindAPostPrefixDefaultFrame ? maxCost : maxCost + (UInt256)frameValue;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+            // The payer-less leg records the price without reserving it; that record is what the bucket walk sums.
+            Assert.That(tx.PayerExposure, rejected ? Is.Null : Is.EqualTo(expectedPriced),
+                "an admitted leading SENDER frame is priced with its value alongside the fee");
+            Assert.That(cache.GetReserved(TestItem.AddressA), Is.EqualTo(rejected || payerless ? UInt256.Zero : expectedPriced));
+        }
+    }
+
+    private static TxFrame[] FramesFor(SenderFramePosition position, TxFrame senderFrame) => position switch
+    {
+        SenderFramePosition.BehindThePrologueDeployFrame => [FrameTxTestFrames.Deploy(), FrameTxTestFrames.SelfVerify(), senderFrame],
+        SenderFramePosition.BehindTheExpiryAndDeployFrames => [FrameTxTestFrames.Expiry(), FrameTxTestFrames.Deploy(), FrameTxTestFrames.SelfVerify(), senderFrame],
+        SenderFramePosition.BehindAPostPrefixDefaultFrame => [FrameTxTestFrames.SelfVerify(), FrameTxTestFrames.Deploy(), senderFrame],
+        _ => [FrameTxTestFrames.SelfVerify(), senderFrame],
+    };
+
+    // The sponsor's reservation prices gas alone, so folding the sender's value into it would gate the wrong
+    // account: the same frame must meet the same balance requirement whoever pays the fee.
+    [TestCase(0, false, TestName = "a sponsored sender holds the leading frame's value")]
+    [TestCase(-1, true, TestName = "a sponsored sender falls one wei short of it")]
+    public void Accept_SponsoredFrameTx_HoldsTheSenderToItsOwnLeadingFrameValue(int balanceDelta, bool rejected)
+    {
+        const int frameValue = 4_000;
+        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.OnlyVerify(), FrameTxTestFrames.Pay(Payer), senderFrame);
+        tx.DecodedMaxFeePerGas = UInt256.One;
+        tx.Hash = TestItem.KeccakA;
+        tx.PayerAddress = Payer;
+
+        // The sponsor is funded well past the fee, so only the sender's own balance can decide this.
+        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)(frameValue + balanceDelta));
+
+        PayerExposureCache cache = new();
+        AcceptTxResult result = Accept(StateWithPayerBalance(long.MaxValue), cache, tx, senderAccounts);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo(rejected ? UInt256.Zero : maxCost),
+                "the sponsor still reserves the fee alone, the sender's value never being its liability");
+        }
+    }
+
     // Result equality is by id, so nothing else here would notice the split; a remote submitter never reads the
     // detail, and composing it on the path an unfunded flood walks is what the sibling filters guard against.
     [TestCase(false, TxHandlingOptions.None, false, TestName = "a remote self-paid rejection is message-free")]
@@ -666,14 +758,12 @@ public class FrameTxPayerExposureFilterTests
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null, TxDistinctSortedPool? pending = null,
         TxHandlingOptions handlingOptions = TxHandlingOptions.None)
     {
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Spec);
-
         // The displaced tx sits in whichever pool matches its shape, so both are wired as TxPool does.
         (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
             ? (Pool(blobs: false), pending ?? Pool(blobs: true))
             : (pending ?? Pool(blobs: false), Pool(blobs: true));
-        FrameTxPayerExposureFilter filter = new(specProvider, state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
+        // The filter takes no spec provider, so the spec below is the only one it can price against.
+        FrameTxPayerExposureFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
         TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>(), Spec);
         return filter.Accept(tx, ref filteringState, handlingOptions);
     }
