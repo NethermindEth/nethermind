@@ -12,6 +12,9 @@ public static class ReceiptRlpBuilder
     // Arbitrary - no test reads it back, it only has to be a well-formed cumulative gas item.
     private const ulong GasUsedTotal = 21000;
 
+    /// <summary>A log count comfortably under <see cref="RlpLimit.ReceiptLogs"/>, but far more logs than the bytes declaring them could hold.</summary>
+    public const int UnbackedLogCount = 1_000;
+
     /// <summary>The smallest log the decoders accept: an address, no topics and no data.</summary>
     public static LogEntry MinimalLog() => new(Address.Zero, [], []);
 

@@ -21,9 +21,6 @@ public class ReceiptsMessageSerializerTests
     // The log count the decoder was pinned to before the limit was derived from the block gas ceiling.
     private const int FormerFixedLogsLimit = 270_000;
 
-    // Comfortably under RlpLimit.ReceiptLogs, but more logs than the bytes declaring them could hold.
-    private const int UnbackedLogCount = 1_000;
-
     private static void Test(TxReceipt[][]? txReceipts)
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
@@ -215,7 +212,7 @@ public class ReceiptsMessageSerializerTests
     public void Deserialize_Throws_On_A_Receipt_Log_Count_The_Message_Cannot_Hold()
     {
         // Hand-built rather than round-tripped: the point is a count no encoder would produce.
-        byte[] serialized = WrapInSequence(WrapInSequence(ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount))));
+        byte[] serialized = WrapInSequence(WrapInSequence(ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount))));
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));

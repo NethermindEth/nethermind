@@ -12,9 +12,6 @@ public class ReceiptMessageDecoderTests
     // 1,000,000,000 / GasCostOf.Log (375) + 1 == 2,666,667 entries.
     private const int LogCountLimit = 2_666_667;
 
-    // Comfortably under LogCountLimit, but far more logs than the bytes declaring them could hold.
-    private const int UnbackedLogCount = 1_000;
-
     [Test]
     public void TestGlobalReceiptEncoderMustBeReceiptMessageDecoder()
     {
@@ -33,7 +30,7 @@ public class ReceiptMessageDecoderTests
     [Test]
     public void Decode_rejects_a_log_count_the_message_cannot_hold()
     {
-        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount));
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount));
 
         Assert.Throws<RlpLimitException>(() => DecodeReceipt(encoded));
     }
@@ -41,9 +38,9 @@ public class ReceiptMessageDecoderTests
     [Test]
     public void Decode_accepts_a_log_list_of_smallest_possible_entries()
     {
-        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
 
-        Assert.That(DecodeReceipt(encoded).Logs, Has.Length.EqualTo(UnbackedLogCount));
+        Assert.That(DecodeReceipt(encoded).Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
     private static TxReceipt DecodeReceipt(byte[] bytes)

@@ -13,9 +13,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 [TestFixture]
 public class ReceiptMessageDecoder69Tests
 {
-    // Comfortably under RlpLimit.ReceiptLogs, but more logs than the bytes declaring them could hold.
-    private const int UnbackedLogCount = 1_000;
-
     // 23 bytes of data encodes to 47 bytes, so a null placeholder beside it still clears the
     // log-count guard's floor of 24 bytes per entry.
     private static readonly LogEntry PaddingLog = new(Address.Zero, new byte[23], []);
@@ -60,7 +57,7 @@ public class ReceiptMessageDecoder69Tests
     [Test]
     public void Decode_rejects_a_log_count_the_message_cannot_hold()
     {
-        byte[] encoded = EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount));
+        byte[] encoded = EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount));
 
         Assert.That(() => Decode(encoded), Throws.TypeOf<RlpLimitException>());
     }
@@ -68,9 +65,9 @@ public class ReceiptMessageDecoder69Tests
     [Test]
     public void Decode_accepts_a_log_list_of_smallest_possible_entries()
     {
-        byte[] encoded = EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+        byte[] encoded = EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
 
-        Assert.That(Decode(encoded)!.Logs, Has.Length.EqualTo(UnbackedLogCount));
+        Assert.That(Decode(encoded)!.Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
     [Test]

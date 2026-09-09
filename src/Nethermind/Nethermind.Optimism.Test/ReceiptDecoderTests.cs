@@ -12,9 +12,6 @@ namespace Nethermind.Optimism.Test;
 
 public class ReceiptDecoderTests
 {
-    // Comfortably under RlpLimit.ReceiptLogs, but more logs than the bytes declaring them could hold.
-    private const int UnbackedLogCount = 1_000;
-
     [Test]
     public void Null_receipt_roundtrips()
     {
@@ -73,7 +70,7 @@ public class ReceiptDecoderTests
     [Test]
     public void Optimism_receipt_message_decoding_rejects_a_log_count_the_message_cannot_hold()
     {
-        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount));
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount));
 
         Assert.That(() => DecodeMessageReceipt(encoded), Throws.TypeOf<RlpLimitException>());
     }
@@ -81,9 +78,9 @@ public class ReceiptDecoderTests
     [Test]
     public void Optimism_receipt_message_decoding_accepts_a_log_list_of_smallest_possible_entries()
     {
-        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
 
-        Assert.That(DecodeMessageReceipt(encoded)!.Logs, Has.Length.EqualTo(UnbackedLogCount));
+        Assert.That(DecodeMessageReceipt(encoded)!.Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
     [Test]
@@ -232,7 +229,6 @@ public class ReceiptDecoderTests
         Assert.That(position, Is.EqualTo(receiptRlp.Length), "setup: receipt RLP length");
         return receiptRlp;
     }
-
 
     public static IEnumerable DepositTxReceiptsSerializationTestCases
     {
