@@ -77,6 +77,7 @@ public class GCKeeper : IDisposable
             _payloadActive = true;
             if (_startPending)
             {
+                Metrics.NoGCRegionStartsDeferred++;
                 return new NoGCRegion(this, FailCause.StartDeferred, size, pausedGCScheduler, _logger);
             }
 
@@ -87,6 +88,7 @@ public class GCKeeper : IDisposable
         EnsureRegionStarter();
         _startRequested.Release();
         FailCause failCause = _startCompleted.Wait(RegionStartWaitBound) ? _startResult : FailCause.StartDeferred;
+        if (failCause == FailCause.StartDeferred) Metrics.NoGCRegionStartsDeferred++;
         return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
     }
 

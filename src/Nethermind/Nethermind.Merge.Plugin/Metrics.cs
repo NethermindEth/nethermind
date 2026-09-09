@@ -18,6 +18,10 @@ namespace Nethermind.Merge.Plugin
         public static long ForkchoiceUpdatedExecutionTime { get; set; }
 
         [CounterMetric]
+        [Description("Number of NewPayload requests processed without a no-GC region because one could not be started promptly (a background collection was in flight)")]
+        public static long NoGCRegionStartsDeferred { get; set; }
+
+        [CounterMetric]
         [Description("Number of GetPayload Requests")]
         public static long GetPayloadRequests { get; set; }
 
