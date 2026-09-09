@@ -5345,6 +5345,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
 
             // The account nonce advances independently of the key, whose sequence stays at 0 and sorts first.
             _stateProvider.IncrementNonce(TestItem.AddressA);
@@ -5358,8 +5359,16 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
+            // Control: the set [0] aliases the account nonce, so this blob-carrying frame tx does spend it and must
+            // cascade like any other type-3 entry — the exemption is the keyed domain, not the frame format.
+            Transaction accountDomainFrame = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true,
+                nonceKeys: [UInt256.Zero], sender: TestItem.PrivateKeyC);
+            Assert.That(_txPool.SubmitTx(accountDomainFrame, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyC, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
             _stateProvider.Set(KeyedNonceManager.StorageSlot(TestItem.AddressA, nonceKey), [1]);
             _stateProvider.IncrementNonce(TestItem.AddressB);
+            _stateProvider.IncrementNonce(TestItem.AddressC);
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
@@ -5371,6 +5380,36 @@ namespace Nethermind.TxPool.Test
                     "a keyed eviction must not take the sender's unrelated blob transactions with it");
                 Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressB), Is.Empty,
                     "an ordinary sender's stale lowest entry must still cascade");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressC), Is.Empty,
+                    "a stale account-domain frame transaction must still cascade");
+            }
+        }
+
+        /// <remarks>GapNonceFilter sizes a sender's nonce window by its pending count, and a keyed frame transaction
+        /// shares the sender's bucket while spending no account nonce — counting it would admit a gap nothing fills.</remarks>
+        [TestCase(true, TestName = "a keyed frame transaction shares the sender's bucket")]
+        [TestCase(false, TestName = "the sender's bucket is empty")]
+        public void Keyed_blob_carrying_frame_tx_does_not_widen_the_senders_nonce_gap_window(bool submitKeyed)
+        {
+            const ulong nonceKey = 0xbeef;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            if (submitKeyed)
+            {
+                Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [nonceKey]);
+                Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 1), TxHandlingOptions.PersistentBroadcast),
+                    Is.EqualTo(AcceptTxResult.NonceGap),
+                    "nothing sits at the account nonce, so nonce 1 is a gap however the bucket is filled");
+                Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 0), TxHandlingOptions.PersistentBroadcast),
+                    Is.EqualTo(AcceptTxResult.Accepted),
+                    "the account's own nonce must still be admitted");
             }
         }
 

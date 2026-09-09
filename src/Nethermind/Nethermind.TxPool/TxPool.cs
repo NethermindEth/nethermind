@@ -2427,6 +2427,13 @@ namespace Nethermind.TxPool
             }
 
             TxDistinctSortedPool relevantPool = (hasPendingTxs ? _transactions : _blobTransactions);
+            // A gap-free bucket holding no keyed entry is settled by its highest nonce, so the common sender skips
+            // the walk that would otherwise run under the pool-wide lock on every poll.
+            if (relevantPool.TryGetContiguousPendingNonce(address, maxPendingNonce, out ulong contiguousNonce))
+            {
+                return contiguousNonce;
+            }
+
             // we are not doing any updating, but lets just use a thread-safe method without any data copying like snapshot
             relevantPool.UpdateGroup(address, (_, transactions) =>
             {
