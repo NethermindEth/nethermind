@@ -32,7 +32,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public LruCache<ValueHash256, byte[]> WithItems()
         {
-            LruCache<ValueHash256, byte[]> cache = new LruCache<ValueHash256, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
+            LruCache<ValueHash256, byte[]> cache = new(MaxCapacity, MaxCapacity, String.Empty);
             Fill(cache);
 
             return cache;

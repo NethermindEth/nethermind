@@ -19,11 +19,11 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 [JsonConverter(typeof(ParityVmOperationTraceConverter))]
 public class ParityVmOperationTrace
 {
-    public long Cost { get; set; }
+    public ulong Cost { get; set; }
     public ParityMemoryChangeTrace Memory { get; set; }
     public byte[][] Push { get; set; }
     public ParityStorageChangeTrace Store { get; set; }
-    public long Used { get; set; }
+    public ulong Used { get; set; }
     public int Pc { get; set; }
     public ParityVmTrace Sub { get; set; }
 }

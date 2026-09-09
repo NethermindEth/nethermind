@@ -27,6 +27,34 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// <summary>The preceding fork in the chain, or <c>null</c> for the root (Olympic).</summary>
     public NamedReleaseSpec? Parent { get; }
 
+    /// <summary>
+    /// Whether this fork is at or after the PoW → PoS merge. Set inside <see cref="Apply"/> on the
+    /// merge-boundary forks (<see cref="Paris"/> on mainnet, <see cref="GnosisForks.ShanghaiGnosis"/>
+    /// on Gnosis since it skipped a Paris-equivalent); descendants inherit because each ancestor's
+    /// <see cref="Apply"/> is replayed onto them in <see cref="ReplayAncestors"/>.
+    /// </summary>
+    public bool IsPostMerge { get; set; }
+
+    /// <summary>
+    /// Engine API method versions surfaced by this fork. <c>null</c> on forks that don't expose the
+    /// corresponding endpoint (e.g. pre-merge forks have no <c>engine_*</c> at all; Paris has no
+    /// <c>getPayloadBodies*</c>). Set inside <see cref="Apply"/> only when this fork *changes* the
+    /// value — values flow forward through the <see cref="ReplayAncestors"/> chain.
+    /// </summary>
+    public int? EngineApiNewPayloadVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiGetPayloadVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiForkchoiceVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiPayloadBodiesByHashVersion { get; set; }
+
+    /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
+    public int? EngineApiPayloadBodiesByRangeVersion { get; set; }
+
     protected NamedReleaseSpec(NamedReleaseSpec? parent)
     {
         Parent = parent;
@@ -50,7 +78,7 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// Each concrete fork overrides this to configure the EIPs and parameters it introduces.
     /// Gnosis forks should call <c>base.Apply(spec)</c> first to include the mainnet delta.
     /// </summary>
-    public abstract void Apply(ReleaseSpec spec);
+    public abstract void Apply(NamedReleaseSpec spec);
 }
 
 /// <summary>
@@ -61,4 +89,19 @@ public abstract class NamedReleaseSpec<TSelf>(NamedReleaseSpec? parent) : NamedR
     where TSelf : NamedReleaseSpec<TSelf>, new()
 {
     public static NamedReleaseSpec Instance { get; } = new TSelf();
+}
+
+public static class NamedReleaseSpecExtensions
+{
+    /// <summary>
+    /// True iff this fork changes at least one engine-API method version vs. its
+    /// <see cref="NamedReleaseSpec.Parent"/>. Used to filter forks that only tweak per-fork
+    /// constants (blob-parameter overrides etc.) and reuse the parent's engine-API surface.
+    /// </summary>
+    public static bool IntroducesEngineApiChange(this NamedReleaseSpec spec) =>
+        spec.EngineApiNewPayloadVersion != spec.Parent?.EngineApiNewPayloadVersion
+        || spec.EngineApiGetPayloadVersion != spec.Parent?.EngineApiGetPayloadVersion
+        || spec.EngineApiForkchoiceVersion != spec.Parent?.EngineApiForkchoiceVersion
+        || spec.EngineApiPayloadBodiesByHashVersion != spec.Parent?.EngineApiPayloadBodiesByHashVersion
+        || spec.EngineApiPayloadBodiesByRangeVersion != spec.Parent?.EngineApiPayloadBodiesByRangeVersion;
 }

@@ -9,26 +9,21 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AuthEip8MessageSerializer : IZeroMessageSerializer<AuthEip8Message>
+    public class AuthEip8MessageSerializer(IMessagePad messagePad) : IZeroMessageSerializer<AuthEip8Message>
     {
-        private readonly IMessagePad _messagePad;
-
-        public AuthEip8MessageSerializer(IMessagePad messagePad)
-        {
-            _messagePad = messagePad;
-        }
+        private readonly IMessagePad _messagePad = messagePad;
 
         public void Serialize(IByteBuffer byteBuffer, AuthEip8Message msg)
         {
             int totalLength = GetLength(msg);
             // TODO: Account for the padding
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(totalLength);
-            stream.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
-            stream.Encode(msg.PublicKey.Bytes);
-            stream.Encode(msg.Nonce);
-            stream.Encode(msg.Version);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(totalLength);
+            writer.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
+            writer.Encode(msg.PublicKey.Bytes);
+            writer.Encode(msg.Nonce);
+            writer.Encode(msg.Version);
             _messagePad?.Pad(byteBuffer);
         }
 
@@ -44,7 +39,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         public AuthEip8Message Deserialize(IByteBuffer msgBytes) =>
             msgBytes.DeserializeRlp(Deserialize);
 
-        private static AuthEip8Message Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static AuthEip8Message Deserialize(ref RlpReader ctx)
         {
             AuthEip8Message authMessage = new();
             ctx.ReadSequenceLength();

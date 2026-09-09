@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Stats.Model;
@@ -39,10 +38,10 @@ namespace Nethermind.Network.Test.P2P
         [TestCase("82c104", EthDisconnectReason.TooManyPeers)]
         public void Can_read_other_format_message(string hex, EthDisconnectReason expectedReason)
         {
-            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            DisconnectMessageSerializer serializer = new();
             byte[] serialized = Bytes.FromHexString(hex);
             using DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            deserialized.Reason.Should().Be((int)expectedReason);
+            Assert.That(deserialized.Reason, Is.EqualTo((int)expectedReason));
         }
     }
 }

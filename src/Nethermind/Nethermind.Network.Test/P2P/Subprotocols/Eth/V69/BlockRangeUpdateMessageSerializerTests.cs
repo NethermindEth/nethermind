@@ -3,7 +3,9 @@
 
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
@@ -37,12 +39,20 @@ public class BlockRangeUpdateMessageSerializerTests
     [TestCaseSource(nameof(_testData))]
     public void Roundtrip(BlockRangeUpdateMessage message, string expected)
     {
-        var serializer = new BlockRangeUpdateMessageSerializer();
+        BlockRangeUpdateMessageSerializer serializer = new();
 
         SerializerTester.TestZero(
             serializer,
             message,
             expected
         );
+    }
+
+    [Test]
+    public void Rejects_empty_latest_block_hash()
+    {
+        BlockRangeUpdateMessageSerializer serializer = new();
+
+        Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c3808080")), Throws.InstanceOf<RlpException>());
     }
 }

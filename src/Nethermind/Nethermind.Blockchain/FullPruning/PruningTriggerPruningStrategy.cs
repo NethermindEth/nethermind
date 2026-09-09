@@ -24,15 +24,9 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
         _fullPruningDb.PruningStarted += OnPruningStarted;
     }
 
-    private void OnPruningStarted(object? sender, EventArgs e)
-    {
-        Interlocked.CompareExchange(ref _inPruning, 1, 0);
-    }
+    private void OnPruningStarted(object? sender, EventArgs e) => Interlocked.CompareExchange(ref _inPruning, 1, 0);
 
-    private void OnPruningFinished(object? sender, EventArgs e)
-    {
-        Interlocked.CompareExchange(ref _inPruning, 0, 1);
-    }
+    private void OnPruningFinished(object? sender, EventArgs e) => Interlocked.CompareExchange(ref _inPruning, 0, 1);
 
     public bool DeleteObsoleteKeys
     {

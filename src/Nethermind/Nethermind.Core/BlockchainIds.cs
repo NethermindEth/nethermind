@@ -38,28 +38,25 @@ namespace Nethermind.Core
         // A generic network that does not exist and id is not claimed by any other actual network
         public const ulong GenericNonRealNetwork = 9999;
 
-        public static string GetBlockchainName(ulong networkId)
+        public static string GetBlockchainName(ulong networkId) => networkId switch
         {
-            return networkId switch
-            {
-                Olympic => nameof(Olympic),
-                Mainnet => nameof(Mainnet),
-                Morden => nameof(Morden),
-                RootstockMainnet => nameof(RootstockMainnet),
-                RootstockTestnet => nameof(RootstockTestnet),
-                EthereumClassicMainnet => nameof(EthereumClassicMainnet),
-                EthereumClassicTestnet => nameof(EthereumClassicTestnet),
-                DefaultGethPrivateChain => nameof(DefaultGethPrivateChain),
-                Gnosis => nameof(Gnosis),
-                PoaCore => nameof(PoaCore),
-                Chiado => nameof(Chiado),
-                Volta => nameof(Volta),
-                Sepolia => nameof(Sepolia),
-                Holesky => nameof(Holesky),
-                Hoodi => nameof(Hoodi),
-                _ => networkId.ToString()
-            };
-        }
+            Olympic => nameof(Olympic),
+            Mainnet => nameof(Mainnet),
+            Morden => nameof(Morden),
+            RootstockMainnet => nameof(RootstockMainnet),
+            RootstockTestnet => nameof(RootstockTestnet),
+            EthereumClassicMainnet => nameof(EthereumClassicMainnet),
+            EthereumClassicTestnet => nameof(EthereumClassicTestnet),
+            DefaultGethPrivateChain => nameof(DefaultGethPrivateChain),
+            Gnosis => nameof(Gnosis),
+            PoaCore => nameof(PoaCore),
+            Chiado => nameof(Chiado),
+            Volta => nameof(Volta),
+            Sepolia => nameof(Sepolia),
+            Holesky => nameof(Holesky),
+            Hoodi => nameof(Hoodi),
+            _ => networkId.ToString()
+        };
     }
 
     public static class TestBlockchainIds

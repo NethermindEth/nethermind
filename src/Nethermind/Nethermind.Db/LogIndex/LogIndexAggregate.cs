@@ -20,7 +20,7 @@ public struct LogIndexAggregate(int firstBlockNum, int lastBlockNum)
     public int FirstBlockNum { get; } = firstBlockNum;
     public int LastBlockNum { get; } = lastBlockNum;
 
-    public Dictionary<Address, List<int>> Address => _address ??= new();
+    public Dictionary<Address, List<int>> Address => _address ??= [];
 
     public Dictionary<Hash256, List<int>>[] Topic => _topic ??= Enumerable.Range(0, LogIndexStorage.MaxTopics)
         .Select(static _ => new Dictionary<Hash256, List<int>>())

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -20,15 +19,16 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
-    private readonly BlockingVerifyTrie? _blockingVerifyTrie;
-    private readonly ILastNStateRootTracker _lastNStateRootTracker;
+    private readonly BlockingVerifyTrie _blockingVerifyTrie;
+    private readonly ILastNStateRootTracker? _lastNStateRootTracker;
 
     public WorldStateManager(
         IWorldStateScopeProvider worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
-        ILastNStateRootTracker lastNStateRootTracker = null
+        StateBoundaryStore boundaryStore,
+        ILastNStateRootTracker? lastNStateRootTracker = null
     )
     {
         _dbProvider = dbProvider;
@@ -36,45 +36,35 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
+        // Never unsubscribed: the subscription must outlive the trie store's final
+        // PersistOnShutdown ReorgBoundaryReached event, and both share the container lifetime.
+        _trieStore.ReorgBoundaryReached += (_, e) => boundaryStore.BestPersistedState = e.BlockNumber;
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
-        _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
+        _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
+        SnapStateServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapStateServer(_readOnlyTrieStore, _logManager, _lastNStateRootTracker);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-    {
-        add => _trieStore.ReorgBoundaryReached += value;
-        remove => _trieStore.ReorgBoundaryReached -= value;
-    }
-
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
+    public ISnapStateServer SnapStateServer { get; }
 
-    public IWorldStateScopeProvider CreateResettableWorldState()
-    {
-        return new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
-    }
+    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
 
-    public IOverridableWorldScope CreateOverridableWorldScope()
-    {
-        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
-    }
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
 
-    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
-    {
-        return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
-    }
+    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
 
-    public void FlushCache(CancellationToken cancellationToken)
-    {
-        _trieStore.PersistCache(cancellationToken);
-    }
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie.VerifyTrie(stateAtBlock, cancellationToken);
+
+    public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
 }

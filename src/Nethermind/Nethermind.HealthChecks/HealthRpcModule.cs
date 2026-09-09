@@ -15,14 +15,9 @@ namespace Nethermind.HealthChecks
         public bool IsSyncing { get; set; }
     }
 
-    public class HealthRpcModule : IHealthRpcModule
+    public class HealthRpcModule(INodeHealthService nodeHealthService) : IHealthRpcModule
     {
-        private readonly INodeHealthService _nodeHealthService;
-
-        public HealthRpcModule(INodeHealthService nodeHealthService)
-        {
-            _nodeHealthService = nodeHealthService;
-        }
+        private readonly INodeHealthService _nodeHealthService = nodeHealthService;
 
         public ResultWrapper<NodeStatusResult> health_nodeStatus()
         {

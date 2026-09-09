@@ -10,35 +10,25 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class ReceiptsRecovery : IReceiptsRecovery
+    public class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
     {
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ISpecProvider _specProvider;
-        private readonly bool _reinsertReceiptOnRecover;
-
-        public ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true)
-        {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
-        }
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly bool _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
 
         public ReceiptsRecoveryResult TryRecover(ReceiptRecoveryBlock block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
-            var canRecover = block.TransactionCount == receipts?.Length;
+            bool canRecover = block.TransactionCount == receipts?.Length;
             if (canRecover)
             {
-                var needRecover = NeedRecover(receipts, forceRecoverSender);
+                bool needRecover = NeedRecover(receipts, forceRecoverSender);
                 if (needRecover)
                 {
-                    using var ctx = CreateRecoveryContext(block, forceRecoverSender);
-                    for (int receiptIndex = 0; receiptIndex < block.TransactionCount; receiptIndex++)
+                    using IReceiptsRecovery.IRecoveryContext ctx = CreateRecoveryContext(block, forceRecoverSender);
+                    for (int receiptIndex = 0; receiptIndex < receipts.Length; receiptIndex++)
                     {
-                        if (receipts.Length > receiptIndex)
-                        {
-                            TxReceipt receipt = receipts[receiptIndex];
-                            ctx.RecoverReceiptData(receipt);
-                        }
+                        TxReceipt receipt = receipts[receiptIndex];
+                        ctx.RecoverReceiptData(receipt);
                     }
 
                     if (_reinsertReceiptOnRecover)
@@ -57,36 +47,41 @@ namespace Nethermind.Blockchain.Receipts
 
         public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(ReceiptRecoveryBlock block, bool forceRecoverSender = false)
         {
-            var releaseSpec = _specProvider.GetSpec(block.Header);
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
         }
 
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
         {
-            if (receipts is null || receipts.Length == 0) return false;
+            if (receipts is null || receipts.Length == 0 || (recoverSenderOnly && !forceRecoverSender)) return false;
 
-            if (recoverSenderOnly) return (forceRecoverSender && receipts[0].Sender is null);
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if (recoverSenderOnly)
+                {
+                    if (receipt.Sender is null) return true;
+                }
+                else if (receipt.BlockHash is null ||
+                         receipt.TxHash is null ||
+                         (forceRecoverSender && receipt.Sender is null))
+                {
+                    return true;
+                }
+            }
 
-            return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
+            return false;
         }
 
-        private class RecoveryContext : IReceiptsRecovery.IRecoveryContext
+        private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa) : IReceiptsRecovery.IRecoveryContext
         {
-            private readonly IReleaseSpec _releaseSpec;
-            private ReceiptRecoveryBlock _block;
-            private readonly bool _forceRecoverSender;
-            private readonly IEthereumEcdsa _ecdsa;
+            private readonly IReleaseSpec _releaseSpec = releaseSpec;
+            private ReceiptRecoveryBlock _block = block;
+            private readonly bool _forceRecoverSender = forceRecoverSender;
+            private readonly IEthereumEcdsa _ecdsa = ecdsa;
 
-            private long _gasUsedBefore = 0;
+            private ulong _gasUsedBefore = 0;
             private int _transactionIndex = 0;
-
-            public RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa)
-            {
-                _releaseSpec = releaseSpec;
-                _block = block;
-                _forceRecoverSender = forceRecoverSender;
-                _ecdsa = ecdsa;
-            }
 
             public void RecoverReceiptData(TxReceipt receipt)
             {
@@ -152,16 +147,13 @@ namespace Nethermind.Blockchain.Receipts
                 IncrementContext(receipt.GasUsedTotal);
             }
 
-            private void IncrementContext(long gasUsedTotal)
+            private void IncrementContext(ulong gasUsedTotal)
             {
                 _transactionIndex++;
                 _gasUsedBefore = gasUsedTotal;
             }
 
-            public void Dispose()
-            {
-                _block.Dispose();
-            }
+            public void Dispose() => _block.Dispose();
         }
     }
 }

@@ -6,5 +6,5 @@ namespace Nethermind.Trie.Pruning;
 public record TrieStoreState(
     long PersistedCacheMemory,
     long DirtyCacheMemory,
-    long LatestCommittedBlock,
-    long LastPersistedBlock);
+    ulong LatestCommittedBlock,
+    ulong LastPersistedBlock);

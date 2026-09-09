@@ -8,13 +8,13 @@ namespace Nethermind.Trie.Test.Pruning
     public class TestPruningStrategy(
         bool shouldPrune = false,
         bool deleteObsoleteKeys = false,
-        int? pruneInterval = null)
+        ulong? pruneInterval = null)
         : IPruningStrategy
     {
         public bool DeleteObsoleteKeys => deleteObsoleteKeys;
         public bool ShouldPruneDirtyNode(TrieStoreState state)
         {
-            if (pruneInterval is not null && state.LatestCommittedBlock % pruneInterval == 0)
+            if (pruneInterval is not null && state.LatestCommittedBlock % pruneInterval.Value == 0)
             {
                 return true;
             }

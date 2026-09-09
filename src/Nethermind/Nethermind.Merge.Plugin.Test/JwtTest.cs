@@ -47,16 +47,12 @@ public class JwtTest
     // --- Guard clause tests (Authenticate entry) ---
 
     [Test]
-    public async Task Null_token_returns_false()
-    {
+    public async Task Null_token_returns_false() =>
         Assert.That(await CreateAuth().Authenticate(null!), Is.False);
-    }
 
     [Test]
-    public async Task Empty_token_returns_false()
-    {
+    public async Task Empty_token_returns_false() =>
         Assert.That(await CreateAuth().Authenticate(""), Is.False);
-    }
 
     [Test]
     public async Task Missing_bearer_prefix_returns_false()

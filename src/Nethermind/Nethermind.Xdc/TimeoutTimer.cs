@@ -32,14 +32,8 @@ namespace Nethermind.Xdc
             timer.Enabled = true;
         }
 
-        public void Dispose()
-        {
-            timer?.Dispose();
-        }
+        public void Dispose() => timer?.Dispose();
 
-        public void TriggerTimeout()
-        {
-            TimeoutElapsed?.Invoke(this, new ElapsedEventArgs(DateTime.UtcNow));
-        }
+        public void TriggerTimeout() => TimeoutElapsed?.Invoke(this, new ElapsedEventArgs(DateTime.UtcNow));
     }
 }

@@ -19,12 +19,13 @@ namespace Nethermind.State.Repositories
         private const int CacheSize = 64;
 
         private readonly object _writeLock = new();
-        private readonly ClockCache<long, ChainLevelInfo> _blockInfoCache = new(CacheSize);
-        private readonly IRlpValueDecoder<ChainLevelInfo> _decoder = Rlp.GetValueDecoder<ChainLevelInfo>();
+        private readonly ClockCache<ulong, ChainLevelInfo> _blockInfoCache = new(CacheSize);
+        private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>()
+            ?? throw new InvalidOperationException($"No RLP decoder is registered for {nameof(ChainLevelInfo)}.");
 
         private readonly IDb _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
 
-        public void Delete(long number, BatchWrite? batch = null)
+        public void Delete(ulong number, BatchWrite? batch = null)
         {
             void LocalDelete()
             {
@@ -32,8 +33,7 @@ namespace Nethermind.State.Repositories
                 _blockInfoDb.Delete(number);
             }
 
-            bool needLock = batch?.Disposed != false;
-            if (needLock)
+            if (batch is null || batch.Disposed)
             {
                 lock (_writeLock)
                 {
@@ -47,16 +47,16 @@ namespace Nethermind.State.Repositories
             }
         }
 
-        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null)
+        public void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null)
         {
             void LocalPersistLevel()
             {
                 _blockInfoCache.Set(number, level);
-                _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
+                using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
+                _blockInfoDb.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
 
-            bool needLock = batch?.Disposed != false;
-            if (needLock)
+            if (batch is null || batch.Disposed)
             {
                 lock (_writeLock)
                 {
@@ -66,18 +66,19 @@ namespace Nethermind.State.Repositories
             else
             {
                 _blockInfoCache.Set(number, level);
-                batch.WriteBatch.Set(number, Rlp.Encode(level).Bytes);
+                using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
+                batch.WriteBatch.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
         }
 
-        public BatchWrite StartBatch() => new(_writeLock, _blockInfoDb.StartWriteBatch());
+        public BatchWrite StartBatch() => new(_writeLock, _blockInfoDb.StartWriteBatch);
 
-        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetValueDecoder<ChainLevelInfo>(), _blockInfoCache);
+        public ChainLevelInfo? LoadLevel(ulong number) => _blockInfoDb.Get(number, Rlp.GetDecoder<ChainLevelInfo>(), _blockInfoCache);
 
-        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
+        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
             byte[][] keys = new byte[blockNumbers.Count][];
-            for (var i = 0; i < blockNumbers.Count; i++)
+            for (int i = 0; i < blockNumbers.Count; i++)
             {
                 keys[i] = blockNumbers[i].ToBigEndianByteArrayWithoutLeadingZeros();
             }
@@ -86,16 +87,13 @@ namespace Nethermind.State.Repositories
 
             return data.Select(kv =>
                 {
-                    if (kv.Value == null || kv.Value.Length == 0) return null;
-                    Rlp.ValueDecoderContext rlpValueContext = kv.Value.AsRlpValueContext();
-                    return _decoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
+                    if (kv.Value is null || kv.Value.Length == 0) return null;
+                    RlpReader reader = new(kv.Value);
+                    return _decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
                 })
                 .ToPooledList(data.Length);
         }
 
-        void IClearableCache.ClearCache()
-        {
-            _blockInfoCache.Clear();
-        }
+        void IClearableCache.ClearCache() => _blockInfoCache.Clear();
     }
 }

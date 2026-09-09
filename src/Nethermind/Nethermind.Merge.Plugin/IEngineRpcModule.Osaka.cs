@@ -21,11 +21,11 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes);
+    public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes);
+    public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes);
 }

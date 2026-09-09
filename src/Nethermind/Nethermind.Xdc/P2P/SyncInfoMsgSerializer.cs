@@ -2,31 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
-using System;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.P2P;
 
 internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 {
-    private static readonly SyncInfoDecoder _syncInfoDecoder = new SyncInfoDecoder();
+    private static readonly SyncInfoDecoder _syncInfoDecoder = new();
 
     public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message)
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        NettyRlpStream stream = new(byteBuffer);
-        _syncInfoDecoder.Encode(stream, message.SyncInfo);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        _syncInfoDecoder.Encode(ref writer, message.SyncInfo);
     }
 
     public SyncInfoMsg Deserialize(IByteBuffer byteBuffer)
     {
-        Memory<byte> memory = byteBuffer.AsMemory();
-        Rlp.ValueDecoderContext ctx = new(memory, true);
+        RlpReader ctx = new(byteBuffer.AsSpan());
         Types.SyncInfo syncInfo = _syncInfoDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(memory.Length);
+        byteBuffer.SkipBytes(ctx.Position);
         return new() { SyncInfo = syncInfo };
     }
 

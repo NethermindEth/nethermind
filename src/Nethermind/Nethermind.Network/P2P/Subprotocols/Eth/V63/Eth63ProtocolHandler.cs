@@ -39,50 +39,48 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(this);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(this);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 
-        public override void HandleMessage(ZeroPacket message)
+        protected override bool HandleMessageCore(ZeroPacket message)
         {
-            base.HandleMessage(message);
             int size = message.Content.ReadableBytes;
 
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
                     HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
-                    break;
+                    return true;
                 case Eth63MessageCode.GetNodeData:
                     HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
-                    break;
+                    return true;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
-                    break;
+                    return true;
+                default:
+                    return base.HandleMessageCore(message);
             }
         }
 
         public override string Name => "eth63";
 
-        protected virtual void Handle(ReceiptsMessage msg, long size)
-        {
-            _receiptsRequests.Handle((msg.TxReceipts, size), size);
-        }
+        protected virtual void Handle(ReceiptsMessage msg, long size) => _receiptsRequests.Handle((msg.TxReceipts, size), size);
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetNodeDataMessage message = msg;
 
             long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
@@ -97,10 +95,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
-        protected virtual void Handle(NodeDataMessage msg, int size)
-        {
-            _nodeDataRequests.Handle(msg.Data, size);
-        }
+        protected virtual void Handle(NodeDataMessage msg, int size) => _nodeDataRequests.Handle(msg.Data, size);
 
         public override Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {

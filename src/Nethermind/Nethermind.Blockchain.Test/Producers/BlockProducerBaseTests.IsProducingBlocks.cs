@@ -47,7 +47,7 @@ public partial class BlockProducerBaseTests
             testRpc.SpecProvider,
             new BlocksConfig(),
             LimboLogs.Instance);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -67,7 +67,7 @@ public partial class BlockProducerBaseTests
             testRpc.SpecProvider,
             LimboLogs.Instance,
             blocksConfig);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -88,7 +88,7 @@ public partial class BlockProducerBaseTests
             testRpc.SpecProvider,
             LimboLogs.Instance,
             blocksConfig);
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -112,7 +112,7 @@ public partial class BlockProducerBaseTests
             Substitute.For<ISpecProvider>(),
             LimboLogs.Instance,
             Substitute.For<IBlocksConfig>());
-        StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+        StandardBlockProducerRunner runner = new(
             Substitute.For<IBlockProductionTrigger>(), Substitute.For<IBlockTree>(), blockProducer);
         await AssertIsProducingBlocks(runner);
     }
@@ -134,7 +134,7 @@ public partial class BlockProducerBaseTests
             new CliqueConfig(),
             LimboLogs.Instance);
 
-        CliqueBlockProducerRunner runner = new CliqueBlockProducerRunner(
+        CliqueBlockProducerRunner runner = new(
             testRpc.BlockTree,
             testRpc.Timestamper,
             Substitute.For<ICryptoRandom>(),
@@ -162,7 +162,7 @@ public partial class BlockProducerBaseTests
 
         BuildBlocksWhenRequested trigger = new();
         StandardBlockProducerRunner runner = new(trigger, testRpc.BlockTree, blockProducer);
-        long currentHead = testRpc.BlockTree.Head?.Number ?? 0;
+        ulong currentHead = testRpc.BlockTree.Head?.Number ?? 0ul;
 
         _ = new NonProcessingProducedBlockSuggester(testRpc.BlockTree, runner);
 
@@ -170,7 +170,7 @@ public partial class BlockProducerBaseTests
 
         await trigger.BuildBlock(testRpc.BlockTree.Head?.Header);
 
-        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1));
+        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1ul));
     }
 
     private async Task<TestRpcBlockchain> CreateTestRpc()

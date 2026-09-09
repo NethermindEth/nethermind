@@ -28,22 +28,16 @@ namespace Nethermind.Network.P2P.Analyzers
 
         private int _disconnectCount = 0;
 
-        private readonly struct DisconnectCategory
+        private readonly struct DisconnectCategory(DisconnectReason reason, DisconnectType type)
         {
-            public DisconnectCategory(DisconnectReason reason, DisconnectType type)
-            {
-                Reason = reason;
-                Type = type;
-            }
+            public DisconnectReason Reason { get; } = reason;
 
-            public DisconnectReason Reason { get; }
-
-            public DisconnectType Type { get; }
+            public DisconnectType Type { get; } = type;
         }
 
         public DisconnectsAnalyzer(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DisconnectsAnalyzer>() ?? throw new ArgumentNullException(nameof(logManager));
             _disconnects = _disconnectsA;
 
             _timer = new Timer(10000);

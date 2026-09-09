@@ -83,11 +83,18 @@ namespace Nethermind.Core.Crypto
         {
             get
             {
-                var result = new byte[65];
+                byte[] result = new byte[65];
                 Bytes.CopyTo(result);
                 result[64] = RecoveryId;
                 return result;
             }
+        }
+
+        public void WriteBytesWithRecoveryTo(Span<byte> destination)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(destination.Length, Size);
+            Bytes.CopyTo(destination);
+            destination[64] = RecoveryId;
         }
 
         public override string ToString()
@@ -111,10 +118,7 @@ namespace Nethermind.Core.Crypto
             return Equals((Signature)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(Bytes);
-        }
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public void Dispose() { }
         protected override void Dispose(bool disposing) { }

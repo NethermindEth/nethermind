@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
@@ -12,7 +12,7 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerifier
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DerivedBlocksVerifier>();
 
     public bool ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber)
     {
@@ -79,8 +79,8 @@ public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerif
             {
                 if (!expected.Transactions[i].SequenceEqual(actual.Transactions[i]))
                 {
-                    Transaction actualDecoded = Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
-                    Transaction expectedDecoded = Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
+                    Transaction? actualDecoded = Rlp.Decode<Transaction>(actual.Transactions[i], RlpBehaviors.SkipTypedWrapping);
+                    Transaction? expectedDecoded = Rlp.Decode<Transaction>(expected.Transactions[i], RlpBehaviors.SkipTypedWrapping);
                     if (_logger.IsWarn) _logger.Warn($"Invalid transaction. Index {i}. Block {blockNumber}");
                     if (_logger.IsWarn) _logger.Warn($"Expected: {expectedDecoded}");
                     if (_logger.IsWarn) _logger.Warn($"Actual: {actualDecoded}");

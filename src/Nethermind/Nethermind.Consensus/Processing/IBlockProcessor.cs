@@ -38,6 +38,12 @@ namespace Nethermind.Consensus.Processing
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+
+            // Optional per-tx timing instrumentation. Default no-op implementations let executors that
+            // don't capture per-tx timing (block production, simulation, invalid-tx) ignore these.
+            void SetupTxTimingMetrics(Block block) { }
+            long StartTxTimer() => 0;
+            void StopTxTimer(int i, long txStart) { }
         }
     }
 }

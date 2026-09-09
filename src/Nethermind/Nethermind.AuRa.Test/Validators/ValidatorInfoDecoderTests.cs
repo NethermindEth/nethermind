@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -17,7 +16,7 @@ namespace Nethermind.AuRa.Test.Validators
             ValidatorInfo info = new(10, 5, new[] { TestItem.AddressA, TestItem.AddressC });
             Rlp rlp = Rlp.Encode(info);
             ValidatorInfo decoded = Rlp.Decode<ValidatorInfo>(rlp);
-            decoded.Should().BeEquivalentTo(info);
+            Assert.That(decoded, Is.EqualTo(info).UsingPropertiesComparer());
         }
     }
 }

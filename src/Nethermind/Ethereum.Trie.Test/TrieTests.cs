@@ -18,7 +18,7 @@ namespace Ethereum.Trie.Test
     public class TrieTests
     {
         private MemDb _db;
-        private readonly ILogger _logger = new TestLogManager().GetClassLogger();
+        private readonly ILogger _logger = new TestLogManager().GetClassLogger<TrieTests>();
 
         [SetUp]
         public void Setup() => _db = new MemDb();

@@ -19,48 +19,47 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockProducer : BlockProducerBase
+    public class AuRaBlockProducer(ITxSource txSource,
+        IBlockchainProcessor processor,
+        IWorldState stateProvider,
+        ISealer sealer,
+        IBlockTree blockTree,
+        ITimestamper timestamper,
+        IAuRaStepCalculator auRaStepCalculator,
+        IReportingValidator reportingValidator,
+        IAuraConfig config,
+        IGasLimitCalculator gasLimitCalculator,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig) : BlockProducerBase(
+            txSource,
+            processor,
+            sealer,
+            blockTree,
+            stateProvider,
+            gasLimitCalculator,
+            timestamper,
+            specProvider,
+            logManager,
+            new AuraDifficultyCalculator(auRaStepCalculator),
+            blocksConfig)
     {
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private readonly IReportingValidator _reportingValidator;
-        private readonly IAuraConfig _config;
-
-        public AuRaBlockProducer(ITxSource txSource,
-            IBlockchainProcessor processor,
-            IWorldState stateProvider,
-            ISealer sealer,
-            IBlockTree blockTree,
-            ITimestamper timestamper,
-            IAuRaStepCalculator auRaStepCalculator,
-            IReportingValidator reportingValidator,
-            IAuraConfig config,
-            IGasLimitCalculator gasLimitCalculator,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IBlocksConfig blocksConfig)
-            : base(
-                txSource,
-                processor,
-                sealer,
-                blockTree,
-                stateProvider,
-                gasLimitCalculator,
-                timestamper,
-                specProvider,
-                logManager,
-                new AuraDifficultyCalculator(auRaStepCalculator),
-                blocksConfig)
-        {
-            _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
-            _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-        }
+        private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
+        private readonly IReportingValidator _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
+        private readonly IAuraConfig _config = config ?? throw new ArgumentNullException(nameof(config));
 
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
-            block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            return block;
+            if (block.Header is AuRaBlockHeader aura)
+            {
+                aura.AuRaStep = _auRaStepCalculator.CurrentStep;
+                return block;
+            }
+
+            AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(block.Header);
+            upgraded.AuRaStep = _auRaStepCalculator.CurrentStep;
+            return (BlockToProduce)block.WithReplacedHeader(upgraded);
         }
 
         protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
@@ -93,5 +92,6 @@ namespace Nethermind.Consensus.AuRa
             _reportingValidator.TryReportSkipped(block.Header, parent);
             return base.SealBlock(block, parent, token);
         }
+
     }
 }

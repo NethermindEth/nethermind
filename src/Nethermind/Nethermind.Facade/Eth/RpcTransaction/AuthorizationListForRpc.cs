@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,23 +20,19 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
 {
     private readonly IEnumerable<RpcAuthTuple> _tuples;
 
-    public AuthorizationListForRpc()
-    {
-        _tuples = Array.Empty<RpcAuthTuple>();
-    }
+    public AuthorizationListForRpc() => _tuples = Array.Empty<RpcAuthTuple>();
 
-    private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples)
-    {
-        _tuples = tuples;
-    }
+    private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples) => _tuples = tuples;
 
     public class RpcAuthTuple
     {
         public UInt256 ChainId { get; set; }
         public ulong Nonce { get; set; }
         public Address Address { get; set; }
-        public ulong YParity { get; set; }
+        public ulong? YParity { get; set; }
+        [JsonConverter(typeof(UInt256Converter))]
         public UInt256 S { get; set; }
+        [JsonConverter(typeof(UInt256Converter))]
         public UInt256 R { get; set; }
 
         public RpcAuthTuple() { }
@@ -67,30 +64,29 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             (ulong)tuple.ChainId,
             tuple.Address,
             tuple.Nonce,
-            new Signature(tuple.R, tuple.S, (ulong)tuple.YParity + Signature.VOffset))
+            new Signature(tuple.R, tuple.S, tuple.YParity.GetValueOrDefault() + Signature.VOffset))
         ).ToArray();
 
-    public IEnumerator<RpcAuthTuple> GetEnumerator()
-    {
-        return _tuples.GetEnumerator();
-    }
+    public IEnumerator<RpcAuthTuple> GetEnumerator() => _tuples.GetEnumerator();
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     public class JsonConverter : JsonConverter<AuthorizationListForRpc>
     {
         public override AuthorizationListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             List<RpcAuthTuple>? list = JsonSerializer.Deserialize<List<RpcAuthTuple>>(ref reader, options);
+            if (list is not null)
+            {
+                foreach (RpcAuthTuple tuple in list)
+                {
+                    if (tuple.YParity is null)
+                        throw new JsonException("missing yParity");
+                }
+            }
             return list is null ? null : new AuthorizationListForRpc(list);
         }
 
-        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, value._tuples, options);
-        }
+        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._tuples, options);
     }
 }

@@ -20,9 +20,11 @@ namespace Nethermind.Synchronization.SnapSync
 
         void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes);
 
-        void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response);
+        AddRangeResult RefreshAccounts(AccountsToRefreshRequest request, AccountsAndProofs response);
 
-        void RetryRequest(SnapSyncBatch batch);
+        /// <summary>Hands the request back, once per batch from <see cref="IsFinished"/>.</summary>
+        /// <param name="responseHandled">False requeues the work; true means the handler already did.</param>
+        void ReleaseRequest(SnapSyncBatch batch, bool responseHandled);
 
         bool IsSnapGetRangesFinished();
         void UpdatePivot();

@@ -4,8 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -13,31 +11,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
-using static Unsafe;
-
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
-    /// <summary>
-    /// Pops a value from the EVM stack.
-    /// Deducts the base gas cost and returns an exception if the stack is underflowed.
-    /// </summary>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">The program counter.</param>
-    /// <returns><see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>.</returns>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // Deduct the minimal gas cost for a POP operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        // Pop from the stack; if nothing to pop, signal a stack underflow.
-        return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
-    }
-
     /// <summary>
     /// Interface for series of items based operations.
     /// The <c>Count</c> property specifies the expected number of items.
@@ -54,18 +29,14 @@ internal static partial class EvmInstructions
         /// Pushes immediate data from the code onto the stack.
         /// If insufficient bytes are available, pads the value to the expected length.
         /// </summary>
-        /// <param name="length">The expected length of the data.</param>
+        /// <remarks>When TCheckCode is inactive, the caller must have verified that the complete immediate is available.</remarks>
         /// <param name="stack">The execution stack.</param>
         /// <param name="programCounter">The program counter.</param>
-        /// <param name="code">The code segment containing the immediate data.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        virtual static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        abstract static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
-        {
-            // Use available bytes and pad left if fewer than expected.
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-        }
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag;
     }
 
     // Some push operations override the default Push method to handle fixed-size optimizations.
@@ -73,7 +44,20 @@ internal static partial class EvmInstructions
     /// <summary>
     /// 0 item operations.
     /// </summary>
-    public struct Op0 : IOpCount { public static int Count => 0; }
+    public struct Op0 : IOpCount
+    {
+        public static int Count => 0;
+
+        /// <summary>
+        /// Push operation for zero
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        => stack.PushZero<TTracingInst, TCheckDepth>();
+    }
 
     /// <summary>
     /// 1 item operations.
@@ -88,72 +72,84 @@ internal static partial class EvmInstructions
         /// If exactly one byte is available, it is pushed; otherwise, zero is pushed.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
         {
             // Determine how many bytes can be used from the code.
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                // Directly push the single byte.
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
-            }
-            else
-            {
-                // Fallback when immediate data is incomplete.
-                stack.PushZero<TTracingInst>();
-            }
+            nint usedFromCode = stack.CodeLength - programCounter;
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                stack.PushByte<TTracingInst, TCheckDepth>(Unsafe.Add(ref stack.Code, programCounter)) :
+                stack.PushZero<TTracingInst, TCheckDepth>();
         }
     }
 
     /// <summary>
     /// 2 item operations.
     /// </summary>
-    public struct Op2 : IOpCount { public static int Count => 2; }
+    public struct Op2 : IOpCount
+    {
+        public static int Count => 2;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        => throw new NotSupportedException($"Use the {nameof(InstructionPush2)} opcode instead");
+    }
 
     /// <summary>
     /// Push operation for two bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionPush2<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionPush2<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-
-        ref byte bytes = ref MemoryMarshal.GetReference(code);
-        int remainingCode = code.Length - programCounter;
+        ref byte bytes = ref stack.Code;
+        nint remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
+        if (!TTracingInst.IsActive)
+        {
+            // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
+            if (stack.Head >= EvmStack.MaxStackSize - 1)
+            {
+                programCounter += Size;
+                return EvmExceptionType.StackOverflow;
+            }
+            if (remainingCode <= Size)
+            {
+                // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
+                programCounter += Size;
+                return EvmExceptionType.None;
+            }
+        }
         if (!TTracingInst.IsActive &&
-            remainingCode > Size &&
-            stack.Head < EvmStack.MaxStackSize - 1 &&
-            ((nextInstruction = (Instruction)Add(ref bytes, programCounter + Size))
+            ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = As<byte, ushort>(ref Add(ref bytes, programCounter));
-            if (BitConverter.IsLittleEndian)
-            {
-                destination = BinaryPrimitives.ReverseEndianness(destination);
-            }
+            ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
+            destination = BinaryPrimitives.ReverseEndianness(destination);
 
             if (nextInstruction == Instruction.JUMP)
             {
-                TGasPolicy.Consume(ref gas, GasCostOf.Jump);
                 vm.OpCodeCount++;
+                if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
                 vm.OpCodeCount++;
-                bool shouldJump = TestJumpCondition(ref stack, out bool isOverflow);
-                if (isOverflow) goto StackUnderflow;
-                if (!shouldJump)
+                if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+                if (!stack.EnsureDepth(1)) goto StackUnderflow;
+                if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
                 {
                     // Move forward by 2 bytes + JUMPI
                     programCounter += Size + 1;
@@ -162,28 +158,36 @@ internal static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            if (!Jump((int)destination, ref programCounter, vm.VmState.Env))
+            nint jumpTarget = JumpDestination((int)destination, ref stack);
+            if (jumpTarget < 0)
                 goto InvalidJumpDestination;
+            // Skip the JUMPDEST byte we just validated, charging its gas and count here.
+            programCounter = jumpTarget + 1;
+            PrefetchCodeAtDestination(ref stack, programCounter);
+            vm.OpCodeCount++;
+            if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
         }
-        else if (remainingCode >= Size)
+
+        ref byte start = ref Unsafe.Add(ref bytes, programCounter);
+        EvmExceptionType result;
+        if (!TTracingInst.IsActive || remainingCode >= Size)
         {
-            // Optimized push for exactly two bytes.
-            stack.Push2Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
+            // The untraced prelude already checked capacity; only traced execution needs the push's depth check.
+            result = stack.Push2Bytes<TTracingInst, TTracingInst>(ref start);
         }
         else if (remainingCode == Op1.Count)
         {
-            // Directly push the single byte.
-            stack.PushByte<TTracingInst>(Add(ref bytes, programCounter));
+            result = stack.PushUInt32<TTracingInst, OnFlag>((uint)start << 8);
         }
         else
         {
             // Fallback when immediate data is incomplete.
-            stack.PushZero<TTracingInst>();
+            result = stack.PushZero<TTracingInst, OnFlag>();
         }
-
         programCounter += Size;
+        return result;
     Success:
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -195,166 +199,410 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// 3 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op3 : IOpCount { public static int Count => 3; }
+    public struct Op3 : IOpCount
+    {
+        const int Size = 3;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 3-byte value (common case); otherwise padded push.
+                stack.Push3Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 4 item operations.
     /// </summary>
     public struct Op4 : IOpCount
     {
-        const int Size = sizeof(uint);
+        const int Size = 4;
         public static int Count => Size;
 
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
         {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                // Direct push of a 4-byte value.
-                stack.Push4Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 4-byte value (common case); otherwise padded push.
+                stack.Push4Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
         }
     }
 
     /// <summary>
     /// 5 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op5 : IOpCount { public static int Count => 5; }
+    public struct Op5 : IOpCount
+    {
+        const int Size = 5;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 5-byte value (common case); otherwise padded push.
+                stack.Push5Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 6 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op6 : IOpCount { public static int Count => 6; }
+    public struct Op6 : IOpCount
+    {
+        const int Size = 6;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 6-byte value (common case); otherwise padded push.
+                stack.Push6Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 7 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op7 : IOpCount { public static int Count => 7; }
+    public struct Op7 : IOpCount
+    {
+        const int Size = 7;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 7-byte value (common case); otherwise padded push.
+                stack.Push7Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 8 item operations.
     /// </summary>
     public struct Op8 : IOpCount
     {
-        const int Size = sizeof(ulong);
+        const int Size = 8;
         public static int Count => Size;
 
-        /// <summary>
-        /// Push operation for eight bytes.
-        /// </summary>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
         {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push8Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 8-byte value (common case); otherwise padded push.
+                stack.Push8Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
         }
     }
 
     /// <summary>
     /// 9 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op9 : IOpCount { public static int Count => 9; }
+    public struct Op9 : IOpCount
+    {
+        const int Size = 9;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                stack.Push9Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 10 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op10 : IOpCount { public static int Count => 10; }
+    public struct Op10 : IOpCount
+    {
+        const int Size = 10;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 10-byte value.
+                stack.Push10Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 11 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op11 : IOpCount { public static int Count => 11; }
+    public struct Op11 : IOpCount
+    {
+        const int Size = 11;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 11-byte value.
+                stack.Push11Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 12 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op12 : IOpCount { public static int Count => 12; }
+    public struct Op12 : IOpCount
+    {
+        const int Size = 12;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 12-byte value.
+                stack.Push12Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 13 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op13 : IOpCount { public static int Count => 13; }
+    public struct Op13 : IOpCount
+    {
+        const int Size = 13;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 13-byte value.
+                stack.Push13Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 14 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op14 : IOpCount { public static int Count => 14; }
+    public struct Op14 : IOpCount
+    {
+        const int Size = 14;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 14-byte value.
+                stack.Push14Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 15 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op15 : IOpCount { public static int Count => 15; }
+    public struct Op15 : IOpCount
+    {
+        const int Size = 15;
+        public static int Count => Size;
 
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 15-byte value.
+                stack.Push15Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
+
+    /// <summary>
+    /// 16 item operations.
+    /// </summary>
     public struct Op16 : IOpCount
     {
         const int Size = 16;
         public static int Count => Size;
 
-        /// <summary>
-        /// Push operation for 16 bytes.
-        /// </summary>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
         {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push16Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 16-byte value.
+                stack.Push16Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
         }
     }
 
     /// <summary>
     /// 17 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op17 : IOpCount { public static int Count => 17; }
+    public struct Op17 : IOpCount
+    {
+        const int Size = 17;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 17-byte value.
+                stack.Push17Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 18 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op18 : IOpCount { public static int Count => 18; }
+    public struct Op18 : IOpCount
+    {
+        const int Size = 18;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 18-byte value.
+                stack.Push18Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 19 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op19 : IOpCount { public static int Count => 19; }
+    public struct Op19 : IOpCount
+    {
+        const int Size = 19;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 19-byte value.
+                stack.Push19Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 20 item operations.
@@ -364,93 +612,285 @@ internal static partial class EvmInstructions
         const int Size = 20;
         public static int Count => Size;
 
-        /// <summary>
-        /// Push operation for 20 bytes (commonly used for addresses).
-        /// </summary>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
         {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                // Optimized push for address size data.
-                ref byte bytes = ref MemoryMarshal.GetReference(code);
-                stack.Push20Bytes<TTracingInst>(ref Add(ref bytes, programCounter));
-            }
-            else
-            {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 20-byte value.
+                stack.Push20Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
         }
     }
 
-
     /// <summary>
     /// 21 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op21 : IOpCount { public static int Count => 21; }
+    public struct Op21 : IOpCount
+    {
+        const int Size = 21;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 21-byte value.
+                stack.Push21Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 22 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op22 : IOpCount { public static int Count => 22; }
+    public struct Op22 : IOpCount
+    {
+        const int Size = 22;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 22-byte value.
+                stack.Push22Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 23 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op23 : IOpCount { public static int Count => 23; }
+    public struct Op23 : IOpCount
+    {
+        const int Size = 23;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 23-byte value.
+                stack.Push23Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 24 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op24 : IOpCount { public static int Count => 24; }
+    public struct Op24 : IOpCount
+    {
+        const int Size = 24;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 24-byte value.
+                stack.Push24Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 25 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op25 : IOpCount { public static int Count => 25; }
+    public struct Op25 : IOpCount
+    {
+        const int Size = 25;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 25-byte value.
+                stack.Push25Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 26 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op26 : IOpCount { public static int Count => 26; }
+    public struct Op26 : IOpCount
+    {
+        const int Size = 26;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 26-byte value.
+                stack.Push26Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 27 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op27 : IOpCount { public static int Count => 27; }
+    public struct Op27 : IOpCount
+    {
+        const int Size = 27;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 27-byte value.
+                stack.Push27Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 28 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op28 : IOpCount { public static int Count => 28; }
+    public struct Op28 : IOpCount
+    {
+        const int Size = 28;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 28-byte value.
+                stack.Push28Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 29 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op29 : IOpCount { public static int Count => 29; }
+    public struct Op29 : IOpCount
+    {
+        const int Size = 29;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 29-byte value.
+                stack.Push29Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 30 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op30 : IOpCount { public static int Count => 30; }
+    public struct Op30 : IOpCount
+    {
+        const int Size = 30;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 30-byte value.
+                stack.Push30Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 31 item operations.
-    /// Uses the default implementation for pushing data.
     /// </summary>
-    public struct Op31 : IOpCount { public static int Count => 31; }
+    public struct Op31 : IOpCount
+    {
+        const int Size = 31;
+        public static int Count => Size;
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
+            where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
+        {
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 31-byte value.
+                stack.Push31Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
+        }
+    }
 
     /// <summary>
     /// 32 item operations.
@@ -460,23 +900,19 @@ internal static partial class EvmInstructions
         const int Size = 32;
         public static int Count => Size;
 
-        /// <summary>
-        /// Push operation for 32 bytes.
-        /// </summary>
+        [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Push<TTracingInst>(int length, ref EvmStack stack, int programCounter, ReadOnlySpan<byte> code)
+        public static EvmExceptionType Push<TTracingInst, TCheckDepth, TCheckCode>(ref EvmStack stack, nint programCounter)
             where TTracingInst : struct, IFlag
+            where TCheckDepth : struct, IFlag
+            where TCheckCode : struct, IFlag
         {
-            int usedFromCode = Math.Min(code.Length - programCounter, length);
-            if (usedFromCode == Size)
-            {
-                // Leverage reinterpretation of bytes as a 256-bit vector.
-                stack.Push32Bytes<TTracingInst>(in As<byte, Word>(ref Add(ref MemoryMarshal.GetReference(code), programCounter)));
-            }
-            else
-            {
-                stack.PushLeftPaddedBytes<TTracingInst>(code.Slice(programCounter, usedFromCode), length);
-            }
+            nint usedFromCode = stack.CodeLength - programCounter;
+            ref byte start = ref Unsafe.Add(ref stack.Code, programCounter);
+            return !TCheckCode.IsActive || usedFromCode >= Size ?
+                // Direct push of a 32-byte value.
+                stack.Push32Bytes<TTracingInst, TCheckDepth>(ref start) :
+                stack.PushBothPaddedBytes<TTracingInst, TCheckDepth>(ref start, (int)usedFromCode, Size);
         }
     }
 
@@ -486,16 +922,14 @@ internal static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">The program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush0<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionPush0<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
-        stack.PushZero<TTracingInst>();
-        return EvmExceptionType.None;
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        return stack.PushZero<TTracingInst, OnFlag>();
     }
 
     /// <summary>
@@ -505,26 +939,24 @@ internal static partial class EvmInstructions
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCount">The push operation implementation defining the byte count.</typeparam>
     /// <typeparam name="TTracingInst">The tracing flag.</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter, which will be advanced.</param>
+    /// <param name="programCounter">The program counter, advanced past the pushed bytes.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPush<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionPush<TGasPolicy, TOpCount, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
         // Deduct a very low gas cost for the push operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
-        // Retrieve the code segment containing immediate data.
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Use the push method defined by the specific push operation.
-        TOpCount.Push<TTracingInst>(TOpCount.Count, ref stack, programCounter, code);
+        EvmExceptionType result = TOpCount.Push<TTracingInst, OnFlag, OnFlag>(ref stack, programCounter);
         // Advance the program counter by the number of bytes consumed.
         programCounter += TOpCount.Count;
-        return EvmExceptionType.None;
+        return result;
     }
 
     /// <summary>
@@ -536,17 +968,16 @@ internal static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDup<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionDup<TGasPolicy, TOpCount, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return stack.Dup<TTracingInst>(TOpCount.Count);
+        return stack.Dup<TTracingInst, OnFlag>(TOpCount.Count);
     }
 
     /// <summary>
@@ -558,17 +989,18 @@ internal static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns><see cref="EvmExceptionType.None"/> on success or <see cref="EvmExceptionType.StackUnderflow"/> if insufficient elements.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    // Pinned: the dispatch loop stops inlining this two-statement body without the hint.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionSwap<TGasPolicy, TOpCount, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
-        return stack.Swap<TTracingInst>(TOpCount.Count + 1);
+        return stack.Swap<TTracingInst, OnFlag>(TOpCount.Count + 1);
     }
 
     /// <summary>
@@ -576,16 +1008,16 @@ internal static partial class EvmInstructions
     /// Duplicates a stack item based on an immediate operand with extended encoding.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
-            return StopOrBadInstruction(vm, programCounter);
-
-        return stack.Dup<TTracingInst>(depth);
+        return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
+            ? EvmExceptionType.BadInstruction
+            : stack.Dup<TTracingInst, OnFlag>(depth);
     }
 
     /// <summary>
@@ -593,16 +1025,16 @@ internal static partial class EvmInstructions
     /// Swaps top of stack with the Nth element, where N is decoded from the immediate.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
-            return StopOrBadInstruction(vm, programCounter);
-
-        return stack.Swap<TTracingInst>(depth + 1);
+        return !TryDecodeSingle(ref stack, ref programCounter, out int depth)
+            ? EvmExceptionType.BadInstruction
+            : stack.Swap<TTracingInst, OnFlag>(depth + 1);
     }
 
     /// <summary>
@@ -610,53 +1042,36 @@ internal static partial class EvmInstructions
     /// Exchanges stack items at positions n and m from the top.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!TryDecodePair(vm, ref programCounter, out int n, out int m))
-            return StopOrBadInstruction(vm, programCounter);
-
-        if (!stack.Exchange<TTracingInst>(n, m))
-            return EvmExceptionType.StackUnderflow;
-
-        return EvmExceptionType.None;
+        return !TryDecodePair(ref stack, ref programCounter, out int n, out int m)
+            ? EvmExceptionType.BadInstruction
+            : stack.Exchange<TTracingInst>(n, m);
     }
 
-    /// <summary>
-    /// Returns Stop if the program counter is at or past end of code, otherwise BadInstruction.
-    /// Used by EIP-8024 to distinguish end-of-code (graceful stop) from disallowed immediate.
-    /// </summary>
+    // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType StopOrBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, int programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        => programCounter >= vm.VmState.Env.CodeInfo.CodeSpan.Length
-            ? EvmExceptionType.Stop
-            : EvmExceptionType.BadInstruction;
+    private static byte ReadEip8024ImmediateOrZero(ref byte code, nint codeLength, nint programCounter)
+        => programCounter < codeLength ? Unsafe.Add(ref code, programCounter) : (byte)0;
 
     /// <summary>
     /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
     /// </summary>
     /// <remarks>
-    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Handles reading the immediate and advancing the program counter.
     /// Branchless formula: n = (x + 145) % 256.
     /// Valid range: 0-90 (n=145-235) and 128-255 (n=17-144).
     /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryDecodeSingle<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int depth)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    private static bool TryDecodeSingle(ref EvmStack stack, ref nint programCounter, out int depth)
     {
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-        {
-            depth = 0;
-            return false;
-        }
-
-        byte imm = code[programCounter];
+        byte imm = ReadEip8024ImmediateOrZero(ref stack.Code, stack.CodeLength, programCounter);
         depth = (imm + 145) & 0xFF;
 
         if ((uint)(imm - 0x5B) <= 0x24)
@@ -670,23 +1085,15 @@ internal static partial class EvmInstructions
     /// Reads and decodes an immediate for EIP-8024 EXCHANGE instruction.
     /// </summary>
     /// <remarks>
-    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Handles reading the immediate and advancing the program counter.
     /// Branchless formula: k = x ^ 143 (XOR with 0x8F).
     /// Valid range: 0-81 (k mapped via XOR) and 128-255. Invalid range: 82-127.
     /// Returns stack indices ready for direct use with stack.Exchange.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryDecodePair<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int n, out int m)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    private static bool TryDecodePair(ref EvmStack stack, ref nint programCounter, out int n, out int m)
     {
-        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (programCounter >= code.Length)
-        {
-            n = m = 0;
-            return false;
-        }
-
-        byte imm = code[programCounter];
+        byte imm = ReadEip8024ImmediateOrZero(ref stack.Code, stack.CodeLength, programCounter);
 
         int k = imm ^ 0x8F;
         int q = k >> 4;
@@ -717,13 +1124,13 @@ internal static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is reduced by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the log is successfully recorded; otherwise, an appropriate exception type such as
     /// <see cref="EvmExceptionType.StackUnderflow"/>, <see cref="EvmExceptionType.StaticCallViolation"/>, or <see cref="EvmExceptionType.OutOfGas"/>.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionLog<TGasPolicy, TOpCount>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionLog<TGasPolicy, TOpCount>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCount : struct, IOpCount
     {
@@ -732,32 +1139,33 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         // Pop memory offset and length for the log data.
-        if (!stack.PopUInt256(out UInt256 position) || !stack.PopUInt256(out UInt256 length)) goto StackUnderflow;
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length)) goto StackUnderflow;
 
         // The number of topics is defined by the generic parameter.
-        long topicsCount = TOpCount.Count;
+        ulong topicsCount = (ulong)TOpCount.Count;
 
         // Ensure that the memory expansion for the log data is accounted for.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, vmState)) goto OutOfGas;
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref vmState.Memory)) goto OutOfGas;
         // Deduct gas for the log entry itself, including per-topic and per-byte data costs.
-        long dataSize = (long)length;
-        if (!TGasPolicy.ConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
+        ulong dataSize = (ulong)length;
+        if (!TGasPolicy.TryConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
         // Load the log data from memory.
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
             goto OutOfGas;
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
-        Hash256[] topics = new Hash256[topicsCount];
+        Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
         for (int i = 0; i < topics.Length; i++)
         {
-            topics[i] = new Hash256(stack.PopWord256());
+            if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
+            topics[i] = new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.
         LogEntry logEntry = new(
             vmState.Env.ExecutingAccount,
-            data.ToArray(),
+            data.Length == 0 ? [] : data.ToArray(),
             topics);
 
         vm.AddLog(logEntry);

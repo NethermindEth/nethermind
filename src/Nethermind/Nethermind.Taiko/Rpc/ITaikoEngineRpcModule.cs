@@ -52,7 +52,7 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload,
-        byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
+        Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
 
     [JsonRpcMethod(
         Description = "Retrieves the transaction pool content with the given upper limits.",
@@ -95,7 +95,7 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
     /// This is specifically designed for Taiko integration tests where the chain is reset to a base block.
     /// After a reorg, stale txpool caches would reject transaction resubmissions with "already known" or "nonce too low".
     /// Pending transactions must also be cleared because tests resubmit transactions with the same hash/nonce,
-    /// which would be rejected as "ReplacementNotAllowed" if they remain in the pool.
+    /// which would be rejected as "replacement transaction underpriced" if they remain in the pool.
     /// </summary>
     [JsonRpcMethod(
         Description = "Clears txpool state after chain reorg for testing/debugging purposes. " +
@@ -115,4 +115,16 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<UInt256?>> taikoAuth_lastBlockIDByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the ID of the last block for the given batch from the database only, without blockchain traversal fallback.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId);
+
+    [JsonRpcMethod(
+        Description = "Returns the L1 origin of the last block for the given batch from the database only, without blockchain traversal fallback.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<L1Origin?> taikoAuth_lastCertainL1OriginByBatchID(UInt256 batchId);
 }

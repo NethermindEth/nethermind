@@ -6,6 +6,7 @@
   "ignoreRandomStrings": true,
   "unknownWords": "report-common-typos",
   "ignorePaths": [
+    ".gitignore",
     "**/*.json",
     "**/*.zst",
     "**/artifacts/**",
@@ -19,5 +20,7 @@
     "src/Nethermind/TestResults/**",
     "src/tests"
   ],
-  "words": []
+  "words": [
+    "Expresso"
+  ]
 }

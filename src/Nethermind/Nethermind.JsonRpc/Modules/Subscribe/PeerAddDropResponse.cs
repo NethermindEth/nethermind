@@ -4,25 +4,16 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 
-public class PeerAddDropResponse
+public class PeerAddDropResponse(PeerInfo peerInfo, string subscriptionType, string? error)
 {
-    public PeerAddDropResponse(PeerInfo peerInfo, string subscriptionType, string? error)
-    {
-        Type = subscriptionType;
-        Peer = peerInfo.Id;
-        Local = peerInfo.Network.LocalHost;
-        Remote = peerInfo.Network.RemoteAddress;
-        Error = error;
-    }
-
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string Type { get; set; }
+    public string Type { get; set; } = subscriptionType;
 
-    public PublicKey Peer { get; set; }
+    public PublicKey Peer { get; set; } = peerInfo.Id;
 
-    public string Local { get; set; }
+    public string Local { get; set; } = peerInfo.Network.LocalHost;
 
-    public string Remote { get; set; }
+    public string Remote { get; set; } = peerInfo.Network.RemoteAddress;
 
-    public string? Error { get; set; }
+    public string? Error { get; set; } = error;
 }

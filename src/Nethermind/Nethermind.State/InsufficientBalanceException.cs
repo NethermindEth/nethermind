@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 
 namespace Nethermind.State
 {
-    public class InsufficientBalanceException : StateException
+    public class InsufficientBalanceException(Address address) : StateException($"{TxErrorMessages.InsufficientFundsForTransfer}: address {address}")
     {
-        public InsufficientBalanceException(Address address)
-            : base($"insufficient funds for transfer: address {address}")
-        { }
     }
 }

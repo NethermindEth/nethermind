@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             Hash256 a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
             Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage(new Hash256[] { a, b });
-            var message = new GetBlockBodiesMessage(1111, ethMessage);
+            using Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage ethMessage = new(new Hash256[] { a, b });
+            GetBlockBodiesMessage message = new(1111, ethMessage);
 
             GetBlockBodiesMessageSerializer serializer = new();
 

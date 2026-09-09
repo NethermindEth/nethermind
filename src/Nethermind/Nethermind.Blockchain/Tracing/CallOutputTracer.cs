@@ -13,8 +13,8 @@ public class CallOutputTracer : TxTracer
     public override bool IsTracingReceipt => true;
     public byte[]? ReturnValue { get; set; }
 
-    public long GasSpent { get; set; }
-    public long OperationGas { get; set; }
+    public ulong GasSpent { get; set; }
+    public ulong OperationGas { get; set; }
 
     public string? Error { get; set; }
 
@@ -37,5 +37,14 @@ public class CallOutputTracer : TxTracer
         Error = error;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Failure;
+    }
+
+    public void Reset()
+    {
+        GasSpent = 0;
+        OperationGas = 0;
+        ReturnValue = null;
+        Error = null;
+        StatusCode = 0;
     }
 }

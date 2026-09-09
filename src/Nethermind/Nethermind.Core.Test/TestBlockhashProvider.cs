@@ -11,15 +11,12 @@ namespace Nethermind.Core.Test
 {
     public class TestBlockhashProvider(ISpecProvider specProvider) : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, ulong number)
             => GetBlockhash(currentBlock, number, specProvider.GetSpec(currentBlock));
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
-        {
-            return Keccak.Compute(spec.IsBlockHashInStateAvailable
+        public Hash256 GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec) => Keccak.Compute(spec.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : number.ToString());
-        }
 
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }

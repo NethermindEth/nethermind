@@ -1,15 +1,18 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -20,15 +23,17 @@ using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
-namespace Nethermind.Xdc.Test.P2P;
+namespace Nethermind.Xdc.Test;
 
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll()
+        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -41,10 +46,20 @@ public class XdcProtocolHandlerTests
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(headNumber).TestObject;
+        Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
+        blockTree.Head.Returns(headBlock);
+        BlockHeader bestSuggested = suggestedAheadOfHead == 0
+            ? headHeader
+            : Build.A.BlockHeader.WithNumber(headHeader.Number + (ulong)suggestedAheadOfHead).TestObject;
+        blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
+
+        XdcConsensusMessageHandler.Factory consensusMessages =
+            new(timeoutManager, votesManager, syncInfoManager, blockTree, LimboLogs.Instance);
+
         XdcProtocolHandler handler = new(
-            timeoutManager,
-            votesManager,
-            syncInfoManager,
+            consensusMessages,
             session,
             serializer,
             nodeStatsManager,
@@ -52,7 +67,6 @@ public class XdcProtocolHandlerTests
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<ITxPool>(),
             Substitute.For<IGossipPolicy>(),
-            Substitute.For<IForkInfo>(),
             LimboLogs.Instance,
             Substitute.For<ITxGossipPolicy>());
 
@@ -76,6 +90,13 @@ public class XdcProtocolHandlerTests
     private static Timeout CreateTimeout(ulong round = 1)
         => new(round, new Signature(new byte[64], 0), 0);
 
+    private static void HandleIncomingStatus(XdcProtocolHandler handler, IMessageSerializationService serializer)
+    {
+        ZeroPacket packet = CreatePacket(Eth62MessageCode.Status);
+        serializer.Deserialize<StatusMessage>(packet.Content).Returns(new StatusMessage());
+        handler.HandleMessage(packet);
+    }
+
     private static SyncInfo CreateSyncInfo(ulong qcRound = 1)
     {
         BlockRoundInfo blockInfo = new(TestItem.KeccakA, qcRound, 100);
@@ -96,6 +117,7 @@ public class XdcProtocolHandlerTests
             ZeroPacket packet = CreatePacket(XdcMessageCode.VoteMsg);
             serializer.Deserialize<VoteMsg>(packet.Content).Returns(new VoteMsg { Vote = vote });
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             votesManager.Received(1).OnReceiveVote(vote);
@@ -113,9 +135,10 @@ public class XdcProtocolHandlerTests
             ZeroPacket packet = CreatePacket(XdcMessageCode.TimeoutMsg);
             serializer.Deserialize<TimeoutMsg>(packet.Content).Returns(new TimeoutMsg { Timeout = timeout });
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            timeoutManager.Received(1).OnReceiveTimeout(Arg.Any<Timeout>());
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
         }
     }
 
@@ -131,6 +154,7 @@ public class XdcProtocolHandlerTests
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
             syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
@@ -150,6 +174,7 @@ public class XdcProtocolHandlerTests
             syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>())
                 .Returns(x => { x[1] = "rounds too low"; return false; });
 
+            HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
             syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
@@ -164,7 +189,7 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 1);
 
-            handler.SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
 
             session.Received(1).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -178,8 +203,8 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 7);
 
-            handler.SendVote(vote);
-            handler.SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
 
             session.Received(1).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -194,8 +219,8 @@ public class XdcProtocolHandlerTests
             Vote vote1 = CreateVote(round: 1);
             Vote vote2 = CreateVote(round: 2);
 
-            handler.SendVote(vote1);
-            handler.SendVote(vote2);
+            ((IXdcConsensusPeer)handler).SendVote(vote1);
+            ((IXdcConsensusPeer)handler).SendVote(vote2);
 
             session.Received(2).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -209,7 +234,7 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 1);
 
-            handler.SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
 
             session.Received(1).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -223,8 +248,8 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 4);
 
-            handler.SendTimeout(timeout);
-            handler.SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
 
             session.Received(1).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -239,8 +264,8 @@ public class XdcProtocolHandlerTests
             Timeout timeout1 = CreateTimeout(round: 1);
             Timeout timeout2 = CreateTimeout(round: 2);
 
-            handler.SendTimeout(timeout1);
-            handler.SendTimeout(timeout2);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout1);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout2);
 
             session.Received(2).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -254,7 +279,7 @@ public class XdcProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
             session.Received(1).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
@@ -269,10 +294,157 @@ public class XdcProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncInfo(syncInfo);
-            handler.SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
             session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_VoteAndTimeoutMsgWhileSyncing_AreIgnoredWithoutDisconnect()
+    {
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
+            = CreateAll(suggestedAheadOfHead: 900);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
+
+            votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
+            timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
+            session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_VoteAndTimeoutMsgAtGenesisBootstrap_AreProcessed()
+    {
+        // At genesis, with nothing beyond it known to us or our peers, every node reports isSyncing
+        // (bestSuggested == 0) - without a bootstrap exemption a chain stuck at genesis could never
+        // exchange the timeout/vote messages needed to form a TC and elect a later round's leader.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
+            = CreateAll(headNumber: 0);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            Vote vote = CreateVote(round: 3);
+            ZeroPacket votePacket = CreatePacket(XdcMessageCode.VoteMsg);
+            serializer.Deserialize<VoteMsg>(votePacket.Content).Returns(new VoteMsg { Vote = vote });
+            handler.HandleMessage(votePacket);
+
+            Timeout timeout = CreateTimeout(round: 3);
+            ZeroPacket timeoutPacket = CreatePacket(XdcMessageCode.TimeoutMsg);
+            serializer.Deserialize<TimeoutMsg>(timeoutPacket.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            handler.HandleMessage(timeoutPacket);
+
+            votesManager.Received(1).OnReceiveVote(vote);
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
+        }
+    }
+
+    [Test]
+    public void HandleMessage_VoteAndTimeoutMsgWhileSyncingAnExistingChainFromGenesis_AreIgnored()
+    {
+        // A node joining an existing chain also sits at head 0 for the whole header/state-sync window,
+        // but its peers have announced blocks far beyond genesis (bestSuggested >> 0) - the bootstrap
+        // exemption must not mistake that for a fresh chain nobody has produced a block on yet.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
+            = CreateAll(suggestedAheadOfHead: 1000, headNumber: 0);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
+
+            votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
+            timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
+            session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_SyncInfoMsgWhileSyncing_IsNeverIgnored()
+    {
+        // SyncInfo is the node's own catch-up path (carries the network's HighestQC/HighestTC) and
+        // already guards itself via VerifySyncInfo, so unlike Vote/Timeout it must never be dropped
+        // by the syncing check - not even while genuinely far behind, as this test's 900-block gap
+        // simulates.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            _, _, ISyncInfoManager syncInfoManager)
+            = CreateAll(suggestedAheadOfHead: 900);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
+            ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
+
+            handler.HandleMessage(syncInfoPacket);
+
+            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+        }
+    }
+
+    [Test]
+    public void HandleMessage_XdcMessageWithinSyncTolerance_IsProcessed()
+    {
+        // Regression test: a suggested-but-not-yet-processed block puts bestSuggested one ahead of
+        // head under completely normal operation. With a zero-tolerance IsSyncing() check this was
+        // indistinguishable from a genuine resync and silently dropped every XDC message, including
+        // SyncInfo - the node's own catch-up path - until head caught up.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
+            = CreateAll(suggestedAheadOfHead: XdcConstants.MaxSyncDistanceForConsensus);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            Vote vote = CreateVote(round: 5);
+            ZeroPacket votePacket = CreatePacket(XdcMessageCode.VoteMsg);
+            serializer.Deserialize<VoteMsg>(votePacket.Content).Returns(new VoteMsg { Vote = vote });
+            handler.HandleMessage(votePacket);
+
+            Timeout timeout = CreateTimeout(round: 5);
+            ZeroPacket timeoutPacket = CreatePacket(XdcMessageCode.TimeoutMsg);
+            serializer.Deserialize<TimeoutMsg>(timeoutPacket.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            handler.HandleMessage(timeoutPacket);
+
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
+            ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
+            handler.HandleMessage(syncInfoPacket);
+
+            votesManager.Received(1).OnReceiveVote(vote);
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
+            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+        }
+    }
+
+    [Test]
+    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes([Values] bool sendFullTx)
+    {
+        // In XdcProtocolHandler tx gossip must go via TransactionsMessage (0x02),
+        // never via NewPooledTransactionHashesMessage (0x08 from Eth65) which conflicts with XDC OrderTxMsg.
+        (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
+        using (handler)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+
+            handler.SendNewTransactions([tx], sendFullTx: sendFullTx);
+
+            session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth62MessageCode.Transactions));
+            session.DidNotReceive().DeliverMessage(Arg.Is<P2PMessage>(m => m.PacketType == Eth65MessageCode.NewPooledTransactionHashes));
         }
     }
 }

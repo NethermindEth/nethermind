@@ -5,10 +5,6 @@ using System;
 
 namespace Nethermind.JsonRpc.Exceptions;
 
-public class LimitExceededException : Exception
+public class LimitExceededException(string message) : Exception(message)
 {
-    public LimitExceededException(string message)
-        : base(message)
-    {
-    }
 }

@@ -8,14 +8,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public readonly struct TraceStack
+public readonly struct TraceStack(ReadOnlyMemory<byte> stack)
 {
-    private readonly ReadOnlyMemory<byte> _stack;
-
-    public TraceStack(ReadOnlyMemory<byte> stack)
-    {
-        _stack = stack;
-    }
+    private readonly ReadOnlyMemory<byte> _stack = stack;
 
     public ReadOnlyMemory<byte> this[int index]
     {
@@ -35,7 +30,17 @@ public readonly struct TraceStack
         return hexWordList;
     }
 
+    /// <summary>Returns a copy of the raw stack bytes (one 32-byte word per slot, bottom-of-stack first).
+    /// Returns an empty array for an empty stack. The EVM reuses its internal buffer across opcodes, so a copy is required.</summary>
+    public byte[] ToRawBytes()
+    {
+        if (_stack.Length == 0) return Array.Empty<byte>();
+        byte[] raw = new byte[_stack.Length];
+        _stack.Span.CopyTo(raw);
+        return raw;
+    }
+
     public ReadOnlySpan<byte> Peek(int index) => this[^(index + 1)].Span;
     public UInt256 PeekUInt256(int index) => new(Peek(index), true);
-    public Address PeekAddress(int index) => new(Peek(index)[12..].ToArray());
+    public Address PeekAddress(int index) => new(Peek(index)[12..]);
 }

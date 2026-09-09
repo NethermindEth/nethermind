@@ -13,20 +13,11 @@ namespace Nethermind.Trie
         public readonly bool IsStorage = isStorage;
         public readonly int? BranchChildIndex = branchChildIndex;
 
-        public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath)
-        {
-            return new(Level + 1, IsStorage, null);
-        }
+        public OldStyleTrieVisitContext Add(ReadOnlySpan<byte> nibblePath) => new(Level + 1, IsStorage, null);
 
-        public OldStyleTrieVisitContext Add(byte nibble)
-        {
-            return new(Level + 1, IsStorage, nibble);
-        }
+        public OldStyleTrieVisitContext Add(byte nibble) => new(Level + 1, IsStorage, nibble);
 
-        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage)
-        {
-            return new(Level + 1, true, null);
-        }
+        public OldStyleTrieVisitContext AddStorage(in ValueHash256 storage) => new(Level + 1, true, null);
     }
 
     public class TrieVisitContext : IDisposable
@@ -52,10 +43,7 @@ namespace Nethermind.Trie
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct SmallTrieVisitContext
     {
-        public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
-        {
-            IsStorage = trieVisitContext.IsStorage;
-        }
+        public SmallTrieVisitContext(TrieVisitContext trieVisitContext) => IsStorage = trieVisitContext.IsStorage;
 
         public byte Level { get; internal set; }
         private byte _flags = 0;

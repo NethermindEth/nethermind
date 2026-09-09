@@ -38,10 +38,7 @@ namespace Nethermind.Network.Rlpx
             IFrameCipher frameCipher,
             FrameMacProcessor frameMacProcessor,
             int maxFrameSize)
-            : this(frameCipher, frameMacProcessor)
-        {
-            _maxFrameSize = maxFrameSize;
-        }
+            : this(frameCipher, frameMacProcessor) => _maxFrameSize = maxFrameSize;
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
@@ -126,6 +123,9 @@ namespace Nethermind.Network.Rlpx
             payloadSize = (payloadSize << 8) + (_decryptedBytes[1] & 0xFF);
             payloadSize = (payloadSize << 8) + (_decryptedBytes[2] & 0xFF);
 
+            if (payloadSize is 0)
+                ThrowZeroSizeFrame();
+
             if (payloadSize > _maxFrameSize)
                 ThrowFrameTooLarge(payloadSize, _maxFrameSize);
 
@@ -135,10 +135,7 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DecryptHeader()
-        {
-            _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
-        }
+        private void DecryptHeader() => _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AuthenticateHeader(IByteBuffer input)
@@ -173,6 +170,10 @@ namespace Nethermind.Network.Rlpx
             WaitingForPayload,
             WaitingForPayloadMac
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowZeroSizeFrame()
+            => throw new CorruptedFrameException("Frame payload is empty");
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowFrameTooLarge(int payloadSize, int maxFrameSize)

@@ -1,13 +1,16 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Int256;
-using Nethermind.Merge.Plugin.Data;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
-public class BoostExecutionPayloadV1
+public class BoostPayloadAttributes : PayloadAttributes
 {
-    public ExecutionPayload Block { get; init; } = null!;
-    public UInt256 Profit { get; init; }
+    public ulong? GasLimit { get; set; }
+
+    public override ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
+        => GasLimit ?? base.GetGasLimit(parent, gasLimitCalculator);
 }

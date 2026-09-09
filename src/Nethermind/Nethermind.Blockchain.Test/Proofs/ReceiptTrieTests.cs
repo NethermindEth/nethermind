@@ -20,8 +20,7 @@ namespace Nethermind.Blockchain.Test.Proofs;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptTrieTests
 {
-    private static readonly IRlpStreamEncoder<TxReceipt> _decoder = Rlp.GetStreamEncoder<TxReceipt>()!;
-    private static readonly IRlpValueDecoder<TxReceipt> _valueDecoder = Rlp.GetValueDecoder<TxReceipt>()!;
+    private static readonly ReceiptMessageDecoder _decoder = new();
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root_no_eip_658()
@@ -49,7 +48,7 @@ public class ReceiptTrieTests
     {
         TxReceipt receipt1 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
         TxReceipt receipt2 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        using var pool = new TrackingCappedArrayPool();
+        using TrackingCappedArrayPool pool = new();
         ReceiptTrie trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1),
             [receipt1, receipt2], _decoder, pool, true);
         byte[][] proof = trie.BuildProof(0);
@@ -65,7 +64,7 @@ public class ReceiptTrieTests
         const int receiptCount = 100;
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null));
         TxReceipt[] receipts = new TxReceipt[receiptCount];
-        for (int i = 0; i < receiptCount; i++)
+        for (uint i = 0; i < receiptCount; i++)
         {
             receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal(1000 + i).TestObject;
         }
@@ -85,8 +84,8 @@ public class ReceiptTrieTests
     {
         TrieNode node = new(NodeType.Unknown, proof.Last());
         node.ResolveNode(Substitute.For<ITrieNodeResolver>(), TreePath.Empty);
-        Rlp.ValueDecoderContext ctx = node.Value.ToArray().AsRlpValueContext();
-        TxReceipt receipt = _valueDecoder.Decode(ref ctx);
+        RlpReader ctx = new(node.Value.AsSpan());
+        TxReceipt receipt = _decoder.DecodeGuardNotNull(ref ctx);
         Assert.That(receipt.Bloom, Is.Not.Null);
 
         for (int i = proof.Length; i > 0; i--)

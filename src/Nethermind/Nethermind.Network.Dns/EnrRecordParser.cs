@@ -16,14 +16,9 @@ public interface IEnrRecordParser
     NodeRecord ParseRecord(string nodeRecordText);
 }
 
-public class EnrRecordParser : IEnrRecordParser
+public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordParser
 {
-    private readonly INodeRecordSigner _nodeRecordSigner;
-
-    public EnrRecordParser(INodeRecordSigner nodeRecordSigner)
-    {
-        _nodeRecordSigner = nodeRecordSigner;
-    }
+    private readonly INodeRecordSigner _nodeRecordSigner = nodeRecordSigner;
 
     public NodeRecord ParseRecord(string nodeRecordText)
     {
@@ -60,7 +55,7 @@ public class EnrRecordParser : IEnrRecordParser
         IByteBuffer base64Buffer = Base64.Decode(buffer, Base64Dialect.URL_SAFE);
         try
         {
-            Rlp.ValueDecoderContext ctx = base64Buffer.AsRlpContext();
+            RlpReader ctx = new(base64Buffer.AsSpan());
             NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
             base64Buffer.SetReaderIndex(base64Buffer.ReaderIndex + ctx.Position);
             return result;

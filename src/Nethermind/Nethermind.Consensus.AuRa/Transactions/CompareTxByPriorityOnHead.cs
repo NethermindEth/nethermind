@@ -9,18 +9,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class CompareTxByPriorityOnHead : CompareTxByPriorityBase
+    public class CompareTxByPriorityOnHead(
+        IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+        IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
+        IBlockTree blockTree) : CompareTxByPriorityBase(sendersWhitelist, priorities)
     {
-        private readonly IBlockTree _blockTree;
-
-        public CompareTxByPriorityOnHead(
-            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
-            IBlockTree blockTree)
-            : base(sendersWhitelist, priorities)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        }
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         protected override BlockHeader BlockHeader => _blockTree.Head.Header;
     }

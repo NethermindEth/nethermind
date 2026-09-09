@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             header.Nonce = 0;
             header.Hash = new Hash256("0x8c2f2af15b7b563b6ab1e09bed0e9caade7ed730aec98b70a993597a797579a9");
 
-            using var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage();
+            using Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage ethMessage = new();
             ethMessage.BlockHeaders = new ArrayPoolList<BlockHeader>(1) { header };
 
             using BlockHeadersMessage message = new(1111, ethMessage);

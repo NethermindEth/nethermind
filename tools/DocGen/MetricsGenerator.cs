@@ -16,27 +16,27 @@ internal static partial class MetricsGenerator
     {
         path = Path.Join(path, "docs", "monitoring", "metrics");
 
-        var startMark = "<!--[start autogen]-->";
-        var endMark = "<!--[end autogen]-->";
-        var excluded = Array.Empty<string>();
-        var types = Directory
+        string startMark = "<!--[start autogen]-->";
+        string endMark = "<!--[end autogen]-->";
+        string[] excluded = Array.Empty<string>();
+        IOrderedEnumerable<Type> types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
             .Where(t => t.Name.Equals("Metrics", StringComparison.Ordinal) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => GetNamespace(t.FullName));
-        var fileName = Path.Join(path, "metrics.md");
-        var tempFileName = Path.Join(path, "~metrics.md");
+        string fileName = Path.Join(path, "metrics.md");
+        string tempFileName = Path.Join(path, "~metrics.md");
 
         // Delete the temp file if it exists
         File.Delete(tempFileName);
 
-        using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
+        using StreamReader readStream = new(File.OpenRead(fileName));
+        using StreamWriter writeStream = new(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
-        var line = string.Empty;
+        string? line = string.Empty;
 
         do
         {
@@ -48,10 +48,10 @@ internal static partial class MetricsGenerator
 
         writeStream.WriteLine();
 
-        foreach (var type in types)
+        foreach (Type type in types)
             WriteMarkdown(writeStream, type);
 
-        var skip = true;
+        bool skip = true;
 
         for (line = readStream.ReadLine(); line is not null; line = readStream.ReadLine())
         {
@@ -76,7 +76,7 @@ internal static partial class MetricsGenerator
 
     private static void WriteMarkdown(StreamWriter file, Type metricsType)
     {
-        var props = metricsType
+        IOrderedEnumerable<PropertyInfo> props = metricsType
             .GetProperties()
             .OrderBy(p => p.Name);
 
@@ -88,10 +88,10 @@ internal static partial class MetricsGenerator
 
             """);
 
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var attr = prop.GetCustomAttribute<DescriptionAttribute>();
-            var param = _regex.Replace(prop.Name, m => $"_{m.Value.ToLowerInvariant()}");
+            DescriptionAttribute? attr = prop.GetCustomAttribute<DescriptionAttribute>();
+            string param = _regex.Replace(prop.Name, m => $"_{m.Value.ToLowerInvariant()}");
 
             file.WriteLine($"- #### `nethermind{param}` \\{{#{param[1..]}\\}}");
 
@@ -108,7 +108,7 @@ internal static partial class MetricsGenerator
 
     private static string? GetNamespace(string? fullTypeName)
     {
-        var ns = fullTypeName?
+        string? ns = fullTypeName?
             .Replace("Nethermind.", null, StringComparison.Ordinal)
             .Replace(".Metrics", null, StringComparison.Ordinal);
 

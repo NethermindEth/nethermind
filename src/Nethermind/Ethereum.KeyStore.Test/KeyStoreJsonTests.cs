@@ -44,28 +44,24 @@ namespace Ethereum.KeyStore.Test
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(config, _serializer, new AesEncrypter(config, logManager), _cryptoRandom, logManager, new PrivateKeyStoreIOSettingsProvider(config));
 
-            var testsContent = File.ReadAllText("basic_tests.json");
+            string testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<Dictionary<string, KeyStoreTestModel>>(testsContent);
         }
 
         [TearDown]
         public void TearDown() => _cryptoRandom?.Dispose();
 
-        [TestCase("test1")]
-        [TestCase("test2")]
-        [TestCase("python_generated_test_with_odd_iv")]
-        [TestCase("evilnonce")]
-        [TestCase("mycrypto")]
-        public void Test(string testName)
+        [Test]
+        public void Test([Values("test1", "test2", "python_generated_test_with_odd_iv", "evilnonce", "mycrypto")] string testName)
         {
             KeyStoreTestModel testModel = _testsModel[testName];
             testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
-            Address address = new Address(testModel.KeyData.Address);
+            Address address = new(testModel.KeyData.Address);
             _store.StoreKey(address, testModel.KeyData);
 
             try
             {
-                var securedPass = new SecureString();
+                SecureString securedPass = new();
                 testModel.Password.ToCharArray().ForEach(x => securedPass.AppendChar(x));
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);

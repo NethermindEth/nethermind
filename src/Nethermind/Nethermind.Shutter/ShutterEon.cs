@@ -22,7 +22,7 @@ public class ShutterEon(
     private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterEon>();
 
     public IShutterEon.Info? GetCurrentEonInfo() => _currentInfo;
 
@@ -34,7 +34,7 @@ public class ShutterEon(
         try
         {
             KeyperSetManagerContract keyperSetManagerContract = new(processor, abiEncoder, _keyperSetManagerContractAddress);
-            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, (ulong)header.Number + 1);
+            ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, header.Number + 1);
 
             if (_currentInfo is null || _currentInfo.Value.Eon != eon)
             {

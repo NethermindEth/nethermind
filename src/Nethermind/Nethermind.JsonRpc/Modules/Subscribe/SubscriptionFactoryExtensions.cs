@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -19,15 +19,13 @@ public static class SubscriptionFactoryExtensions
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
         ILogManager? logManager,
-        ISpecProvider specProvider
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        ISpecProvider specProvider,
+        IBlockForRpcFactory blockForRpcFactory
+        ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewHeads,
             (jsonRpcDuplexClient, args) =>
-            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)
+            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, blockForRpcFactory, args)
             );
-    }
 
     public static void RegisterLogsSubscription(
         this ISubscriptionFactory subscriptionFactory,
@@ -35,83 +33,65 @@ public static class SubscriptionFactoryExtensions
         FilterStore? filterStore,
         IBlockTree? blockTree,
         ILogManager? logManager
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType<Filter?>(
+        ) => subscriptionFactory.RegisterSubscriptionType<Filter?>(
             SubscriptionType.EthSubscription.Logs,
             (jsonRpcDuplexClient, filter) =>
             new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, filter)
             );
-    }
 
     public static void RegisterTransactionReceiptsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IReceiptMonitor receiptMonitor,
         IBlockTree? blockTree,
         ILogManager? logManager
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
+        ) => subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
             SubscriptionType.EthSubscription.TransactionReceipts,
             (jsonRpcDuplexClient, filter) =>
             new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, filter)
             );
-    }
 
     public static void RegisterNewPendingTransactionsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         ITxPool? txPool,
         ISpecProvider? specProvider,
         ILogManager? logManager
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewPendingTransactions,
             (jsonRpcDuplexClient, args) =>
             new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, specProvider, logManager, args)
             );
-    }
 
     public static void RegisterDroppedPendingTransactionsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         ITxPool? txPool,
         ILogManager? logManager
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType(
+        ) => subscriptionFactory.RegisterSubscriptionType(
             SubscriptionType.EthSubscription.DroppedPendingTransactions,
             (jsonRpcDuplexClient) =>
             new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager)
             );
-    }
 
     public static void RegisterSyncingSubscription(
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
         IEthSyncingInfo ethSyncingInfo,
         ILogManager? logManager
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType(
+        ) => subscriptionFactory.RegisterSubscriptionType(
             SubscriptionType.EthSubscription.Syncing,
             (jsonRpcDuplexClient) =>
             new SyncingSubscription(jsonRpcDuplexClient, blockTree, ethSyncingInfo, logManager)
             );
-    }
 
     public static void RegisterPeerEventsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         ILogManager? logManager,
         IPeerPool? peerPool,
         IRlpxHost? rlpxHost
-        )
-    {
-        subscriptionFactory.RegisterSubscriptionType(
+        ) => subscriptionFactory.RegisterSubscriptionType(
             SubscriptionType.AdminSubscription.PeerEvents,
             (jsonRpcDuplexClient) =>
             new PeerEventsSubscription(jsonRpcDuplexClient, logManager, peerPool, rlpxHost)
             );
-    }
 
     public static void RegisterStandardSubscriptions(
         this ISubscriptionFactory subscriptionFactory,
@@ -123,10 +103,11 @@ public static class SubscriptionFactoryExtensions
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo,
         IPeerPool? peerPool,
-        IRlpxHost? rlpxHost
+        IRlpxHost? rlpxHost,
+        IBlockForRpcFactory blockForRpcFactory
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
@@ -143,10 +124,11 @@ public static class SubscriptionFactoryExtensions
         IReceiptMonitor receiptMonitor,
         FilterStore? filterStore,
         ITxPool? txPool,
-        IEthSyncingInfo ethSyncingInfo
+        IEthSyncingInfo ethSyncingInfo,
+        IBlockForRpcFactory blockForRpcFactory
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);

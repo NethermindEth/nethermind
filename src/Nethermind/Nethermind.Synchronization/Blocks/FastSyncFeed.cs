@@ -14,20 +14,11 @@ namespace Nethermind.Synchronization.Blocks
     {
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastSync;
 
-        private DownloaderOptions BuildOptions()
-        {
-            return DownloaderOptions.Insert | DownloaderOptions.WithReceipts;
-        }
+        private DownloaderOptions BuildOptions() => DownloaderOptions.Insert | DownloaderOptions.WithReceipts;
 
-        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default)
-        {
-            return forwardSyncController.PrepareRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead, token);
-        }
+        public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => forwardSyncController.PrepareRequest(BuildOptions(), syncConfig.StateMinDistanceFromHead, token);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null)
-        {
-            return forwardSyncController.HandleResponse(response, peer);
-        }
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null) => forwardSyncController.HandleResponse(response, peer);
 
         public override bool IsMultiFeed => true;
 

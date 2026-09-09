@@ -7,24 +7,18 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Consensus.AuRa;
 
-public class AuRaBetterPeerStrategy : IBetterPeerStrategy
+public class AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager) : IBetterPeerStrategy
 {
-    private readonly IBetterPeerStrategy _betterPeerStrategy;
-    private readonly ILogger _logger;
+    private readonly IBetterPeerStrategy _betterPeerStrategy = betterPeerStrategy;
+    private readonly ILogger _logger = logManager.GetClassLogger<AuRaBetterPeerStrategy>();
 
-    public AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager)
-    {
-        _betterPeerStrategy = betterPeerStrategy;
-        _logger = logManager.GetClassLogger();
-    }
-
-    public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY)
+    public int Compare(in (UInt256? TotalDifficulty, ulong Number) valueX, in (UInt256? TotalDifficulty, ulong Number) valueY)
         => _betterPeerStrategy.Compare(valueX, valueY);
 
-    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestBlock) =>
+    public bool IsBetterThanLocalChain(in (UInt256? TotalDifficulty, ulong Number) bestPeerInfo, in (UInt256 TotalDifficulty, ulong Number) bestBlock) =>
         _betterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo, bestBlock);
 
-    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
+    public bool IsDesiredPeer(in (UInt256? TotalDifficulty, ulong Number) bestPeerInfo, in (UInt256 TotalDifficulty, ulong Number) bestHeader)
     {
         if (_betterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader))
         {

@@ -30,10 +30,42 @@ namespace Nethermind.Abi
 
         public int Length { get; }
 
+        internal override int GetHeadSize(bool packed) =>
+            IsDynamic ? PaddingSize : GetRepeatedHeadSize(Length, ElementType.GetHeadSize(packed));
+
         public override string Name { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed) =>
-            DecodeSequence(ElementType.CSharpType, Length, ElementTypes, data, packed, position);
+        public override (object, int) Decode(byte[] data, int position, bool packed)
+        {
+            using DecodeBudgetScope decodeBudget = EnterDecodeBudget(data.Length);
+            int elementHeadSize = ElementType.GetHeadSize(packed);
+            if (elementHeadSize is 0)
+            {
+                ConsumeZeroWidthElementBudget(Length, ElementType);
+            }
+            else
+            {
+                if ((uint)position > (uint)data.Length)
+                {
+                    throw new AbiException($"Insufficient data to decode ABI {Name} at position {position}");
+                }
+
+                int remainingDataLength = data.Length - position;
+                ulong headSize = (ulong)(uint)Length * (uint)elementHeadSize;
+                if (headSize > (uint)remainingDataLength)
+                {
+                    throw new AbiException(
+                        $"ABI {Name} requires a head of {headSize} bytes, but only {remainingDataLength} bytes are available");
+                }
+
+                if (IsDynamic)
+                {
+                    ConsumeDecodeBudget(headSize, this);
+                }
+            }
+
+            return DecodeSequence(ElementType.CSharpType, Length, ElementTypes, data, packed, position);
+        }
 
         public override byte[] Encode(object? arg, bool packed)
         {

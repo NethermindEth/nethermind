@@ -7,17 +7,11 @@ namespace Nethermind.Consensus.Clique
 {
     internal static class BlockHeaderExtensions
     {
-        public static bool IsInTurn(this BlockHeader header)
-        {
-            return header.Difficulty == Clique.DifficultyInTurn;
-        }
+        public static bool IsInTurn(this BlockHeader header) => header.Difficulty == Clique.DifficultyInTurn;
     }
 
     internal static class BlockExtensions
     {
-        public static bool IsInTurn(this Block block)
-        {
-            return block.Difficulty == Clique.DifficultyInTurn;
-        }
+        public static bool IsInTurn(this Block block) => block.Difficulty == Clique.DifficultyInTurn;
     }
 }

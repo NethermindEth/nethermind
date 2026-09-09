@@ -14,10 +14,7 @@ namespace Ethereum.Blockchain.Block.Test;
 public class BlockhashTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test)
-    {
-        Assert.That(RunTest(test).Pass, Is.True);
-    }
+    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {

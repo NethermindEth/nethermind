@@ -15,6 +15,7 @@ using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -28,26 +29,29 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IStateReader stateReader,
         IBlockchainBridgeFactory blockchainBridgeFactory,
         ISpecProvider specProvider,
-        IReceiptStorage receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         IProtocolsManager protocolsManager,
         IBlocksConfig blocksConfig,
         IForkInfo forkInfo,
-        ILogIndexConfig logIndexConfig)
+        ILogIndexConfig logIndexConfig,
+        IReceiptConfig receiptConfig,
+        IEthCapabilitiesProvider capabilitiesProvider,
+        IBlockForRpcFactory blockForRpcFactory)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
+        private readonly HeadBlockSignal _headBlockSignal = new(blockTree);
 
-        public override IEthRpcModule Create()
-        {
-            return new EthRpcModule(
+        public override IEthRpcModule Create() => new EthRpcModule(
                 config,
                 blockchainBridgeFactory.CreateBlockchainBridge(),
                 _blockTree,
-                receiptStorage,
+                blockTree,
+                receiptFinder,
                 stateReader,
                 txPool,
                 txSender,
@@ -60,7 +64,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 protocolsManager,
                 forkInfo,
                 logIndexConfig,
-                _secondsPerSlot);
-        }
+                receiptConfig,
+                _secondsPerSlot,
+                _headBlockSignal,
+                capabilitiesProvider,
+                blockForRpcFactory);
     }
 }

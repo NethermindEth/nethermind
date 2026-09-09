@@ -8,24 +8,16 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class TxTraceFilter
+    public class TxTraceFilter(
+        Address[]? fromAddresses,
+        Address[]? toAddresses,
+        int after,
+        int? count)
     {
-        private readonly Address[]? _fromAddresses;
-        private readonly Address[]? _toAddresses;
-        private int _after;
-        private int? _count;
-
-        public TxTraceFilter(
-            Address[]? fromAddresses,
-            Address[]? toAddresses,
-            int after,
-            int? count)
-        {
-            _fromAddresses = fromAddresses;
-            _toAddresses = toAddresses;
-            _after = after;
-            _count = count;
-        }
+        private readonly Address[]? _fromAddresses = fromAddresses;
+        private readonly Address[]? _toAddresses = toAddresses;
+        private int _after = after;
+        private int? _count = count;
 
         public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(IEnumerable<ParityTxTraceFromStore> txTraces)
         {

@@ -7,7 +7,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -24,7 +23,7 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     ILogManager logManager)
-    : IWorldStateManager
+    : IWorldStateManager, IDisposable
 {
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
@@ -37,13 +36,12 @@ public class FlatWorldStateManager(
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 
-    private FlatSnapServer? _snapServer;
+    private SnapFlatStateServer? _snapServer;
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer? SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapStateServer SnapStateServer => _snapServer ??= new SnapFlatStateServer(
         flatDbManager,
-        codeDb,
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
@@ -58,11 +56,7 @@ public class FlatWorldStateManager(
             logManager,
             isReadOnly: true);
 
-    event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
-    {
-        add => flatDbManager.ReorgBoundaryReached += value;
-        remove => flatDbManager.ReorgBoundaryReached -= value;
-    }
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();
@@ -71,4 +65,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void Dispose() => _mainWorldState.Dispose();
 }

@@ -13,30 +13,22 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapProvider : ISnapProvider
+    public class SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager) : ISnapProvider
     {
-        private readonly IDb _codeDb;
-        private readonly ILogger _logger;
+        private readonly IDb _codeDb = codeDb;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapProvider>();
 
-        private readonly ProgressTracker _progressTracker;
-        private readonly ISnapTrieFactory _trieFactory;
+        private readonly ProgressTracker _progressTracker = progressTracker;
+        private readonly ISnapTrieFactory _trieFactory = trieFactory;
 
         // This is actually close to 97% effective.
-        private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
-
-        public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager)
-        {
-            _codeDb = codeDb;
-            _progressTracker = progressTracker;
-            _trieFactory = trieFactory;
-            _logger = logManager.GetClassLogger<SnapProvider>();
-        }
+        private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
         public bool CanSync() => _progressTracker.CanSync();
 
@@ -68,15 +60,12 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
-            response.Dispose();
-
             Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
             return result;
         }
 
         public AddRangeResult AddAccountRange(
-            long blockNumber,
+            ulong blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             IReadOnlyList<PathWithAccount> accounts,
@@ -97,16 +86,18 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                foreach (ValueHash256 code in CollectionsMarshal.AsSpan(codeHashes))
                 {
-                    if (_codeExistKeyCache.Get(code)) return false;
+                    if (_codeExistKeyCache.Get(code)) continue;
 
-                    bool exist = _codeDb.KeyExists(code.Bytes);
-                    if (exist) _codeExistKeyCache.Set(code);
-                    return !exist;
-                }).ToPooledListRef(codeHashes.Count);
+                    if (_codeDb.KeyExists(code.Bytes))
+                    {
+                        _codeExistKeyCache.Set(code);
+                        continue;
+                    }
 
-                _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+                    _progressTracker.EnqueueCodeHash(code);
+                }
 
                 ValueHash256 nextPath = accounts[^1].Path.IncrementPath();
                 _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, nextPath, moreChildrenToRight);
@@ -120,6 +111,7 @@ namespace Nethermind.Synchronization.SnapSync
                     AddRangeResult.InvalidOrder => $"SNAP - AddAccountRange failed, accounts are not in sorted order, startingHash:{startingHash}",
                     AddRangeResult.OutOfBounds => $"SNAP - AddAccountRange failed, accounts are out of bounds, startingHash:{startingHash}",
                     AddRangeResult.EmptyRange => $"SNAP - AddAccountRange failed, empty accounts, startingHash:{startingHash}",
+                    AddRangeResult.InvalidProof => $"SNAP - AddAccountRange failed, invalid proof, startingHash:{startingHash}",
                     _ => null
                 };
                 if (message is not null)
@@ -135,59 +127,60 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result = AddRangeResult.OK;
 
-            IReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots;
-            if (responses.Count == 0 && response.Proofs.Count == 0)
+            ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots.AsSpan();
+            if (responses.Length == 0 && response.Proofs.Count == 0)
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
-                _progressTracker.RetryStorageRange(request.Copy());
+                _progressTracker.RequeueStorageRange(request.Copy());
                 Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.ExpiredRootHash));
 
                 return AddRangeResult.ExpiredRootHash;
             }
-            else
+
+            if (responses.Length > request.Accounts.Count)
             {
-                int slotCount = 0;
+                if (_logger.IsTrace) _logger.Trace($"SNAP - GetStorageRange - got {responses.Length} slot lists for {request.Accounts.Count} accounts, RootHash:{request.RootHash}");
 
-                int requestLength = request.Accounts.Count;
+                _progressTracker.RequeueStorageRange(request.Copy());
+                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.OutOfBounds));
 
-                for (int i = 0; i < responses.Count; i++)
-                {
-                    // only the last can have proofs
-                    IByteArrayList proofs = null;
-                    if (i == responses.Count - 1)
-                    {
-                        proofs = response.Proofs;
-                    }
-
-                    result = AddStorageRangeForAccount(request, i, responses[i], proofs);
-                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
-
-                    slotCount += responses[i].Count;
-                }
-
-                if (requestLength > responses.Count)
-                {
-                    _progressTracker.ReportFullStorageRequestFinished(requestLength, request.Accounts.Skip(responses.Count));
-                }
-                else
-                {
-                    _progressTracker.ReportFullStorageRequestFinished(requestLength);
-                }
-
-                if (result == AddRangeResult.OK && slotCount > 0)
-                {
-                    Interlocked.Add(ref Metrics.SnapSyncedStorageSlots, slotCount);
-                }
+                return AddRangeResult.OutOfBounds;
             }
 
-            response.Dispose();
+            int slotCount = 0;
+            for (int i = 0; i < responses.Length; i++)
+            {
+                // only the last can have proofs
+                IByteArrayList proofs = null;
+                if (i == responses.Length - 1)
+                {
+                    proofs = response.Proofs;
+                }
+
+                result = AddStorageRangeForAccount(request, i, responses[i], proofs);
+                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
+
+                slotCount += responses[i].Count;
+            }
+
+            if (result == AddRangeResult.OK && slotCount > 0)
+            {
+                Interlocked.Add(ref Metrics.SnapSyncedStorageSlots, slotCount);
+            }
+
+            foreach (PathWithAccount uncovered in request.Accounts.AsSpan()[responses.Length..])
+            {
+                _progressTracker.EnqueueAccountStorage(uncovered);
+            }
+
             return result;
         }
 
         public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs = null)
         {
-            PathWithAccount pathWithAccount = request.Accounts[accountIndex];
+            ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
+            PathWithAccount pathWithAccount = accounts[accountIndex];
 
             try
             {
@@ -208,7 +201,7 @@ namespace Nethermind.Synchronization.SnapSync
                         // Sometimes the stitching does not work. Likely because part of the storage is using different
                         // pivot, sometimes the proof is in a form that we cannot cleanly verify if it should persist or not,
                         // but also because of stitching bug. So we just force trigger healing and continue on with our lives.
-                        _progressTracker.TrackAccountToHeal(request.Accounts[accountIndex].Path);
+                        _progressTracker.TrackAccountToHeal(accounts[accountIndex].Path);
                     }
 
                     return result;
@@ -223,6 +216,7 @@ namespace Nethermind.Synchronization.SnapSync
                         AddRangeResult.InvalidOrder => $"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}",
                         AddRangeResult.OutOfBounds => $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}",
                         AddRangeResult.EmptyRange => $"SNAP - AddStorageRange failed, slots list is empty, startingHash:{request.StartingHash}",
+                        AddRangeResult.InvalidProof => $"SNAP - AddStorageRange failed, invalid proof, startingHash:{request.StartingHash}",
                         _ => null
                     };
                     if (message is not null)
@@ -242,55 +236,103 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, IByteArrayList response)
+        public AddRangeResult RefreshAccounts(AccountsToRefreshRequest request, AccountsAndProofs response)
         {
-            int respLength = response.Count;
-            for (int reqIndex = 0; reqIndex < request.Paths.Count; reqIndex++)
+            AccountWithStorageStartingHash requestedPath = request.Paths[0];
+            ValueHash256 path = requestedPath.PathAndAccount.Path;
+
+            AddRangeResult result;
+            switch (VerifyRefreshedAccount(response, request.RootHash, path, out Account? account))
             {
-                var requestedPath = request.Paths[reqIndex];
-
-                if (reqIndex < respLength)
-                {
-                    ReadOnlySpan<byte> nodeData = response[reqIndex];
-
-                    if (nodeData.Length == 0)
-                    {
-                        RetryAccountRefresh(requestedPath);
-                        _logger.Trace($"SNAP - Empty Account Refresh: {requestedPath.PathAndAccount.Path}");
-                        continue;
-                    }
-
-                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(Keccak.Compute(nodeData));
+                case RefreshVerifyResult.Verified:
+                    result = AddRangeResult.OK;
+                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
 
                     if (requestedPath.StorageStartingHash > ValueKeccak.Zero)
                     {
-                        StorageRange range = new()
+                        _progressTracker.EnqueueNextSlot(new StorageRange
                         {
                             Accounts = new ArrayPoolList<PathWithAccount>(1) { requestedPath.PathAndAccount },
                             StartingHash = requestedPath.StorageStartingHash,
                             LimitHash = requestedPath.StorageHashLimit
-                        };
-
-                        _progressTracker.EnqueueNextSlot(range);
+                        });
                     }
                     else
                     {
                         _progressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
                     }
-                }
-                else
-                {
+                    break;
+
+                case RefreshVerifyResult.NotFound:
+                    // The account no longer exists at the pivot, so there is no storage to retrieve. It remains
+                    // tracked for healing. Terminal success - must not retry or the refresh would loop forever.
+                    result = AddRangeResult.OK;
+                    break;
+
+                case RefreshVerifyResult.Expired:
+                    // The peer does not have the state for this root (stale pivot).
+                    result = AddRangeResult.ExpiredRootHash;
                     RetryAccountRefresh(requestedPath);
-                }
+                    break;
+
+                default: // InvalidProof - the proof does not reconstruct the state root.
+                    result = AddRangeResult.DifferentRootHash;
+                    RetryAccountRefresh(requestedPath);
+                    break;
             }
 
-            _progressTracker.ReportAccountRefreshFinished();
+            Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: false, result: result));
+            return result;
         }
 
-        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
+        private enum RefreshVerifyResult { Verified, NotFound, Expired, InvalidProof }
+
+        /// <summary>
+        /// Reconstructs the returned account range and verifies it against <paramref name="stateRoot"/> in an
+        /// isolated, empty-backed trie - the account leaf is set from the response, not assumed to be in the proof -
+        /// then extracts the verified account at <paramref name="path"/>. Nothing is written to the client state DB.
+        /// </summary>
+        private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out Account? account)
         {
-            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
+            account = null;
+            IReadOnlyList<PathWithAccount> accounts = response.PathAndAccounts;
+            // An empty response carries no range to verify, so the account's absence cannot be proven here -
+            // retry rather than concluding (unproven) that it was deleted.
+            if (accounts.Count == 0)
+                return RefreshVerifyResult.Expired;
+
+            AddRangeResult result;
+            try
+            {
+                // Empty-backed isolated factory: a proof node that cannot be resolved from the proof itself fails
+                // verification instead of being completed from (or racing) the live client state DB.
+                ISnapTrieFactory factory = new PatriciaSnapTrieFactory(new NodeStorage(new MemDb()), NullDb.Instance, logManager);
+                result = SnapProviderHelper.VerifyAccountRange(factory, stateRoot, path, path.IncrementPath(), accounts, response.Proofs);
+            }
+            catch (Exception)
+            {
+                // The proof is untrusted P2P data: any failure assembling or decoding it (trie, RLP, bounds, etc.)
+                // means the proof is invalid, never a crash of the sync task.
+                return RefreshVerifyResult.InvalidProof;
+            }
+
+            if (result != AddRangeResult.OK)
+                return RefreshVerifyResult.InvalidProof;
+
+            // The verified range proves which accounts exist around [path, path + 1]; filter to the requested one.
+            // Its absence here is therefore a proven non-existence (deleted account), not an unverified guess.
+            for (int i = 0; i < accounts.Count; i++)
+            {
+                if (accounts[i].Path == path)
+                {
+                    account = accounts[i].Account;
+                    return RefreshVerifyResult.Verified;
+                }
+            }
+            return RefreshVerifyResult.NotFound;
         }
+
+        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath) => _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
 
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
@@ -313,41 +355,44 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
-            codes.Dispose();
-            _progressTracker.ReportCodeRequestFinished(set.ToArray());
+
+            foreach (ValueHash256 unserved in set)
+            {
+                _progressTracker.EnqueueCodeHash(unserved);
+            }
         }
 
-        public void RetryRequest(SnapSyncBatch batch)
+        public void ReleaseRequest(SnapSyncBatch batch, bool responseHandled)
         {
             if (batch.AccountRangeRequest is not null)
             {
+                // Re-offered from the progress it recorded, so the flag makes no difference here.
                 _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash.Value);
             }
             else if (batch.StorageRangeRequest is not null)
             {
-                _progressTracker.RetryStorageRange(batch.StorageRangeRequest.Copy());
+                if (!responseHandled)
+                {
+                    _progressTracker.RequeueStorageRange(batch.StorageRangeRequest.Copy());
+                }
+
+                _progressTracker.ReportStorageRequestFinished(batch.StorageRangeRequest.Accounts.Count);
             }
             else if (batch.CodesRequest is not null)
             {
-                _progressTracker.ReportCodeRequestFinished(batch.CodesRequest.AsSpan());
+                _progressTracker.ReportCodeRequestFinished(responseHandled ? [] : batch.CodesRequest.AsSpan());
             }
             else if (batch.AccountsToRefreshRequest is not null)
             {
-                _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
+                _progressTracker.ReportAccountRefreshFinished(responseHandled ? null : batch.AccountsToRefreshRequest);
             }
         }
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
-        public void UpdatePivot()
-        {
-            _progressTracker.UpdatePivot();
-        }
+        public void UpdatePivot() => _progressTracker.UpdatePivot();
 
-        public void Dispose()
-        {
-            _codeExistKeyCache.Clear();
-        }
+        public void Dispose() => _codeExistKeyCache.Clear();
 
     }
 }

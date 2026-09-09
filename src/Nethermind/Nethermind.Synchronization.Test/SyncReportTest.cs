@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -21,19 +23,6 @@ namespace Nethermind.Synchronization.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class SyncReportTest
     {
-        private static Block CreateBlockWithTimestamp(DateTimeOffset timestamp)
-        {
-            return new Block(new BlockHeader(
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Nethermind.Core.Crypto.Keccak.Zero,
-                Address.Zero,
-                0,
-                0,
-                0,
-                (ulong)timestamp.ToUnixTimeSeconds(),
-                []));
-        }
-
         [Test]
         public void Smoke(
             [Values(true, false)]
@@ -58,12 +47,10 @@ namespace Nethermind.Synchronization.Test
                 FastSync = fastSync,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), LimboLogs.Instance, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), Substitute.For<ITimestamper>(), LimboLogs.Instance, timerFactory);
 
-            void UpdateMode()
-            {
+            void UpdateMode() =>
                 syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncModes.Count > 0 ? syncModes.Dequeue() : SyncMode.Full));
-            }
 
             timer.Elapsed += Raise.Event();
             UpdateMode();
@@ -89,7 +76,8 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            logManager.GetClassLogger<SyncReport>().Returns(logger);
+            logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);
@@ -102,7 +90,7 @@ namespace Nethermind.Synchronization.Test
                 PivotNumber = 100,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), Substitute.For<ITimestamper>(), logManager, timerFactory);
             syncReport.FastBlocksHeaders.Reset(0, 100);
             syncReport.FastBlocksHeaders.CurrentQueued = 0;
             syncReport.FastBlocksBodies.Reset(0, 70);
@@ -117,9 +105,8 @@ namespace Nethermind.Synchronization.Test
             iLogger.Received(1).Info("Old Receipts          0 /         65 (  0.00 %) [                                     ] queue        0 | current       0 Blk/s");
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Ancient_bodies_and_receipts_are_not_reported_until_feed_finishes_Initialization(bool setBarriers)
+        [Test]
+        public void Ancient_bodies_and_receipts_are_not_reported_until_feed_finishes_Initialization([Values] bool setBarriers)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
@@ -132,7 +119,8 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
-            logManager.GetClassLogger().Returns(logger);
+            logManager.GetClassLogger<SyncReport>().Returns(logger);
+            logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);
@@ -150,7 +138,7 @@ namespace Nethermind.Synchronization.Test
                 syncConfig.AncientReceiptsBarrier = 35;
             }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), Substitute.For<ITimestamper>(), logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 
@@ -167,194 +155,153 @@ namespace Nethermind.Synchronization.Test
                 iLogger.DidNotReceive().Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
         }
-        [Test]
-        public void Sync_behind_warning_is_logged_when_head_is_behind()
+
+        private static readonly DateTime SyncBehindNow = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        private const ulong SyncBehindThresholdSeconds = 5 * 60;
+
+        private const string BehindMessage = "Node is behind the head of the chain by";
+        private const string CaughtUpMessage = "Node has caught up with the head of the chain";
+
+        private static IEnumerable<TestCaseData> SyncBehindCases()
         {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.InitializedPeersCount.Returns(1);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ITimer timer = Substitute.For<ITimer>();
-            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            ILogManager logManager = Substitute.For<ILogManager>();
-            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-            iLogger.IsInfo.Returns(true);
-            iLogger.IsWarn.Returns(true);
-            ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            yield return new TestCaseData(SyncBehindThresholdSeconds + 1, SyncMode.Full) { ExpectedResult = true, TestName = "Just past the threshold in full sync" };
+            yield return new TestCaseData(10 * 60UL, SyncMode.Full) { ExpectedResult = true, TestName = "Behind in full sync" };
+            yield return new TestCaseData(10 * 60UL, SyncMode.FastSync) { ExpectedResult = true, TestName = "Behind in fast sync" };
+            // Blackout recovery: the CL feeds missed blocks via engine_newPayload, which leaves the
+            // node in beacon-controlled WaitingForBlock rather than Full or FastSync.
+            yield return new TestCaseData(2 * 60 * 60UL, SyncMode.WaitingForBlock) { ExpectedResult = true, TestName = "Behind in waiting for block" };
+            yield return new TestCaseData(SyncBehindThresholdSeconds, SyncMode.Full) { ExpectedResult = false, TestName = "Exactly at the threshold" };
+            yield return new TestCaseData(2 * 60UL, SyncMode.Full) { ExpectedResult = false, TestName = "Within the threshold" };
+            yield return new TestCaseData(10 * 60UL, SyncMode.FastHeaders) { ExpectedResult = false, TestName = "Behind but not in a forward sync mode" };
+        }
 
-            // Set up a head block with a timestamp 10 minutes behind current time
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
+        [TestCaseSource(nameof(SyncBehindCases))]
+        public bool Sync_behind_is_reported_only_past_the_threshold_during_forward_sync(ulong secondsBehind, SyncMode syncMode)
+        {
+            using SyncBehindHarness harness = new(syncMode);
+            harness.SetHeadBehindBy(secondsBehind);
 
-            SyncConfig syncConfig = new() { FastSync = true };
+            harness.Tick();
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
-            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
+            return harness.Reported(BehindMessage);
+        }
 
-            timer.Elapsed += Raise.Event();
+        [TestCase(null, TestName = "No head")]
+        [TestCase(0UL, TestName = "Genesis or uninitialized timestamp")]
+        public void Sync_behind_is_not_reported_without_a_meaningful_head(ulong? headTimestamp)
+        {
+            using SyncBehindHarness harness = new(SyncMode.Full);
+            harness.BlockFinder.Head.Returns(headTimestamp is null ? null : Build.A.Block.WithTimestamp(headTimestamp.Value).TestObject);
 
-            iLogger.Received().Warn(Arg.Is<string>(s => s.Contains("Node is behind the head of the chain by")));
+            harness.Tick();
+
+            Assert.That(harness.Reported(BehindMessage), Is.False);
         }
 
         [Test]
-        public void Sync_behind_warning_is_logged_in_waiting_for_block_mode()
+        public void Sync_behind_escalates_to_warning_only_after_the_node_reached_the_tip()
         {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.InitializedPeersCount.Returns(1);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ITimer timer = Substitute.For<ITimer>();
-            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            ILogManager logManager = Substitute.For<ILogManager>();
-            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-            iLogger.IsInfo.Returns(true);
-            iLogger.IsWarn.Returns(true);
-            ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            using SyncBehindHarness harness = new(SyncMode.Full);
+            harness.SetHeadBehindBy(10 * 60);
 
-            // Simulate blackout recovery: head is 2 hours behind, mode is WaitingForBlock (PoS beacon control)
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddHours(-2)));
+            harness.Tick();
 
-            SyncConfig syncConfig = new() { FastSync = true };
+            using (Assert.EnterMultipleScope())
+            {
+                harness.Logger.Received().Info(Arg.Is<string>(s => s.Contains(BehindMessage)));
+                harness.Logger.DidNotReceive().Warn(Arg.Any<string>());
+            }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
-            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.WaitingForBlock));
+            // Reach the tip, then fall behind again - now it is a regression worth warning about.
+            harness.SetHeadBehindBy(0);
+            harness.TickToNextReport();
+            harness.SetHeadBehindBy(10 * 60);
+            harness.Logger.ClearReceivedCalls();
+            harness.TickToNextReport();
 
-            timer.Elapsed += Raise.Event();
-
-            iLogger.Received().Warn(Arg.Is<string>(s => s.Contains("Node is behind the head of the chain by")));
+            harness.Logger.Received().Warn(Arg.Is<string>(s => s.Contains(BehindMessage)));
         }
 
         [Test]
-        public void Sync_behind_warning_is_not_logged_when_head_is_close()
+        public void Caught_up_is_reported_once_after_being_behind()
         {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.InitializedPeersCount.Returns(1);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ITimer timer = Substitute.For<ITimer>();
-            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            ILogManager logManager = Substitute.For<ILogManager>();
-            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-            iLogger.IsInfo.Returns(true);
-            iLogger.IsWarn.Returns(true);
-            ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            using SyncBehindHarness harness = new(SyncMode.Full);
+            harness.SetHeadBehindBy(10 * 60);
 
-            // Set up a head block with a timestamp only 2 minutes behind (under threshold)
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-2)));
+            harness.Tick();
+            Assert.That(harness.Reported(BehindMessage), Is.True);
 
-            SyncConfig syncConfig = new() { FastSync = true };
+            harness.SetHeadBehindBy(12);
+            harness.Logger.ClearReceivedCalls();
+            harness.TickToNextReport();
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
-            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
+            Assert.That(harness.Reported(CaughtUpMessage), Is.True);
 
-            timer.Elapsed += Raise.Event();
+            // Staying at the tip must not repeat it.
+            harness.Logger.ClearReceivedCalls();
+            harness.TickToNextReport();
 
-            iLogger.DidNotReceive().Warn(Arg.Any<string>());
+            Assert.That(harness.Reported(CaughtUpMessage), Is.False);
         }
 
-        [Test]
-        public void Sync_behind_warning_is_not_logged_when_not_in_forward_sync()
+        /// <summary>Drives a <see cref="SyncReport"/> against a fixed clock and a stubbed head.</summary>
+        private sealed class SyncBehindHarness : IDisposable
         {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.InitializedPeersCount.Returns(1);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ITimer timer = Substitute.For<ITimer>();
-            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            ILogManager logManager = Substitute.For<ILogManager>();
-            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-            iLogger.IsInfo.Returns(true);
-            iLogger.IsWarn.Returns(true);
-            ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            /// <summary>Ticks between two sync-behind reports; mirrors the report frequency in <see cref="SyncReport"/>.</summary>
+            private const int ReportFrequency = 6;
 
-            // Head is 10 minutes behind, but sync mode is FastHeaders (not Full/FastSync/WaitingForBlock)
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
+            private readonly SyncReport _syncReport;
+            private readonly ITimer _timer;
 
-            SyncConfig syncConfig = new() { FastSync = true };
+            internal InterfaceLogger Logger { get; }
+            internal IBlockFinder BlockFinder { get; }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
-            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders));
+            internal SyncBehindHarness(SyncMode syncMode)
+            {
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
-            timer.Elapsed += Raise.Event();
+                ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+                pool.InitializedPeersCount.Returns(1);
 
-            iLogger.DidNotReceive().Warn(Arg.Any<string>());
-        }
+                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+                _timer = Substitute.For<ITimer>();
+                timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(_timer);
 
-        [Test]
-        public void Sync_behind_warning_is_not_logged_when_head_timestamp_is_zero()
-        {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.InitializedPeersCount.Returns(1);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ITimer timer = Substitute.For<ITimer>();
-            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            ILogManager logManager = Substitute.For<ILogManager>();
-            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-            iLogger.IsInfo.Returns(true);
-            iLogger.IsWarn.Returns(true);
-            ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+                Logger = Substitute.For<InterfaceLogger>();
+                Logger.IsInfo.Returns(true);
+                Logger.IsWarn.Returns(true);
+                ILogger logger = new(Logger);
+                ILogManager logManager = Substitute.For<ILogManager>();
+                logManager.GetClassLogger<SyncReport>().Returns(logger);
+                logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
-            // Genesis block with timestamp 0
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UnixEpoch));
+                BlockFinder = Substitute.For<IBlockFinder>();
 
-            SyncConfig syncConfig = new() { FastSync = true };
+                _syncReport = new(pool, Substitute.For<INodeStatsManager>(), new SyncConfig { FastSync = true },
+                    Substitute.For<IPivot>(), BlockFinder, new ManualTimestamper(SyncBehindNow), logManager, timerFactory);
+                _syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncMode));
+            }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
-            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
+            internal void SetHeadBehindBy(ulong secondsBehind) =>
+                BlockFinder.Head.Returns(Build.A.Block.WithTimestamp(new UnixTime(SyncBehindNow).Seconds - secondsBehind).TestObject);
 
-            timer.Elapsed += Raise.Event();
+            internal void Tick() => _timer.Elapsed += Raise.Event();
 
-            iLogger.DidNotReceive().Warn(Arg.Any<string>());
-        }
+            /// <summary>Advances to the next tick on which the sync-behind report runs.</summary>
+            internal void TickToNextReport()
+            {
+                for (int i = 0; i < ReportFrequency; i++)
+                {
+                    Tick();
+                }
+            }
 
-        [Test]
-        public void Caught_up_info_is_logged_after_being_behind()
-        {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
-            pool.InitializedPeersCount.Returns(1);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ITimer timer = Substitute.For<ITimer>();
-            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-            ILogManager logManager = Substitute.For<ILogManager>();
-            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-            iLogger.IsInfo.Returns(true);
-            iLogger.IsWarn.Returns(true);
-            ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            internal bool Reported(string message) =>
+                Logger.ReceivedCalls().Any(call =>
+                    call.GetMethodInfo().Name is nameof(InterfaceLogger.Info) or nameof(InterfaceLogger.Warn)
+                    && call.GetArguments() is [string logged] && logged.Contains(message));
 
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            // Start 10 minutes behind to trigger the warning
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
-
-            SyncConfig syncConfig = new() { FastSync = true };
-
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
-            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
-
-            // First tick (reportId=0, 0%6==0): should warn about being behind
-            timer.Elapsed += Raise.Event();
-            iLogger.Received().Warn(Arg.Is<string>(s => s.Contains("Node is behind the head of the chain by")));
-
-            // Now the node catches up — head is only 1 minute behind
-            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-1)));
-            iLogger.ClearReceivedCalls();
-
-            // Advance to the next warning tick (reportId=6, 6%6==0)
-            for (int i = 0; i < 6; i++)
-                timer.Elapsed += Raise.Event();
-
-            iLogger.Received().Info(Arg.Is<string>(s => s.Contains("Node has caught up with the head of the chain")));
+            public void Dispose() => _syncReport.Dispose();
         }
     }
 }

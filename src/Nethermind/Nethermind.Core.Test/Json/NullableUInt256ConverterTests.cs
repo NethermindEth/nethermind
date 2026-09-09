@@ -18,10 +18,7 @@ public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
 
     [TestCaseSource(nameof(RoundtripTestCases))]
-    public void Test_roundtrip(UInt256? value)
-    {
-        TestConverter(value, static (a, b) => a.Equals(b), converter);
-    }
+    public void Test_roundtrip(UInt256? value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
 
     static IEnumerable<TestCaseData> RoundtripTestCases =
     [
@@ -40,4 +37,8 @@ public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
         UInt256? result = JsonSerializer.Deserialize<UInt256?>(json, options);
         Assert.That(result, Is.EqualTo(UInt256.Parse(expected)));
     }
+
+    [Test]
+    public void Serializes_as_hex_quantity() =>
+        TestConverter((UInt256?)10485760, "\"0xa00000\"", converter, static (a, b) => a.Equals(b));
 }

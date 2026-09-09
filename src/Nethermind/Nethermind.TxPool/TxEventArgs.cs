@@ -6,13 +6,8 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
-    public class TxEventArgs : EventArgs
+    public class TxEventArgs(Transaction transaction) : EventArgs
     {
-        public Transaction Transaction { get; }
-
-        public TxEventArgs(Transaction transaction)
-        {
-            Transaction = transaction;
-        }
+        public Transaction Transaction { get; } = transaction;
     }
 }

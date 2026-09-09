@@ -9,20 +9,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie;
 
-public class NodeStorageFactory : INodeStorageFactory
+public class NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager) : INodeStorageFactory
 {
-    private readonly INodeStorage.KeyScheme _preferredKeyScheme;
-    private INodeStorage.KeyScheme? _currentKeyScheme;
-    private readonly ILogger _logger;
+    private readonly INodeStorage.KeyScheme _preferredKeyScheme = preferredKeyScheme;
+    private INodeStorage.KeyScheme? _currentKeyScheme = null;
+    private readonly ILogger _logger = logManager.GetClassLogger<NodeStorageFactory>();
 
-    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager)
-    {
-        _logger = logManager.GetClassLogger();
-        _preferredKeyScheme = preferredKeyScheme;
-        _currentKeyScheme = null;
-    }
-
-    public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme!;
+    public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme;
 
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
@@ -63,7 +56,7 @@ public class NodeStorageFactory : INodeStorageFactory
 
         int total = 0;
         int keyOfLength32 = 0;
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in db.GetAll().Take(20))
+        foreach (KeyValuePair<byte[], byte[]> keyValuePair in db.GetAll().Take(20))
         {
             total++;
             if (keyValuePair.Key.Length == 32)

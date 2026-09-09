@@ -5,7 +5,7 @@ namespace Nethermind.Specs.Forks;
 
 public class MuirGlacier() : NamedReleaseSpec<MuirGlacier>(Istanbul.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         spec.Name = "Muir Glacier";
         spec.DifficultyBombDelay = 9000000L;

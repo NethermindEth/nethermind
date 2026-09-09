@@ -7,7 +7,7 @@ namespace Nethermind.Specs.GnosisForks;
 
 public class CancunGnosis() : NamedGnosisReleaseSpec<CancunGnosis>(Cancun.Instance, ShanghaiGnosis.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         base.Apply(spec);
         spec.Eip4844TransitionTimestamp = GnosisSpecProvider.CancunTimestamp;

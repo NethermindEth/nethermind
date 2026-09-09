@@ -23,24 +23,12 @@ namespace Nethermind.Network
             }
         }
 
-        public bool Equals(ForkId other)
-        {
-            return ForkHash == other.ForkHash && Next == other.Next;
-        }
+        public bool Equals(ForkId other) => ForkHash == other.ForkHash && Next == other.Next;
 
-        public override bool Equals(object obj)
-        {
-            return obj is ForkId other && Equals(other);
-        }
+        public override bool Equals(object obj) => obj is ForkId other && Equals(other);
 
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(ForkHash.GetHashCode(), Next);
-        }
+        public override int GetHashCode() => HashCode.Combine(ForkHash.GetHashCode(), Next);
 
-        public override string ToString()
-        {
-            return $"{HashBytes.ToHexString()} {Next}";
-        }
+        public override string ToString() => $"{HashBytes.ToHexString()} {Next}";
     }
 }

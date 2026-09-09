@@ -11,6 +11,12 @@ namespace Nethermind.Network
         void Start();
         void Stop();
         void AddSession(ISession session);
+
+        /// <summary>
+        /// Removes a session from ping monitoring.
+        /// </summary>
+        /// <param name="session">The session to remove.</param>
+        void RemoveSession(ISession session);
         public IEnumerable<ISession> Sessions { get; }
     }
 }

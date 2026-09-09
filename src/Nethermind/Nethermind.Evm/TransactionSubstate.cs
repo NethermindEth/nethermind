@@ -5,12 +5,10 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -19,8 +17,6 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
-    private static readonly JournalCollection<LogEntry> _emptyLogs = new();
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -31,7 +27,8 @@ public readonly ref struct TransactionSubstate
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
-    private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
+
+    private static readonly FrozenDictionary<ulong, string> PanicReasons = new Dictionary<ulong, string>
     {
         { 0x00, "generic panic" },
         { 0x01, "assert(false)" },
@@ -45,8 +42,8 @@ public readonly ref struct TransactionSubstate
         { 0x51, "uninitialized function" },
     }.ToFrozenDictionary();
 
-    private readonly IHashSetEnumerableCollection<Address>? _destroyList;
-    private readonly JournalCollection<LogEntry>? _logs;
+    private readonly JournalSet<Address>? _destroyList;
+    private readonly JournalCollection<LogEntry> _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -55,26 +52,29 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
-    public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
+    public JournalCollection<LogEntry> Logs => _logs;
+    public JournalSet<Address>? DestroyList => _destroyList;
+    internal bool ShouldRestoreRipemdTouch { get; init; }
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
-        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        // Reflection-free error name; see FastToString for why Enum.ToString() can't be used here.
+        Error = isTracerConnected ? exceptionType.FastToString() : SomeError;
         SubstateError = substateError;
         EvmExceptionType = exceptionType;
         Refund = 0;
-        _destroyList = _emptyDestroyList;
-        _logs = _emptyLogs;
+        _destroyList = null;
+        // Real list, not a shared empty sentinel: EIP-7708 SELFDESTRUCT appends a transfer log and this readonly struct can't reassign later.
+        _logs = [];
         ShouldRevert = false;
     }
 
     public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         long refund,
-        IHashSetEnumerableCollection<Address> destroyList,
-        JournalCollection<LogEntry> logs,
+        JournalSet<Address>? destroyList,
+        JournalCollection<LogEntry>? logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        bool isTracerConnected = default,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
@@ -82,7 +82,7 @@ public readonly ref struct TransactionSubstate
         Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
-        _logs = logs;
+        _logs = logs ?? [];
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
 
@@ -101,24 +101,32 @@ public readonly ref struct TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
+        if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
 
-    public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
-        Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+
+    public LogEntry[] LogsToArray() => _logs.ToArray();
+
+    public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.IndexOfAnyExceptInRange((byte)32, (byte)126) >= 0)
+            return span.ToHexString(true);
+
+        return Encoding.ASCII.GetString(span);
+    }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
     {
         if (span.Length < RevertPrefix) return null;
         ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
-        UInt256 start, length;
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
         {
             if (span.Length < WordSize) return null;
 
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
+            if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string? panicReason))
             {
                 return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
             }
@@ -126,28 +134,45 @@ public readonly ref struct TransactionSubstate
             return panicReason;
         }
 
-        if (span.Length < WordSize * 2) return null;
-
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
-            start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (span.Length < WordSize * 2) return null;
+
+            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (start != WordSize) return null;
 
-            length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
             return EncodeErrorMessage(binaryMessage);
         }
 
-        start = new UInt256(span[..WordSize], isBigEndian: true);
-        if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
+        // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller
+        // falls back to the Revert sentinel, matching Geth's UnpackRevert default behaviour.
+        return null;
+    }
 
-        length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);
-        if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) return null;
+    /// <summary>
+    /// Builds the user-facing revert message: <c>"execution reverted: &lt;reason&gt;"</c> when the
+    /// revert payload carries a decodable <c>Error(string)</c>/<c>Panic(uint256)</c> selector and a
+    /// reason was parsed, otherwise the bare <c>"execution reverted"</c> sentinel.
+    /// </summary>
+    /// <remarks>
+    /// Shared by <c>eth_call</c>/<c>eth_estimateGas</c> and <c>proof_call</c> so they report identical
+    /// text for the same revert. The selector is checked on the raw payload (not the decoded string) to
+    /// avoid a sentinel collision — e.g. <c>require(false, "execution reverted")</c> must not be taken
+    /// for the bare sentinel.
+    /// </remarks>
+    public static string BuildRevertMessage(ReadOnlySpan<byte> revertPayload, string? reason)
+    {
+        bool isKnownRevertType = revertPayload.Length >= RevertPrefix &&
+            (revertPayload[..RevertPrefix].SequenceEqual(ErrorFunctionSelector) ||
+             revertPayload[..RevertPrefix].SequenceEqual(PanicFunctionSelector));
 
-        span = span.Slice((int)lengthOffset, (int)length);
-        return EncodeErrorMessage(span);
+        return isKnownRevertType && !string.IsNullOrEmpty(reason)
+            ? "execution reverted: " + reason
+            : "execution reverted";
     }
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)

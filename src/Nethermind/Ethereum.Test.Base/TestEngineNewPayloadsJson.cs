@@ -10,6 +10,18 @@ namespace Ethereum.Test.Base
         public JsonElement[] Params { get; set; }
         public string? NewPayloadVersion { get; set; }
         public string? ForkChoiceUpdatedVersion { get; set; }
+        public string? ValidationError { get; set; }
+        // EIP-7805: expected PayloadStatusV2.inclusionListSatisfied; only meaningful for a VALID payload.
+        public bool? InclusionListSatisfied { get; set; }
+
+        public ExecutionWitnessJson? ExecutionWitness { get; set; }
+        public bool? ExecutionWitnessMutated { get; set; }
+
+        /// <summary>
+        /// The JSON-RPC error code the fixture expects <c>engine_newPayloadV*</c> to answer with
+        /// instead of a payload status, or null when the payload is expected to be validated.
+        /// </summary>
+        public string? ErrorCode { get; set; }
 
         public class ParamsExecutionPayload
         {
@@ -29,7 +41,7 @@ namespace Ethereum.Test.Base
             public string ExcessBlobGas { get; set; }
             public string BlockHash { get; set; }
             public string[] Transactions { get; set; }
-            public string[]? Withdrawals { get; set; }
+            public JsonElement[]? Withdrawals { get; set; }
             public string? BlockAccessList { get; set; }
             public string? SlotNumber { get; set; }
         }

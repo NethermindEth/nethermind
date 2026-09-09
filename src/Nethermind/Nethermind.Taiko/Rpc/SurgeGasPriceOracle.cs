@@ -162,10 +162,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
     /// <summary>
     /// Determines if the gas price should be forced to refresh due to timeout.
     /// </summary>
-    private bool ForceRefreshGasPrice()
-    {
-        return DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
-    }
+    private bool ForceRefreshGasPrice() => DateTime.UtcNow - _lastGasPriceCalculation >= TimeSpan.FromSeconds(_surgeConfig.GasPriceRefreshTimeoutSeconds);
 
     private async ValueTask<L1FeeHistoryResults?> GetL1FeeHistory()
     {
@@ -196,21 +193,22 @@ public class SurgeGasPriceOracle : GasPriceOracle
         }
 
         ulong totalGasUsed = 0;
-        int count = 0;
-        long currentBlockNumber = headBlock.Number;
+        ulong count = 0;
+        ulong currentBlockNumber = headBlock.Number;
 
-        while (count < _surgeConfig.L2GasUsageWindowSize && currentBlockNumber >= 0)
+        while (count < _surgeConfig.L2GasUsageWindowSize)
         {
             Block? block = _blockFinder.FindBlock(currentBlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block != null)
             {
-                totalGasUsed += (ulong)block.GasUsed;
+                totalGasUsed += block.GasUsed;
                 count++;
             }
+            if (currentBlockNumber == 0) break;
             currentBlockNumber--;
         }
 
-        ulong average = totalGasUsed > 0 ? totalGasUsed / (ulong)count : _surgeConfig.L2BlockGasTarget;
+        ulong average = totalGasUsed > 0 ? totalGasUsed / count : _surgeConfig.L2BlockGasTarget;
 
         if (_logger.IsTrace)
         {

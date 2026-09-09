@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 
@@ -20,6 +21,12 @@ namespace Nethermind.JsonRpc
         [CounterMetric]
         [Description("Number of JSON RPC requests that were invalid.")]
         public static long JsonRpcInvalidRequests { get; set; }
+
+        [CounterMetric]
+        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (module pool or override-environment limit). A nonzero rate means callers receive 'Too many requests' — consider raising JsonRpc.EthModuleConcurrentInstances.")]
+        public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
+        private static long _jsonRpcOverloadRejections;
+        internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
 
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]
@@ -61,8 +68,17 @@ namespace Nethermind.JsonRpc
         [Description("Number of JSON RPC bytes received through IPC.")]
         public static long JsonRpcBytesReceivedIpc;
 
-        [SummaryMetric(LabelNames = ["method", "status"], ObjectiveQuantile = [0.5, 0.9, 0.95, 0.99], ObjectiveEpsilon = [0.05, 0.05, 0.01, 0.005])]
-        [Description("Individual rpc latency metric calls")]
-        public static IMetricObserver JsonRpcCallLatencyMicros = NoopMetricObserver.Instance;
+        [HistogramMetric(
+            LabelNames = ["method", "status"],
+            Buckets = [10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000])]
+        [Description("Individual rpc call duration metric calls (microseconds)")]
+        public static IMetricObserver JsonRpcCallDurationMicros = NoopMetricObserver.Instance;
+    }
+
+    internal sealed class JsonRpcMetricLabels(string method, bool success) : IMetricLabels
+    {
+        private readonly string[] _labels = [method, success ? "success" : "fail"];
+
+        public string[] Labels => _labels;
     }
 }

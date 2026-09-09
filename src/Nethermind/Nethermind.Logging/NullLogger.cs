@@ -29,7 +29,7 @@ namespace Nethermind.Logging
         {
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
         }
 

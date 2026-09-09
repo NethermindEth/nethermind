@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -8,17 +8,15 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp.Eip2930
 {
-    public sealed class AccessListDecoder : RlpValueDecoder<AccessList?>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
+    public sealed class AccessListDecoder() : RlpDecoder<AccessList?>
     {
         private const int IndexLength = 32;
 
         public static readonly AccessListDecoder Instance = new();
 
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccessListDecoder))]
-        public AccessListDecoder() { }
-
         protected override AccessList? DecodeInternal(
-            ref Rlp.ValueDecoderContext decoderContext,
+            ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemEmptyList())
@@ -35,30 +33,31 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             {
                 int accessListItemLength = decoderContext.ReadSequenceLength();
                 int accessListItemCheck = decoderContext.Position + accessListItemLength;
-                Address address = decoderContext.DecodeAddress() ?? throw new RlpException("Invalid tx access list format - address is null");
+                Address address = decoderContext.DecodeAddress();
                 accessListBuilder.AddAddress(address);
 
-                if (decoderContext.Position < check)
+                if (decoderContext.Position >= accessListItemCheck)
                 {
-                    int storagesLength = decoderContext.ReadSequenceLength();
-                    int storagesCheck = decoderContext.Position + storagesLength;
-                    while (decoderContext.Position < storagesCheck)
-                    {
-                        int storageItemCheck = decoderContext.Position + IndexLength + 1;
-                        UInt256 index = decoderContext.DecodeUInt256(IndexLength);
-                        accessListBuilder.AddStorage(index);
-                        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-                        {
-                            decoderContext.Check(storageItemCheck);
-                        }
-                    }
+                    throw new RlpException("Invalid tx access list format - storage keys missing");
+                }
+
+                int storagesLength = decoderContext.ReadSequenceLength();
+                int storagesCheck = decoderContext.Position + storagesLength;
+                while (decoderContext.Position < storagesCheck)
+                {
+                    int storageItemCheck = decoderContext.Position + IndexLength + 1;
+                    UInt256 index = decoderContext.DecodeUInt256(IndexLength);
+                    accessListBuilder.AddStorage(index);
+
                     if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                     {
-                        decoderContext.Check(storagesCheck);
+                        decoderContext.Check(storageItemCheck);
                     }
                 }
+
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                 {
+                    decoderContext.Check(storagesCheck);
                     decoderContext.Check(accessListItemCheck);
                 }
             }
@@ -71,16 +70,16 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode(RlpStream stream, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                stream.WriteByte(Rlp.EmptyListByte);
+                writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
             int contentLength = GetContentLength(item);
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             foreach ((Address? address, AccessList.StorageKeysEnumerable storageKeys) in item)
             {
                 // {} brackets applied to show the content structure
@@ -90,15 +89,15 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 //   ...
                 //   IndexN
                 AccessItemLengths lengths = new(storageKeys.Count);
-                stream.StartSequence(lengths.ContentLength);
+                writer.StartSequence(lengths.ContentLength);
                 {
-                    stream.Encode(address);
-                    stream.StartSequence(lengths.IndexesContentLength);
+                    writer.Encode(address);
+                    writer.StartSequence(lengths.IndexesContentLength);
                     {
                         foreach (UInt256 index in storageKeys)
                         {
                             // storage indices are encoded as 32 bytes data arrays
-                            stream.Encode(index, IndexLength);
+                            writer.Encode(index, IndexLength);
                         }
                     }
                 }

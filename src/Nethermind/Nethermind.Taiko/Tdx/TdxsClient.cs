@@ -73,10 +73,10 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
         if (!File.Exists(socketPath))
             throw new TdxException($"TDX socket not found at {socketPath}");
 
-        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         socket.Connect(new UnixDomainSocketEndPoint(socketPath));
 
-        using var stream = new NetworkStream(socket, ownsSocket: false);
+        using NetworkStream stream = new(socket, ownsSocket: false);
 
         string requestJson = JsonSerializer.Serialize(request);
         socket.Send(Encoding.UTF8.GetBytes(requestJson));

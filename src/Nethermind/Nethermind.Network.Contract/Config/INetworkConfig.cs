@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -12,10 +12,39 @@ public interface INetworkConfig : IConfig
     public const int MaxNettyArenaOrder = 14;
     public const int DefaultMaxNettyArenaCount = 8;
 
-    [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual external IP must resolve it through
+    /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
+    /// supplies an override.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IP address used for the enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. An IPv6 value is only advertised when `{nameof(LocalIp)}` is IPv6. For dual-stack advertisement, keep this address IPv4 (or let it resolve automatically), set `{nameof(ExternalIpV6)}`, and set `{nameof(LocalIp)}` to `::`.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
-    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
+    /// <summary>
+    /// Gets or sets the external IPv4 address to advertise.
+    /// </summary>
+    /// <remarks>
+    /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv4 address.
+    /// This address is only advertised when the node listens on IPv4. Set this together with
+    /// <see cref="ExternalIpV6"/> and set <see cref="LocalIp"/> to <c>::</c> to advertise both families.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IPv4 address to advertise. Only advertised when the node listens on IPv4. Use with `{nameof(ExternalIpV6)}` and set `{nameof(LocalIp)}` to `::` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    string? ExternalIpV4 { get; set; }
+
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
+    /// through <c>IIPResolver.Resolve</c>. When unset, the resolved <see cref="ExternalIp"/> is used
+    /// if it is an IPv6 address.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when the node listens on IPv6. Use with `{nameof(ExternalIpV4)}` when the node should advertise both IPv4 and IPv6 addresses, and set `{nameof(LocalIp)}` to `::`. On an IPv6-only node, set `{nameof(ExternalIp)}` instead so existing consumers also use IPv6.", DefaultValue = "null")]
+    string? ExternalIpV6 { get; set; }
+
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual local IP must resolve it through
+    /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
+    /// supplies an override.
+    /// </remarks>
+    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically. Set to `::` to listen on both IPv4 and IPv6.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]
@@ -105,7 +134,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
-    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{os}` `{runtime}`.")]
+    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]
     string PublicClientIdFormat { get; set; }
 
     [ConfigItem(DefaultValue = "true", Description = "Enable Enr discovery", HiddenFromDocs = true)]

@@ -4,23 +4,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 
 namespace Nethermind.Init.Steps
 {
-    public class EthereumStepsLoader : IEthereumStepsLoader
+    public class EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo) : IEthereumStepsLoader
     {
-        private readonly IEnumerable<StepInfo> _stepsInfo;
+        private readonly IEnumerable<StepInfo> _stepsInfo = stepsInfo;
         private readonly Type _baseApiType = typeof(INethermindApi);
-        private readonly Type _apiType;
-
-        public EthereumStepsLoader(IConsensusPlugin consensusPlugin, IEnumerable<StepInfo> stepsInfo)
-        {
-            _stepsInfo = stepsInfo;
-            _apiType = consensusPlugin.ApiType;
-        }
+        private readonly Type _apiType = consensusPlugin.ApiType;
 
         public IEnumerable<StepInfo> ResolveStepsImplementations()
         {
@@ -36,11 +31,8 @@ namespace Nethermind.Init.Steps
                 .Select(s => s!);
         }
 
-        private static bool HasConstructorWithParameter(Type type, Type parameterType)
-        {
-            return type.GetConstructors().Any(
+        private static bool HasConstructorWithParameter(Type type, Type parameterType) => type.GetConstructors().Any(
                 c => c.GetParameters().Select(p => p.ParameterType).Any(pType => pType == parameterType));
-        }
 
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {
@@ -56,7 +48,7 @@ namespace Nethermind.Init.Steps
 
             if (stepsWithMatchingApiType.Length > 1)
             {
-                Array.Sort(stepsWithMatchingApiType, (t1, t2) => t1.StepType.IsAssignableFrom(t2.StepType) ? 1 : -1);
+                stepsWithMatchingApiType.AsSpan().Sort(default(StepInfoByAssignabilityComparer));
             }
 
             if (stepsWithMatchingApiType.Length == 0)
@@ -68,6 +60,27 @@ namespace Nethermind.Init.Steps
             }
 
             return stepsWithMatchingApiType.FirstOrDefault();
+        }
+
+        // Orders steps so the most derived comes first (taken by FirstOrDefault below).
+        // The original lambda returned `t1.IsAssignableFrom(t2) ? 1 : -1`, which violated
+        // reflexivity (Compare(x, x) = 1) and antisymmetry (for unrelated types both
+        // directions returned -1). This restored ordering uses AssemblyQualifiedName as a
+        // stable tie-break when neither type derives from the other.
+        private readonly struct StepInfoByAssignabilityComparer : IComparer<StepInfo>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(StepInfo? t1, StepInfo? t2)
+            {
+                if (ReferenceEquals(t1, t2)) return 0;
+                if (t1 is null) return -1;
+                if (t2 is null) return 1;
+                bool t1IsParent = t1.StepType.IsAssignableFrom(t2.StepType);
+                bool t2IsParent = t2.StepType.IsAssignableFrom(t1.StepType);
+                if (t1IsParent && !t2IsParent) return 1;   // t2 is more derived -> first
+                if (t2IsParent && !t1IsParent) return -1;  // t1 is more derived -> first
+                return string.CompareOrdinal(t1.StepType.AssemblyQualifiedName, t2.StepType.AssemblyQualifiedName);
+            }
         }
     }
 }

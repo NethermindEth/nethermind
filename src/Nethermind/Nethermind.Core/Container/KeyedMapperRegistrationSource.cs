@@ -34,7 +34,7 @@ public class KeyedMapperRegistrationSource<TFrom, TTo>(Func<object, TFrom, TTo> 
             return Enumerable.Empty<IComponentRegistration>();
         }
 
-        ComponentRegistration registration = new ComponentRegistration(
+        ComponentRegistration registration = new(
             Guid.NewGuid(),
             new DelegateActivator(keyedService.ServiceType, (c, p) =>
             {

@@ -1,13 +1,13 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Threading;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -16,7 +16,10 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
 using P2P = Nethermind.Network.P2P.Messages;
 using V62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -26,8 +29,10 @@ using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
-using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
-using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
+using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Init.Modules;
@@ -39,12 +44,24 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddSingleton<SyncedTxGossipPolicy>()
+            .AddLast<ITxGossipPolicy>(ctx => ctx.Resolve<SyncedTxGossipPolicy>())
+            .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
+            .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
+
+            // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
+            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<IIPResolver, IPResolver>()
+
+            .AddSingleton<EnodeProvider>()
+            .Map<IEnode, EnodeProvider>(provider => provider.Enode)
+
             .AddSingleton<IForkInfo, ForkInfo>()
 
             // Rlpxhost
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()
+            .AddSingleton<IPrivilegedIpProvider, PrivilegedIpProvider>()
             .AddSingleton<IRlpxHost, RlpxHost>()
             .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 
@@ -57,6 +74,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
             .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
+            .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
+            .AddSingleton<IProtocolsManager, ProtocolsManager>()
+            .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
+            .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -71,19 +92,25 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<P2P.PingMessage, P2P.PingMessageSerializer>()
             .AddMessageSerializer<P2P.PongMessage, P2P.PongMessageSerializer>()
 
-            // NodeData
-            .AddMessageSerializer<NodeData.GetNodeDataMessage, NodeData.GetNodeDataMessageSerializer>()
-            .AddMessageSerializer<NodeData.NodeDataMessage, NodeData.NodeDataMessageSerializer>()
+            // Snap V1
+            .AddMessageSerializer<SnapV1.AccountRangeMessage, SnapV1.AccountRangeMessageSerializer>()
+            .AddMessageSerializer<SnapV1.ByteCodesMessage, SnapV1.ByteCodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetAccountRangeMessage, SnapV1.GetAccountRangeMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetByteCodesMessage, SnapV1.GetByteCodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetStorageRangeMessage, SnapV1.GetStorageRangesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetTrieNodesMessage, SnapV1.GetTrieNodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
 
-            // Snap
-            .AddMessageSerializer<Snap.AccountRangeMessage, Snap.AccountRangeMessageSerializer>()
-            .AddMessageSerializer<Snap.ByteCodesMessage, Snap.ByteCodesMessageSerializer>()
-            .AddMessageSerializer<Snap.GetAccountRangeMessage, Snap.GetAccountRangeMessageSerializer>()
-            .AddMessageSerializer<Snap.GetByteCodesMessage, Snap.GetByteCodesMessageSerializer>()
-            .AddMessageSerializer<Snap.GetStorageRangeMessage, Snap.GetStorageRangesMessageSerializer>()
-            .AddMessageSerializer<Snap.GetTrieNodesMessage, Snap.GetTrieNodesMessageSerializer>()
-            .AddMessageSerializer<Snap.StorageRangeMessage, Snap.StorageRangesMessageSerializer>()
-            .AddMessageSerializer<Snap.TrieNodesMessage, Snap.TrieNodesMessageSerializer>()
+            // Snap V2
+            .AddMessageSerializer<SnapV2.GetBlockAccessListsMessage, SnapV2.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<SnapV2.BlockAccessListsMessage, SnapV2.BlockAccessListsMessageSerializer>()
+
+            // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
+            // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
+            .AddSingleton<IHeaderDecoder, HeaderDecoder>()
+            .AddSingleton(new BlockDecoder())
+            .AddSingleton(BlockBodyDecoder.Instance)
 
             // V62
             .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()
@@ -132,23 +159,62 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
 
-            // P2P protocol handler factory (accepts any version; validation happens after Hello)
-            .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
-            .Add<P2PProtocolHandler>()
-            .AddLast<IProtocolHandlerFactory>(ctx =>
-                new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
-                    ctx.Resolve<Func<Network.P2P.ISession, P2PProtocolHandler>>(),
-                    Protocol.P2P))
+            // V71
+            .AddMessageSerializer<V71.GetBlockAccessListsMessage, V71.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<V71.BlockAccessListsMessage, V71.BlockAccessListsMessageSerializer>()
 
-            // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
-            .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
-            .AddProtocolHandler<Subprotocols.NodeData.NodeDataProtocolHandler>()
+            // V72
+            .AddMessageSerializer<V72.NewPooledTransactionHashesMessage72, V72.NewPooledTransactionHashesMessageSerializer72>()
+            .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
+            .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
+
+            // P2P protocol handler factory (accepts any version; validation happens after Hello)
+            .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
+
+            .AddSingleton<State.SnapServer.ISnapStateServer, State.IWorldStateManager>(static wsm => wsm.SnapStateServer)
+            .AddSingleton<State.SnapServer.ISnapServer, Synchronization.SnapSync.SnapServer>()
+
+            // Protocol handler factories
+            .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
 
             ;
+    }
+
+    private sealed class TxGossipPolicySource(ILifetimeScope lifetimeScope) : ITxGossipPolicySource
+    {
+        private readonly Lock _lock = new();
+        private ITxGossipPolicy[]? _policies;
+
+        public ITxGossipPolicy[] Policies
+        {
+            get
+            {
+                ITxGossipPolicy[]? policies = Volatile.Read(ref _policies);
+                if (policies is not null)
+                {
+                    return policies;
+                }
+
+                lock (_lock)
+                {
+                    policies = _policies;
+                    if (policies is null)
+                    {
+                        policies = lifetimeScope.Resolve<ITxGossipPolicy[]>();
+                        Volatile.Write(ref _policies, policies);
+                    }
+
+                    return policies;
+                }
+            }
+        }
     }
 }

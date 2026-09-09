@@ -9,6 +9,12 @@ public static class TxErrorMessages
         $"InvalidTxType: Transaction type in {name} is not supported.";
     public const string IntrinsicGasTooLow =
         "intrinsic gas too low";
+    public const string GasBelowFloorDataCost =
+        "gas below floor data cost";
+    public const string InsufficientFundsForTransfer =
+        "insufficient funds for transfer";
+    public const string InsufficientFundsForGas =
+        "insufficient funds for gas * price + value";
     public const string TxMissingTo =
         "blob transaction of type create";
 
@@ -33,7 +39,7 @@ public static class TxErrorMessages
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
     public const string NotAllowedCreateTransaction =
-        "NotAllowedCreateTransaction: To must be set.";
+        "EIP-7702 transaction cannot be used to create contract";
 
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
@@ -65,6 +71,9 @@ public static class TxErrorMessages
     public const string InvalidBlobProofs =
         "InvalidBlobProof: Proofs do not match the blobs.";
 
+    public const string IncompleteBlobData =
+        "IncompleteBlobData: Blob transaction sidecar data is incomplete.";
+
     public const string InvalidProofVersion =
         "InvalidTxProofVersion: Version of network wrapper is not supported.";
 
@@ -72,15 +81,18 @@ public static class TxErrorMessages
 
     public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
 
-    public const string MissingAuthorizationList = "MissingAuthorizationList: Must be set.";
+    public const string MissingAuthorizationList = "EIP-7702 transaction with empty auth list";
 
     public const string InvalidAuthoritySignature = "InvalidAuthoritySignature: Invalid signature in authorization list.";
 
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
 
-    public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
+    public static string TxGasLimitCapExceeded(ulong gasLimit, ulong gasLimitCap)
         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
+
+    public static string TxIntrinsicGasExceedsCap(ulong intrinsicExecutionGas, ulong intrinsicFloorGas, ulong gasLimitCap)
+        => $"{IntrinsicGasTooLow}: Intrinsic gas (execution {intrinsicExecutionGas}, floor {intrinsicFloorGas}) exceeded cap of {gasLimitCap}.";
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 

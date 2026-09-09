@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Text.RegularExpressions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
@@ -16,6 +17,11 @@ namespace Nethermind.Synchronization.Peers
 
         public static bool SupportsAllocation(this PeerInfo peerInfo, AllocationContexts contexts)
         {
+            if (contexts == AllocationContexts.BlockAccessLists && !peerInfo.SyncPeer.SupportsBlockAccessLists())
+            {
+                return false;
+            }
+
             // check if OpenEthereum supports state sync
             if ((contexts & AllocationContexts.State) != 0 // only for State allocations
                 && peerInfo.SyncPeer.ClientType == NodeClientType.OpenEthereum) // only for OE
@@ -32,13 +38,15 @@ namespace Nethermind.Synchronization.Peers
             return true;
         }
 
+        public static bool SupportsBlockAccessLists(this ISyncPeer peer) => peer.ProtocolVersion >= EthVersions.Eth71;
+
         private static readonly Regex _openEthereumVersionRegex = OpenEthereumRegex();
 
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)
         {
-            if (peer.ClientType == NodeClientType.OpenEthereum)
+            if (peer.ClientType == NodeClientType.OpenEthereum && peer.ClientId is { } clientId)
             {
-                Match match = _openEthereumVersionRegex.Match(peer.ClientId);
+                Match match = _openEthereumVersionRegex.Match(clientId);
 
                 if (match.Success && Version.TryParse(match.Groups["mainVersion"].Value, out Version version))
                 {

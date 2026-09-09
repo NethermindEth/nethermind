@@ -7,10 +7,12 @@ using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Snappier;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
@@ -20,14 +22,14 @@ public class E2StoreReader : IDisposable
     private const int IndexSectionCount = 8;
     private const int IndexSectionStartBlock = 8;
     private const int IndexOffsetSize = 8;
-    private const int ValueSizeLimit = 1024 * 1024 * 50;
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
 
-    // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
+    // Read these two values ahead of time instead of fetching the value every time it is needed to reduce
     // the page fault when looking up.
-    private long? _startBlock;
-    private long _blockCount;
+    private ulong? _startBlock;
+    private ulong _blockCount;
     private readonly long _fileLength;
 
     public E2StoreReader(string filePath)
@@ -60,9 +62,9 @@ public class E2StoreReader : IDisposable
         uint length = ReadUInt32(position + 2);
         ushort reserved = ReadUInt16(position + 6);
 
-        Entry entry = new Entry(type, length);
+        Entry entry = new(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-        if (entry.Length + (ulong)position > (ulong)_fileLength)
+        if ((long)entry.Length + position > _fileLength)
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
@@ -89,12 +91,9 @@ public class E2StoreReader : IDisposable
         return decoder(segment);
     }
 
-    public void Dispose()
-    {
-        _file.Dispose();
-    }
+    public void Dispose() => _file.Dispose();
 
-    public long BlockOffset(long blockNumber)
+    public long BlockOffset(ulong blockNumber)
     {
         EnsureIndexAvailable();
 
@@ -103,7 +102,8 @@ public class E2StoreReader : IDisposable
 
         // <offset> * 8 + <count>
         int indexLength = (int)_blockCount * IndexOffsetSize + IndexSectionCount;
-        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!) * IndexOffsetSize;
+
+        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!.Value) * IndexOffsetSize;
 
         // <header> + <start block> + <the rest of the index>
         int indexSizeIncludingHeader = HeaderSize + IndexSectionStartBlock + indexLength;
@@ -119,8 +119,13 @@ public class E2StoreReader : IDisposable
 
         if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 
-        // Read the block count
-        _blockCount = (long)ReadUInt64(_fileLength - IndexSectionCount);
+        _blockCount = ReadUInt64(_fileLength - IndexSectionCount);
+
+        ulong maxBlockCount = (ulong)(_fileLength - IndexSectionStartBlock - IndexSectionCount - HeaderSize) / IndexOffsetSize;
+        if (_blockCount == 0 || _blockCount > maxBlockCount || _blockCount > int.MaxValue)
+        {
+            throw new EraFormatException($"Invalid block count {_blockCount} in index (file length {_fileLength} is too small).");
+        }
 
         // <starting block> + <offsets> * 8 + <count>
         int indexLength = IndexSectionStartBlock + (int)_blockCount * IndexOffsetSize + IndexSectionCount;
@@ -128,10 +133,10 @@ public class E2StoreReader : IDisposable
         // Verify that its a block index
         _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
-        _startBlock = (long?)ReadUInt64(_fileLength - indexLength);
+        _startBlock = ReadUInt64(_fileLength - indexLength);
     }
 
-    public long First
+    public ulong First
     {
         get
         {
@@ -140,7 +145,14 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long LastBlock => First + _blockCount - 1;
+    public ulong LastBlock
+    {
+        get
+        {
+            EnsureIndexAvailable();
+            return First + _blockCount - 1;
+        }
+    }
 
     public long AccumulatorOffset
     {
@@ -158,7 +170,7 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long BlockCount
+    public ulong BlockCount
     {
         get
         {
@@ -167,16 +179,18 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public ValueHash256 CalculateChecksum()
+    public ValueHash256 CalculateChecksum() => ComputeChecksum(_file, _fileLength);
+
+    public static ValueHash256 ComputeChecksum(SafeFileHandle file, long fileLength)
     {
         using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         const int bufferSize = 81920;
         byte[] buffer = new byte[bufferSize];
         long offset = 0;
-        while (offset < _fileLength)
+        while (offset < fileLength)
         {
-            int toRead = (int)Math.Min(bufferSize, _fileLength - offset);
-            int read = RandomAccess.Read(_file, buffer.AsSpan(0, toRead), offset);
+            int toRead = (int)Math.Min(bufferSize, fileLength - offset);
+            int read = RandomAccess.Read(file, buffer.AsSpan(0, toRead), offset);
             if (read == 0) break;
             sha.AppendData(buffer, 0, read);
             offset += read;

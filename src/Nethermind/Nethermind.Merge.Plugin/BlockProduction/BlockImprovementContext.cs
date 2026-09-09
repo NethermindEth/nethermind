@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -15,10 +16,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class BlockImprovementContext : IBlockImprovementContext
 {
-    private readonly CancellationTokenSource _improvementCancellation;
+    private readonly SharedCancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private readonly FeesTracer _feesTracer = new();
+    private volatile BlockProductionSnapshot _best;
 
     public BlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -27,12 +29,11 @@ public class BlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationTokenSource cts)
+        SharedCancellationTokenSource cts)
     {
         _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
-        CurrentBestBlock = currentBestBlock;
-        BlockFees = currentBlockFees;
+        _best = new(currentBestBlock, currentBlockFees);
         StartDateTime = startDateTime;
 
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
@@ -45,8 +46,7 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     public Task<Block?> ImprovementTask { get; }
 
-    public Block? CurrentBestBlock { get; private set; }
-    public UInt256 BlockFees { get; private set; }
+    public BlockProductionSnapshot Best => _best;
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
     {
@@ -56,24 +56,24 @@ public class BlockImprovementContext : IBlockImprovementContext
             if (block is not null)
             {
                 UInt256 fees = _feesTracer.Fees;
-                if (CurrentBestBlock is null ||
-                    fees > BlockFees ||
-                    (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
+                BlockProductionSnapshot best = _best;
+                if (best.CurrentBestBlock is null ||
+                    fees > best.BlockFees ||
+                    (fees == best.BlockFees && block.GasUsed > best.CurrentBestBlock.GasUsed))
                 {
                     // Only update block if block has actually improved.
-                    CurrentBestBlock = block;
-                    BlockFees = fees;
+                    _best = new(block, fees);
                 }
             }
         }
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 
-    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+    public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 
     public void Dispose()
     {

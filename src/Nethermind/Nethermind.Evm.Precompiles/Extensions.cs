@@ -27,7 +27,7 @@ public static class Extensions
         {
             AddPrecompile<BN254AddPrecompile>();
             AddPrecompile<BN254MulPrecompile>();
-            AddPrecompile<BN254PairingPrecompile>();
+            AddPrecompile<BN254PairingCheckPrecompile>();
         }
 
         if (spec.BlakeEnabled)
@@ -56,14 +56,9 @@ public static class Extensions
             AddPrecompile<SecP256r1Precompile>();
         }
 
-        if (spec.IsRip7728Enabled)
-        {
-            AddPrecompile<L1SloadPrecompile>();
-        }
-
         return precompiles;
 
-        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Name] = T.Address;
+        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Instance.Name] = T.Address;
     }
 
     public static OrderedDictionary<string, Address> ListSystemContracts(this IReleaseSpec spec)
@@ -71,6 +66,11 @@ public static class Extensions
         OrderedDictionary<string, Address> systemContracts = [];
 
         if (spec.IsBeaconBlockRootAvailable) systemContracts[Eip4788Constants.ContractAddressKey] = Eip4788Constants.BeaconRootsAddress;
+        if (spec.BuilderRequestsEnabled)
+        {
+            systemContracts[Eip8282Constants.BuilderDepositContractAddressKey] = Eip8282Constants.BuilderDepositRequestPredeployAddress;
+            systemContracts[Eip8282Constants.BuilderExitContractAddressKey] = Eip8282Constants.BuilderExitRequestPredeployAddress;
+        }
         if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ContractAddressKey] = Eip7251Constants.ConsolidationRequestPredeployAddress;
         if (spec.DepositsEnabled) systemContracts[Eip6110Constants.ContractAddressKey] = spec.DepositContractAddress!;
         if (spec.IsEip2935Enabled) systemContracts[Eip2935Constants.ContractAddressKey] = Eip2935Constants.BlockHashHistoryAddress;

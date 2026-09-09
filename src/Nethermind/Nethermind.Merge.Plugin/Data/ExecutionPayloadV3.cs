@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -20,28 +22,30 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
+        executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
         return executionPayload;
     }
 
     public new static ExecutionPayloadV3 Create(Block block) => Create<ExecutionPayloadV3>(block);
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        BlockDecodingResult baseResult = base.TryGetBlock(totalDifficulty);
-        Block? block = baseResult.Block;
-        if (block is null)
+        Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
+        if (baseResult.IsError)
         {
             return baseResult;
         }
 
+        Block block = baseResult.Data;
         block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
+        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
         return baseResult;
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider)
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
          => specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 
     /// <summary>

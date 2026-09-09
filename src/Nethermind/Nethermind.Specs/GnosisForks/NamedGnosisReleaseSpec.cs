@@ -32,7 +32,7 @@ public abstract class NamedGnosisReleaseSpec(NamedReleaseSpec mainnetFork, Named
     /// Applies the corresponding mainnet fork's delta. Concrete Gnosis forks should call
     /// <c>base.Apply(spec)</c> first, then set Gnosis-specific overrides.
     /// </summary>
-    public override void Apply(ReleaseSpec spec) => mainnetFork.Apply(spec);
+    public override void Apply(NamedReleaseSpec spec) => mainnetFork.Apply(spec);
 }
 
 /// <summary>

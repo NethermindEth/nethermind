@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -30,7 +31,7 @@ namespace Nethermind.State
 
             for (int i = 0; i < lookup.Length; i++)
             {
-                UInt256 index = new UInt256((uint)i);
+                UInt256 index = new((uint)i);
                 index.ToBigEndian(buffer);
                 lookup[i] = ValueKeccak.Compute(buffer);
             }
@@ -38,16 +39,13 @@ namespace Nethermind.State
             return lookup;
         }
 
-        public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, ILogManager logManager)
             : this(trieStore, Keccak.EmptyTreeHash, logManager)
         {
         }
 
-        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, true, logManager)
-        {
-            TrieType = TrieType.Storage;
-        }
+        public StorageTree(IScopedTrieStore trieStore, Hash256 rootHash, ILogManager logManager)
+            : base(trieStore, rootHash, true, logManager) => TrieType = TrieType.Storage;
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -74,28 +72,15 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value)
+        private static byte[] EncodeNonZeroValue(byte[] value)
         {
-            byte[] encodedValue;
-            if (value.IsZero())
-            {
-                encodedValue = [];
-            }
-            else
-            {
-                Rlp rlpEncoded = Rlp.Encode(value);
-                if (rlpEncoded is null)
-                {
-                    encodedValue = [];
-                }
-                else
-                {
-                    encodedValue = rlpEncoded.Bytes;
-                }
-            }
-
-            return new BulkSetEntry(in key, encodedValue);
+            byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
+            Rlp.Encode(value, encoded);
+            return encoded;
         }
+
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) =>
+            new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
 
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
@@ -112,7 +97,7 @@ namespace Nethermind.State
             return GetWithKeyGenerate(in index, storageRoot);
 
             [SkipLocalsInit]
-            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256? storageRoot)
             {
                 ComputeKey(index, out ValueHash256 key);
                 return GetArray(in key, storageRoot);
@@ -129,34 +114,20 @@ namespace Nethermind.State
                 return ZeroBytes;
             }
 
-            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            RlpReader rlp = new(value);
             return rlp.DecodeByteArray();
         }
 
-        public void Commit()
-        {
-            Commit(false, WriteFlags.None);
-        }
+        public void Commit() => Commit(false, WriteFlags.None);
 
-        public void Clear()
-        {
-            RootHash = EmptyTreeHash;
-        }
+        public void Clear() => RootHash = EmptyTreeHash;
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
-        public byte[] Get(in UInt256 index)
-        {
-            return Get(index, null);
-        }
+        public byte[] Get(in UInt256 index) => Get(index, null);
 
-        public void HintGet(in UInt256 index, byte[]? value)
+        public void HintSet(in UInt256 index, byte[]? value)
         {
-        }
-
-        public byte[] Get(in ValueHash256 hash)
-        {
-            return GetArray(in hash, null);
         }
 
         [SkipLocalsInit]
@@ -181,10 +152,7 @@ namespace Nethermind.State
             }
         }
 
-        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
-        {
-            SetInternal(in key, value, rlpEncode);
-        }
+        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true) => SetInternal(in key, value, rlpEncode);
 
         private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {
@@ -195,8 +163,9 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
+                // Bind the CappedArray overload the Rlp one used to forward to, so a non-zero write
+                // keeps bypassing the virtual byte[] entry point that HealingStorageTree overrides.
+                Set(rawKey, new CappedArray<byte>(rlpEncode ? EncodeNonZeroValue(value) : value));
             }
         }
     }

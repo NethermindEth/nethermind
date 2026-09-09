@@ -5,13 +5,8 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 
 namespace Nethermind.Network.P2P.EventArg
 {
-    public class ProtocolInitializedEventArgs : System.EventArgs
+    public class ProtocolInitializedEventArgs(IProtocolHandler handler) : System.EventArgs
     {
-        public IProtocolHandler Subprotocol { get; }
-
-        public ProtocolInitializedEventArgs(IProtocolHandler handler)
-        {
-            Subprotocol = handler;
-        }
+        public IProtocolHandler Subprotocol { get; } = handler;
     }
 }

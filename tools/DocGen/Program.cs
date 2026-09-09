@@ -37,7 +37,7 @@ RootCommand rootCommand =
 ];
 rootCommand.SetAction(parseResult =>
 {
-    var docsPath = parseResult.GetValue(docsDirArg)!;
+    string docsPath = parseResult.GetValue(docsDirArg)!;
 
     if (!Directory.Exists(docsPath))
     {

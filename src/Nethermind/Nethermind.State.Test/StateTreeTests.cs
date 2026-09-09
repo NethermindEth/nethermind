@@ -20,12 +20,16 @@ public class StateTreeTests
     private readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;
     private readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
 
+    private long _hashesBaseline;
+    private long _decodingsBaseline;
+    private long _encodingsBaseline;
+
     [SetUp]
     public void Setup()
     {
-        Trie.Metrics.TreeNodeHashCalculations = 0;
-        Trie.Metrics.TreeNodeRlpDecodings = 0;
-        Trie.Metrics.TreeNodeRlpEncodings = 0;
+        _hashesBaseline = Trie.Metrics.TreeNodeHashCalculations;
+        _decodingsBaseline = Trie.Metrics.TreeNodeRlpDecodings;
+        _encodingsBaseline = Trie.Metrics.TreeNodeRlpEncodings;
     }
 
     private static (MemDb db, StateTree tree) CreateTree()
@@ -69,9 +73,9 @@ public class StateTreeTests
 
         long actual = metric switch
         {
-            "hashes" => Trie.Metrics.TreeNodeHashCalculations,
-            "encodings" => Trie.Metrics.TreeNodeRlpEncodings,
-            "decodings" => Trie.Metrics.TreeNodeRlpDecodings,
+            "hashes" => Trie.Metrics.TreeNodeHashCalculations - _hashesBaseline,
+            "encodings" => Trie.Metrics.TreeNodeRlpEncodings - _encodingsBaseline,
+            "decodings" => Trie.Metrics.TreeNodeRlpDecodings - _decodingsBaseline,
             _ => throw new System.ArgumentOutOfRangeException(nameof(metric))
         };
 
@@ -98,8 +102,8 @@ public class StateTreeTests
 
         tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(expectedWrites), "writes");
-        Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(expectedHashes), "hashes");
-        Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(expectedEncodings), "encodings");
+        Assert.That(Trie.Metrics.TreeNodeHashCalculations - _hashesBaseline, Is.EqualTo(expectedHashes), "hashes");
+        Assert.That(Trie.Metrics.TreeNodeRlpEncodings - _encodingsBaseline, Is.EqualTo(expectedEncodings), "encodings");
     }
 
     private void AssertRootHashAfterUpdateAndCommit(StateTree tree, string expectedRootHash)

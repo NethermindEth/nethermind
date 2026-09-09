@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -11,7 +12,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using System;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Network
@@ -22,18 +22,17 @@ namespace Nethermind.Network
         private static readonly TimeSpan ClientIdMatcherTimeout = TimeSpan.FromMilliseconds(250);
         protected readonly ILogger _logger;
         protected readonly IBlockTree _blockTree;
-        protected virtual bool MustValidateForkId { get; set; } = true;
+        /// <summary>Whether a peer negotiating <paramref name="protocolVersion"/> must present a valid fork ID.</summary>
+        protected virtual bool MustValidateForkId(byte protocolVersion) => true;
 
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IForkInfo _forkInfo;
         private readonly Regex? _clientIdPattern;
-        private readonly IPeerManager _peerManager;
 
         public ProtocolValidator(
             INodeStatsManager nodeStatsManager,
             IBlockTree blockTree,
             IForkInfo forkInfo,
-            IPeerManager peerManager,
             INetworkConfig networkConfig,
             ILogManager logManager
         )
@@ -46,18 +45,14 @@ namespace Nethermind.Network
             _nodeStatsManager = nodeStatsManager;
             _blockTree = blockTree;
             _forkInfo = forkInfo;
-            _peerManager = peerManager;
         }
 
-        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
+        public bool ValidateOrDisconnect(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
         {
-            return protocol switch
-            {
-                Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
-                Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
-                _ => true,
-            };
-        }
+            Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
+            Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
+            _ => true,
+        };
 
         private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {
@@ -79,12 +74,6 @@ namespace Nethermind.Network
                 return false;
             }
 
-            if (_peerManager.ActivePeersCount > _peerManager.MaxActivePeers)
-            {
-                session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"Too many peer");
-                return false;
-            }
-
             return true;
         }
 
@@ -97,7 +86,9 @@ namespace Nethermind.Network
             if (!ValidateGenesisHash(session, syncPeerArgs))
                 return false;
 
-            if (!MustValidateForkId)
+            // The negotiated version, not the one the peer put in its status - that field is unvalidated,
+            // so gating on it would let a peer opt out of fork ID validation by claiming an older version.
+            if (!MustValidateForkId(syncPeerArgs.Subprotocol.ProtocolVersion))
                 return true;
 
             if (syncPeerArgs.ForkId is null)

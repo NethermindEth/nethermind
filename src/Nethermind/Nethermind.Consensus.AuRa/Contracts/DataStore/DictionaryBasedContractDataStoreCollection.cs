@@ -14,10 +14,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected abstract IDictionary<T, T> CreateDictionary();
 
-        public void Clear()
-        {
-            Items.Clear();
-        }
+        public void Clear() => Items.Clear();
 
         public virtual IEnumerable<T> GetSnapshot() => Items.Values.ToArray();
 

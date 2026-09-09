@@ -15,14 +15,14 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
     private readonly Channel<DaDataSource> _inputChannel = Channel.CreateUnbounded<DaDataSource>();
     private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateUnbounded<(BatchV1, ulong)>();
     private readonly IFrameQueue _frameQueue = new FrameQueue(logManager);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DecodingPipeline>();
 
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;
 
     public async Task Run(CancellationToken token)
     {
-        var buffer = new Memory<byte>(new byte[BlobDecoder.MaxBlobDataSize]);
+        Memory<byte> buffer = new(new byte[BlobDecoder.MaxBlobDataSize]);
         try
         {
             while (!token.IsCancellationRequested)
@@ -33,19 +33,19 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
                 if (_resetRequested.Task.IsCompleted)
                 {
                     Clear();
-                    _resetRequested = new();
+                    _resetRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     _resetCompleted.SetResult();
                     continue;
                 }
 
-                var daData = await _inputChannel.Reader.ReadAsync(token);
+                DaDataSource daData = await _inputChannel.Reader.ReadAsync(token);
                 buffer.Clear();
                 try
                 {
                     Memory<byte> decodedData;
                     if (daData.DataType == DaDataType.Blob)
                     {
-                        var read = BlobDecoder.DecodeBlob(daData.Data, buffer.Span);
+                        int read = BlobDecoder.DecodeBlob(daData.Data, buffer.Span);
                         decodedData = buffer[..read];
                     }
                     else
@@ -53,12 +53,12 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
                         decodedData = daData.Data;
                     }
 
-                    foreach (var frame in FrameDecoder.DecodeFrames(decodedData))
+                    foreach (Frame frame in FrameDecoder.DecodeFrames(decodedData))
                     {
-                        var batches = _frameQueue.ConsumeFrame(frame);
+                        BatchV1[]? batches = _frameQueue.ConsumeFrame(frame);
                         if (batches is not null)
                         {
-                            foreach (var batch in batches)
+                            foreach (BatchV1 batch in batches)
                             {
                                 await _outputChannel.Writer.WriteAsync((batch, daData.DataOrigin), token);
                             }
@@ -96,8 +96,8 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
         _frameQueue.Clear();
     }
 
-    private TaskCompletionSource _resetCompleted = new();
-    private TaskCompletionSource _resetRequested = new();
+    private TaskCompletionSource _resetCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _resetRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task Reset(CancellationToken token)
     {
@@ -105,6 +105,6 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
 
         _resetRequested.SetResult();
         await _resetCompleted.Task;
-        _resetCompleted = new();
+        _resetCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

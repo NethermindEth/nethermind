@@ -5,6 +5,14 @@ namespace Nethermind.Consensus.Producers
 {
     public interface IBlockProducerEnvFactory
     {
-        IBlockProducerEnv Create();
+        /// <summary>
+        /// Creates a block producer environment registered with the root lifetime for disposal on shutdown.
+        /// </summary>
+        IBlockProducerEnv CreatePersistent();
+
+        /// <summary>
+        /// Creates a block producer environment owned by the caller. The caller must dispose it after use.
+        /// </summary>
+        ScopedBlockProducerEnv CreateTransient();
     }
 }

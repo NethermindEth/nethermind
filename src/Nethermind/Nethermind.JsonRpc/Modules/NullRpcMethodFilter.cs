@@ -11,9 +11,6 @@ namespace Nethermind.JsonRpc.Modules
 
         public static NullRpcMethodFilter Instance { get; } = new();
 
-        public bool AcceptMethod(string methodName)
-        {
-            return true;
-        }
+        public bool AcceptMethod(string methodName) => true;
     }
 }

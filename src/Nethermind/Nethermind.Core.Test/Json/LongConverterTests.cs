@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
 
 using Nethermind.Serialization.Json;
@@ -15,17 +16,11 @@ public class LongConverterTests : ConverterTestBase<long>
     static readonly LongConverter converter = new();
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
 
-    [TestCase(int.MaxValue)]
-    [TestCase(1L)]
-    [TestCase(0L)]
-    public void Test_roundtrip(long value)
-    {
-        TestConverter(value, static (a, b) => a.Equals(b), converter);
-    }
+    [Test]
+    public void Test_roundtrip([Values(int.MaxValue, 1L, 0L)] long value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
 
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]
-    [TestCase("\"0x0000\"", 0L)]
     [TestCase("0", 0L)]
     [TestCase("1", 1L)]
     public void Can_read_value(string json, long expected)
@@ -35,11 +30,8 @@ public class LongConverterTests : ConverterTestBase<long>
     }
 
     [Test]
-    public void Throws_on_null()
-    {
-        Assert.Throws<JsonException>(
+    public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<long>("null", options));
-    }
 
     [TestCase(0L, "\"0x0\"")]
     [TestCase(1L, "\"0x1\"")]
@@ -81,4 +73,31 @@ public class LongConverterTests : ConverterTestBase<long>
             Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for nibbles={nibbles}, value=0x{(ulong)value:x}");
         }
     }
+
+    [Test]
+    public void StrictQuantity_rejects_leading_zero([Values("\"0x0b\"", "\"0x00\"", "\"0x0ff\"")] string json)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new LongConverter(strictQuantity: true) } };
+        Assert.That(() => JsonSerializer.Deserialize<long>(json, strictOpts), Throws.InstanceOf<FormatException>());
+    }
+
+    [Test]
+    public void StrictQuantity_rejects_json_number() =>
+        Assert.That(
+            () => JsonSerializer.Deserialize<long>("11", new JsonSerializerOptions { Converters = { new LongConverter(strictQuantity: true) } }),
+            Throws.InstanceOf<JsonException>());
+
+    [TestCase("\"0x0\"", 0L)]
+    [TestCase("\"0xb\"", 11L)]
+    [TestCase("\"0xff\"", 255L)]
+    public void StrictQuantity_accepts_valid_quantity(string json, long expected)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new LongConverter(strictQuantity: true) } };
+        long result = JsonSerializer.Deserialize<long>(json, strictOpts);
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Lenient_accepts_leading_zero([Values("\"0x0000\"", "\"0x0b\"")] string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<long>(json, options), Throws.Nothing);
 }

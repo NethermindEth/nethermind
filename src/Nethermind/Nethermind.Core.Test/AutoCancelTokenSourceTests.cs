@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using NUnit.Framework;
@@ -16,33 +15,33 @@ public class AutoCancelTokenSourceTests
     [Test]
     public void AutoCancelOnExitClosure()
     {
-        CancellationToken TaskWithInnerCancellation(CancellationToken token)
+        static CancellationToken TaskWithInnerCancellation(CancellationToken token)
         {
             using AutoCancelTokenSource cts = token.CreateChildTokenSource();
             return cts.Token;
         }
 
-        TaskWithInnerCancellation(default).IsCancellationRequested.Should().BeTrue();
+        Assert.That(TaskWithInnerCancellation(default).IsCancellationRequested, Is.True);
     }
 
     [Test]
     public void AutoCancelPropagateParentCancellation()
     {
-        using CancellationTokenSource cts = new CancellationTokenSource();
+        using CancellationTokenSource cts = new();
 
         using AutoCancelTokenSource acts = cts.Token.CreateChildTokenSource();
 
-        acts.Token.IsCancellationRequested.Should().BeFalse();
+        Assert.That(acts.Token.IsCancellationRequested, Is.False);
 
         cts.Cancel();
 
-        acts.Token.IsCancellationRequested.Should().BeTrue();
+        Assert.That(acts.Token.IsCancellationRequested, Is.True);
     }
 
     [Test]
     public void When_a_task_failed_cancel_other_task_and_forward_the_right_exception()
     {
-        using AutoCancelTokenSource cts = new AutoCancelTokenSource();
+        using AutoCancelTokenSource cts = new();
 
         Task failedTask = Task.Run(() =>
         {
@@ -60,7 +59,7 @@ public class AutoCancelTokenSourceTests
             cts.Token.ThrowIfCancellationRequested();
         });
 
-        var act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
-        act.Should().ThrowAsync<InvalidOperationException>();
+        Func<Task> act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
+        Assert.That(async () => await act(), Throws.TypeOf<InvalidOperationException>());
     }
 }

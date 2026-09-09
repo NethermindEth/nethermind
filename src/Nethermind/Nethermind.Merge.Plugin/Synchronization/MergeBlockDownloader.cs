@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {

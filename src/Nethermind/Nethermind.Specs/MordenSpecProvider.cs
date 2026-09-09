@@ -3,40 +3,29 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs
+namespace Nethermind.Specs;
+
+public class MordenSpecProvider : ForkScheduleSpecProvider
 {
-    public class MordenSpecProvider : ISpecProvider
+    public const ulong HomesteadBlockNumber = 494_000;
+    public const ulong SpuriousDragonBlockNumber = 1_885_000;
+
+    private MordenSpecProvider() : this(new ForkSchedule
     {
-        private ForkActivation? _theMergeBlock = null;
+        [GenesisBlockNumber] = Frontier.Instance,
+        [HomesteadBlockNumber] = Homestead.Instance,
+        [SpuriousDragonBlockNumber] = SpuriousDragon.Instance,
+    })
+    { }
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-        {
-            if (blockNumber is not null)
-                _theMergeBlock = (ForkActivation)blockNumber;
-            if (terminalTotalDifficulty is not null)
-                TerminalTotalDifficulty = terminalTotalDifficulty;
-        }
+    private MordenSpecProvider(ForkSchedule schedule) : base(schedule) =>
+        TransitionActivations = schedule.ToTransitionActivations();
 
-        public ForkActivation? MergeBlockNumber => _theMergeBlock;
-        public ulong TimestampFork => ISpecProvider.TimestampForkNever;
-        public UInt256? TerminalTotalDifficulty { get; private set; }
-        public IReleaseSpec GenesisSpec => Frontier.Instance;
+    public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
+    public override ulong NetworkId => BlockchainIds.Morden;
+    public override ulong? BeaconChainGenesisTimestamp => null;
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-            forkActivation.BlockNumber switch
-            {
-                < 494000 => Frontier.Instance,
-                < 1885000 => Homestead.Instance,
-                _ => SpuriousDragon.Instance
-            };
-        public long? DaoBlockNumber => null;
-        public ulong? BeaconChainGenesisTimestamp => null;
-
-        public ulong NetworkId => BlockchainIds.Morden;
-        public ulong ChainId => NetworkId;
-        public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
-    }
+    public static MordenSpecProvider Instance { get; } = new();
 }

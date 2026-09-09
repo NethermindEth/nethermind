@@ -6,20 +6,17 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
 internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
-    private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
-    private readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
+    private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
 
     public Address[] GetPenalties(XdcBlockHeader header) => epochSwitchManager.GetEpochSwitchInfo(header)?.Penalties ?? [];
 
@@ -30,52 +27,53 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
         if (limit == 0) return currentEpochSwitchInfo.Penalties;
 
-        var epochNumber = (ulong)spec.SwitchEpoch + currentEpochSwitchInfo.EpochSwitchBlockInfo.Round / (ulong)spec.EpochLength;
+        ulong epochNumber = spec.SwitchEpoch + currentEpochSwitchInfo.EpochSwitchBlockInfo.Round / spec.EpochLength;
         if (epochNumber < limit) return [];
 
         BlockRoundInfo results = epochSwitchManager.GetBlockByEpochNumber(epochNumber - limit);
         if (results is null) return [];
 
-        var header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
+        XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(results.Hash, results.BlockNumber);
         if (header?.PenaltiesAddress is null) return [];
 
         return [.. header.PenaltiesAddress];
     }
 
-    public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
+    public Address[] HandlePenalties(ulong number, Hash256 parentHash, Address[] candidates)
     {
         List<Hash256> listBlockHash = [parentHash];
-        Dictionary<Address, int> minerStatistics = new();
+        Dictionary<Address, ulong> minerStatistics = [];
 
-        long parentNumber = number - 1;
+        // Walk down to (but not past) block 1; block 0 is genesis and never an epoch switch body block.
+        ulong parentNumber = number - 1;
         Hash256 currentHash = parentHash;
-        while (parentNumber >= 0)
+        while (parentNumber > 0)
         {
-            var parentHeader = (XdcBlockHeader)tree.FindHeader(currentHash, parentNumber);
+            XdcBlockHeader parentHeader = (XdcBlockHeader)tree.FindHeader(currentHash, parentNumber);
             if (parentHeader is null) return [];
 
-            var isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
+            bool isEpochSwitch = epochSwitchManager.IsEpochSwitchAtBlock(parentHeader);
             if (isEpochSwitch)
                 break;
 
-            Address miner = parentHeader.Beneficiary ?? _ethereumEcdsa.RecoverAddress(new Signature(parentHeader.Validator.AsSpan(0, 64), parentHeader.Validator[64]), Keccak.Compute(_xdcHeaderDecoder.Encode(parentHeader, RlpBehaviors.ForSealing).Bytes));
-            minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out int count) ? count + 1 : 1;
+            Address miner = parentHeader.Beneficiary;
+            minerStatistics[miner!] = minerStatistics.TryGetValue(miner, out ulong count) ? count + 1 : 1;
 
             parentNumber--;
             currentHash = parentHeader.ParentHash;
             listBlockHash.Add(currentHash);
         }
 
-        var header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
+        XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
-        var penalties = new HashSet<Address>();
+        HashSet<Address> penalties = [];
 
-        int minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
+        ulong minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
             ? currentSpec.MinimumMinerBlockPerEpoch
             : XdcConstants.MinimumMinerBlockPerEpoch;
 
-        foreach (var (miner, total) in minerStatistics)
+        foreach ((Address miner, ulong total) in minerStatistics)
         {
             if (total < minMinerBlockPerEpoch)
                 penalties.Add(miner);
@@ -86,21 +84,21 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
         if (!currentSpec.IsTipUpgradePenaltyEnabled)
         {
-            long comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
+            ulong comebackHeight = XdcConstants.LimitPenaltyEpochV2 * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
-                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
-                var penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
+                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, 0);
+                HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
-                var blockHashes = new HashSet<Hash256>();
-                var startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;
+                HashSet<Hash256> blockHashes = [];
+                int startRange = (int)Math.Min(currentSpec.RangeReturnSigner, (ulong)listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
                 {
                     if (penComebacks.Count == 0)
                         break;
 
-                    long blockNumber = number - i - 1;
+                    ulong blockNumber = number - (ulong)i - 1;
                     Hash256 blockHash = listBlockHash[i];
 
                     if (blockNumber % currentSpec.MergeSignRange == 0)
@@ -109,7 +107,8 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
                     foreach (Transaction tx in signingTxs)
                     {
-                        var signedBlockHash = new Hash256(tx.Data.Span[^32..]);
+                        Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
+                        tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
                         Address fromSigner = tx.SenderAddress;
 
                         if (blockHashes.Contains(signedBlockHash))
@@ -122,19 +121,20 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         }
         else
         {
-            long limitPenaltyEpoch = currentSpec.LimitPenaltyEpoch > 0 ? currentSpec.LimitPenaltyEpoch : 1;
-            long comebackHeight = limitPenaltyEpoch * currentSpec.EpochLength + currentSpec.SwitchBlock;
+            // LimitPenaltyEpoch of 0 is treated as 1 to avoid division/multiplication by zero.
+            ulong limitPenaltyEpoch = currentSpec.LimitPenaltyEpoch > 0 ? currentSpec.LimitPenaltyEpoch : 1;
+            ulong comebackHeight = limitPenaltyEpoch * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
-                Dictionary<Address, ulong> penaltyParolees = new();
+                Dictionary<Address, ulong> penaltyParolees = [];
                 Address[] lastPenalty = [];
 
-                for (long i = 0; i < limitPenaltyEpoch; i++)
+                for (ulong i = 0; i < limitPenaltyEpoch; i++)
                 {
-                    Address[] previousPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)i);
+                    Address[] previousPenalties = GetPreviousPenalties(parentHash, currentSpec, i);
                     foreach (Address previousPenalty in previousPenalties)
                     {
-                        penaltyParolees[previousPenalty] = penaltyParolees.TryGetValue(previousPenalty, out var count)
+                        penaltyParolees[previousPenalty] = penaltyParolees.TryGetValue(previousPenalty, out ulong count)
                             ? count + 1
                             : 1;
                     }
@@ -142,13 +142,13 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     if (i == 0) lastPenalty = previousPenalties;
                 }
 
-                var blockHashes = new HashSet<Hash256>();
-                var txSignerMap = new Dictionary<Address, int>();
-                var startRange = Math.Min(currentSpec.EpochLength, listBlockHash.Count) - 1;
+                HashSet<Hash256> blockHashes = [];
+                Dictionary<Address, ulong> txSignerMap = [];
+                int startRange = (int)Math.Min(currentSpec.EpochLength, (ulong)listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
                 {
-                    long blockNumber = number - i - 1;
+                    ulong blockNumber = number - (ulong)i - 1;
                     Hash256 blockHash = listBlockHash[i];
 
                     if (blockNumber % currentSpec.MergeSignRange == 0)
@@ -157,21 +157,22 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
                     foreach (Transaction tx in signingTxs)
                     {
-                        var signedBlockHash = new Hash256(tx.Data.Span[^32..]);
-                        Address fromSigner = tx.SenderAddress!;
+                        Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
+                        tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx);
+                        Address fromSigner = tx.SenderAddress;
                         if (blockHashes.Contains(signedBlockHash))
                         {
-                            txSignerMap[fromSigner] = txSignerMap.TryGetValue(fromSigner, out var count) ? count + 1 : 1;
+                            txSignerMap[fromSigner] = txSignerMap.TryGetValue(fromSigner, out ulong count) ? count + 1 : 1;
                         }
                     }
                 }
 
                 foreach (Address penalty in lastPenalty)
                 {
-                    penaltyParolees.TryGetValue(penalty, out var epochs);
-                    if (epochs == (ulong)limitPenaltyEpoch)
+                    penaltyParolees.TryGetValue(penalty, out ulong epochs);
+                    if (epochs == limitPenaltyEpoch)
                     {
-                        txSignerMap.TryGetValue(penalty, out var signedCount);
+                        txSignerMap.TryGetValue(penalty, out ulong signedCount);
                         if (signedCount >= currentSpec.MinimumSigningTx)
                             continue;
                     }

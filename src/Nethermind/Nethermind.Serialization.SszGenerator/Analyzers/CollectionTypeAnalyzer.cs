@@ -5,16 +5,18 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class CollectionTypeAnalyzer : DiagnosticAnalyzer
+public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 {
     public const string DiagnosticId = "SSZ002";
     private static readonly LocalizableString Title = "Property with a collection type should be marked as SszList or SszVector";
-    private static readonly LocalizableString MessageFormat = "Property {0} should be marked as SszList or SszVector";
+    private static readonly LocalizableString MessageFormat = "Property {0} should be marked as SszList, SszVector, SszProgressiveList, or SszProgressiveBitlist";
     private const string Category = "Design";
 
     private static readonly DiagnosticDescriptor Rule = new(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true);
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return [Rule]; } }
+    private const string SszIgnoreAttributeFullName = "Nethermind.Serialization.Ssz.SszIgnoreAttribute";
+
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
     public override void Initialize(AnalysisContext context)
     {
@@ -28,16 +30,13 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
     {
         TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
 
-        if (!typeDeclaration.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => attr.ToString() == "SszSerializable" || attr.ToString() == "SszSerializableAttribute"))
+        if (!IsSszRootType(typeDeclaration))
         {
             return;
         }
 
-        foreach (var property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
-            .Where(prop =>
-                prop.Modifiers.Any(SyntaxKind.PublicKeyword) &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true))
+        foreach (PropertyDeclarationSyntax property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
+            .Where(IsPublicGetSetProperty))
         {
             CheckProperty(context, property);
         }
@@ -45,34 +44,31 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
 
     private static void CheckProperty(SyntaxNodeAnalysisContext context, PropertyDeclarationSyntax propertyDeclaration)
     {
-        static bool IsCollectionType(ITypeSymbol typeSymbol)
-        {
-            if (typeSymbol is INamedTypeSymbol namedTypeSymbol)
-            {
-                ImmutableArray<INamedTypeSymbol> interfaces = namedTypeSymbol.AllInterfaces;
-                return interfaces.Any(i => i.Name == "IEnumerable");
-            }
-
-            return false;
-        }
-
         ITypeSymbol? typeSymbol = context.SemanticModel.GetTypeInfo(propertyDeclaration.Type).Type;
 
-        if (typeSymbol is not null && (typeSymbol is IArrayTypeSymbol || IsCollectionType(typeSymbol)))
+        if (typeSymbol is not null && IsCollectionType(typeSymbol))
         {
-            bool hasRequiredAttribute = propertyDeclaration.AttributeLists
+            bool isIgnored = propertyDeclaration.AttributeLists
                 .SelectMany(attrList => attrList.Attributes)
-                .Any(attr =>
-                {
-                    var name = attr.Name.ToString();
-                    return name == "SszList" || name == "SszVector" || name == "SszListAttribute" || name == "SszVectorAttribute" || name == "BitArray";
-                });
+                .Any(attr => IsSszIgnoreAttribute(attr, context.SemanticModel));
 
-            if (!hasRequiredAttribute)
+            if (!isIgnored)
             {
-                var diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
-                context.ReportDiagnostic(diagnostic);
+                bool hasRequiredAttribute = propertyDeclaration.AttributeLists
+                    .SelectMany(attrList => attrList.Attributes)
+                    .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
+
+                if (!hasRequiredAttribute)
+                {
+                    Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(),
+                        propertyDeclaration.Identifier.Text);
+                    context.ReportDiagnostic(diagnostic);
+                }
             }
         }
     }
+
+    private static bool IsSszIgnoreAttribute(AttributeSyntax attribute, SemanticModel semanticModel) =>
+        semanticModel.GetSymbolInfo(attribute).Symbol is IMethodSymbol ctor
+        && ctor.ContainingType.ToDisplayString() == SszIgnoreAttributeFullName;
 }

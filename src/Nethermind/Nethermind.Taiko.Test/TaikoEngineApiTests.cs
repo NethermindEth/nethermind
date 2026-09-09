@@ -39,7 +39,6 @@ public class TaikoEngineApiTests
 
         TaikoForkchoiceUpdatedHandler forkchoiceUpdatedHandler = new(
             blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             Substitute.For<IBlockProcessingQueue>(),
@@ -64,7 +63,7 @@ public class TaikoEngineApiTests
 
         static void AddBlock(IBlockTree blockTree, Block block)
         {
-            blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block);
+            blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(block.Header);
             blockTree.GetInfo(block.Number, block.Hash!).Returns((new BlockInfo(block.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
             blockTree.Head.Returns(block);
             blockTree.HeadHash.Returns(block.Hash!);
@@ -80,7 +79,7 @@ public class TaikoEngineApiTests
 
         Block headBlock = Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject;
 
-        blockTree.FindBlock(headBlock.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(headBlock);
+        blockTree.FindHeader(headBlock.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(headBlock.Header);
         blockTree.GetInfo(headBlock.Number, headBlock.Hash!).Returns((new BlockInfo(headBlock.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
         blockTree.Head.Returns(headBlock);
         blockTree.HeadHash.Returns(headBlock.Hash!);
@@ -88,7 +87,6 @@ public class TaikoEngineApiTests
 
         TaikoForkchoiceUpdatedHandler handler = new(
             blockTree,
-            Substitute.For<IManualBlockFinalizationManager>(),
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             Substitute.For<IBlockProcessingQueue>(),

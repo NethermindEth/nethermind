@@ -7,7 +7,7 @@ namespace Nethermind.Specs.GnosisForks;
 
 public class PragueGnosis() : NamedGnosisReleaseSpec<PragueGnosis>(Prague.Instance, CancunGnosis.Instance)
 {
-    public override void Apply(ReleaseSpec spec)
+    public override void Apply(NamedReleaseSpec spec)
     {
         base.Apply(spec);
         spec.IsEip4844FeeCollectorEnabled = true;

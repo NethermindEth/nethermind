@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,23 +13,31 @@ using System.Threading;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
+public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
     private const int JUMPDEST = (int)Instruction.JUMPDEST;
+    private const int PUSH32 = (int)Instruction.PUSH32;
     private const int BitShiftPerInt64 = 6;
 
-    private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
+    private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
+    /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
+    internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
+    /// <summary>The jump-destination bitmap, built on first use; one bit per code byte.</summary>
+    internal long[] JumpDestinationBitmap => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
         _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
@@ -42,6 +51,10 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateOrWaitForJumpDestinationBitmap()
     {
+        // A single processor never queues the background analysis, so there is no completion event
+        // to allocate, signal or wait on; the guest folds the rest of the method away.
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return CreateJumpDestinationBitmap();
+
         object? previous = Volatile.Read(ref _analysisComplete);
         if (previous is null)
         {
@@ -59,22 +72,24 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         return (long[])previous;
     }
 
-    private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
+    [MemberNotNull(nameof(_jumpDestinationBitmap))]
+    private void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
         // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
-        using var handle = Thread.CurrentThread.SetNormalPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
+        Debug.Assert(_jumpDestinationBitmap is not null);
     }
 
-    private void AnalyzeJumpDestinations(out object previous)
+    private void AnalyzeJumpDestinations([NotNull] out object? previous)
     {
         ManualResetEventSlim analysisComplete = new(initialState: false);
         previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
         if (previous is null)
         {
             // Not already in progress, so start it.
-            var bitmap = CreateJumpDestinationBitmap();
+            long[] bitmap = CreateJumpDestinationBitmap();
             _jumpDestinationBitmap = bitmap;
             // Release the MRES to be GC'd
             Volatile.Write(ref _analysisComplete, bitmap);
@@ -122,58 +137,6 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
 
     internal static long[] CreateBitmap(int codeLength)
         => new long[GetInt64ArrayLengthFromBitLength(codeLength)];
-
-    [SkipLocalsInit]
-    internal static long[] PopulateJumpDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
-    {
-        ProcessJumpDestinationBitmap_Scalar(programCounter: 0, bitmap, code);
-        return bitmap;
-    }
-
-    [SkipLocalsInit]
-    private static void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
-    {
-        // We accumulate each array segment to a register and then flush to memory when we move to next.
-        long currentFlags = 0;
-        while (programCounter < (nuint)code.Length)
-        {
-            // Grab the instruction from the code; zero length code
-            // doesn't enter this method and we check at end of loop if
-            // hit the last element and should exit, so skip bounds check
-            // access here.
-            int op = Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), programCounter);
-            // Set default programCounter increment to 1 for default case when we don't read a PUSH.
-            nuint move = 1;
-
-            if (op == JUMPDEST)
-            {
-                // Accumulate Jump Destinations to register, shift will wrap and single bit
-                // so can shift by the whole programCounter.
-                currentFlags |= 1L << (int)programCounter;
-            }
-            else if ((sbyte)op > PUSHx)
-            {
-                // Fast forward programCounter by the amount of data the push
-                // represents as don't need to analyze data for Jump Destinations.
-                move = (nuint)op - PUSH1 + 2;
-            }
-
-            nuint nextCounter = programCounter + move;
-            // Does the move mean we are moving to new segment of the long array?
-            // If we take the current index in flags, and add the move, are we at
-            // a new long segment, i.e. a larger than 64 position move.
-            if (currentFlags != 0 && ((programCounter & 63) + move >= 64 || nextCounter >= (nuint)code.Length))
-            {
-                // Moving to next array element (or finishing) assign to array.
-                MarkJumpDestinations(bitmap, programCounter, currentFlags);
-                // Clear the flags in preparation for the next array segment.
-                currentFlags = 0;
-            }
-
-            // Move to next instruction.
-            programCounter = nextCounter;
-        }
-    }
 
     [SkipLocalsInit]
     internal static long[] PopulateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
@@ -249,7 +212,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         if (programCounter + skip < (nuint)code.Length)
         {
             // Scalar tail for the final (length % 64) bytes
-            ProcessJumpDestinationBitmap_Scalar(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
+            ProcessJumpDestinationBitmap_Byte(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
         }
 
         return bitmap;
@@ -346,7 +309,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     /// Checks if the position is in a code segment.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsJumpDestination(long[] bitvec, int pos)
+    internal static bool IsJumpDestination(long[] bitvec, int pos)
     {
         int vecIndex = pos >> BitShiftPerInt64;
         // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't.
@@ -359,21 +322,24 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private static void MarkJumpDestinations(long[] jumpDestinationBitmap, int pos, long flags)
     {
         uint offset = (uint)pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(Span<long> jumpDestinationBitmap, nuint pos, long flags)
     {
         uint offset = (uint)pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MarkJumpDestinations(long[] jumpDestinationBitmap, nuint pos, long flags)
     {
         nuint offset = pos >> BitShiftPerInt64;
-        Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
+        ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
+        segment = segment | flags;
     }
 
     public void Execute()
@@ -384,7 +350,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
             if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
             {
                 // Boost the priority of the thread as block processing may be waiting on this.
-                using var handle = Thread.CurrentThread.BoostPriority();
+                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
 
                 _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
                 // Release the MRES to be GC'd

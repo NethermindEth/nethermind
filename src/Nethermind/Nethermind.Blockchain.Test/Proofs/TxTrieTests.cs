@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
@@ -44,7 +43,7 @@ public class TxTrieTests(bool useEip2718)
     public void Can_collect_proof_trie_case_1()
     {
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-        using var pool = new TrackingCappedArrayPool();
+        using TrackingCappedArrayPool pool = new();
         TxTrie txTrie = new(block.Transactions, true, pool);
         byte[][] proof = txTrie.BuildProof(0);
 
@@ -56,7 +55,7 @@ public class TxTrieTests(bool useEip2718)
     public void Can_collect_proof_with_trie_case_2()
     {
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
-        using var pool = new TrackingCappedArrayPool();
+        using TrackingCappedArrayPool pool = new();
         TxTrie txTrie = new(block.Transactions, true, pool);
         byte[][] proof = txTrie.BuildProof(0);
         Assert.That(proof.Length, Is.EqualTo(2));
@@ -69,7 +68,7 @@ public class TxTrieTests(bool useEip2718)
     public void Can_collect_proof_with_trie_case_3_modified()
     {
         Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
-        using var pool = new TrackingCappedArrayPool();
+        using TrackingCappedArrayPool pool = new();
         TxTrie txTrie = new(block.Transactions, true, pool);
 
         txTrie.UpdateRootHash();
@@ -105,9 +104,9 @@ public class TxTrieTests(bool useEip2718)
     {
         const int txCount = 100;
         Transaction[] transactions = new Transaction[txCount];
-        for (int i = 0; i < txCount; i++)
+        for (uint i = 0; i < txCount; i++)
         {
-            transactions[i] = Build.A.Transaction.WithNonce((UInt256)(i + 1)).Signed().TestObject;
+            transactions[i] = Build.A.Transaction.WithNonce(i + 1).Signed().TestObject;
         }
 
         using TrackingCappedArrayPool pool = new();

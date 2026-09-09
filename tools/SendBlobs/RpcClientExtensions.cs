@@ -50,7 +50,7 @@ internal static class RpcClientExtensions
         {
             object syncingResult = await PostWithRetry<object>(rpcClient, nameof(IEthRpcModule.eth_syncing));
 
-            return syncingResult is bool isSyncing && isSyncing is false;
+            return syncingResult is bool isSyncing && !isSyncing;
         }
 
         public async Task<string> GetBalanceAsync(Address address, string blockTag = Latest) => await PostWithRetry<string>(rpcClient, nameof(IEthRpcModule.eth_getBalance), address, blockTag);

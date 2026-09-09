@@ -6,6 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Optimism.Test;
 
@@ -35,8 +36,8 @@ public class EIP1559ParametersTests
     [TestCaseSource(nameof(DecodeBlockHeaderParametersCases))]
     public void DecodeBlockHeaderParameters((string HexString, EIP1559Parameters Expected) testCase)
     {
-        var bytes = Bytes.FromHexString(testCase.HexString);
-        var blockHeader = Build.A.BlockHeader.WithExtraData(bytes).TestObject;
+        byte[] bytes = Bytes.FromHexString(testCase.HexString);
+        BlockHeader blockHeader = Build.A.BlockHeader.WithExtraData(bytes).TestObject;
 
         using (Assert.EnterMultipleScope())
         {

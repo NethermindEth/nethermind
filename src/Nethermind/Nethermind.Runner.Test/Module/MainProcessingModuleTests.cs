@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
@@ -15,16 +15,19 @@ namespace Nethermind.Runner.Test.Module;
 
 public class MainProcessingModuleTests
 {
-    [Test]
-    public void MainProcessingContext_ShouldUseCachedCodeInfoRepository()
+    [TestCase(32768, true)]
+    [TestCase(0, false)]
+    [TestCase(-1, false)]
+    public void MainProcessingContext_ShouldUseCachedCodeInfoRepository_OnlyWithAPrecompileCacheBudget(int maxKilobytes, bool expectDecorated)
     {
         using IContainer ctx = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(new TestNethermindModule(new BlocksConfig { PrecompileCacheMaxKilobytes = maxKilobytes }))
             .Build();
 
-        (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext)
+        ICodeInfoRepository repository = (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext)
             .LifetimeScope
-            .Resolve<ICodeInfoRepository>()
-            .Should().BeOfType<PrecompileCachedCodeInfoRepository>();
+            .Resolve<ICodeInfoRepository>();
+
+        Assert.That(repository is PrecompileCachedCodeInfoRepository, Is.EqualTo(expectDecorated), $"resolved {repository.GetType().Name}");
     }
 }

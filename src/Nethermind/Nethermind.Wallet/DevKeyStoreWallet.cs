@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
@@ -20,14 +21,14 @@ namespace Nethermind.Wallet
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
 
-        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
+        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = [];
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
         {
             _keyStore = keyStore;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DevKeyStoreWallet>() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (createTestAccounts)
             {
@@ -35,26 +36,31 @@ namespace Nethermind.Wallet
             }
         }
 
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
 
         public Address[] GetAccounts()
         {
-            return _keyStore.GetKeyAddresses().Addresses.ToArray();
+            (IReadOnlyCollection<Address> addresses, Result result) = _keyStore.GetKeyAddresses();
+            if (result.ResultType != ResultType.Success || addresses is null)
+            {
+                throw new InvalidOperationException(result.Error ?? "Key address enumeration failed.");
+            }
+
+            return addresses.ToArray();
         }
 
         public Address NewAccount(SecureString passphrase)
         {
-            (PrivateKey privateKey, _) = _keyStore.GenerateKey(passphrase);
+            (PrivateKey privateKey, Result result) = _keyStore.GenerateKey(passphrase);
+            if (result.ResultType != ResultType.Success || privateKey is null)
+            {
+                throw new InvalidOperationException(result.Error ?? "Key generation failed.");
+            }
+
             return privateKey.Address;
         }
 
-        public bool UnlockAccount(Address address, SecureString passphrase)
-        {
-            return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
-        }
+        public bool UnlockAccount(Address address, SecureString passphrase) => UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
@@ -66,7 +72,7 @@ namespace Nethermind.Wallet
             if (_unlockedAccounts.ContainsKey(address)) return true;
 
             (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
-            if (result.ResultType == ResultType.Success)
+            if (result.ResultType == ResultType.Success && key is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Unlocking account: {address}");
                 _unlockedAccounts.Add(key.Address, key);
@@ -86,38 +92,19 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
 
-        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
         {
-            PrivateKey key;
-            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
+            if (!_unlockedAccounts.TryGetValue(address, out PrivateKey key))
             {
-                key = value;
-            }
-            else
-            {
-                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
-
-                key = _keyStore.GetKey(address, passphrase).PrivateKey;
+                signature = null;
+                return false;
             }
 
-            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
+            signature = WalletSigner.Sign(in message, key);
+            return true;
         }
 
-        public Signature Sign(Hash256 message, Address address)
-        {
-            PrivateKey key;
-            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
-            {
-                key = value;
-            }
-            else
-            {
-                throw new SecurityException("Can only sign without passphrase when account is unlocked.");
-            }
-
-            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
-        }
+        public bool TrySign(in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature) =>
+            WalletSigner.TrySignWithPassphrase(_keyStore, in message, address, passphrase, out signature);
     }
 }

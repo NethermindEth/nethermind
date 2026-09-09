@@ -59,7 +59,7 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
                 return;
             }
 
-            using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
 
             buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
             ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);
@@ -70,8 +70,5 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
         }
     }
 
-    public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        throw new NotSupportedException();
-    }
+    public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
 }

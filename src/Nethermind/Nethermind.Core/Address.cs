@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -20,24 +21,36 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public sealed class Address : IEquatable<Address>, IComparable<Address>
+    public sealed partial class Address : IEquatable<Address>, IComparable<Address>
     {
         public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public static Address Zero { get; } = new(new byte[Size]);
+        public static Address Zero { get; } = new(default(ValueAddress));
         public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
         public static Address SystemUser { get; } = new(SystemUserHex);
 
-        public byte[] Bytes { get; }
+        private readonly ValueAddress _bytes;
 
-        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size).ToArray()) { }
+        public ReadOnlySpan<byte> Bytes
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _bytes.AsSpan;
+        }
 
-        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size).ToArray()) { }
+        private ref readonly byte FirstByte
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ref MemoryMarshal.GetReference(_bytes.AsSpan);
+        }
+
+        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size)) { }
+
+        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size)) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -124,21 +137,7 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(byte[] bytes)
-        {
-            ArgumentNullException.ThrowIfNull(bytes);
-
-            if (bytes.Length != Size)
-            {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
-            }
-
-            Bytes = bytes;
-        }
-
-        public Address(ReadOnlySpan<byte> bytes)
+        public Address(scoped ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
@@ -147,8 +146,10 @@ namespace Nethermind.Core
                     nameof(bytes));
             }
 
-            Bytes = bytes.ToArray();
+            _bytes = new ValueAddress(bytes);
         }
+
+        internal Address(in ValueAddress bytes) => _bytes = bytes;
 
         public bool Equals(Address? other)
         {
@@ -162,15 +163,26 @@ namespace Nethermind.Core
                 return true;
             }
 
-            // Address must be 20 bytes long Vector128 + uint
-            ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
-            ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
-            // Compare first 16 bytes with Vector128 and last 4 bytes with uint
-            return
-                Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
-                Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
-                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
+            return BytesEqual(ref Unsafe.AsRef(in FirstByte), ref Unsafe.AsRef(in other.FirstByte));
+        }
+
+        /// <summary>Compares two addresses byte for byte.</summary>
+        /// <remarks>
+        /// Split by target rather than written once: RISC-V has no SIMD, and a <see cref="Vector128{T}"/> compare
+        /// lowers to a software helper there.
+        /// </remarks>
+        /// <param name="a">Reference to the first byte of one 20-byte address.</param>
+        /// <param name="b">Reference to the first byte of the other.</param>
+        internal static partial bool BytesEqual(ref byte a, ref byte b);
+
+        // Same comparison as Equals(Address) but against raw bytes, skipping the
+        // length-dispatching SequenceEqual helper on hot paths.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(scoped ReadOnlySpan<byte> other)
+        {
+            if (other.Length != Size) return false;
+
+            return BytesEqual(ref Unsafe.AsRef(in FirstByte), ref MemoryMarshal.GetReference(other));
         }
 
         public static Address FromNumber(in UInt256 number)
@@ -215,7 +227,18 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
+        public override int GetHashCode() => GetHashCodeNonVirtual();
+
+        /// <summary>Returns exactly what <see cref="GetHashCode"/> returns, without a virtual call.</summary>
+        /// <remarks>
+        /// ILC lowers a <c>callvirt</c> on this sealed type's <see cref="GetHashCode"/> override to a vtable
+        /// dispatch rather than resolving it statically, so a caller on a hash-table probe path — chiefly
+        /// <see cref="AddressAsKey.GetHashCode"/> — pays an out-of-line call it cannot inline through.
+        /// An address is always 20 bytes, so the body skips the length-dispatching <see cref="SpanExtensions.FastHash"/>
+        /// for the dedicated 20-byte hasher.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -231,7 +254,7 @@ namespace Nethermind.Core
 
         public AddressStructRef ToStructRef() => new(Bytes);
 
-        public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
+        public int CompareTo(Address? other) => other is null ? 1 : Bytes.SequenceCompareTo(other.Bytes);
 
         private class AddressTypeConverter : TypeConverter
         {
@@ -255,7 +278,7 @@ namespace Nethermind.Core
         [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
-            ref byte value = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            ref byte value = ref Unsafe.AsRef(in FirstByte);
             // build the 4×8-byte lanes:
             // - lane0 = 0UL
             // - lane1 = first 4 bytes of 'value', shifted up into the high half
@@ -272,9 +295,74 @@ namespace Nethermind.Core
             return result;
         }
 
-        internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetArrayDataReference(Bytes));
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+
+        /// <summary>Whether this address could name a precompile at all: sixteen leading zero bytes.</summary>
+        /// <remarks>The membership test every CALL pays. Two loads reject an ordinary contract, against
+        /// hashing and probing twenty bytes, and unlike <see cref="PrecompileIndexOrNegative"/> the answer
+        /// holds for every number a plugin might register at.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool CouldBePrecompile()
+        {
+            ref byte b = ref Unsafe.AsRef(in FirstByte);
+            return (Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) == 0;
+        }
+
+        /// <summary>The precompile number this address names, or negative if it cannot be used as an index.</summary>
+        /// <remarks>A precompile lives at a low address, so its trailing number is the membership key and
+        /// "which one" becomes an index rather than a hash and a probe over twenty bytes. Callers bound the
+        /// index themselves, since a plugin may register far above the low run — Taiko's sit at 0x10001 and
+        /// 0x10002. This answers "which one", never "is it one": a tail that overflows <see cref="int"/>
+        /// also comes back negative, so membership is <see cref="CouldBePrecompile"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int PrecompileIndexOrNegative()
+        {
+            // The shape test is repeated rather than calling CouldBePrecompile so that the base ref is
+            // loaded once: this is the zkVM guest's precompile path, measured to an exact step count.
+            ref byte b = ref Unsafe.AsRef(in FirstByte);
+            if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
+            {
+                return -1;
+            }
+
+            // bytes 16..19, big-endian
+            uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
+            return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
+        }
     }
 
+    public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
+    {
+        [SkipLocalsInit]
+        public int Compare(Address? a, Address? b)
+        {
+            if (ReferenceEquals(a, b)) return 0;
+            if (a is null) return -1;
+            if (b is null) return 1;
+
+            Span<byte> aLowerHex = stackalloc byte[Address.Size * 2];
+            Span<byte> bLowerHex = stackalloc byte[Address.Size * 2];
+            a.Bytes.OutputBytesToByteHex(aLowerHex, extraNibble: false);
+            b.Bytes.OutputBytesToByteHex(bLowerHex, extraNibble: false);
+
+            ValueHash256 aChecksum = ValueKeccak.Compute(aLowerHex);
+            ValueHash256 bChecksum = ValueKeccak.Compute(bLowerHex);
+            for (int i = 0; i < aLowerHex.Length; i++)
+            {
+                char aChar = Bytes.ToChecksummedHexChar(aLowerHex[i], Bytes.GetChecksumNibble(in aChecksum, i));
+                char bChar = Bytes.ToChecksummedHexChar(bLowerHex[i], Bytes.GetChecksumNibble(in bChecksum, i));
+                if (aChar != bChar)
+                {
+                    return aChar - bChar;
+                }
+            }
+
+            return 0;
+        }
+    }
+
+    [JsonConverter(typeof(AddressAsKeyConverter))]
     public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
         public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
@@ -284,16 +372,30 @@ namespace Nethermind.Core
         public static implicit operator Address(AddressAsKey key) => key._key;
         public static implicit operator AddressAsKey(Address key) => new(key);
 
-        public bool Equals(AddressAsKey other) => _key == other._key;
-        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
-        public override string ToString()
+        public bool Equals(AddressAsKey other) => Equals(in other);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode() => _key?.GetHashCodeNonVirtual() ?? 0;
+        public override string ToString() => _key?.ToString() ?? "<null>";
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
+
+        /// <remarks>
+        /// The checks are spelled out and the compare goes straight to <see cref="Address.BytesEqual"/>, rather than
+        /// through <see cref="Address.Equals(Address)"/>, which carries no inlining hint and so becomes a call on the
+        /// hot path of every cache probe.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(in AddressAsKey other)
         {
-            return _key?.ToString() ?? "<null>";
+            Address a = _key;
+            Address b = other._key;
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null) return false;
+
+            return Address.BytesEqual(ref MemoryMarshal.GetReference(a.Bytes), ref MemoryMarshal.GetReference(b.Bytes));
         }
-
-        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
-
-        public bool Equals(in AddressAsKey other) => _key == other._key;
     }
 
     public ref struct AddressStructRef
@@ -306,7 +408,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
-        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength)) { }
 
         public readonly byte this[int index] => Bytes[index];
 
@@ -402,6 +504,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public readonly Address ToAddress() => new(Bytes.ToArray());
+        public readonly Address ToAddress() => new(Bytes);
     }
 }

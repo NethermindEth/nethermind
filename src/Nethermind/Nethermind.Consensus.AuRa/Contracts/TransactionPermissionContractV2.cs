@@ -9,17 +9,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public sealed class TransactionPermissionContractV2 : TransactionPermissionContract
+    public sealed class TransactionPermissionContractV2(
+        IAbiEncoder abiEncoder,
+        Address contractAddress,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : TransactionPermissionContract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
     {
         private static readonly UInt256 Two = 2;
-
-        public TransactionPermissionContractV2(
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
-        {
-        }
 
         protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) =>
             new object[] { tx.SenderAddress, tx.To ?? Address.Zero, tx.Value };

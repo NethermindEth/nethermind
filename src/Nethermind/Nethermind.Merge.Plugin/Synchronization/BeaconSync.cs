@@ -13,65 +13,40 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
-    public class BeaconSync : IMergeSyncController, IBeaconSyncStrategy
+    public class BeaconSync(
+        IBeaconPivot beaconPivot,
+        IBlockTree blockTree,
+        ISyncConfig syncConfig,
+        IBlockCacheService blockCacheService,
+        IPoSSwitcher poSSwitcher,
+        ILogManager logManager) : IMergeSyncController, IBeaconSyncStrategy
     {
-        private readonly IBeaconPivot _beaconPivot;
-        private readonly IBlockTree _blockTree;
-        private readonly ISyncConfig _syncConfig;
-        private readonly IBlockCacheService _blockCacheService;
-        private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBeaconPivot _beaconPivot = beaconPivot;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly ISyncConfig _syncConfig = syncConfig;
+        private readonly IBlockCacheService _blockCacheService = blockCacheService;
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private bool _isInBeaconModeControl = false;
-        private readonly ILogger _logger;
-
-        // beacon header sync can be initialized only when global pivot is already set,
-        // otherwise it might result in conflicting pivots and a deadlock
-        private bool _canInitBeaconHeaderSync = false;
-
-        public BeaconSync(
-            IBeaconPivot beaconPivot,
-            IBlockTree blockTree,
-            ISyncConfig syncConfig,
-            IBlockCacheService blockCacheService,
-            IPoSSwitcher poSSwitcher,
-            ILogManager logManager)
-        {
-            _beaconPivot = beaconPivot;
-            _blockTree = blockTree;
-            _syncConfig = syncConfig;
-            _blockCacheService = blockCacheService;
-            _poSSwitcher = poSSwitcher;
-            _logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
 
         public void StopSyncing()
         {
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.BlockCache.Clear();
+                _blockCacheService.Clear();
             }
 
             _isInBeaconModeControl = true;
         }
 
-        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader)
+        public void InitBeaconHeaderSync(BlockHeader blockHeader)
         {
-            if (!_canInitBeaconHeaderSync) return false;
-
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
-            return true;
         }
 
-        public void StopBeaconModeControl()
-        {
-            _isInBeaconModeControl = false;
-        }
-
-        public void AllowBeaconHeaderSync()
-        {
-            _canInitBeaconHeaderSync = true;
-        }
+        public void StopBeaconModeControl() => _isInBeaconModeControl = false;
 
         public bool ShouldBeInBeaconHeaders()
         {
@@ -123,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool MergeTransitionFinished => _poSSwitcher.TransitionFinished;
 
-        public long? GetTargetBlockHeight()
+        public ulong? GetTargetBlockHeight()
         {
             if (_beaconPivot.BeaconPivotExists())
             {
@@ -132,22 +107,30 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
+        /// <remarks>
+        /// Falls back to the finalized hash persisted by the block tree when the cache holds nothing usable
+        /// (no forkchoice update yet, or a zero finalized hash), so that a node restarted before its first
+        /// pivot update can make progress. Safe because finalized blocks cannot be reorged and pivot updates
+        /// enforce monotonicity, so a stale persisted value can only produce an older-but-valid pivot.
+        /// </remarks>
         public Hash256? GetFinalizedHash()
         {
-            return _blockCacheService.FinalizedHash;
+            Hash256? cached = _blockCacheService.FinalizedHash;
+            return cached is not null && cached != Keccak.Zero ? cached : _blockTree.FinalizedHash;
         }
 
-        public Hash256? GetHeadBlockHash()
-        {
-            return _blockCacheService.HeadBlockHash;
-        }
+        /// <remarks>
+        /// Unlike <see cref="GetFinalizedHash"/>, there is no block tree fallback: a head can be reorged away,
+        /// and the block tree's own head reflects local processing progress, not the CL forkchoice target.
+        /// </remarks>
+        public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
     }
 
     public interface IMergeSyncController
     {
         void StopSyncing();
 
-        bool TryInitBeaconHeaderSync(BlockHeader blockHeader);
+        void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
     }

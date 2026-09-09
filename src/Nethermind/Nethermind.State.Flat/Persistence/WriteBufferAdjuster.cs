@@ -7,11 +7,24 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.Persistence;
 
-internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
+internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor)
 {
     internal const int ColumnCount = 7;
-    private const long MinWriteBufferSize = 16L * 1024 * 1024;   // 16 MB floor
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;  // 256 MB cap
+    internal const long DefaultWriteBufferFloor = 16 * MemorySizes.MiB;
+
+    private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
+    {
+        FlatDbColumns.Account => 32 * MemorySizes.MiB,
+        FlatDbColumns.Storage => 64 * MemorySizes.MiB,
+        FlatDbColumns.StateNodes => 64 * MemorySizes.MiB,
+        FlatDbColumns.StateTopNodes => 64 * MemorySizes.MiB,
+        FlatDbColumns.StorageNodes => 64 * MemorySizes.MiB,
+        _ => 16 * MemorySizes.MiB,                            // Metadata, FallbackNodes
+    };
+
+    // Lower bound applied per column. Frequent small persistence batches (small CompactSize) would otherwise
+    // shrink the memtable to the floor and churn L0; raising the floor lets them coalesce in the memtable instead.
+    private readonly long _writeBufferFloor = writeBufferFloor <= 0 ? DefaultWriteBufferFloor : writeBufferFloor;
 
     private bool _syncBufferSet;
 
@@ -37,14 +50,14 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         {
             if (!_syncBufferSet)
             {
-                SetWriteBuffer(db, FlatDbColumns.Account, 32L * 1024 * 1024);
-                SetWriteBuffer(db, FlatDbColumns.Storage, 64L * 1024 * 1024);
-                SetWriteBuffer(db, FlatDbColumns.StateNodes, 64L * 1024 * 1024);
-                SetWriteBuffer(db, FlatDbColumns.StorageNodes, 64L * 1024 * 1024);
+                SetWriteBuffer(db, FlatDbColumns.Account);
+                SetWriteBuffer(db, FlatDbColumns.Storage);
+                SetWriteBuffer(db, FlatDbColumns.StateNodes);
+                SetWriteBuffer(db, FlatDbColumns.StorageNodes);
                 _syncBufferSet = true;
 
-                static void SetWriteBuffer(IColumnsDb<FlatDbColumns> columnsDb, FlatDbColumns column, long size) =>
-                    columnsDb.GetColumnDb(column).SetWriteBuffer(size);
+                static void SetWriteBuffer(IColumnsDb<FlatDbColumns> columnsDb, FlatDbColumns col) =>
+                    columnsDb.GetColumnDb(col).SetWriteBuffer(MaxWriteBufferSize(col));
             }
 
             return batch.GetColumnBatch(column);
@@ -84,7 +97,7 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db)
         if (_syncBufferSet) return;
         if (bytesWritten == 0) return;
         int idx = (int)column;
-        long target = Math.Clamp((long)(bytesWritten * 1.5), MinWriteBufferSize, MaxWriteBufferSize);
+        long target = Math.Clamp((long)(bytesWritten * 1.5), _writeBufferFloor, Math.Max(_writeBufferFloor, MaxWriteBufferSize(column)));
         long lastSize = _lastWriteBufferSize[idx];
         if (lastSize != 0 && Math.Abs(target - lastSize) <= (long)(lastSize * 0.2))
             return;

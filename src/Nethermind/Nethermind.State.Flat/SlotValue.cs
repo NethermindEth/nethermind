@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -12,7 +11,7 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Make storing slot value smaller than a byte[].
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Pack = 32, Size = 32)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 32)]
 public readonly struct SlotValue
 {
     public readonly Vector256<byte> _bytes; // Use Vector256 as the internal storage field
@@ -62,5 +61,11 @@ public readonly struct SlotValue
     /// <summary>
     /// Currently, the worldstate that the evm use expect the bytes to be without leading zeros
     /// </summary>
-    public byte[] ToEvmBytes() => AsReadOnlySpan.WithoutLeadingZeros().ToArray();
+    private static readonly byte[] ZeroBytes = [0];
+
+    public byte[] ToEvmBytes()
+    {
+        if (_bytes == Vector256<byte>.Zero) return ZeroBytes;
+        return AsReadOnlySpan.WithoutLeadingZeros().ToArray();
+    }
 }

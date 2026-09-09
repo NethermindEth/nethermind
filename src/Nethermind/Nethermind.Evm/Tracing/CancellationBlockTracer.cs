@@ -44,9 +44,6 @@ namespace Nethermind.Evm.Tracing
             innerTracer.EndTxTrace();
         }
 
-        public void EndBlockTrace()
-        {
-            innerTracer.EndBlockTrace();
-        }
+        public void EndBlockTrace() => innerTracer.EndBlockTrace();
     }
 }

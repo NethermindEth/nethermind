@@ -130,7 +130,7 @@ namespace Nethermind.Db.LogIndex
 
                 Meta = _batch.GetColumnBatch(LogIndexColumns.Meta);
                 Address = _batch.GetColumnBatch(LogIndexColumns.Addresses);
-                for (var topicIndex = 0; topicIndex < MaxTopics; topicIndex++)
+                for (int topicIndex = 0; topicIndex < MaxTopics; topicIndex++)
                     Topics[topicIndex] = _batch.GetColumnBatch(GetColumn(topicIndex));
             }
 
@@ -228,7 +228,7 @@ namespace Nethermind.Db.LogIndex
             {
                 Enabled = config.Enabled;
 
-                _maxReorgDepth = config.MaxReorgDepth!.Value;
+                _maxReorgDepth = (int)config.MaxReorgDepth!.Value;
 
                 _logger = logManager.GetClassLogger<LogIndexStorage>();
 
@@ -332,7 +332,7 @@ namespace Nethermind.Db.LogIndex
             {
                 if (algoBytes.IsEmpty) // DB is empty
                 {
-                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
+                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgoName is not null && configAlgo is not null
                         ? KeyValuePair.Create(configAlgoName, configAlgo)
                         : CompressionAlgorithm.Best;
 
@@ -347,7 +347,7 @@ namespace Nethermind.Db.LogIndex
                 _metaDb.DangerousReleaseMemory(algoBytes);
             }
 
-            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm usedAlgo))
+            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm? usedAlgo))
             {
                 throw new NotSupportedException(
                     $"Used compression algorithm ({usedAlgoName}) is not supported on this platform. " +
@@ -367,11 +367,9 @@ namespace Nethermind.Db.LogIndex
             return usedAlgo;
         }
 
-        private static void ForceMerge(IDb db)
-        {
+        private static void ForceMerge(IDb db) =>
             // Fetching RocksDB key values forces it to merge corresponding parts
             db.GetAllValues().ForEach(static _ => { });
-        }
 
         public Task StopAsync() => StopAsync(acquireLock: true);
 
@@ -526,7 +524,7 @@ namespace Nethermind.Db.LogIndex
         public string GetDbSize() => _rootDb.GatherMetric().Size.SizeToString(useSi: true, addSpace: true);
 
         public IEnumerator<int> GetEnumerator(Address address, int from, int to) =>
-            GetEnumerator(null, address.Bytes, from, to);
+            GetEnumerator(null, address.Bytes.ToArray(), from, to);
 
         public IEnumerator<int> GetEnumerator(int topicIndex, Hash256 topic, int from, int to) =>
             GetEnumerator(topicIndex, topic.BytesToArray(), from, to);
@@ -565,7 +563,7 @@ namespace Nethermind.Db.LogIndex
 
                 foreach (TxReceipt receipt in receipts)
                 {
-                    if (receipt.Logs == null)
+                    if (receipt.Logs is null)
                         continue;
 
                     foreach (LogEntry log in receipt.Logs)
@@ -642,8 +640,8 @@ namespace Nethermind.Db.LogIndex
                     ReadOnlySpan<byte> addressKey = CreateMergeDbKey(log.Address.Bytes, keyBuffer, isBackwardSync: false);
                     batches.Address.Merge(addressKey, dbValue);
 
-                    var topicsLength = Math.Min(log.Topics.Length, MaxTopics);
-                    for (var topicIndex = 0; topicIndex < topicsLength; topicIndex++)
+                    int topicsLength = Math.Min(log.Topics.Length, MaxTopics);
+                    for (int topicIndex = 0; topicIndex < topicsLength; topicIndex++)
                     {
                         Hash256 topic = log.Topics[topicIndex];
                         ReadOnlySpan<byte> topicKey = CreateMergeDbKey(topic.Bytes, keyBuffer, isBackwardSync: false);
@@ -672,12 +670,12 @@ namespace Nethermind.Db.LogIndex
             if (_logger.IsInfo)
                 _logger.Info($"Log index forced compaction started, DB size: {GetDbSize()}");
 
-            var timestamp = Stopwatch.GetTimestamp();
+            long timestamp = Stopwatch.GetTimestamp();
 
             if (flush)
                 DBColumns.ForEach(static db => db.Flush());
 
-            for (var i = 0; i < mergeIterations; i++)
+            for (int i = 0; i < mergeIterations; i++)
             {
                 Task[] tasks = DBColumns
                     .Select(static db => Task.Run(() => ForceMerge(db)))
@@ -729,7 +727,7 @@ namespace Nethermind.Db.LogIndex
                     }
 
                     // Add topics
-                    for (var topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
+                    for (int topicIndex = 0; topicIndex < aggregate.Topic.Length; topicIndex++)
                     {
                         Dictionary<Hash256, List<int>> topics = aggregate.Topic[topicIndex];
 
@@ -874,16 +872,8 @@ namespace Nethermind.Db.LogIndex
             if (buffer.Length < source.Length / BlockNumberSize)
                 throw new ArgumentException($"Buffer is too small to hold {source.Length / BlockNumberSize} block numbers.", nameof(buffer));
 
-            if (BitConverter.IsLittleEndian)
-            {
-                ReadOnlySpan<int> sourceInt = MemoryMarshal.Cast<byte, int>(source);
-                sourceInt.CopyTo(buffer);
-            }
-            else
-            {
-                for (var i = 0; i < source.Length; i += BlockNumberSize)
-                    buffer[i / BlockNumberSize] = ReadBlockNumber(source[i..]);
-            }
+            ReadOnlySpan<int> sourceInt = MemoryMarshal.Cast<byte, int>(source);
+            sourceInt.CopyTo(buffer);
         }
 
         private static byte[] CreateDbValue(List<int> numbers)

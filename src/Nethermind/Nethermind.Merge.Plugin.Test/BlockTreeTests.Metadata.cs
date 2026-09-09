@@ -9,8 +9,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class BlockTreeTests
 {
     [Test]
-    public void Should_set_correct_metadata()
-    {
+    public void Should_set_correct_metadata() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -19,11 +18,9 @@ public partial class BlockTreeTests
             .AssertMetadata(0, 4, BlockMetadata.None)
             .AssertMetadata(5, 6, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain)
             .AssertMetadata(7, 9, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
-    }
 
     [Test]
-    public void Should_set_correct_metadata_after_suggest_blocks_using_chain_levels()
-    {
+    public void Should_set_correct_metadata_after_suggest_blocks_using_chain_levels() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -31,11 +28,9 @@ public partial class BlockTreeTests
             .InsertBeaconBlocks(8, 9)
             .SuggestBlocksUsingChainLevels()
             .AssertMetadata(0, 9, BlockMetadata.None);
-    }
 
     [Test]
-    public void Should_fill_beacon_block_metadata_when_not_moved_to_main_chain()
-    {
+    public void Should_fill_beacon_block_metadata_when_not_moved_to_main_chain() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10, false)
             .InsertBeaconPivot(7)
@@ -43,7 +38,6 @@ public partial class BlockTreeTests
             .InsertBeaconBlocks(8, 9)
             .SuggestBlocksUsingChainLevels()
             .AssertMetadata(0, 9, BlockMetadata.None);
-    }
 
     [Test]
     public void Removing_beacon_metadata()

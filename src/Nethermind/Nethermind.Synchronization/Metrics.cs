@@ -6,6 +6,7 @@ using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization
@@ -18,11 +19,15 @@ namespace Nethermind.Synchronization
 
         [GaugeMetric]
         [Description("Bodies downloaded in fast blocks stage")]
-        public static long FastBodies;
+        public static ulong FastBodies;
 
         [GaugeMetric]
         [Description("Receipts downloaded in fast blocks stage")]
-        public static long FastReceipts;
+        public static ulong FastReceipts;
+
+        [GaugeMetric]
+        [Description("Access lists downloaded in fast blocks stage")]
+        public static ulong FastBlockAccessLists;
 
         [GaugeMetric]
         [Description("State synced in bytes")]
@@ -60,6 +65,14 @@ namespace Nethermind.Synchronization
         [Description("Synced bytecodes via SNAP Sync")]
         public static long SnapSyncedCodes;
 
+        [CounterMetric]
+        [Description("SNAP Sync requests that produced no response at all. Distinguishes an unresponsive or non-serving peer set from one answering with unusable data, which SnapRangeResult covers.")]
+        public static long SnapRequestTimeouts;
+
+        [GaugeMetric]
+        [Description("Consecutive SNAP Sync requests that yielded no usable range, reset by the first one that does. A value that keeps climbing means snap sync is stalled; sustained non-zero is the alertable condition.")]
+        public static long SnapConsecutiveUnproductiveResponses;
+
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]
@@ -74,8 +87,13 @@ namespace Nethermind.Synchronization
         public static long StateBranchProgress;
 
         [GaugeMetric]
-        [Description("Sync time in seconds")]
-        public static long SyncTime;
+        [Description("Total wall-clock time the node has spent syncing, in seconds. Retained after sync completes; resumes accumulating if the node falls behind and re-syncs.")]
+        public static long SyncTimeSeconds;
+
+        [GaugeMetric]
+        [Description("Cumulative wall-clock seconds spent with each sync mode active. Modes can overlap, so the sum across modes may exceed the total sync time; retained after sync completes.")]
+        [KeyIsLabel("sync_mode")]
+        public static ConcurrentDictionary<SyncMode, long> SyncTimeInModeSeconds { get; } = new();
 
         [DetailedMetric]
         [Description("Snap range result")]

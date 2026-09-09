@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Runtime.Intrinsics;
-using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -26,7 +25,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(destination).Should().Be(isValid);
+            Assert.That(codeInfo.ValidateJump(destination), Is.EqualTo(isValid));
         }
 
         [Test]
@@ -40,7 +39,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(1).Should().BeFalse();
+            Assert.That(codeInfo.ValidateJump(1), Is.False);
         }
 
         [Test]
@@ -55,7 +54,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(11).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(11), Is.True);
         }
 
         [Test]
@@ -70,7 +69,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(31).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(31), Is.True);
         }
 
         [Test]
@@ -83,7 +82,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(10), Is.True);
         }
 
         [Test]
@@ -96,27 +95,27 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeFalse();
+            Assert.That(codeInfo.ValidateJump(10), Is.False);
         }
 
         [Test]
         public void Jumpdest_Over10k()
         {
-            var code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
+            byte[] code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeTrue();
+            Assert.That(codeInfo.ValidateJump(10), Is.True);
         }
 
         [Test]
         public void Push1_Over10k()
         {
-            var code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
+            byte[] code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeFalse();
+            Assert.That(codeInfo.ValidateJump(10), Is.False);
         }
 
         [Test]
@@ -130,43 +129,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new(code);
 
-            codeInfo.ValidateJump(10).Should().BeFalse();
-            codeInfo.ValidateJump(11).Should().BeFalse(); // 0x5b but not JUMPDEST but data
+            Assert.That(codeInfo.ValidateJump(10), Is.False);
+            Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(3)]
-        [TestCase(4)]
-        [TestCase(5)]
-        [TestCase(6)]
-        [TestCase(7)]
-        [TestCase(8)]
-        [TestCase(9)]
-        [TestCase(10)]
-        [TestCase(11)]
-        [TestCase(12)]
-        [TestCase(13)]
-        [TestCase(14)]
-        [TestCase(15)]
-        [TestCase(16)]
-        [TestCase(17)]
-        [TestCase(18)]
-        [TestCase(19)]
-        [TestCase(20)]
-        [TestCase(21)]
-        [TestCase(22)]
-        [TestCase(23)]
-        [TestCase(24)]
-        [TestCase(25)]
-        [TestCase(26)]
-        [TestCase(27)]
-        [TestCase(28)]
-        [TestCase(29)]
-        [TestCase(30)]
-        [TestCase(31)]
-        [TestCase(32)]
-        public void PushNJumpdest_Over10k(int n)
+        [Test]
+        public void PushNJumpdest_Over10k([Range(1, 32)] int n)
         {
             byte[] code = new byte[10_001];
 
@@ -180,7 +148,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 //
             }
-            var triggerPushes = false;
+            bool triggerPushes = false;
             for (; i < code.Length; i++)
             {
                 if (i % (n + 1) == 0)
@@ -197,22 +165,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             for (i = 0; i < Vector256<byte>.Count * 2 + Vector128<byte>.Count; i++)
             {
-                codeInfo.ValidateJump(i).Should().BeTrue();
+                Assert.That(codeInfo.ValidateJump(i), Is.True);
             }
             for (; i < Vector256<byte>.Count * 3; i++)
             {
-                codeInfo.ValidateJump(i).Should().BeFalse();
+                Assert.That(codeInfo.ValidateJump(i), Is.False);
             }
             for (; i < code.Length; i++)
             {
-                codeInfo.ValidateJump(i).Should().BeFalse(); // Are 0x5b but not JUMPDEST but data
+                Assert.That(codeInfo.ValidateJump(i), Is.False); // Are 0x5b but not JUMPDEST but data
             }
         }
 
         [TestCaseSource(nameof(Codes))]
         public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
         {
-            for (int i = 1; i < codeInput.Length; i++)
+            for (int i = 1; i <= codeInput.Length; i++)
             {
                 ReadOnlySpan<byte> code = codeInput.AsSpan(0, i);
 
@@ -220,8 +188,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 long[] vector512 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
                 long[] vector128 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector128(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
-                Assert.That(vector512, Is.EquivalentTo(scalar));
-                Assert.That(vector128, Is.EquivalentTo(scalar));
+                Assert.That(vector512, Is.EqualTo(scalar));
+                Assert.That(vector128, Is.EqualTo(scalar));
             }
         }
 
@@ -230,9 +198,30 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             get
             {
                 byte[] code = new byte[1024];
-                TestCaseData test = new TestCaseData(code);
+                TestCaseData test = new(code);
                 test.TestName = "Code_All_0x00";
                 yield return test;
+
+                // Runs of plain one-byte instructions bracketing each width a scan steps over in one go: the
+                // 8-byte scalar word, the 16-byte Vector128 block, the 32-byte PUSH32 payload and the 64-byte
+                // Vector512 chunk. The per-prefix loop also cuts every run off at the end of the code.
+                int[] runLengths = [1, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65];
+                byte[] markers = [(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, (byte)Instruction.PUSH32];
+                foreach (int run in runLengths)
+                {
+                    foreach (byte marker in markers)
+                    {
+                        code = new byte[1024];
+                        for (int i = run; i < code.Length; i += run + 1)
+                        {
+                            code[i] = marker;
+                        }
+
+                        test = new TestCaseData(code);
+                        test.TestName = $"Code_Run{run}_{(Instruction)marker}";
+                        yield return test;
+                    }
+                }
 
                 code = new byte[1024];
                 code.AsSpan().Fill((byte)0x5b);
@@ -241,11 +230,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 yield return test;
 
                 code = new byte[1024];
-
-                for (var start = 0; start <= 1; start++)
+                for (int i = 8; i < code.Length - 3; i += 4)
                 {
-                    for (var push = 0x60; push <= 0x7f; push++)
+                    code[i] = (byte)Instruction.JUMPDEST;
+                    code[i + 1] = (byte)Instruction.PUSH1;
+                    code[i + 2] = (byte)Instruction.JUMPDEST;
+                    code[i + 3] = (byte)Instruction.JUMPDEST;
+                }
+                test = new TestCaseData(code);
+                test.TestName = "Code_Unaligned_PUSH1_JUMPDEST";
+                yield return test;
+
+                for (int start = 0; start <= 1; start++)
+                {
+                    for (int push = 0x60; push <= 0x7f; push++)
                     {
+                        code = new byte[1024];
                         for (int i = 0; i < code.Length; i++)
                         {
                             code[i] = (i + start) % 2 == 0 ? (byte)push : (byte)0x5b;

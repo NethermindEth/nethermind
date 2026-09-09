@@ -22,8 +22,5 @@ public class AlwaysCancelBlockTracer : BlockTracer
 
     public override bool IsTracingRewards => true;
 
-    public override ITxTracer StartNewTxTrace(Transaction? tx)
-    {
-        return AlwaysCancelTxTracer.Instance;
-    }
+    public override ITxTracer StartNewTxTrace(Transaction? tx) => AlwaysCancelTxTracer.Instance;
 }

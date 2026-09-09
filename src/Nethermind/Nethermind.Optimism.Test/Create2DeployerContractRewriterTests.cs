@@ -9,6 +9,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Optimism.Test;
 
@@ -26,7 +27,7 @@ internal class Create2DeployerContractRewriterTests
         });
 
         IWorldState ws = TestWorldStateFactory.CreateForTest();
-        using var _ = ws.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = ws.BeginScope(IWorldState.PreGenesis);
 
         Create2DeployerContractRewriter rewriter = new(specHelper, new TestSingleReleaseSpecProvider(Cancun.Instance), blockTree);
 

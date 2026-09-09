@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
@@ -20,9 +21,10 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
-    private readonly CancellationTokenSource _improvementCancellation;
+    private readonly SharedCancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
+    private volatile BlockProductionSnapshot _best;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -32,14 +34,14 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         IBoostRelay boostRelay,
         IStateReader stateReader,
         DateTimeOffset startDateTime,
-        CancellationTokenSource cts)
+        SharedCancellationTokenSource cts)
     {
         _boostRelay = boostRelay;
         _stateReader = stateReader;
         _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
-        CurrentBestBlock = currentBestBlock;
+        _best = new(currentBestBlock, UInt256.Zero);
         StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
     }
@@ -58,18 +60,16 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
-            CurrentBestBlock = block;
-            BlockFees = _feesTracer.Fees;
+            _best = new(block, _feesTracer.Fees);
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     public Task<Block?> ImprovementTask { get; }
-    public Block? CurrentBestBlock { get; private set; }
-    public UInt256 BlockFees { get; private set; }
+    public BlockProductionSnapshot Best => _best;
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 
@@ -80,5 +80,5 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
 
-    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+    public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 }

@@ -6,16 +6,10 @@ using System.Linq;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class SortedListContractDataStoreCollection<T> : DictionaryBasedContractDataStoreCollection<T>
+    public class SortedListContractDataStoreCollection<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null) : DictionaryBasedContractDataStoreCollection<T>
     {
-        private readonly IComparer<T> _valueComparer;
-        private readonly IComparer<T> _keyComparer;
-
-        public SortedListContractDataStoreCollection(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
-        {
-            _valueComparer = valueComparer;
-            _keyComparer = keyComparer;
-        }
+        private readonly IComparer<T> _valueComparer = valueComparer;
+        private readonly IComparer<T> _keyComparer = keyComparer;
 
         protected override IDictionary<T, T> CreateDictionary() => new SortedList<T, T>(_keyComparer);
 

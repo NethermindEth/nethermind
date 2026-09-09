@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Precompiles;
@@ -17,13 +18,14 @@ public class ReleaseSpec : IReleaseSpec
     public string Name { get; set; } = "Custom";
     public long MaximumExtraDataSize { get; set; }
     public long MaxCodeSize { get; set; }
-    public long MinGasLimit { get; set; }
-    public long MinHistoryRetentionEpochs { get; set; }
-    public long GasLimitBoundDivisor { get; set; }
+    public ulong MinGasLimit { get; set; }
+    public ulong MinHistoryRetentionEpochs { get; set; }
+    public ulong MinBalRetentionEpochs { get; set; }
+    public ulong GasLimitBoundDivisor { get; set; }
     public UInt256 BlockReward { get; set; }
-    public long DifficultyBombDelay { get; set; }
-    public long DifficultyBoundDivisor { get; set; }
-    public long? FixedDifficulty { get; set; }
+    public ulong DifficultyBombDelay { get; set; }
+    public ulong DifficultyBoundDivisor { get; set; }
+    public ulong? FixedDifficulty { get; set; }
     public int MaximumUncleCount { get; set; }
     public bool IsTimeAdjustmentPostOlympic { get; set; }
     public bool IsEip2Enabled { get; set; }
@@ -65,14 +67,14 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip3541Enabled { get; set; }
     public bool ValidateChainId { get; set; }
     public bool ValidateReceipts { get; set; }
-    public long Eip1559TransitionBlock { get; set; }
+    public ulong Eip1559TransitionBlock { get; set; }
     public ulong WithdrawalTimestamp { get; set; }
     public ulong Eip4844TransitionTimestamp { get; set; }
     public Address? FeeCollector { get; set; }
     public UInt256? Eip1559BaseFeeMinValue { get; set; }
     public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
     public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
-    public long ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
+    public ulong ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
     public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();
     public bool IsEip1153Enabled { get; set; }
     public bool IsEip3651Enabled { get; set; }
@@ -82,14 +84,14 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip4844Enabled { get; set; }
     public bool IsEip7951Enabled { get; set; }
     public bool IsRip7212Enabled { get; set; }
-    public bool IsOpGraniteEnabled { get; set; }
-    public bool IsOpHoloceneEnabled { get; set; }
-    public bool IsOpIsthmusEnabled { get; set; }
-    public bool IsOpJovianEnabled { get; set; }
     public bool IsEip7623Enabled { get; set; }
+    public bool IsEip7976Enabled { get; set; }
+    public bool IsEip7981Enabled { get; set; }
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
+    public bool IsEip8038Enabled { get; set; }
+    public bool IsEip8282Enabled { get; set; }
     public bool IsEip4788Enabled { get; set; }
     public bool IsEip7702Enabled { get; set; }
     public bool IsEip7823Enabled { get; set; }
@@ -100,43 +102,92 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7918Enabled { get; set; }
     public bool IsEip7934Enabled { get; set; }
     public int Eip7934MaxRlpBlockSize { get; set; }
-    public bool IsEip7907Enabled { get; set; }
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
     public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
-    public UInt256 BlobBaseFeeUpdateFraction { get; set; }
-    [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
+    public ulong BlobBaseFeeUpdateFraction { get; set; }
     public Address? Eip7251ContractAddress { get => IsEip7251Enabled ? field : null; set; }
-    [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
     public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
-    [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
     public bool IsEip8024Enabled { get; set; }
     public bool IsEip6110Enabled { get; set; }
-    [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
     public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }
     public bool IsEip2935Enabled { get; set; }
     public bool IsEip7709Enabled { get; set; }
-    [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
     public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
-    Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
-    Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
-    public bool IsRip7728Enabled { get; set; }
-    private FrozenSet<AddressAsKey>? _precompiles;
-    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+    /// <summary>The fork's precompiles, with the low-numbered ones also held as a bitmask.</summary>
+    /// <param name="Addresses">Every precompile active at this fork.</param>
+    /// <param name="LowMask">Bit <c>n</c> set when precompile number <c>n</c> is active, for numbers
+    /// below 64 — which is all of them on Ethereum bar RIP-7212 at 0x100.</param>
+    /// <remarks>One object so that a single reference publish carries both. Held as two fields, a thread
+    /// racing the lazy initialisation could see the set already assigned and the mask still empty, and
+    /// would then miss every precompile.</remarks>
+    private sealed record PrecompileIndex(FrozenSet<AddressAsKey> Addresses, ulong LowMask);
+
+    private PrecompileIndex? _precompiles;
+
+    private PrecompileIndex Precompiled => _precompiles ??= BuildPrecompileIndex();
+
+    private PrecompileIndex BuildPrecompileIndex()
+    {
+        FrozenSet<AddressAsKey> addresses = BuildPrecompilesCache();
+        ulong lowMask = 0;
+        foreach (AddressAsKey key in addresses)
+        {
+            Address address = key;
+            if (!address.CouldBePrecompile()) ThrowUnreachablePrecompile(address);
+
+            int index = address.PrecompileIndexOrNegative();
+            if ((uint)index < 64) lowMask |= 1UL << index;
+        }
+
+        return new PrecompileIndex(addresses, lowMask);
+    }
+
+    /// <summary>Rejects a registration <see cref="IsPrecompile"/> could never find.</summary>
+    /// <remarks>Membership rejects on address shape before consulting the set, so a precompile with a
+    /// non-zero byte above its number is unreachable: the call would resolve as an ordinary empty account,
+    /// with no exception anywhere and a consensus divergence to show for it. The set is built on first use,
+    /// so failing here surfaces as a failed block on the chain that registered one — loudly, and before it
+    /// can be mistaken for a valid state root.</remarks>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnreachablePrecompile(Address address) =>
+        throw new InvalidOperationException(
+            $"Precompile {address} has a non-zero byte above its trailing number, so IsPrecompile can never find it; a precompile number must fit 32 bits.");
+
+    FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => Precompiled.Addresses;
+
+    /// <inheritdoc cref="IReleaseSpec.IsPrecompile" />
+    /// <remarks>The precompile's number is its address, so membership is a bit test rather than hashing
+    /// and probing twenty bytes. Numbers above the mask fall back to the set, which is what keeps this
+    /// correct for a chain registering one far away — Taiko's sit at 0x10001 and 0x10002.</remarks>
+    public bool IsPrecompile(Address address)
+    {
+        // The shape test is the guard, not the sign of the index: a tail that overflows int also comes
+        // back negative. Testing it first means an ordinary call target — almost all of them — is rejected
+        // on two loads without touching the index or the lazily built set.
+        if (!address.CouldBePrecompile()) return false;
+
+        PrecompileIndex precompiles = Precompiled;
+        int index = address.PrecompileIndexOrNegative();
+        return (uint)index < 64
+            ? (precompiles.LowMask & (1UL << index)) != 0
+            : precompiles.Addresses.Contains(address);
+    }
     private SpecGasCosts? _gasCosts;
     public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
-    public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
+    public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
-        HashSet<AddressAsKey> cache = new();
-
-        cache.Add(PrecompiledAddresses.ECRecover);
-        cache.Add(PrecompiledAddresses.Sha256);
-        cache.Add(PrecompiledAddresses.Ripemd160);
-        cache.Add(PrecompiledAddresses.Identity);
+        HashSet<AddressAsKey> cache =
+        [
+            PrecompiledAddresses.ECRecover,
+            PrecompiledAddresses.Sha256,
+            PrecompiledAddresses.Ripemd160,
+            PrecompiledAddresses.Identity,
+        ];
 
         if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
         if (IsEip196Enabled && IsEip197Enabled)
@@ -160,7 +211,6 @@ public class ReleaseSpec : IReleaseSpec
         }
 
         if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
-        if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
 
         return cache.ToFrozenSet();
     }
@@ -172,6 +222,10 @@ public class ReleaseSpec : IReleaseSpec
 
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
+    public bool IsEip8246Enabled { get; set; }
+    public bool IsEip2780Enabled { get; set; }
+
+    public bool IsEip7805Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 
