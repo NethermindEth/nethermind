@@ -336,9 +336,9 @@ public class FrameTxDecoderTests
 
         Assert.That(actual, Is.Not.Null);
         Assert.That(actual!.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            using (Assert.EnterMultipleScope())
+            for (int i = 0; i < expected.Length; i++)
             {
                 Assert.That(actual[i].SourceId, Is.EqualTo(expected[i].SourceId));
                 Assert.That(actual[i].Slot, Is.EqualTo(expected[i].Slot));
@@ -690,9 +690,9 @@ public class FrameTxDecoderTests
     private static void AssertFramesEqual(TxFrame[] actual, TxFrame[] expected)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            using (Assert.EnterMultipleScope())
+            for (int i = 0; i < expected.Length; i++)
             {
                 Assert.That(actual[i].Mode, Is.EqualTo(expected[i].Mode), $"frame {i} mode");
                 Assert.That(actual[i].Flags, Is.EqualTo(expected[i].Flags), $"frame {i} flags");
@@ -708,9 +708,9 @@ public class FrameTxDecoderTests
     private static void AssertSignaturesEqual(TxFrameSignature[] actual, TxFrameSignature[] expected)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length));
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            using (Assert.EnterMultipleScope())
+            for (int i = 0; i < expected.Length; i++)
             {
                 Assert.That(actual[i].Scheme, Is.EqualTo(expected[i].Scheme), $"signature {i} scheme");
                 Assert.That(actual[i].Signer, Is.EqualTo(expected[i].Signer), $"signature {i} signer");

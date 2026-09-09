@@ -11,7 +11,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -425,11 +424,13 @@ public class FrameTxValidationPrefixSimulationTests
         // work the gas schedule underprices, and it aborts rather than merely recording.
         DeployContract(Sender, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        ManualTimeProvider time = new();
-        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromTicks(1), time);
+        // Held still until the run starts, so the deadline is still ahead at the interpreter's first
+        // cancellation poll and can only be crossed by a later one, mid-loop.
+        PollTickingTimeProvider time = new();
+        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromMicroseconds(1), time);
         Assert.That(tracer.TimedOut, Is.False, "the bound is measured from the tracer's own clock, which has not moved");
 
-        time.Advance(TimeSpan.FromMilliseconds(1));
+        time.StartTicking();
 
         Assert.Throws<OperationCanceledException>(() => Run(tx, tracer));
         Assert.That(tracer.TimedOut, Is.True);
@@ -978,6 +979,21 @@ public class FrameTxValidationPrefixSimulationTests
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
+
+    /// <summary>A clock that stands still until <see cref="StartTicking"/>, then advances one tick per
+    /// reading, so elapsed time is a function of the interpreter's cancellation polling rather than of
+    /// anything the test does before the run.</summary>
+    private sealed class PollTickingTimeProvider : TimeProvider
+    {
+        private long _ticks;
+        private bool _ticking;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticking ? _ticks++ : _ticks;
+
+        public void StartTicking() => _ticking = true;
+    }
 
     private static Transaction FrameTx(ulong nonce, params TxFrame[] frames) =>
         new()

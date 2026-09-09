@@ -292,9 +292,9 @@ public class FrameTxReceiptDecoderTests
     private static void AssertLogsEqual(LogEntry[] actual, LogEntry[] expected, string? message = null)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Length), message);
-        for (int i = 0; i < expected.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            using (Assert.EnterMultipleScope())
+            for (int i = 0; i < expected.Length; i++)
             {
                 Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
                 Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"log {i} data");
@@ -419,6 +419,7 @@ public class FrameTxReceiptDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(seen[0], Is.EqualTo((TestItem.AddressD.ToString(), 1000UL, TxType.Legacy)));
+            Assert.That(seen[1], Is.EqualTo((TestItem.AddressC.ToString(), 51_000UL, TxType.FrameTx)));
             Assert.That(seen[2], Is.EqualTo((TestItem.AddressE.ToString(), 2000UL, TxType.Legacy)));
         }
     }
