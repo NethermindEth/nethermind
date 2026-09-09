@@ -35,10 +35,10 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat import before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "0")]
     int ImportWindowSize { get; set; }
 
-    [ConfigItem(Description = "Report what the persisted PBT database holds - the trie's shape by depth, and how many nodes the interleaved encoding, the node chains and the leaf blobs each leave unstored - then exit.", DefaultValue = "false")]
+    [ConfigItem(Description = "Validate persisted PBT flat entries, canonical nodes and root, then exit. Uses bounded memory and temporary disk space proportional to derived leaves, with periodic progress logging.", DefaultValue = "false")]
     bool ScanTree { get; set; }
 
-    [ConfigItem(Description = "Number of parallel workers sweeping each column during the tree scan, each claiming key ranges in turn. 0 uses the processor count. The columns are still scanned one after another.", DefaultValue = "0")]
+    [ConfigItem(Description = "Reserved for scan concurrency. The bounded-memory PBT scanner currently runs serially and ignores this setting.", DefaultValue = "0")]
     int ScanTreeConcurrency { get; set; }
 
     [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]

@@ -25,6 +25,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Steps;
 using NUnit.Framework;
+using NSubstitute;
 using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Test;
@@ -89,6 +90,8 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
         Assert.That(reader.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(2), "shared code references survive later account changes");
+        PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None, null, 4, TimeProvider.System);
+        Assert.That(scan.IsValid, Is.True, scan.Format());
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
@@ -260,6 +263,161 @@ public class ImportPbtFromPreimageFlatTests
         }
     }
 
+    [Test]
+    public void Scanner_external_sort_and_fold_are_bounded([Values(0, 1, 33, 257)] int count)
+    {
+        using PbtScanLeafSorter sorter = new(bufferCapacity: 4, mergeFanIn: 2);
+        using PbtNodeGroupStore expectedStore = new();
+        using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
+        for (int index = count - 1; index >= 0; index--)
+        {
+            byte[] bytes = new byte[index % 2 == 0 ? 34 : 66];
+            bytes[0] = index % 2 == 0 ? (byte)0 : (byte)2;
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(bytes.Length - 4), index);
+            PbtStorageFullKey key = new(bytes);
+            sorter.Add(key, TestItem.KeccakA.ValueHash256, CancellationToken.None);
+            sorter.Add(key, TestItem.KeccakA.ValueHash256, CancellationToken.None);
+            changes.Set(key, TestItem.KeccakA.ValueHash256);
+        }
+        ValueHash256 expectedRoot = TrieUpdater.UpdateRoot(expectedStore, default, changes.Build());
+        long matched = 0;
+        PbtScanTreeBuilder builder = new((path, encoding) =>
+        {
+            PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
+            using RefCountingMemory? payload = expectedStore.GetNodeGroup(location.GroupKey);
+            Assert.That(payload, Is.Not.Null);
+            PbtNodeGroupReader reader = new(location.GroupKey, payload!.GetSpan());
+            Assert.That(reader.GetNode(location.Position).SequenceEqual(encoding), Is.True, $"node at {path}");
+            matched++;
+        });
+        int unique = 0;
+        foreach ((PbtStorageFullKey key, ValueHash256 value) in sorter.GetSorted(CancellationToken.None))
+        {
+            builder.Add(key, value);
+            unique++;
+        }
+        ValueHash256 actualRoot = builder.Finish();
+        string temporaryDirectory = sorter.TemporaryDirectory;
+        sorter.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualRoot, Is.EqualTo(expectedRoot));
+            Assert.That(unique, Is.EqualTo(count));
+            Assert.That(matched, Is.EqualTo(count == 0 ? 0 : count * 2 - 1));
+            Assert.That(sorter.PeakBufferedRecords, Is.LessThanOrEqualTo(4));
+            Assert.That(sorter.PeakMergeReaders, Is.LessThanOrEqualTo(2));
+            Assert.That(builder.PeakFrontier, Is.LessThanOrEqualTo(PbtStorageFullKey.MaxLength * 8));
+            Assert.That(Directory.Exists(temporaryDirectory), Is.False);
+            if (count > 32) Assert.That(sorter.RunCount, Is.GreaterThan(count / 2 + 2), "multiple merge passes");
+        }
+    }
+
+    [Test]
+    public void Scanner_sort_files_are_cleaned_after_failure([Values("cancel", "io", "conflict")] string failure)
+    {
+        string temporaryDirectory;
+        using CancellationTokenSource cancellation = new();
+        using (PbtScanLeafSorter sorter = new(bufferCapacity: 1, mergeFanIn: 2, progress: (phase, count) =>
+        {
+            if (failure == "cancel" && phase.StartsWith("merge") && count == 1) cancellation.Cancel();
+        }))
+        {
+            temporaryDirectory = sorter.TemporaryDirectory;
+            PbtStorageFullKey key = new(Bytes.FromHexString("0x0001"));
+            sorter.Add(key, TestItem.KeccakA.ValueHash256, CancellationToken.None);
+            sorter.Add(failure == "conflict" ? key : new PbtStorageFullKey(Bytes.FromHexString("0x0002")), TestItem.KeccakB.ValueHash256, CancellationToken.None);
+            if (failure == "io") File.Delete(Path.Combine(temporaryDirectory, "0-1.bin"));
+            Assert.That(() =>
+            {
+                foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> _ in sorter.GetSorted(cancellation.Token)) { }
+            }, failure == "cancel" ? Throws.InstanceOf<OperationCanceledException>() : failure == "conflict" ? Throws.TypeOf<InvalidDataException>() : Throws.InstanceOf<IOException>());
+        }
+        Assert.That(Directory.Exists(temporaryDirectory), Is.False);
+    }
+
+    [Test]
+    public async Task Scanner_logs_progress_and_cleans_scratch_files()
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        _ = new PbtRocksDbPersistence(db, new PbtConfig());
+        for (int index = 0; index < 20; index++)
+        {
+            byte[] key = new byte[32];
+            key[^1] = (byte)index;
+            db.GetColumnDb(PbtColumns.Accounts)[key] = Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100)).Bytes;
+        }
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogManager logs = NSubstitute.Substitute.For<ILogManager>();
+        ILogger scanLogger = new(logger);
+        logs.GetClassLogger<PbtScanner>().Returns(scanLogger);
+        DirectoryInfo temporaryParent = Directory.CreateTempSubdirectory("pbt-scan-test-");
+        try
+        {
+            await new PbtScanner(db, new PbtConfig(), logs).Scan(CancellationToken.None, temporaryParent.FullName, 2, new ScanTimeProvider());
+            logger.Received().Info(NSubstitute.Arg.Is<string>(message => message.Contains("scanning Accounts: 1 items")));
+            logger.Received().Info(NSubstitute.Arg.Is<string>(message => message.Contains("merge pass")));
+            logger.Received().Info(NSubstitute.Arg.Is<string>(message => message.Contains("folding tree")));
+            Assert.That(Directory.EnumerateFileSystemEntries(temporaryParent.FullName), Is.Empty);
+        }
+        finally { temporaryParent.Delete(true); }
+    }
+
+    private sealed class ScanTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+        public override long TimestampFrequency => 1;
+        public override long GetTimestamp() => _timestamp += 11;
+    }
+
+    [Test]
+    public async Task Scanner_detects_missing_and_unreachable_nodes_and_ignores_orphan_code([Values("valid", "missing", "extra")] string scenario)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtConfig config = new();
+        PbtRocksDbPersistence persistence = new(db, config);
+        PbtStorageFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 1000);
+        using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
+        changes.Set(storageKey, TestItem.KeccakA.ValueHash256);
+        using PbtNodeGroupStore nodes = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(nodes, default, changes.Build());
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), root, WriteFlags.None))
+        {
+            batch.SetSlot(storageKey, EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes));
+            foreach (IPbtNodePath path in nodes.EnumerateNodeGroupKeys())
+            {
+                using RefCountingMemory? payload = nodes.GetNodeGroup(path);
+                batch.SetNodeGroup(path, payload);
+            }
+            batch.Commit();
+        }
+        byte[] orphanCode = Bytes.FromHexString("0x6001600055");
+        db.GetColumnDb(PbtColumns.Codes)[Keccak.Compute(orphanCode).Bytes] = orphanCode;
+        if (scenario == "missing") db.GetColumnDb(PbtColumns.NodeGroups).Remove(new PbtNodePath([], 0).Encode());
+        if (scenario == "extra")
+        {
+            IPbtNodePath path = new PbtNodePath(Bytes.FromHexString("0xf0"), 4);
+            PbtStorageFullKey extraKey = new(Bytes.FromHexString("0xf0"));
+            PbtNodeRecord record = new(path, PbtNodeCodec.EncodeLeaf(extraKey, TestItem.KeccakB.Bytes));
+            // Preserve the expected root and add a structurally valid but unreachable node.
+            using RefCountingMemory? payload = nodes.GetNodeGroup(new PbtNodePath([], 0));
+            PbtNodeGroupReader reader = new(new PbtNodePath([], 0), payload!.GetSpan());
+            PbtNodeRecord rootRecord = new(new PbtNodePath([], 0), reader.GetNode(PbtFourLevelGroupGeometry.RootPosition));
+            BufferWriter writer = new(new byte[1024]);
+            PbtNodeGroupCodec.Encode(ref writer, new PbtNodePath([], 0), new[] { record, rootRecord });
+            db.GetColumnDb(PbtColumns.NodeGroups)[new PbtNodePath([], 0).Encode()] = writer.WrittenSpan.ToArray();
+        }
+        PbtScanReport report = await new PbtScanner(db, config, LimboLogs.Instance).Scan(CancellationToken.None, null, 1, TimeProvider.System);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.RootMatches, Is.True);
+            Assert.That(report.LeafCount, Is.EqualTo(1));
+            Assert.That(report.InvalidLeafCount, Is.Zero);
+            Assert.That(report.IsValid, Is.EqualTo(scenario == "valid"));
+            Assert.That(report.InvalidNodeCount, scenario == "valid" ? Is.Zero : Is.GreaterThan(0));
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task Scanner_reports_node_corruption_and_root_mismatch(bool corruptNode)
@@ -297,6 +455,26 @@ public class ImportPbtFromPreimageFlatTests
         {
             Assert.That(report.InvalidNodeCount, corruptNode ? Is.GreaterThan(0) : Is.Zero);
             Assert.That(report.RootMatches, Is.EqualTo(corruptNode));
+            Assert.That(report.IsValid, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Scanner_rejects_missing_or_mismatched_referenced_code([Values] bool missing)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtConfig config = new();
+        PbtRocksDbPersistence persistence = new(db, config);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), default, WriteFlags.None))
+        {
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(1, 100).WithChangedCodeHash(TestItem.KeccakB));
+            batch.Commit();
+        }
+        if (!missing) db.GetColumnDb(PbtColumns.Codes)[TestItem.KeccakB.Bytes] = Bytes.FromHexString("0x6001600055");
+        PbtScanReport report = await new PbtScanner(db, config, LimboLogs.Instance).Scan(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report.InvalidLeafCount, Is.GreaterThan(0));
             Assert.That(report.IsValid, Is.False);
         }
     }
