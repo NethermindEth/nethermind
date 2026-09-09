@@ -157,9 +157,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     /// <summary>
-    /// Activate all block-number-based forks from genesis so that biggestBlockTransition stays at 0,
-    /// preventing the "Chainspec file is misconfigured" warning in short test chains.
+    /// Activates all block-number-based forks from genesis, so a short test chain resolves the specs it should.
     /// </summary>
+    /// <remarks>
+    /// A chainspec leaves block-number forks at their mainnet heights (London at 12,965,000). These tests build
+    /// ~1000 blocks with post-merge timestamps, so <c>GetSpec</c> resolves against the timestamp transitions and
+    /// nothing block-based would ever activate. Pulling them to genesis also keeps
+    /// <c>biggestBlockTransition</c> at 0, which is what every timestamp activation's block number is derived
+    /// from.
+    /// </remarks>
     private static void ActivateAllBlockTransitionsFromGenesis(ChainSpec spec)
     {
         // ChainSpec block-number properties (collected by BuildTransitions via EndsWith("BlockNumber"))
@@ -268,11 +274,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Nonce = Eip7251TestConstants.Nonce
         };
 
-        // Activate all block-number-based forks from genesis. The test builds a short chain
-        // (1000 blocks) with post-merge timestamps. Without this, the chainspec has block
-        // transitions at high mainnet block numbers (e.g. London at 12,965,000), causing a
-        // legitimate "Chainspec file is misconfigured" warning when GetSpec is called with
-        // low block numbers but high timestamps.
+        // Without this the chainspec's block transitions sit at mainnet heights while this chain is ~1000 blocks
+        // long with post-merge timestamps, so none of them would activate. See the helper's remarks.
         ActivateAllBlockTransitionsFromGenesis(spec);
 
         if (isPostMerge)
