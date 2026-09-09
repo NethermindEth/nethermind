@@ -127,14 +127,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = swap.Bswap64(Add(ref shift, 3));
-        if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
+        ulong amount = shift;
+        if ((Add(ref shift, 1) | Add(ref shift, 2) | Add(ref shift, 3)) != 0 || amount >= 256)
         {
             value = 0;
             Add(ref value, 1) = 0;
@@ -148,35 +147,30 @@ public static partial class EvmInstructions
 
             if (typeof(TOpShift) == typeof(OpShl))
             {
-                for (int destination = 0; destination < 4; destination++)
+                // Limb layout: a left shift moves bits toward limb 3, so fill from the top down.
+                for (int destination = 3; destination >= 0; destination--)
                 {
-                    int source = destination + wordShift;
-                    ulong shifted = source < 4
-                        ? swap.Bswap64(Add(ref value, source)) << bitShift
-                        : 0;
-                    if (bitShift != 0 && source + 1 < 4)
+                    int source = destination - wordShift;
+                    ulong shifted = source >= 0 ? Add(ref value, source) << bitShift : 0;
+                    if (bitShift != 0 && source > 0)
                     {
-                        shifted |= swap.Bswap64(Add(ref value, source + 1)) >> (64 - bitShift);
+                        shifted |= Add(ref value, source - 1) >> (64 - bitShift);
                     }
-
-                    Add(ref value, destination) = swap.Bswap64(shifted);
+                    Add(ref value, destination) = shifted;
                 }
             }
             else
             {
-                for (int offset = 0; offset < 4; offset++)
+                // Limb layout: a right shift moves bits toward limb 0, so fill from the bottom up.
+                for (int destination = 0; destination < 4; destination++)
                 {
-                    int destination = 3 - offset;
-                    int source = destination - wordShift;
-                    ulong shifted = source >= 0
-                        ? swap.Bswap64(Add(ref value, source)) >> bitShift
-                        : 0;
-                    if (bitShift != 0 && source > 0)
+                    int source = destination + wordShift;
+                    ulong shifted = source < 4 ? Add(ref value, source) >> bitShift : 0;
+                    if (bitShift != 0 && source + 1 < 4)
                     {
-                        shifted |= swap.Bswap64(Add(ref value, source - 1)) << (64 - bitShift);
+                        shifted |= Add(ref value, source + 1) << (64 - bitShift);
                     }
-
-                    Add(ref value, destination) = swap.Bswap64(shifted);
+                    Add(ref value, destination) = shifted;
                 }
             }
         }
@@ -254,15 +248,14 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = swap.Bswap64(Add(ref shift, 3));
-        ulong fill = As<byte, sbyte>(ref topRef) < 0 ? ulong.MaxValue : 0;
-        if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
+        ulong amount = shift;
+        ulong fill = (long)Add(ref value, 3) < 0 ? ulong.MaxValue : 0;
+        if ((Add(ref shift, 1) | Add(ref shift, 2) | Add(ref shift, 3)) != 0 || amount >= 256)
         {
             value = fill;
             Add(ref value, 1) = fill;
@@ -273,25 +266,19 @@ public static partial class EvmInstructions
         {
             int wordShift = (int)(amount >> 6);
             int bitShift = (int)(amount & 63);
-            for (int offset = 0; offset < 4; offset++)
+            // Limb layout: an arithmetic right shift moves bits toward limb 0 and fills from the sign.
+            for (int destination = 0; destination < 4; destination++)
             {
-                int destination = 3 - offset;
-                int source = destination - wordShift;
-                ulong shifted = source >= 0
-                    ? swap.Bswap64(Add(ref value, source)) >> bitShift
-                    : fill;
+                int source = destination + wordShift;
+                ulong shifted = source < 4 ? Add(ref value, source) >> bitShift : fill;
                 if (bitShift != 0)
                 {
-                    ulong upper = source > 0
-                        ? swap.Bswap64(Add(ref value, source - 1))
-                        : fill;
+                    ulong upper = source + 1 < 4 ? Add(ref value, source + 1) : fill;
                     shifted |= upper << (64 - bitShift);
                 }
-
-                Add(ref value, destination) = swap.Bswap64(shifted);
+                Add(ref value, destination) = shifted;
             }
         }
-
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
     }

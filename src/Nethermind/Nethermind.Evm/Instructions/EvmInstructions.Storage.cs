@@ -189,7 +189,7 @@ public static partial class EvmInstructions
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte word = ref stack.Pop2BytesByRefUnchecked();
         EvmStack.ReadMemoryPositionFromSlot(ref Unsafe.Add(ref word, EvmStack.WordSize), out UInt256 result);
-        byte data = (byte)(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref word, EvmStack.WordSize - sizeof(ulong))) >> 56);
+        byte data = word; // limb layout: the least significant byte comes first
 
         VmState<TGasPolicy> vmState = vm.VmState;
 

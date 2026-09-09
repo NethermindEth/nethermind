@@ -22,7 +22,8 @@ public class EvmStackTests
         byte[] buffer = new byte[offset + EvmPooledMemory.WordSize + 1];
         Array.Fill(buffer, (byte)0xa5);
         UInt256 value = new(0x0123456789abcdef, 0xfedcba9876543210, 0x1122334455667788, 0x8877665544332211);
-        byte[] expected = value.ToBigEndian();
+        // A slot holds the UInt256 limb layout, so the bytes are the value's own.
+        byte[] expected = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)).ToArray();
         ref byte slot = ref buffer[offset];
         Unsafe.WriteUnaligned(ref slot, value);
         ref UInt256 source = ref (alias ? ref Unsafe.As<byte, UInt256>(ref slot) : ref value);

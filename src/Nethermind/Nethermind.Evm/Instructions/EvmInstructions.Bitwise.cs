@@ -36,12 +36,12 @@ public static partial class EvmInstructions
         else
         {
             ref ulong parts = ref As<byte, ulong>(ref slot);
-            parts = 0;
             Add(ref parts, 1) = 0;
             Add(ref parts, 2) = 0;
+            Add(ref parts, 3) = 0;
         }
-
-        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), Bytes.Bswap64(value));
+        // Stack words are in UInt256 limb layout: the value is limb 0, as is.
+        WriteUnaligned(ref slot, value);
     }
 
     /// <summary>
@@ -236,12 +236,13 @@ public static partial class EvmInstructions
         public static EvmWord One
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            // Stack words are in UInt256 limb layout: the least significant byte comes first.
             get => Vector256.Create(
                 (byte)
+                1, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 1
+                0, 0, 0, 0, 0, 0, 0, 0
             );
         }
 

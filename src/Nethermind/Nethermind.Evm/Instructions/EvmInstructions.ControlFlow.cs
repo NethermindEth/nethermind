@@ -363,15 +363,12 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(ref byte slot, ref EvmStack stack)
     {
+        // Limb layout: the destination is limb 0, and anything above a uint is out of range.
         ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
-        ulong low = Unsafe.Add(ref parts, 3);
-        // The low limb's leading four bytes carry the value's high half, so they belong to the zero test.
-        if ((parts | Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | (uint)low) != 0)
+        ulong low = parts;
+        if ((Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3) | (low >> 32)) != 0)
             return -1;
-
-        // A value above int.MaxValue needs no test of its own: the bound below compares unsigned, so the
-        // sign-flipped index is far past any code length.
-        return JumpDestination((int)BinaryPrimitives.ReverseEndianness((uint)(low >> 32)), ref stack);
+        return JumpDestination((int)(uint)low, ref stack);
     }
 
     /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)"/>

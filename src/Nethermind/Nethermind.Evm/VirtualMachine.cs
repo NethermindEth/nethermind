@@ -1415,7 +1415,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (_txTracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(new TraceStack(vmState.MemoryStacks((int)stackValue.Head)));
+            // Slots hold words in limb layout; tracers read them as the big-endian words the EVM shows.
+            _txTracer.SetOperationStack(new TraceStack(EvmStack.ToBigEndianWords(vmState.MemoryStacks((int)stackValue.Head).Span)));
         }
 
         if (_txTracer.IsTracingReturnData)

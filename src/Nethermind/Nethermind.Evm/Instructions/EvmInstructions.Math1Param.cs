@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -151,7 +152,7 @@ public static partial class EvmInstructions
 
         ref byte slot = ref stack.PeekBytesByRefUnchecked();
         // The counter already answers 256 for a zero word, so no special case is needed for it.
-        ulong count = (ulong)Bytes.CountLeadingZeroBits(ref slot);
+        ulong count = (ulong)CountLeadingZeroBitsOfLimbs(ref slot);
         WriteSmallWordToSlot(ref slot, count);
         return EvmExceptionType.None;
     }
@@ -182,17 +183,16 @@ public static partial class EvmInstructions
 
         ref ulong result = ref As<byte, ulong>(ref topRef);
         ref ulong position = ref Add(ref result, EvmStack.WordSize / sizeof(ulong));
-        ulong positionLow = Add(ref position, 3);
-        nint index = (nint)(positionLow >> 56);
-        byte selected = (position | Add(ref position, 1) | Add(ref position, 2) |
-            (positionLow & 0x00FF_FFFF_FFFF_FFFFUL)) == 0 && index < EvmStack.WordSize
-            ? Add(ref topRef, index)
+        // Limb layout: the index is limb 0, and big-endian byte `index` is slot byte `31 - index`.
+        nint index = (nint)position;
+        byte selected = (Add(ref position, 1) | Add(ref position, 2) | Add(ref position, 3)) == 0
+            && index < EvmStack.WordSize
+            ? Add(ref topRef, EvmStack.WordSize - 1 - index)
             : (byte)0;
-
-        result = 0;
+        result = selected;
         Add(ref result, 1) = 0;
         Add(ref result, 2) = 0;
-        Add(ref result, 3) = (ulong)selected << 56;
+        Add(ref result, 3) = 0;
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
@@ -235,79 +235,47 @@ public static partial class EvmInstructions
         // Only an index below 32 extends anything, so test the index where it lies. Decoding it as
         // a 256-bit value reverses 32 bytes to reach one, and the word has to go to the frame and
         // come back to be read as scalars.
+        // Limb layout: the index is limb 0; big-endian byte `31 - index` is slot byte `index`, which
+        // carries the sign, and every byte above it takes the fill.
         ref ulong index = ref As<byte, ulong>(ref Add(ref bytesRef, EvmStack.WordSize));
-        ulong indexLow = Add(ref index, 3);
-        nint selector = (nint)(indexLow >> 56);
-        if ((index | Add(ref index, 1) | Add(ref index, 2) |
-            (indexLow & 0x00FF_FFFF_FFFF_FFFFUL)) != 0 || selector >= EvmStack.WordSize)
+        nint position = (nint)index;
+        if ((Add(ref index, 1) | Add(ref index, 2) | Add(ref index, 3)) != 0 || position >= EvmStack.WordSize - 1)
         {
             // If the index is out-of-range, no extension is needed.
             return EvmExceptionType.None;
         }
-
-        int position = 31 - (int)selector;
-
-        // Words are big-endian, so byte `position` carries the sign and every byte above it takes the fill.
         sbyte sign = (sbyte)Add(ref bytesRef, position);
-
-#if !ZK_EVM
-        if (Vector256.IsHardwareAccelerated)
-        {
-            // Filling 0..31 bytes through Span.CopyTo is a runtime-length copy, so it lowered to an
-            // out-of-line Memmove on every SIGNEXTEND. Blend the whole word in registers instead: an
-            // arithmetic shift broadcasts the fill without branching on the sign, and the prefix mask is a
-            // single load, so nothing here depends on `position` being a constant.
-            EvmWord fill = Vector256.Create((byte)(sign >> 7));
-            EvmWord prefixMask = Vector256.LoadUnsafe(
-                ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
-            Vector256.ConditionalSelect(prefixMask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
-            return EvmExceptionType.None;
-        }
-
-        if (Vector128.IsHardwareAccelerated)
-        {
-            ref byte maskRef = ref Add(
-                ref MemoryMarshal.GetReference(SignExtendPrefixMask), EvmStack.WordSize - position);
-            Vector128<byte> fill = Vector128.Create((byte)(sign >> 7));
-            Vector128<byte> prefixMask = Vector128.LoadUnsafe(ref maskRef);
-            Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
-            prefixMask = Vector128.LoadUnsafe(ref maskRef, (nuint)Vector128<byte>.Count);
-            Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count))
-                .StoreUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count);
-            return EvmExceptionType.None;
-        }
-#endif
-
-        ref ulong word = ref As<byte, ulong>(ref bytesRef);
         ulong fillWord = (ulong)(long)(sign >> 7);
-        int wordIndex = position >> 3;
-        switch (wordIndex)
+        ref ulong word = ref As<byte, ulong>(ref bytesRef);
+        int wordIndex = (int)(position >> 3);
+        int keptBytes = (int)(position & (sizeof(ulong) - 1)) + 1;
+        if (keptBytes != sizeof(ulong))
         {
-            case 3:
-                word = fillWord;
-                Add(ref word, 1) = fillWord;
-                Add(ref word, 2) = fillWord;
-                break;
-            case 2:
-                word = fillWord;
-                Add(ref word, 1) = fillWord;
-                break;
-            case 1:
-                word = fillWord;
-                break;
-        }
-
-        int precedingBytes = position & (sizeof(ulong) - 1);
-        if (precedingBytes != 0)
-        {
-            ulong mask = (1UL << (precedingBytes * 8)) - 1;
+            ulong keepMask = (1UL << (keptBytes * 8)) - 1;
             ref ulong partialWord = ref Add(ref word, wordIndex);
-            partialWord ^= (partialWord ^ fillWord) & mask;
+            partialWord = (partialWord & keepMask) | (fillWord & ~keepMask);
         }
-
+        for (int limb = wordIndex + 1; limb < 4; limb++)
+        {
+            Add(ref word, limb) = fillWord;
+        }
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>Leading zero bits of a word in UInt256 limb layout: limb 3 is the most significant.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CountLeadingZeroBitsOfLimbs(ref byte slot)
+    {
+        ref ulong limbs = ref As<byte, ulong>(ref slot);
+        ulong part = Add(ref limbs, 3);
+        if (part != 0) return BitOperations.LeadingZeroCount(part);
+        part = Add(ref limbs, 2);
+        if (part != 0) return 64 + BitOperations.LeadingZeroCount(part);
+        part = Add(ref limbs, 1);
+        if (part != 0) return 128 + BitOperations.LeadingZeroCount(part);
+        part = limbs;
+        return part != 0 ? 192 + BitOperations.LeadingZeroCount(part) : 256;
     }
 }
