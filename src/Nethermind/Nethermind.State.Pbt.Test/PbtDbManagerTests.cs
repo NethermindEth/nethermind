@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -9,6 +13,10 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using NUnit.Framework;
+using NSubstitute;
+using Nethermind.Logging;
+using Nethermind.State.Pbt.Persistence;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -153,7 +161,7 @@ public class PbtDbManagerTests
         }
 
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 5;
-        ctx.Coordinator.CheckPersistence();
+        ctx.Coordinator.CheckPersistence(ctx.Repository.GetLastCommittedStateId()!.Value);
 
         // With CompactSize 2 and no offset, only even finalized blocks are persisted.
         Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(4, roots[4])));
@@ -210,4 +218,217 @@ public class PbtDbManagerTests
             Assert.That(CommitBlock(scope, 2, 200), Is.EqualTo(second.StateRoot), "and the branch carries on from it");
         }
     }
+    [TestCase(32, 0)]
+    [TestCase(8, 0)]
+    [TestCase(1, 0)]
+    [TestCase(32, 1)]
+    [TestCase(1, 1)]
+    [TestCase(32, 2)]
+    [TestCase(1, 2)]
+    [TestCase(32, 3)]
+    [TestCase(1, 3)]
+    public void Persistence_PrefersExistingUnits_AndBoundsBackgroundDrain(int width, int mode)
+    {
+        PbtConfig config = new() { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32, MirrorFlat = mode == 2 };
+        PbtResourcePool pool = new(config);
+        PbtSnapshotRepository repository = new();
+        using MemDb metadata = new();
+        PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
+        PbtTestContext.TestFinalizedStateProvider finalized = new();
+        IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.CurrentState.Returns(PersistenceState(0));
+        persistence.CreateReader().Returns(reader);
+        List<(StateId From, StateId To)> writes = [];
+        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+            .Returns(call =>
+            {
+                StateId from = call.ArgAt<StateId>(0);
+                StateId to = call.ArgAt<StateId>(1);
+                Assert.That(call.ArgAt<ValueHash256>(2), Is.EqualTo(to.StateRoot));
+                writes.Add((from, to));
+                return Substitute.For<IPbtPersistence.IWriteBatch>();
+            });
+        PbtPersistenceCoordinator coordinator = new(config, finalized, persistence, repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        try
+        {
+            for (int number = 1; number <= 192; number++)
+            {
+                repository.TryAdd(PersistenceSnapshot(number - 1, number, pool));
+                finalized.SetCanonicalRoot((ulong)number, TestItem.KeccakA);
+                if (width > 1 && number % width == 0)
+                    repository.TryAddCompacted(PersistenceSnapshot(number - width, number, pool));
+            }
+            if (mode == 3) finalized.FinalizedBlockNumber = 192;
+            if (mode is 0 or 3) coordinator.CheckPersistence(PersistenceState(192));
+            else if (mode == 1) coordinator.FlushToPersistence();
+            else Assert.That(coordinator.PersistUpTo(PersistenceState(192)), Is.True);
+
+            Assert.That(writes.Count, Is.EqualTo(mode is 0 or 3 ? 4 : 192 / width));
+            for (int index = 0; index < writes.Count; index++)
+                Assert.That(writes[index], Is.EqualTo((PersistenceState(index * width), PersistenceState((index + 1) * width))));
+            Assert.That(coordinator.GetCurrentPersistedStateId(), Is.EqualTo(writes[^1].To));
+        }
+        finally
+        {
+            repository.RemoveStatesUntil(ulong.MaxValue);
+        }
+    }
+
+    [Test]
+    public void Persistence_FailedCommitDoesNotPublishOrPrune_AndUnknownMirrorSeedDoesNotAdvance()
+    {
+        PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0, MirrorFlat = true };
+        PbtResourcePool pool = new(config);
+        PbtSnapshotRepository repository = new();
+        using MemDb metadata = new();
+        IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.CurrentState.Returns(PersistenceState(0));
+        persistence.CreateReader().Returns(reader);
+        IPbtPersistence.IWriteBatch batch = Substitute.For<IPbtPersistence.IWriteBatch>();
+        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>()).Returns(batch);
+        bool failCommit = true;
+        batch.When(value => value.Commit()).Do(_ =>
+        {
+            if (failCommit) throw new InvalidOperationException("Injected write failure");
+        });
+        PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence, repository,
+            new PbtCompactionSchedule(metadata, config, LimboLogs.Instance), NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        try
+        {
+            repository.TryAdd(PersistenceSnapshot(0, 1, pool));
+            repository.TryAdd(PersistenceSnapshot(1, 2, pool));
+            Assert.That(coordinator.PersistUpTo(PersistenceState(3)), Is.False);
+            persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>());
+            Assert.Throws<InvalidOperationException>(() => coordinator.PersistUpTo(PersistenceState(2)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(0)));
+                Assert.That(repository.Count, Is.EqualTo(2));
+            }
+            batch.Received(1).Dispose();
+            failCommit = false;
+            Assert.That(coordinator.PersistUpTo(PersistenceState(2)), Is.True);
+            Assert.That(coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
+        }
+        finally
+        {
+            repository.RemoveStatesUntil(ulong.MaxValue);
+        }
+    }
+
+    [Test]
+    public async Task PersistenceBackpressure_StallsProducer_AndShutdownDrains([Values] bool cancelProducer)
+    {
+        PbtConfig config = new() { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 };
+        PbtResourcePool pool = new(config);
+        PbtSnapshotRepository repository = new();
+        using MemDb metadata = new();
+        using CancellationTokenSource processExit = new();
+        IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
+        exitSource.Token.Returns(processExit.Token);
+        IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.CurrentState.Returns(PersistenceState(0));
+        persistence.CreateReader().Returns(reader);
+        TaskCompletionSource enteredPersistence = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releasePersistence = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource producerStalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<StateId> persisted = [];
+        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+            .Returns(call =>
+            {
+                enteredPersistence.TrySetResult();
+                releasePersistence.Task.GetAwaiter().GetResult();
+                persisted.Add(call.ArgAt<StateId>(1));
+                return Substitute.For<IPbtPersistence.IWriteBatch>();
+            });
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        logger.When(value => value.Warn(Arg.Any<string>())).Do(_ =>
+        {
+            if (repository.GetLastCommittedStateId() == PersistenceState(68)) producerStalled.TrySetResult();
+        });
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger wrappedLogger = new(logger);
+        logs.GetClassLogger<PbtDbManager>().Returns(wrappedLogger);
+        PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
+        PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
+            repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        PbtDbManager manager = new(repository, coordinator, persistence, pool,
+            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config);
+        Task producer = Task.CompletedTask;
+        try
+        {
+            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool));
+            manager.AddSnapshot(PersistenceSnapshot(1, 2, pool));
+            await enteredPersistence.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            producer = Task.Run(() =>
+            {
+                for (int number = 3; number <= 68; number++)
+                    manager.AddSnapshot(PersistenceSnapshot(number - 1, number, pool));
+            });
+            await producerStalled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(producer.IsCompleted, Is.False);
+            if (cancelProducer)
+            {
+                processExit.Cancel();
+                await producer.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            if (cancelProducer)
+            {
+                Task disposal = manager.DisposeAsync().AsTask();
+                Assert.That(disposal.IsCompleted, Is.False, "persistence must finish before shutdown completes");
+                releasePersistence.TrySetResult();
+                await disposal.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            else
+            {
+                releasePersistence.TrySetResult();
+                await producer.WaitAsync(TimeSpan.FromSeconds(10));
+                await manager.DisposeAsync();
+            }
+            await manager.DisposeAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(68)));
+                Assert.That(persisted.Count, Is.EqualTo(68));
+                Assert.That(repository.Count, Is.Zero);
+            }
+            for (int index = 0; index < persisted.Count; index++)
+                Assert.That(persisted[index], Is.EqualTo(PersistenceState(index + 1)));
+        }
+        finally
+        {
+            releasePersistence.TrySetResult();
+            await producer.WaitAsync(TimeSpan.FromSeconds(10));
+            await manager.DisposeAsync();
+            repository.RemoveStatesUntil(ulong.MaxValue);
+        }
+    }
+
+    [Test]
+    public async Task Disposal_FlushesStandaloneButPreservesMirrorFloor([Values] bool mirror)
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        Hash256 root;
+        await using (PbtTestContext context = new(db, new PbtConfig { MirrorFlat = mirror }))
+        {
+            using (IWorldStateScopeProvider.IScope scope = context.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+                root = CommitBlock(scope, 1, 100);
+            await context.Manager.DisposeAsync();
+            await context.Manager.DisposeAsync();
+        }
+        await using PbtTestContext reopened = new(db, new PbtConfig { MirrorFlat = mirror });
+        using IPbtPersistence.IReader reader = reopened.Persistence.CreateReader();
+        Assert.That(reader.CurrentState, Is.EqualTo(mirror ? StateId.PreGenesis : new StateId(1, root)));
+    }
+
+    private static StateId PersistenceState(int number) => new((ulong)number, TestItem.KeccakA.ValueHash256);
+
+    private static PbtSnapshot PersistenceSnapshot(int from, int to, PbtResourcePool pool) =>
+        new(PersistenceState(from), PersistenceState(to), TestItem.KeccakA.ValueHash256,
+            pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing), pool, PbtResourcePool.Usage.MainBlockProcessing);
+
 }

@@ -20,15 +20,14 @@ namespace Nethermind.State.Pbt;
 /// trigger persists the canonical segment up to the next <see cref="IPbtConfig.CompactSize"/>
 /// boundary once it is deeper than <see cref="IPbtConfig.MinReorgDepth"/>, and a backstop
 /// force-persists from the committed head when the unpersisted depth exceeds
-/// <see cref="IPbtConfig.MaxReorgDepth"/>. Segments are compacted into one layer and written in
-/// a single atomic batch; layers are pruned only after the persisted state id advances.
+/// <see cref="IPbtConfig.MaxReorgDepth"/>. Existing snapshots are written in individual atomic
+/// batches, preferring full compaction units; layers are pruned only after persistence succeeds.
 /// </summary>
 public class PbtPersistenceCoordinator(
     IPbtConfig config,
     IFinalizedStateProvider finalizedStateProvider,
     IPbtPersistence persistence,
     PbtSnapshotRepository repository,
-    PbtSnapshotCompactor compactor,
     PbtCompactionSchedule schedule,
     IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager)
@@ -63,7 +62,7 @@ public class PbtPersistenceCoordinator(
     /// <summary>Evaluates the persistence triggers, persisting at most a few segments per call; re-invoked on every committed block.</summary>
     /// <returns>Whether anything was persisted, and so whether the persisted state id has advanced.</returns>
     /// <remarks>Does nothing when persistence is driven externally; see <see cref="PersistUpTo"/>.</remarks>
-    public bool CheckPersistence()
+    public bool CheckPersistence(in StateId latestSnapshot)
     {
         if (_externallyDriven) return false;
 
@@ -71,7 +70,7 @@ public class PbtPersistenceCoordinator(
         {
             const int maxDrainIterations = 4;
             int persisted = 0;
-            for (; persisted < maxDrainIterations && TryPersistOneSegment(); persisted++)
+            for (; persisted < maxDrainIterations && TryPersistOneSegment(latestSnapshot); persisted++)
             {
             }
 
@@ -90,25 +89,42 @@ public class PbtPersistenceCoordinator(
     /// <returns>Whether anything was persisted; false when no chain reaches <paramref name="seed"/>.</returns>
     public bool PersistUpTo(in StateId seed)
     {
-        lock (_persistenceLock) return PersistSegment(seed);
+        lock (_persistenceLock)
+        {
+            // Validate the complete target before advancing a mirror through any intermediate state.
+            using PbtSnapshot? candidate = repository.FindSnapshotToPersist(seed, GetCurrentPersistedStateId(), _compactSize);
+            if (candidate is null) return false;
+            while (PersistSegment(seed))
+            {
+            }
+            return true;
+        }
     }
 
     /// <summary>Persists everything up to the last committed head, e.g. after genesis processing or on shutdown.</summary>
-    public void FlushToPersistence()
+    public void FlushToPersistence(CancellationToken cancellationToken = default)
     {
         lock (_persistenceLock)
         {
-            if (repository.GetLastCommittedStateId() is { } head && head != GetCurrentPersistedStateId())
+            if (repository.GetLastCommittedStateId() is not { } head) return;
+            while (!cancellationToken.IsCancellationRequested)
             {
-                PersistSegment(head);
+                StateId persisted = GetCurrentPersistedStateId();
+                if (persisted != StateId.PreGenesis && persisted.BlockNumber >= head.BlockNumber) break;
+                ulong finalized = finalizedStateProvider.FinalizedBlockNumber;
+                StateId seed = (persisted == StateId.PreGenesis || finalized > persisted.BlockNumber)
+                    && finalizedStateProvider.GetFinalizedStateRootAt(finalized) is Hash256 root
+                    ? new StateId(finalized, root)
+                    : head;
+                if (!PersistSegment(seed)) break;
             }
         }
     }
 
-    private bool TryPersistOneSegment()
+    private bool TryPersistOneSegment(in StateId latestSnapshot)
     {
         StateId persisted = GetCurrentPersistedStateId();
-        if (repository.GetLastCommittedStateId() is not { } head) return false;
+        StateId head = latestSnapshot;
         if (persisted != StateId.PreGenesis && head.BlockNumber < persisted.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Committed head {head} is below persisted state {persisted}; persisted base may be on an orphaned fork. Skipping persistence.");
@@ -132,7 +148,7 @@ public class PbtPersistenceCoordinator(
         if (depth > _backstopReorgDepth)
         {
             if (_logger.IsWarn) _logger.Warn($"In-memory state depth {depth} exceeded the force-persist backstop {_backstopReorgDepth}; forcing persistence to bound memory.");
-            return PersistSegment(head);
+            return PersistSegment(repository.GetLastCommittedStateId() ?? head);
         }
 
         return false;
@@ -140,27 +156,22 @@ public class PbtPersistenceCoordinator(
 
     private bool PersistSegment(in StateId seed)
     {
-        StateId persisted = GetCurrentPersistedStateId();
-        // TryLeaseChain may rent its backing array before discovering a broken walk.
-        using PbtSnapshotPooledList chain = new(1);
-        if (!repository.TryLeaseChain(seed, persisted, chain) || chain.Count == 0) return false;
+        using PbtSnapshot? candidate = repository.FindSnapshotToPersist(seed, GetCurrentPersistedStateId(), _compactSize);
+        if (candidate is null) return false;
 
-        using (PbtSnapshot merged = compactor.Compact(chain))
-        {
-            persistenceBarrier.FlushDeferred();
-            Persist(merged);
-            Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(merged.To));
-        }
-
-        repository.RemoveStatesUntil(seed.BlockNumber);
-        if (_logger.IsDebug) _logger.Debug($"Persisted pbt state segment up to {seed}");
+        persistenceBarrier.FlushDeferred();
+        Persist(candidate);
+        Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(candidate.To));
+        repository.RemoveSiblingAndDescendents(candidate.To);
+        repository.RemoveStatesUntil(candidate.To.BlockNumber);
+        if (_logger.IsDebug) _logger.Debug($"Persisted pbt state segment up to {candidate.To}");
         return true;
     }
 
-    private void Persist(PbtSnapshot merged)
+    private void Persist(PbtSnapshot snapshot)
     {
-        PbtSnapshotContent content = merged.Content;
-        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.TreeRoot, WriteFlags.None);
+        PbtSnapshotContent content = snapshot.Content;
+        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, snapshot.TreeRoot, WriteFlags.None);
 
         foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses) batch.ClearStorage(addressHash);
         foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) batch.SetAccount(addressHash, account);

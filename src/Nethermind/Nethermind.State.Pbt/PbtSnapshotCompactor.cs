@@ -20,13 +20,13 @@ public class PbtSnapshotCompactor(
     {
         ulong width = schedule.GetCompactSize(stateId.BlockNumber);
         if (width <= 1) return false;
+        if (width < (ulong)config.CompactSize && stateId.BlockNumber >= (ulong)config.CompactSize)
+            repository.RemoveCompactedAt(stateId.BlockNumber - (ulong)config.CompactSize);
         using PbtSnapshotPooledList chain = new((int)width);
         long floor = checked((long)stateId.BlockNumber - (long)width);
         if (!repository.TryLeaseCompactionWindow(stateId, floor, chain)) return false;
         PbtSnapshot compacted = Compact(chain);
-        if (!repository.TryAddCompacted(compacted)) return false;
-        if (width >= (ulong)config.CompactSize) repository.RemoveCompactedAt(stateId.BlockNumber - width);
-        return true;
+        return repository.TryAddCompacted(compacted);
     }
 
     public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)

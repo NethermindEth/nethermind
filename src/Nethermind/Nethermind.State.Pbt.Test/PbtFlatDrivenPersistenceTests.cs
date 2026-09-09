@@ -39,7 +39,7 @@ public class PbtFlatDrivenPersistenceTests
         ctx.FinalizedStateProvider.SetCanonicalRoot(2, root2);
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 2;
 
-        Assert.That(ctx.Coordinator.CheckPersistence(), Is.False);
+        Assert.That(ctx.Coordinator.CheckPersistence(ctx.Repository.GetLastCommittedStateId()!.Value), Is.False);
         Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(StateId.PreGenesis));
 
         FlatPersistence inner = Substitute.For<FlatPersistence>();
@@ -91,6 +91,7 @@ public class PbtFlatDrivenPersistenceTests
         Hash256 root1;
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
         {
+            scope.Commit(0);
             Write(scope, TestItem.AddressA, 1, 100);
             scope.Commit(1);
             root1 = scope.RootHash;

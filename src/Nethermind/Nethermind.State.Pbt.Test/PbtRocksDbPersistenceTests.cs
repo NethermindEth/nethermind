@@ -321,6 +321,58 @@ public class PbtRocksDbPersistenceTests
     }
 
     [Test]
+    public void Incremental_flush_reopens_with_partial_tail_and_latest_values()
+    {
+        using TempPath dbPath = TempPath.GetTempDirectory();
+        using MemDb metadata = new();
+        PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0 };
+        DbConfig dbConfig = new();
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config);
+        PbtResourcePool pool = new(config);
+        PbtSnapshotRepository repository = new();
+        PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
+        PbtSnapshotCompactor compactor = new(pool, schedule, repository, config);
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        StateId last = StateId.PreGenesis;
+        try
+        {
+            using (ColumnsDb<PbtColumns> db = new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
+                adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>()))
+            {
+                PbtRocksDbPersistence persistence = new(db, config);
+                PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
+                    repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+                for (ulong number = 0; number <= 5; number++)
+                {
+                    StateId next = new(number, TestItem.KeccakA.ValueHash256);
+                    PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+                    content.Accounts[addressHash] = new Account(number, number + 10);
+                    repository.TryAdd(new PbtSnapshot(last, next, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
+                    compactor.DoCompactSnapshot(next);
+                    last = next;
+                }
+                coordinator.FlushToPersistence();
+                Assert.That(repository.Count, Is.Zero);
+                Assert.That(coordinator.CheckPersistence(new StateId(2, TestItem.KeccakA.ValueHash256)), Is.False, "queued IDs behind persistence are harmless");
+            }
+
+            using ColumnsDb<PbtColumns> reopenedDb = new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
+                adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
+            using IPbtPersistence.IReader reader = new PbtRocksDbPersistence(reopenedDb, config).CreateReader();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.CurrentState, Is.EqualTo(last));
+                Assert.That(reader.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+                Assert.That(reader.GetAccount(addressHash), Is.EqualTo(new Account(5, 15)));
+            }
+        }
+        finally
+        {
+            repository.RemoveStatesUntil(ulong.MaxValue);
+        }
+    }
+
+    [Test]
     public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed()
     {
         using TempPath dbPath = TempPath.GetTempDirectory();

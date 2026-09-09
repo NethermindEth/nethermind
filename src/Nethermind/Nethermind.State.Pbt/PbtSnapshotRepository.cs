@@ -49,9 +49,9 @@ public class PbtSnapshotRepository
         PbtSnapshotPayloadSize payloadSize = snapshot.PayloadSize;
         lock (_lock)
         {
-            _lastCommittedStateId = snapshot.To;
             if (_snapshots.TryAdd(snapshot.To, snapshot))
             {
+                _lastCommittedStateId = snapshot.To;
                 Metrics.AddPbtBaseSnapshot(payloadSize, 1);
                 return true;
             }
@@ -72,6 +72,81 @@ public class PbtSnapshotRepository
 
         snapshot.Dispose();
         return false;
+    }
+
+    /// <summary>Leases the next bounded snapshot extending the persisted state, preferring compacted edges in a backward breadth-first walk.</summary>
+    internal PbtSnapshot? FindSnapshotToPersist(in StateId seed, in StateId persistedState, ulong compactSize)
+    {
+        if (Height(seed) <= Height(persistedState)) return null;
+
+        lock (_lock)
+        {
+            Queue<StateId> frontier = new();
+            HashSet<StateId> visited = [seed];
+            frontier.Enqueue(seed);
+            while (frontier.TryDequeue(out StateId current))
+            {
+                for (int tier = 0; tier < 2; tier++)
+                {
+                    Dictionary<StateId, PbtSnapshot> snapshots = tier == 0 ? _compactedSnapshots : _snapshots;
+                    if (!snapshots.TryGetValue(current, out PbtSnapshot? snapshot)) continue;
+                    if (snapshot.From == persistedState)
+                    {
+                        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber <= compactSize && snapshot.TryLease()) return snapshot;
+                    }
+                    else if (Height(snapshot.From) > Height(persistedState) && visited.Add(snapshot.From))
+                    {
+                        frontier.Enqueue(snapshot.From);
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Releases orphan descendants above the successful persistence boundary while preserving leased readers.</summary>
+    /// <remarks>Call before removing states at the boundary, whose siblings identify the forks to prune.</remarks>
+    internal void RemoveSiblingAndDescendents(in StateId canonicalState)
+    {
+        List<PbtSnapshot> removed = [];
+        lock (_lock)
+        {
+            bool hasSibling = false;
+            foreach (StateId state in _snapshots.Keys)
+                hasSibling |= state.BlockNumber == canonicalState.BlockNumber && state != canonicalState;
+            foreach (StateId state in _compactedSnapshots.Keys)
+                hasSibling |= state.BlockNumber == canonicalState.BlockNumber && state != canonicalState;
+            if (!hasSibling) return;
+
+            HashSet<StateId> states = [];
+            foreach (StateId state in _snapshots.Keys)
+                if (Height(state) > Height(canonicalState)) states.Add(state);
+            foreach (StateId state in _compactedSnapshots.Keys)
+                if (Height(state) > Height(canonicalState)) states.Add(state);
+
+            List<StateId> ordered = [.. states];
+            ordered.Sort(static (left, right) => left.BlockNumber.CompareTo(right.BlockNumber));
+            HashSet<StateId> reachable = [canonicalState];
+            foreach (StateId state in ordered)
+            {
+                if ((_snapshots.TryGetValue(state, out PbtSnapshot? snapshot) && reachable.Contains(snapshot.From))
+                    || (_compactedSnapshots.TryGetValue(state, out PbtSnapshot? compacted) && reachable.Contains(compacted.From)))
+                {
+                    reachable.Add(state);
+                    continue;
+                }
+
+                if (_snapshots.Remove(state, out snapshot))
+                {
+                    Metrics.AddPbtBaseSnapshot(snapshot.PayloadSize, -1);
+                    removed.Add(snapshot);
+                }
+                if (_compactedSnapshots.Remove(state, out compacted)) removed.Add(compacted);
+            }
+        }
+
+        foreach (PbtSnapshot snapshot in removed) snapshot.Dispose();
     }
 
     public bool HasState(in StateId stateId)

@@ -27,13 +27,12 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly IPbtResourcePool _resourcePool;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
-    // Persistence is idempotent — it re-reads the head every time — so a dropped nudge costs nothing
-    // and one pending signal is enough.
-    private readonly Channel<bool> _workSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
-
-    // Compaction is not: each block is its own window at its own width, and a dropped one is a level
-    // that never merges and never comes back. Committing waits rather than drops when this backs up.
-    private readonly Channel<StateId> _compactionJobs = Channel.CreateBounded<StateId>(new BoundedChannelOptions(MaxInFlightCompactionJobs) { FullMode = BoundedChannelFullMode.Wait });
+    private readonly Channel<StateId> _persistenceJobs = Channel.CreateBounded<StateId>(MaxInFlightCompactionJobs);
+    private readonly Channel<StateId> _compactionJobs = Channel.CreateBounded<StateId>(MaxInFlightCompactionJobs);
+    private readonly Lock _admissionLock = new();
+    private readonly CancellationToken _processExitToken;
+    private readonly bool _externallyDriven;
+    private int _isDisposed;
 
     private readonly Task _persistenceWorker;
     private readonly Task _compactionWorker;
@@ -54,7 +53,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         IPbtResourcePool resourcePool,
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
-        ILogManager logManager)
+        ILogManager logManager,
+        IPbtConfig config)
     {
         _repository = repository;
         _coordinator = coordinator;
@@ -62,7 +62,9 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _resourcePool = resourcePool;
         _compactor = compactor;
         _logger = logManager.GetClassLogger<PbtDbManager>();
-        _stopSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+        _processExitToken = processExitSource.Token;
+        _externallyDriven = config.MirrorFlat;
+        _stopSource = new CancellationTokenSource();
         _persistenceWorker = Task.Run(RunPersistenceWorker);
         _compactionWorker = Task.Run(RunCompactionWorker);
         _cacheSweeper = Task.Run(RunCacheSweeper);
@@ -156,15 +158,35 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public void AddSnapshot(PbtSnapshot snapshot)
     {
-        StateId committed = snapshot.To;
-        _repository.TryAdd(snapshot);
-
-        // Backing up this far means compaction is not keeping pace with the chain, which persistence
-        // sits downstream of.
-        if (!_compactionJobs.Writer.TryWrite(committed))
+        lock (_admissionLock)
         {
-            if (_logger.IsWarn) _logger.Warn("Pbt compaction is not keeping up with block processing; stalling the commit until it does.");
-            _compactionJobs.Writer.WriteAsync(committed, _stopSource.Token).AsTask().GetAwaiter().GetResult();
+            if (Volatile.Read(ref _isDisposed) != 0 || _processExitToken.IsCancellationRequested)
+            {
+                snapshot.Dispose();
+                return;
+            }
+
+            StateId committed = snapshot.To;
+            StateId persisted = _coordinator.GetCurrentPersistedStateId();
+            if (persisted != StateId.PreGenesis && committed.BlockNumber <= persisted.BlockNumber)
+            {
+                snapshot.Dispose();
+                return;
+            }
+            if (!_repository.TryAdd(snapshot)) return;
+
+            if (_compactionJobs.Writer.TryWrite(committed)) return;
+            if (_logger.IsWarn) _logger.Warn("Pbt compaction/persistence is not keeping up with block processing; stalling the commit until it does.");
+            try
+            {
+                _compactionJobs.Writer.WriteAsync(committed, _processExitToken).AsTask().GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) when (_processExitToken.IsCancellationRequested)
+            {
+            }
+            catch (ChannelClosedException) when (Volatile.Read(ref _isDisposed) != 0)
+            {
+            }
         }
     }
 
@@ -175,7 +197,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public void FlushCache(CancellationToken cancellationToken)
     {
-        _coordinator.FlushToPersistence();
+        _coordinator.FlushToPersistence(cancellationToken);
         ClearReadOnlyBundleCache();
     }
 
@@ -190,14 +212,14 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     {
         try
         {
-            await foreach (bool _ in _workSignal.Reader.ReadAllAsync(_stopSource.Token))
+            await foreach (StateId stateId in _persistenceJobs.Reader.ReadAllAsync(_stopSource.Token))
             {
                 try
                 {
                     // only sweep once persistence has actually advanced, and only after the layers it
                     // superseded are pruned: sweeping earlier would re-cache a view assembled from
                     // layers about to go, pinning them all over again
-                    if (_coordinator.CheckPersistence()) ClearReadOnlyBundleCache();
+                    if (_coordinator.CheckPersistence(stateId)) ClearReadOnlyBundleCache();
                 }
                 catch (Exception e)
                 {
@@ -232,7 +254,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     if (_logger.IsError) _logger.Error("Pbt compaction failed", e);
                 }
 
-                _workSignal.Writer.TryWrite(true);
+                await _persistenceJobs.Writer.WriteAsync(stateId, _stopSource.Token);
             }
         }
         catch (OperationCanceledException)
@@ -261,14 +283,33 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _workSignal.Writer.TryComplete();
-        _compactionJobs.Writer.TryComplete();
-        await _stopSource.CancelAsync();
-        await _persistenceWorker;
-        await _compactionWorker;
-        await _cacheSweeper;
-        ClearReadOnlyBundleCache();
-        _stopSource.Dispose();
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
+
+        try
+        {
+            _compactionJobs.Writer.TryComplete();
+            // Closing admission releases a blocked producer; wait for its repository insertion before flushing.
+            lock (_admissionLock) { }
+            await _compactionWorker;
+            _persistenceJobs.Writer.TryComplete();
+            await _persistenceWorker;
+            if (!_externallyDriven) FlushCache(CancellationToken.None);
+        }
+        finally
+        {
+            _compactionJobs.Writer.TryComplete();
+            _persistenceJobs.Writer.TryComplete();
+            await _stopSource.CancelAsync();
+            try
+            {
+                await Task.WhenAll(_compactionWorker, _persistenceWorker, _cacheSweeper);
+            }
+            finally
+            {
+                ClearReadOnlyBundleCache();
+                _stopSource.Dispose();
+            }
+        }
     }
 
     private sealed class EmptyPersistenceReader : IPbtPersistence.IReader
