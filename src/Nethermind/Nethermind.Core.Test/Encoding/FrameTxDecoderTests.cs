@@ -29,6 +29,8 @@ public class FrameTxDecoderTests
     private const int FrameDataDecodeCap = 30 * 1024 * 1024;
     // The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).
     private const int ShortSequencePrefixMax = 0xf7;
+    // What the decoder divides the available bytes by: a signature entry is a four-item sequence.
+    private const int MinSignatureRlpLength = 5;
 
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -583,6 +585,79 @@ public class FrameTxDecoderTests
         Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpLimitException>());
     }
 
+    // The reader spans the whole message, so a signature list declared to run past this transaction's payload
+    // would otherwise be sized from a batched message's remaining bytes: 2M entries out of 10MB. The bound is
+    // the transaction's own payload extent, so the entries beyond it are refused before the array is sized.
+    [Test]
+    public void Decode_SignatureListReachingPastThisTransaction_IsRefusedBeforeAllocating([Values] bool allowExtraBytes)
+    {
+        const int count = 64;
+        Rlp[] entries = new Rlp[count];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            // The five-byte minimum: a four-item sequence of empty items.
+            entries[i] = Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray);
+        }
+
+        byte[] body = FrameTxBody(signatures: Rlp.Encode(entries)).Bytes;
+        RlpReader walk = new(body);
+        walk.ReadSequenceLength();
+        int contentStart = walk.Position;
+        walk.DecodeULong();  // chain_id
+        walk.DecodeULong();  // nonce
+        walk.DecodeAddress();
+        walk.Position += walk.PeekNextRlpLength(); // frames
+        byte[] payload = TypedPayload(WithDeclaredContentLength(body, contentStart, walk.Position - contentStart));
+
+        Assert.That(() => DecodeConsensusPayload(payload, allowExtraBytes ? RlpBehaviors.AllowExtraBytes : RlpBehaviors.None),
+            Throws.InstanceOf<RlpLimitException>());
+    }
+
+    // The direction an attacker uses: an honest envelope around a payload that declares more than it holds.
+    // Pre-fix the limit came from the bytes of the transaction behind it, so the list was payable and the
+    // 100,000-entry array was allocated before the over-declaration surfaced.
+    [Test]
+    public void Decode_BatchedMessageWhereATransactionOverDeclaresItsPayload_IsRefusedBeforeAllocating()
+    {
+        const int count = 100_000;
+        const int siblingBytes = MinSignatureRlpLength * count;
+
+        byte[] body = FrameTxBody(signatures: PlaceholderList(count)).Bytes;
+        RlpReader walk = new(body);
+        walk.ReadSequenceLength();
+        int contentStart = walk.Position;
+        Rlp overDeclared = WithDeclaredContentLength(body, contentStart, body.Length - contentStart + siblingBytes);
+
+        Transaction sibling = CreateFrameTx(signatures: [new TxFrameSignature(
+            TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(siblingBytes, 0x01))]);
+        byte[] message = Rlp.Encode([
+            Rlp.Encode(TypedPayload(overDeclared)),
+            Rlp.Encode(EncodeConsensusPayload(sibling))]).Bytes;
+
+        Assert.That(() => DecodeMessage(message), Throws.InstanceOf<RlpLimitException>());
+    }
+
+    /// <summary>Decodes a batched <c>Transactions</c>-style message: many transactions, one reader.</summary>
+    private static Transaction[] DecodeMessage(byte[] message)
+    {
+        RlpReader reader = new(message);
+        return reader.DecodeNonNullArray(_txDecoder);
+    }
+
+    /// <summary>Re-emits <paramref name="body"/>'s sequence header declaring <paramref name="declared"/> content
+    /// bytes, leaving every byte of the content itself in place.</summary>
+    private static Rlp WithDeclaredContentLength(byte[] body, int contentStart, int declared)
+    {
+        byte[] header = new byte[Rlp.LengthOfSequence(declared) - declared];
+        RlpWriter headerWriter = new(header);
+        headerWriter.StartSequence(declared);
+
+        byte[] doctored = new byte[header.Length + body.Length - contentStart];
+        header.CopyTo(doctored, 0);
+        body.AsSpan(contentStart).CopyTo(doctored.AsSpan(header.Length));
+        return new Rlp(doctored);
+    }
+
     [Test]
     public void Decode_ChainIdAtTwoToThe64_ThrowsRatherThanTruncatingToU64()
     {
@@ -636,10 +711,10 @@ public class FrameTxDecoderTests
         return new Rlp(bytes);
     }
 
-    private static Transaction DecodeConsensusPayload(byte[] payload)
+    private static Transaction DecodeConsensusPayload(byte[] payload, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpReader reader = new(payload);
-        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping | rlpBehaviors);
     }
 
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
