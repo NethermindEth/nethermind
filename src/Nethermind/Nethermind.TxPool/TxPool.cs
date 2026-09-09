@@ -1668,12 +1668,17 @@ namespace Nethermind.TxPool
                             }
                         }
 
-                        if (tx.FeeChargedToSender() && tx.CheckForNotEnoughBalance(UInt256.Zero, balance, out _))
+                        // Measured against the same running total as the account domain: the sender funds both
+                        // out of one balance, so retention prices the two together as admission does.
+                        UInt256 keyedCumulativeCost = cumulativeCost;
+                        if (tx.FeeChargedToSender() && tx.CheckForNotEnoughBalance(cumulativeCost, balance, out keyedCumulativeCost))
                         {
                             MarkForEviction(tx, allowLaterPoolReentrance: true);
                         }
                         else
                         {
+                            // Only what is retained stays a liability for the sender's other transactions.
+                            cumulativeCost = keyedCumulativeCost;
                             UInt256 keyedBottleneck = tx.CalculateEffectiveGasPrice(isEip1559, _headInfo.CurrentBaseFee);
                             if (tx.GasBottleneck != keyedBottleneck)
                             {

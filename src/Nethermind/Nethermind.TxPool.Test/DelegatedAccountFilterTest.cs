@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -130,6 +131,40 @@ internal class DelegatedAccountFilterTest
 
         Assert.That(result, Is.EqualTo(expected));
     }
+
+    private static IEnumerable<TestCaseData> KeyedNonceDelegationBoundCases()
+    {
+        yield return new TestCaseData(new UInt256[] { 0xbeef }, AcceptTxResult.Accepted).SetName("a replacement of the pending entry");
+        yield return new TestCaseData(new UInt256[] { 0xf00d }, AcceptTxResult.NotCurrentNonceForDelegation).SetName("a second domain alongside it");
+    }
+
+    /// <remarks>Every fresh key is current at sequence 0, so nothing in the keyed path holds a delegated sender
+    /// to the one pending transaction the account-nonce gate allowed, and one authorization would invalidate a
+    /// bucketful at once.</remarks>
+    [TestCaseSource(nameof(KeyedNonceDelegationBoundCases))]
+    public void Accept_SenderIsDelegated_BoundsKeyedDomainsToOnePendingTransaction(UInt256[] nonceKeys, AcceptTxResult expected)
+    {
+        (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
+        Transaction pending = KeyedFrameTx([0xbeef], TestItem.KeccakA);
+        standardPool.TryInsert(pending.Hash, pending);
+        TestReadOnlyStateProvider stateProvider = CreateDelegatedStateProvider();
+        DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, stateProvider);
+        Transaction transaction = KeyedFrameTx(nonceKeys, TestItem.KeccakB);
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
+
+        AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
+
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    private static Transaction KeyedFrameTx(UInt256[] nonceKeys, Hash256 hash) =>
+        Build.A.Transaction
+            .WithType(TxType.FrameTx)
+            .WithNonce(0)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithHash(hash)
+            .TestObject;
 
     private static readonly object[] Eip7702ActivationCases =
     {

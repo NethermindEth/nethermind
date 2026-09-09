@@ -85,12 +85,13 @@ namespace Nethermind.TxPool
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
             => tx.IsOverflowWhenAddingPricedCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
 
-        private struct SenderBucketState(Transaction tx, UInt256 accountNonce, bool unreservedOnly)
+        private struct SenderBucketState(Transaction tx, UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
         {
             public readonly Transaction Tx = tx;
             public readonly UInt256 AccountNonce = accountNonce;
             public readonly UInt256 TxNonce = tx.Nonce;
             public readonly bool UnreservedOnly = unreservedOnly;
+            public readonly bool KeyedNoncesEnabled = keyedNoncesEnabled;
             public UInt256 CumulativeCost = UInt256.Zero;
             public bool Overflow = false;
         }
@@ -101,11 +102,14 @@ namespace Nethermind.TxPool
         /// payer's. <paramref name="unreservedOnly"/> additionally drops the self-paid ones, for a caller that
         /// measures against <see cref="PayerExposureCache"/>, which already sums them. EIP-8250 sequences order
         /// only within one nonce domain, so a pending transaction in another domain is an independent liability
-        /// however its sequence compares: the whole bucket is walked rather than stopped at a numeric match.</remarks>
+        /// however its sequence compares: with <paramref name="keyedNoncesEnabled"/> the whole bucket is walked
+        /// rather than stopped at a numeric match. Buckets are unbounded by default, so before activation — where
+        /// admission rejects a keyed transaction outright — the walk keeps the early exit ascending nonce order
+        /// allows.</remarks>
         /// <returns><c>true</c> when the sum overflows, leaving <paramref name="cumulativeCost"/> unusable.</returns>
-        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, in UInt256 accountNonce, bool unreservedOnly, out UInt256 cumulativeCost)
+        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, in UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled, out UInt256 cumulativeCost)
         {
-            SenderBucketState bucket = new(tx, accountNonce, unreservedOnly);
+            SenderBucketState bucket = new(tx, accountNonce, unreservedOnly, keyedNoncesEnabled);
             // tx.SenderAddress! as unknownSenderFilter will run before either caller
             pool.VisitBucket(tx.SenderAddress!, ref bucket, static (Transaction otherTx, ref SenderBucketState bucketState) =>
             {
@@ -117,10 +121,11 @@ namespace Nethermind.TxPool
                 }
 
                 // Within one domain, at or past the incoming sequence is the transaction it displaces, or one
-                // that only executes after it. Another domain runs independently, so its cost is owed either way.
+                // that only executes after it. Another domain runs independently, so its cost is owed either way —
+                // and where none can exist, ascending nonce order means nothing past this entry is owed.
                 if (otherTx.Nonce >= bucketState.TxNonce && CompetingTransactionEqualityComparer.SameNonceDomain(bucketState.Tx, otherTx))
                 {
-                    return true;
+                    return bucketState.KeyedNoncesEnabled;
                 }
 
                 bool chargedElsewhere = bucketState.UnreservedOnly

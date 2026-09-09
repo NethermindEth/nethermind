@@ -342,8 +342,9 @@ namespace Nethermind.TxPool
 
         /// <summary>Stops announcing the sender's persistent transactions that <paramref name="includedTx"/>
         /// has made unmineable.</summary>
-        /// <remarks>Only the included transaction's own EIP-8250 nonce domain is superseded: sequences in the
-        /// sender's other domains advance independently and stay announceable at the same numeric value.</remarks>
+        /// <remarks>Inclusion consumes every EIP-8250 key the transaction names, so a persistent entry is
+        /// superseded when it shares any of them: sequences in the sender's disjoint domains advance
+        /// independently and stay announceable at the same numeric value.</remarks>
         public void EnsureStopBroadcastUpToNonce(Transaction includedTx)
         {
             if (_persistentTxs.Count != 0)
@@ -352,7 +353,7 @@ namespace Nethermind.TxPool
                 // Ascending nonce order bounds the scan; the domain decides which of those entries is superseded.
                 foreach (Transaction tx in _persistentTxs.TakeWhile(includedTx.SenderAddress!, t => t.Nonce <= nonce))
                 {
-                    if (CompetingTransactionEqualityComparer.SameNonceDomain(includedTx, tx))
+                    if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(includedTx, tx))
                     {
                         StopBroadcast(tx.Hash!);
                     }

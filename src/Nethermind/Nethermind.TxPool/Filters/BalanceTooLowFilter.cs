@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Filters
             UInt256 balance = account.Balance;
 
             TxDistinctSortedPool pool = tx.CarriesBlobs ? _blobTxs : _txs;
-            bool overflow = tx.IsOverflowWhenSummingSenderBucket(pool, account.Nonce, unreservedOnly: false, out UInt256 cumulativeCost);
+            bool overflow = tx.IsOverflowWhenSummingSenderBucket(pool, account.Nonce, unreservedOnly: false, state.HeadSpec.IsEip8250Enabled, out UInt256 cumulativeCost);
             overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
 
             if (overflow)

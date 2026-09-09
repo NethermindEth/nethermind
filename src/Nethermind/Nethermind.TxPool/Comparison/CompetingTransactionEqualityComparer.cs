@@ -61,5 +61,30 @@ namespace Nethermind.TxPool.Comparison
 
         private static bool SameNonceDomain(ReadOnlySpan<UInt256> newKeys, ReadOnlySpan<UInt256> oldKeys) =>
             newKeys.SequenceEqual(oldKeys);
+
+        /// <summary>Whether consuming one of a sender's transactions advances a sequence the other selects.</summary>
+        /// <remarks>EIP-8250 consumes every key a transaction names, so two unequal key sets sharing a key
+        /// invalidate one another; pending identity is the equal-set relation, being superseded is this one.</remarks>
+        internal static bool OverlapsNonceDomain(Transaction newTx, Transaction oldTx) =>
+            OverlapsNonceDomain(KeyedDomain(newTx), KeyedDomain(oldTx));
+
+        private static bool OverlapsNonceDomain(ReadOnlySpan<UInt256> newKeys, ReadOnlySpan<UInt256> oldKeys)
+        {
+            // The account domain is one domain, shared with nothing keyed.
+            if (newKeys.IsEmpty || oldKeys.IsEmpty) return newKeys.IsEmpty && oldKeys.IsEmpty;
+
+            // Both sets are strictly increasing (EIP-8250 well-formedness), so one merge pass finds a shared key.
+            int newIndex = 0;
+            int oldIndex = 0;
+            while (newIndex < newKeys.Length && oldIndex < oldKeys.Length)
+            {
+                int comparison = newKeys[newIndex].CompareTo(oldKeys[oldIndex]);
+                if (comparison == 0) return true;
+                if (comparison < 0) newIndex++;
+                else oldIndex++;
+            }
+
+            return false;
+        }
     }
 }

@@ -495,6 +495,24 @@ public class TxBroadcasterTests
         Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { later }));
     }
 
+    /// <remarks>Inclusion consumes every key the transaction names, so a persistent entry that shares one is
+    /// permanently unmineable however the two key sets differ; a disjoint one is untouched.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_a_persistent_transaction_sharing_a_nonce_key()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction overlapping = PersistentTx(TestItem.KeccakA, 5, [(UInt256)1]);
+        Transaction disjoint = PersistentTx(TestItem.KeccakB, 5, [(UInt256)3]);
+        foreach (Transaction tx in new[] { overlapping, disjoint })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(PersistentTx(TestItem.KeccakC, 5, [(UInt256)1, (UInt256)2]));
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { disjoint }));
+    }
+
     /// <summary>A locally submitted transaction of one sender, distinguished from its siblings by hash and by
     /// which nonce domain <paramref name="nonceKeys"/> selects.</summary>
     private static Transaction PersistentTx(Hash256 hash, ulong nonce, UInt256[] nonceKeys) =>
