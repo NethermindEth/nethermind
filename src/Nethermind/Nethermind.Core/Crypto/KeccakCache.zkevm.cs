@@ -73,7 +73,7 @@ public static partial class KeccakCache
 
     /// <summary>Reads the digest memoized for an input, if its slot still holds that input.</summary>
     /// <param name="input">An input of <see cref="MinMemoLength"/> to <see cref="MaxMemoLength"/> bytes.</param>
-    /// <param name="keccak256">The memoized digest, or default on a miss.</param>
+    /// <param name="keccak256">The memoized digest, or unspecified on a miss.</param>
     /// <returns>Whether the digest was memoized.</returns>
     /// <remarks>
     /// A seam for tests, which cannot go through <see cref="ComputeTo"/> because the guest's keccak is a
@@ -130,7 +130,9 @@ public static partial class KeccakCache
         }
 
     Miss:
-        keccak256 = default;
+        // Not assigned: the write would land in the caller's output before ComputeTo hashes, where the
+        // host arm assigns only after hashing, so an aliased in and out would diverge by build.
+        Unsafe.SkipInit(out keccak256);
         return false;
     }
 
