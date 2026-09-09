@@ -274,9 +274,7 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        // The queueing side checked capacity before this hand-off, and the hand-off blocks
-                        // while the workers are busy, so the slot it saw may be gone by now.
-                        if (HasAvailableActivePeerSlot() && ShouldContactPeer(peer))
+                        if (ShouldContactPeer(peer))
                         {
                             await SetupOutgoingPeerConnection(peer);
                         }
@@ -502,6 +500,22 @@ namespace Nethermind.Network
         }
 
         private bool HasAvailableActivePeerSlot() => AvailableActivePeersCount - _pending > 0;
+
+        /// <summary>
+        /// Reserves one of the <see cref="MaxActivePeers"/> slots for an outgoing connection attempt.
+        /// </summary>
+        /// <remarks>
+        /// Claims first and gives the claim back when there turns out to be no room, so that concurrent
+        /// callers cannot all pass <see cref="HasAvailableActivePeerSlot"/> for the same slot and then
+        /// dial once they resume. The claim is released in <see cref="SetupOutgoingPeerConnection"/>.
+        /// </remarks>
+        private bool TryClaimActivePeerSlot()
+        {
+            if (Interlocked.Increment(ref _pending) <= AvailableActivePeersCount) return true;
+
+            Interlocked.Decrement(ref _pending);
+            return false;
+        }
 
         private async Task<bool> EnsureAvailableActivePeerSlotAsync()
         {
@@ -771,23 +785,33 @@ namespace Nethermind.Network
         {
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
-            await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
+            // Claim the slot before the first await: a caller suspended in the rate limiter is invisible
+            // to a plain capacity check, so without the claim all of them dial past MaxActivePeers.
+            if (!TryClaimActivePeerSlot()) return;
 
-            // Can happen when In connection is received from the same peer and is initialized before we get here
-            // In this case we do not initialize OUT connection
-            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+            bool result = false;
+            try
             {
-                if (_logger.IsTrace) TraceActivePeerAlreadyAddedToCollection();
-                return;
+                await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
+
+                // Can happen when In connection is received from the same peer and is initialized before we get here
+                // In this case we do not initialize OUT connection
+                if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+                {
+                    if (_logger.IsTrace) TraceActivePeerAlreadyAddedToCollection();
+                    return;
+                }
+
+                Interlocked.Increment(ref _tryCount);
+                result = await InitializeOutgoingPeerConnection(peer);
+                // for some time we will have a peer in active that has no session assigned - analyze this?
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _pending);
+                SignalPeerUpdateNeeded();
             }
 
-            Interlocked.Increment(ref _tryCount);
-            Interlocked.Increment(ref _pending);
-            bool result = await InitializeOutgoingPeerConnection(peer);
-            // for some time we will have a peer in active that has no session assigned - analyze this?
-
-            Interlocked.Decrement(ref _pending);
-            SignalPeerUpdateNeeded();
             if (_logger.IsTrace) TraceOutgoingConnectionResult();
 
             if (!result)

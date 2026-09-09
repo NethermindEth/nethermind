@@ -210,20 +210,20 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
         }
 
-        [Test]
-        public async Task Will_only_connect_up_to_max_peers()
+        [TestCase(1, 1_000_000)]
+        [TestCase(8, 200)]
+        public async Task Will_only_connect_up_to_max_peers(int outgoingConnectParallelism, int maxOutgoingConnectPerSec)
         {
             const int candidateCount = 50;
             const int expectedConnectCount = 25;
 
-            await using Context ctx = new(1);
+            await using Context ctx = new(outgoingConnectParallelism);
+            // A throttled connect suspends in the rate limiter with its slot claimed but not yet active,
+            // which is where the workers used to lose count of each other.
+            ctx.NetworkConfig.MaxOutgoingConnectPerSec = maxOutgoingConnectPerSec;
+            ctx.CreatePeerManager();
             ctx.SetupPersistedPeers(candidateCount);
             ctx.PeerPool.Start();
-
-            // Feed the pool before the manager subscribes to PeerAdded: the quick-connect fast path claims
-            // its slot only after an await, so a candidate arriving mid-saturation can dial past the cap.
-            Assert.That(() => ctx.PeerPool.PeerCount, Is.EqualTo(candidateCount).After(_delayLonger, 10));
-
             ctx.PeerManager.Start();
 
             await ctx.RlpxPeer.WaitForConnectCallsAsync(expectedConnectCount, TimeSpan.FromSeconds(30));
