@@ -506,7 +506,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             if (_logger.IsWarn && (_lastSkippedPruningWarning is not { } last || Stopwatch.GetElapsedTime(last, now) >= TimeSpan.FromMinutes(1)))
             {
                 _lastSkippedPruningWarning = now;
-                _logger.Warn($"Skipped snapshot orphan pruning because protected ancestry is unavailable above boundary {minBlockNumber}; snapshot memory may exceed its budget. Committed head: {committedHead}, fork-choice head: {forkChoiceHead}.");
+                _logger.Warn($"Skipped snapshot orphan pruning because protected ancestry is unavailable above boundary {minBlockNumber}; this sweep retained all candidates. A stale protected head may clear after reader release or subsequent commits. Committed head: {committedHead}, fork-choice head: {forkChoiceHead}.");
             }
             return 0;
         }
@@ -575,6 +575,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         void LogAmbiguousCandidates()
         {
+            Interlocked.Add(ref Metrics._snapshotOrphanAmbiguousCandidates, ambiguousCandidates);
             if (ambiguousCandidates > 0 && _logger.IsDebug)
                 _logger.Debug($"Preserved {ambiguousCandidates} snapshot candidate entries during orphan pruning because compaction gaps leave their ancestry ambiguous.");
         }

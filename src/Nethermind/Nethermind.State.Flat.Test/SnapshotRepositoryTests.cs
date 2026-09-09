@@ -816,10 +816,10 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
-    public void RemoveOrphanedStates_ReportsCandidatesPreservedByCompactionGaps([Values] bool hasOrphan)
+    public void RemoveOrphanedStates_ReportsCandidatesPreservedByCompactionGaps([Values] bool hasOrphan, [Values] bool debugEnabled)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsDebug.Returns(true);
+        logger.IsDebug.Returns(debugEnabled);
         ILogManager logs = Substitute.For<ILogManager>();
         ILogger wrappedLogger = new(logger);
         logs.GetClassLogger<SnapshotRepository>().Returns(wrappedLogger);
@@ -841,13 +841,15 @@ public class SnapshotRepositoryTests
         }
         repository.SetLastCommittedStateId(head);
 
+        long ambiguousBefore = Metrics.SnapshotOrphanAmbiguousCandidates;
         int pruned = repository.RemoveOrphanedStates(head, head);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pruned, Is.EqualTo(hasOrphan ? 1 : 0));
             Assert.That(repository.HasState(interior), Is.True);
-            logger.Received().Debug(Arg.Is<string>(message => message.Contains("Preserved 1 snapshot candidate entries") && message.Contains("compaction gaps")));
+            Assert.That(Metrics.SnapshotOrphanAmbiguousCandidates, Is.GreaterThanOrEqualTo(ambiguousBefore + 1));
+            logger.Received(debugEnabled ? 1 : 0).Debug(Arg.Is<string>(message => message.Contains("Preserved 1 snapshot candidate entries") && message.Contains("compaction gaps")));
         }
     }
 

@@ -61,6 +61,16 @@ public static class Metrics
         set => Volatile.Write(ref _snapshotOrphanPruningSkipped, value);
     }
 
+    internal static long _snapshotOrphanAmbiguousCandidates;
+
+    [CounterMetric]
+    [Description("Snapshot candidates retained due to compaction gaps, counted again on each pruning sweep that examines them")]
+    public static long SnapshotOrphanAmbiguousCandidates
+    {
+        get => Volatile.Read(ref _snapshotOrphanAmbiguousCandidates);
+        set => Volatile.Write(ref _snapshotOrphanAmbiguousCandidates, value);
+    }
+
     internal static long _snapshotOrphanPrunedEntries;
 
     [CounterMetric]

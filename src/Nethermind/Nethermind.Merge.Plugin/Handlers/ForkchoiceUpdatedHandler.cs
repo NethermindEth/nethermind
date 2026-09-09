@@ -332,7 +332,7 @@ public class ForkchoiceUpdatedHandler(
             if (elapsed >= TimeSpan.Zero && elapsed < TimeSpan.FromSeconds(1)) return false;
         }
 
-        BlockHeader? recoveryHead = PrunedStateRecovery.FindRecoveryHead(_blockTree, stateReader!, newHeadHeader);
+        BlockHeader? recoveryHead = PrunedStateRecovery.FindRecoveryHead(_blockTree, stateReader, newHeadHeader);
         Block? block = recoveryHead is null ? null : _blockTree.FindBlock(recoveryHead.Hash!, BlockTreeLookupOptions.None);
         if (block is null)
         {
@@ -356,7 +356,7 @@ public class ForkchoiceUpdatedHandler(
             await processingQueue.Enqueue(block, _reExecutionOptions);
             using CancellationTokenSource timeout = new(_reExecutionTimeout);
             if (await processed.Task.WaitAsync(timeout.Token) != ProcessingResult.Success) return false;
-            return stateReader!.HasStateForBlock(newHeadHeader) ? true : null;
+            return stateReader.HasStateForBlock(newHeadHeader) ? true : null;
         }
         catch (OperationCanceledException)
         {
