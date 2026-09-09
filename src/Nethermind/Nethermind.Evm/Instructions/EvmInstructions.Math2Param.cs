@@ -75,23 +75,24 @@ public static partial class EvmInstructions
         // is four dependent adds either way.
         if (typeof(TOpMath) == typeof(OpAdd))
         {
+            ByteSwap.Swapper swap = ByteSwap.Hoist();
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte addTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
-            System.UInt128 sum = (System.UInt128)ByteSwap.Reverse(Add(ref top, 3)) +
-                ByteSwap.Reverse(Add(ref popped, 3));
-            Add(ref top, 3) = ByteSwap.Reverse((ulong)sum);
-            sum = (sum >> 64) + ByteSwap.Reverse(Add(ref top, 2)) +
-                ByteSwap.Reverse(Add(ref popped, 2));
-            Add(ref top, 2) = ByteSwap.Reverse((ulong)sum);
-            sum = (sum >> 64) + ByteSwap.Reverse(Add(ref top, 1)) +
-                ByteSwap.Reverse(Add(ref popped, 1));
-            Add(ref top, 1) = ByteSwap.Reverse((ulong)sum);
-            sum = (sum >> 64) + ByteSwap.Reverse(top) +
-                ByteSwap.Reverse(popped);
-            top = ByteSwap.Reverse((ulong)sum);
+            System.UInt128 sum = (System.UInt128)swap.Reverse(Add(ref top, 3)) +
+                swap.Reverse(Add(ref popped, 3));
+            Add(ref top, 3) = swap.Reverse((ulong)sum);
+            sum = (sum >> 64) + swap.Reverse(Add(ref top, 2)) +
+                swap.Reverse(Add(ref popped, 2));
+            Add(ref top, 2) = swap.Reverse((ulong)sum);
+            sum = (sum >> 64) + swap.Reverse(Add(ref top, 1)) +
+                swap.Reverse(Add(ref popped, 1));
+            Add(ref top, 1) = swap.Reverse((ulong)sum);
+            sum = (sum >> 64) + swap.Reverse(top) +
+                swap.Reverse(popped);
+            top = swap.Reverse((ulong)sum);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;
@@ -99,33 +100,34 @@ public static partial class EvmInstructions
 
         if (typeof(TOpMath) == typeof(OpSub))
         {
+            ByteSwap.Swapper swap = ByteSwap.Hoist();
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte subtractTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
             ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
-            ulong minuendPart = ByteSwap.Reverse(Add(ref minuend, 3));
-            ulong difference = minuendPart - ByteSwap.Reverse(Add(ref subtrahend, 3));
+            ulong minuendPart = swap.Reverse(Add(ref minuend, 3));
+            ulong difference = minuendPart - swap.Reverse(Add(ref subtrahend, 3));
             ulong borrow = difference > minuendPart ? 1UL : 0UL;
-            Add(ref subtrahend, 3) = ByteSwap.Reverse(difference);
+            Add(ref subtrahend, 3) = swap.Reverse(difference);
 
-            minuendPart = ByteSwap.Reverse(Add(ref minuend, 2));
-            difference = minuendPart - ByteSwap.Reverse(Add(ref subtrahend, 2));
+            minuendPart = swap.Reverse(Add(ref minuend, 2));
+            difference = minuendPart - swap.Reverse(Add(ref subtrahend, 2));
             ulong withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 2) = ByteSwap.Reverse(difference);
+            Add(ref subtrahend, 2) = swap.Reverse(difference);
 
-            minuendPart = ByteSwap.Reverse(Add(ref minuend, 1));
-            difference = minuendPart - ByteSwap.Reverse(Add(ref subtrahend, 1));
+            minuendPart = swap.Reverse(Add(ref minuend, 1));
+            difference = minuendPart - swap.Reverse(Add(ref subtrahend, 1));
             withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 1) = ByteSwap.Reverse(difference);
+            Add(ref subtrahend, 1) = swap.Reverse(difference);
 
-            difference = ByteSwap.Reverse(minuend) -
-                ByteSwap.Reverse(subtrahend) - borrow;
-            subtrahend = ByteSwap.Reverse(difference);
+            difference = swap.Reverse(minuend) -
+                swap.Reverse(subtrahend) - borrow;
+            subtrahend = swap.Reverse(difference);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
             return EvmExceptionType.None;
@@ -173,30 +175,31 @@ public static partial class EvmInstructions
     private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
         where TOpMath : struct, IOpMath2Param
     {
+        ByteSwap.Swapper swap = ByteSwap.Hoist();
         bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
         bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
 
         // Only the most significant limb carries the sign; the rest always compare unsigned.
         if (a != b)
         {
-            ulong aHigh = ByteSwap.Reverse(a);
-            ulong bHigh = ByteSwap.Reverse(b);
+            ulong aHigh = swap.Reverse(a);
+            ulong bHigh = swap.Reverse(b);
             bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
             return lessThan ? less : !less;
         }
 
         if (Add(ref a, 1) != Add(ref b, 1))
-            return CompareLimb(Add(ref a, 1), Add(ref b, 1), lessThan);
+            return CompareLimb(in swap, Add(ref a, 1), Add(ref b, 1), lessThan);
         if (Add(ref a, 2) != Add(ref b, 2))
-            return CompareLimb(Add(ref a, 2), Add(ref b, 2), lessThan);
-        return CompareLimb(Add(ref a, 3), Add(ref b, 3), lessThan);
+            return CompareLimb(in swap, Add(ref a, 2), Add(ref b, 2), lessThan);
+        return CompareLimb(in swap, Add(ref a, 3), Add(ref b, 3), lessThan);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool CompareLimb(ulong a, ulong b, bool lessThan)
+    private static bool CompareLimb(in ByteSwap.Swapper swap, ulong a, ulong b, bool lessThan)
     {
-        ulong aPart = ByteSwap.Reverse(a);
-        ulong bPart = ByteSwap.Reverse(b);
+        ulong aPart = swap.Reverse(a);
+        ulong bPart = swap.Reverse(b);
         return lessThan ? aPart < bPart : aPart > bPart;
     }
 

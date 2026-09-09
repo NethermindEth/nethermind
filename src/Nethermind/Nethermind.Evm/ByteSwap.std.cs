@@ -13,4 +13,17 @@ internal static partial class ByteSwap
     /// See <c>ByteSwap.zkevm.cs</c> for the guest form and why it differs.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Reverse(ulong value) => BinaryPrimitives.ReverseEndianness(value);
+
+    /// <summary>Hoists whatever a run of swaps needs to load, so a caller pays for it once.</summary>
+    /// <remarks>Nothing to hoist on the host; the empty struct disappears when inlined.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Swapper Hoist() => default;
+
+    /// <inheritdoc cref="Hoist"/>
+    internal readonly struct Swapper
+    {
+        /// <inheritdoc cref="ByteSwap.Reverse(ulong)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong Reverse(ulong value) => BinaryPrimitives.ReverseEndianness(value);
+    }
 }

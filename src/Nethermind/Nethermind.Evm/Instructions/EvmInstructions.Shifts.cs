@@ -126,12 +126,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
+        ByteSwap.Swapper swap = ByteSwap.Hoist();
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = ByteSwap.Reverse(Add(ref shift, 3));
+        ulong amount = swap.Reverse(Add(ref shift, 3));
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
             value = 0;
@@ -150,14 +151,14 @@ public static partial class EvmInstructions
                 {
                     int source = destination + wordShift;
                     ulong shifted = source < 4
-                        ? ByteSwap.Reverse(Add(ref value, source)) << bitShift
+                        ? swap.Reverse(Add(ref value, source)) << bitShift
                         : 0;
                     if (bitShift != 0 && source + 1 < 4)
                     {
-                        shifted |= ByteSwap.Reverse(Add(ref value, source + 1)) >> (64 - bitShift);
+                        shifted |= swap.Reverse(Add(ref value, source + 1)) >> (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = ByteSwap.Reverse(shifted);
+                    Add(ref value, destination) = swap.Reverse(shifted);
                 }
             }
             else
@@ -167,14 +168,14 @@ public static partial class EvmInstructions
                     int destination = 3 - offset;
                     int source = destination - wordShift;
                     ulong shifted = source >= 0
-                        ? ByteSwap.Reverse(Add(ref value, source)) >> bitShift
+                        ? swap.Reverse(Add(ref value, source)) >> bitShift
                         : 0;
                     if (bitShift != 0 && source > 0)
                     {
-                        shifted |= ByteSwap.Reverse(Add(ref value, source - 1)) << (64 - bitShift);
+                        shifted |= swap.Reverse(Add(ref value, source - 1)) << (64 - bitShift);
                     }
 
-                    Add(ref value, destination) = ByteSwap.Reverse(shifted);
+                    Add(ref value, destination) = swap.Reverse(shifted);
                 }
             }
         }
@@ -252,12 +253,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
+        ByteSwap.Swapper swap = ByteSwap.Hoist();
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         ref ulong value = ref As<byte, ulong>(ref topRef);
         ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = ByteSwap.Reverse(Add(ref shift, 3));
+        ulong amount = swap.Reverse(Add(ref shift, 3));
         ulong fill = As<byte, sbyte>(ref topRef) < 0 ? ulong.MaxValue : 0;
         if ((shift | Add(ref shift, 1) | Add(ref shift, 2)) != 0 || amount >= 256)
         {
@@ -275,17 +277,17 @@ public static partial class EvmInstructions
                 int destination = 3 - offset;
                 int source = destination - wordShift;
                 ulong shifted = source >= 0
-                    ? ByteSwap.Reverse(Add(ref value, source)) >> bitShift
+                    ? swap.Reverse(Add(ref value, source)) >> bitShift
                     : fill;
                 if (bitShift != 0)
                 {
                     ulong upper = source > 0
-                        ? ByteSwap.Reverse(Add(ref value, source - 1))
+                        ? swap.Reverse(Add(ref value, source - 1))
                         : fill;
                     shifted |= upper << (64 - bitShift);
                 }
 
-                Add(ref value, destination) = ByteSwap.Reverse(shifted);
+                Add(ref value, destination) = swap.Reverse(shifted);
             }
         }
 
