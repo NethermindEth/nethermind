@@ -28,6 +28,10 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
 
     public static AccessList Empty { get; } = new([], []);
 
+    /// <summary>Exactly-sized single-entry list, for hint producers on per-block paths.</summary>
+    public static AccessList ForSingleStorageCell(in StorageCell cell) =>
+        new([(cell.Address, 1)], [cell.Index]);
+
     public bool IsEmpty => _addresses.Count == 0;
     public (int AddressesCount, int StorageKeysCount) Count => (_addresses.Count, _keys.Count);
 

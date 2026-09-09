@@ -9,22 +9,37 @@ using System;
 
 namespace Nethermind.Xdc.RLP;
 
+/// <remarks>
+/// The plain-header fallback (see <see cref="FallbackDecoder"/>) is encode-only.
+/// Distinguishing a foreign header from an XDC one after <c>mixHash</c>/<c>nonce</c> would require
+/// telling XDC's required <c>Validators</c>/<c>Penalties</c> fields apart from Ethereum's optional
+/// post-merge fields (<c>BaseFeePerGas</c>, <c>WithdrawalsRoot</c>, etc.) — both just look like "more
+/// RLP content" at that point, so no reliable byte-shape check exists. This is safe because XDC nodes
+/// only ever decode XDC-shaped chain data through the global registry; it is not safe to decode
+/// arbitrary foreign headers once this decoder is registered as the process-wide default.
+/// </remarks>
 public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeaderDecoder where TH : XdcBlockHeader
 {
     private const int NonceLength = 8;
+
+    // Encodes headers that aren't TH (e.g. plain BlockHeader test fixtures) using the base Ethereum
+    // shape, mirroring AuRaHeaderDecoder's seal-only fallback. Needed once this decoder is registered
+    // as the process-wide Rlp default (see XdcHeaderModule), so foreign headers still encode correctly
+    // instead of throwing.
+    private static readonly HeaderDecoder FallbackDecoder = new();
 
     protected static bool IsForSealing(RlpBehaviors beh)
         => (beh & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
 
     protected abstract TH CreateHeader(
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         UInt256 difficulty,
         ulong number,
         ulong gasLimit,
         ulong timestamp,
-        byte[]? extraData);
+        byte[] extraData);
 
     protected abstract void DecodeHeaderSpecificFields(ref RlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
     protected abstract void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, TH header, RlpBehaviors rlpBehaviors)
@@ -44,19 +59,19 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         int headerCheck = decoderContext.Position + headerSequenceLength;
 
         // Common fields
-        Hash256? parentHash = decoderContext.DecodeKeccak();
-        Hash256? unclesHash = decoderContext.DecodeKeccak();
-        Address? beneficiary = decoderContext.DecodeAddress();
-        Hash256? stateRoot = decoderContext.DecodeKeccak();
-        Hash256? transactionsRoot = decoderContext.DecodeKeccak();
-        Hash256? receiptsRoot = decoderContext.DecodeKeccak();
-        Bloom? bloom = decoderContext.DecodeBloom();
+        Hash256 parentHash = decoderContext.DecodeKeccak();
+        Hash256 unclesHash = decoderContext.DecodeKeccak();
+        Address beneficiary = decoderContext.DecodeAddress();
+        Hash256 stateRoot = decoderContext.DecodeKeccak();
+        Hash256 transactionsRoot = decoderContext.DecodeKeccak();
+        Hash256 receiptsRoot = decoderContext.DecodeKeccak();
+        Bloom bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
         ulong number = decoderContext.DecodeULong();
         ulong gasLimit = decoderContext.DecodeULong();
         ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
-        byte[]? extraData = decoderContext.DecodeByteArray();
+        byte[] extraData = decoderContext.DecodeByteArray();
 
         TH header = CreateHeader(
             parentHash, unclesHash, beneficiary,
@@ -91,25 +106,29 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         }
 
         if (header is not TH h)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(header));
+        {
+            EnsurePlainFallbackAllowed(header);
+            FallbackDecoder.Encode(ref writer, header, rlpBehaviors);
+            return;
+        }
 
         writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
         // Common fields
-        writer.Encode(h.ParentHash);
-        writer.Encode(h.UnclesHash);
-        writer.Encode(h.Beneficiary);
-        writer.Encode(h.StateRoot);
-        writer.Encode(h.TxRoot);
-        writer.Encode(h.ReceiptsRoot);
-        writer.Encode(h.Bloom);
+        writer.Encode(h.ParentHash ?? Keccak.Zero);
+        writer.Encode(h.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
+        writer.Encode(h.Beneficiary ?? Address.Zero);
+        writer.Encode(h.StateRoot ?? Keccak.EmptyTreeHash);
+        writer.Encode(h.TxRoot ?? Keccak.EmptyTreeHash);
+        writer.Encode(h.ReceiptsRoot ?? Keccak.EmptyTreeHash);
+        writer.Encode(h.Bloom ?? Bloom.Empty);
         writer.Encode(h.Difficulty);
         writer.Encode(h.Number);
         writer.Encode(h.GasLimit);
         writer.Encode(h.GasUsed);
         writer.Encode(h.Timestamp);
         writer.Encode(h.ExtraData);
-        writer.Encode(h.MixHash);
+        writer.Encode(h.MixHash ?? Keccak.Zero);
         writer.Encode(h.Nonce, NonceLength);
 
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
@@ -123,7 +142,10 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         }
 
         if (item is not TH header)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
+        {
+            EnsurePlainFallbackAllowed(item);
+            return FallbackDecoder.Encode(item, rlpBehaviors);
+        }
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
         RlpWriter writer = new(bytes);
@@ -134,28 +156,42 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
     public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not TH header)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
+        {
+            EnsurePlainFallbackAllowed(item);
+            return FallbackDecoder.GetLength(item, rlpBehaviors);
+        }
 
         return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
+    }
+
+    // Only a genuine base BlockHeader may take the plain-shape fallback. Any other BlockHeader subtype
+    // that isn't TH (notably a different XdcBlockHeader subtype) would lose its XDC fields, so fail loudly.
+    private void EnsurePlainFallbackAllowed(BlockHeader header)
+    {
+        if (header.GetType() != typeof(BlockHeader))
+        {
+            throw new InvalidOperationException(
+                $"{GetType().Name} can only encode {typeof(TH).Name} or a plain {nameof(BlockHeader)}, but got {header.GetType().Name}.");
+        }
     }
 
     private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)
     {
         int contentLength =
-            +Rlp.LengthOf(header.ParentHash)
-            + Rlp.LengthOf(header.UnclesHash)
-            + Rlp.LengthOf(header.Beneficiary)
-            + Rlp.LengthOf(header.StateRoot)
-            + Rlp.LengthOf(header.TxRoot)
-            + Rlp.LengthOf(header.ReceiptsRoot)
-            + Rlp.LengthOf(header.Bloom)
+            +Rlp.LengthOf(header.ParentHash ?? Keccak.Zero)
+            + Rlp.LengthOf(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
+            + Rlp.LengthOf(header.Beneficiary ?? Address.Zero)
+            + Rlp.LengthOf(header.StateRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(header.TxRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(header.ReceiptsRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(header.Bloom ?? Bloom.Empty)
             + Rlp.LengthOf(header.Difficulty)
             + Rlp.LengthOf(header.Number)
             + Rlp.LengthOf(header.GasLimit)
             + Rlp.LengthOf(header.GasUsed)
             + Rlp.LengthOf(header.Timestamp)
             + Rlp.LengthOf(header.ExtraData)
-            + Rlp.LengthOf(header.MixHash)
+            + Rlp.LengthOf(header.MixHash ?? Keccak.Zero)
             + Rlp.LengthOfNonce(header.Nonce);
 
         contentLength += GetHeaderSpecificContentLength(header, rlpBehaviors);

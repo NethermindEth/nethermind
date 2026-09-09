@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
             RlpReader reader = new(rlp.Bytes);
-            TxReceipt deserialized = decoder.Decode(ref reader, RlpBehaviors.Storage);
+            TxReceipt deserialized = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Storage);
 
             deserialized.AssertEquivalentTo(GetExpected());
         }
@@ -213,6 +213,43 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(encodedBytes, Is.EqualTo(rlp.Bytes));
         }
 
+        [Test]
+        public void Compact_receipt_storage_encoding_rejects_null_logs()
+        {
+            TxReceipt receipt = Build.A.Receipt.TestObject;
+            receipt.Logs = null;
+
+            CompactReceiptStorageDecoder decoder = new();
+
+            Assert.That(
+                () => decoder.Encode(receipt),
+                Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void Compact_receipt_storage_decoding_skips_empty_log_entries()
+        {
+            LogEntry expected = Build.A.LogEntry
+                .WithAddress(TestItem.AddressA)
+                .WithTopics(TestItem.KeccakA)
+                .WithData(Bytes.FromHexString("0x0102"))
+                .TestObject;
+            Rlp encodedLog = CompactLogEntryDecoder.Instance.Encode(expected);
+            RlpReader reader = new(CreateCompactReceipt(Rlp.OfEmptyList, encodedLog).Bytes);
+
+            TxReceipt receipt = CompactReceiptStorageDecoder.Instance.DecodeGuardNotNull(
+                ref reader,
+                RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.Logs[0].Address, Is.EqualTo(expected.Address));
+                Assert.That(receipt.Logs[0].Topics, Is.EqualTo(expected.Topics));
+                Assert.That(receipt.Logs[0].Data, Is.EqualTo(expected.Data));
+            }
+        }
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             yield return (Build.A.Receipt.WithCalculatedBloom().TestObject, "basic with defaults");
@@ -236,6 +273,26 @@ namespace Nethermind.Core.Test.Encoding
             AssertStorageReceipt(txReceipt, deserialized);
         }
 
+        [Test]
+        public void Rejects_compact_receipt_with_oversized_log_data()
+        {
+            CompactReceiptStorageDecoder decoder = new();
+
+            Assert.Throws<RlpLimitException>(() =>
+            {
+                RlpReader ctx = new(CreateCompactReceipt(CreateMalformedCompactLogEntry(RlpLimit.DefaultLimit.Limit + 1L)).Bytes);
+                decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            });
+        }
+
+        [Test]
+        public void Rejects_compact_log_entry_struct_ref_with_oversized_log_data() =>
+            Assert.Throws<RlpLimitException>(() =>
+            {
+                RlpReader ctx = new(CreateMalformedCompactLogEntry(RlpLimit.DefaultLimit.Limit + 1L).Bytes);
+                CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.Storage, out _);
+            });
+
         private void AssertStorageReceipt(TxReceipt txReceipt, TxReceipt? deserialized)
         {
             using (Assert.EnterMultipleScope())
@@ -254,23 +311,17 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
-        private void AssertStorageLegacyReceipt(TxReceipt txReceipt, TxReceipt deserialized)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
-                Assert.That(deserialized.BlockHash, Is.EqualTo(txReceipt.BlockHash), "block hash");
-                Assert.That(deserialized.BlockNumber, Is.EqualTo(txReceipt.BlockNumber), "block number");
-                Assert.That(deserialized.Index, Is.EqualTo(txReceipt.Index), "index");
-                Assert.That(deserialized.ContractAddress, Is.EqualTo(txReceipt.ContractAddress), "contract");
-                Assert.That(deserialized.Sender, Is.EqualTo(txReceipt.Sender), "sender");
-                Assert.That(deserialized.GasUsed, Is.EqualTo(txReceipt.GasUsed), "gas used");
-                Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-                Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
-                Assert.That(deserialized.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
-                Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
-            }
-        }
+        private static Rlp CreateCompactReceipt(params Rlp[] logEntries) => Rlp.Encode(
+            Rlp.Encode(1),
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(1L),
+            Rlp.Encode(logEntries));
+
+        private static Rlp CreateMalformedCompactLogEntry(long zeroPrefix) => Rlp.Encode(
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.OfEmptyList,
+            Rlp.Encode(zeroPrefix),
+            Rlp.OfEmptyByteArray);
 
     }
 }

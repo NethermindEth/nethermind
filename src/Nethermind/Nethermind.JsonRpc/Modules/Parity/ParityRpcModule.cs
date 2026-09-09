@@ -16,6 +16,7 @@ using Nethermind.KeyStore;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Network;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
@@ -23,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         IEcdsa ecdsa,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IEnode enode,
         ISignerStore signerStore,
         IKeyStore keyStore,
@@ -54,8 +55,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)
         {
-            (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(address, password.Secure());
-            if (result == Result.Success)
+            (ProtectedPrivateKey? privateKey, Result result) = _keyStore.GetProtectedKey(address, password.Secure());
+            if (result == Result.Success && privateKey is not null)
             {
                 _signerStore.SetSigner(privateKey);
                 return ResultWrapper<bool>.Success(true);

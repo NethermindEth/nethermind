@@ -21,6 +21,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
@@ -50,6 +51,48 @@ public class BlockhashProviderTests
         worldState.Commit(spec);
         worldState.CommitTree(0);
         return worldState;
+    }
+
+
+    [TestCase(true, false, true, true, TestName = "GetAccessList_WithDeployedContract_CoversTheParentHashSlot")]
+    [TestCase(false, false, true, false, TestName = "GetAccessList_BeforeEip2935_IsNull")]
+    [TestCase(true, true, true, false, TestName = "GetAccessList_ForGenesis_IsNull")]
+    [TestCase(true, false, false, false, TestName = "GetAccessList_WithoutDeployedContract_IsNull")]
+    public void GetAccessList_AtGivenForkAndState_HintsExactlyTheParentHashSlot(
+        bool eip2935Enabled, bool isGenesis, bool contractDeployed, bool expectList)
+    {
+        IReleaseSpec spec = eip2935Enabled ? Prague.Instance : Cancun.Instance;
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block parent = Build.A.Block.WithNumber(41).TestObject;
+        Block current = isGenesis
+            ? Build.A.Block.Genesis.WithStateRoot(stateRoot).TestObject
+            : Build.A.Block.WithParent(parent).WithStateRoot(stateRoot).TestObject;
+
+        using IDisposable scope = worldState.BeginScope(current.Header);
+        if (contractDeployed)
+        {
+            byte[] code = [1, 2, 3];
+            worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, spec);
+        }
+
+        AccessList? accessList = new BlockhashStore(worldState).GetAccessList(current, spec);
+
+        if (!expectList)
+        {
+            Assert.That(accessList, Is.Null);
+            return;
+        }
+
+        UInt256 expectedSlot = new((current.Number - 1) % spec.Eip2935RingBufferSize);
+        Assert.That(accessList, Is.Not.Null);
+        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList!)
+        {
+            Assert.That(address, Is.EqualTo(Eip2935Constants.BlockHashHistoryAddress));
+            foreach (UInt256 storageKey in storageKeys)
+            {
+                Assert.That(storageKey, Is.EqualTo(expectedSlot), "the hint must cover exactly the ring-buffer slot the block writes");
+            }
+        }
     }
 
     private static BlockhashProvider CreateBlockHashProvider(IHeaderFinder headerFinder, IReleaseSpec spec)
@@ -219,11 +262,8 @@ public class BlockhashProviderTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(512ul)]
-    [TestCase(8192ul)]
-    [TestCase(8193ul)]
-    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(ulong chainLength)
+    [Test]
+    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash([Values(1ul, 512ul, 8192ul, 8193ul)] ulong chainLength)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
@@ -321,12 +361,10 @@ public class BlockhashProviderTests
         TestSingleReleaseSpecProvider specProvider = new(spec);
         BlockAccessListManager balManager = new(
             balWorldState,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));
         balManager.Setup(current);

@@ -47,7 +47,9 @@ public class ProcessedTransactionsDbCleanerTests
         Assert.That(returnedTxs!.Length, Is.EqualTo(2));
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        ProcessedTransactionsDbCleaner dbCleaner = new(blockTree, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.BlobTransactionsDb.Returns(columnsDb);
+        ProcessedTransactionsDbCleaner dbCleaner = new(blockTree, dbProvider, _logManager, new TxPoolConfig());
 
         blockTree.BlocksFinalized += Raise.EventWith(
             new FinalizeEventArgs(Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));

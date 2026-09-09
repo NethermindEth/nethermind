@@ -124,6 +124,13 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return await DoPrepareRequest(options, fastSyncLag, cancellation);
             }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                // A cancelled request is not a downloader failure: the dispatcher owns cancellation
+                // handling. A cancellation raised by another token still falls through to the
+                // catch-all below, so a single bad response cannot finish the feed.
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
@@ -681,21 +688,20 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (shouldProcess && !shouldDownloadReceipt)
             {
-                ulong firstBlock = firstBlockNumber;
-                // TODO: Double check this condition
-                // An edge case where we already have the state but are still downloading preceding blocks.
-                // We cannot process such blocks, but we are still requested to process them via blocksRequest.Options.
-                // Therefore, we detect this situation and switch from processing to receipts downloading.
+                // Persisted state can sit ahead of the head: a fast-sync to full-sync transition, or a
+                // crash that left it ahead. Blocks at or below it already have their post-state; processing
+                // them finds no parent state, throws, and deletes the branch. Download receipts instead.
+                ulong headNumber = _blockTree.Head?.Number ?? 0;
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                bool toBeProcessedHasNoProcessedParent = firstBlock > (bestProcessedBlock + 1);
-                bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
-                if (isFastSyncTransition)
+                bool isFastSyncTransition = headIsGenesis && firstBlockNumber > (bestProcessedBlock + 1);
+                ulong bestFullState = _fullStateFinder.FindBestFullState();
+                bool persistedStateAheadOfHead = bestFullState > headNumber;
+                if (isFastSyncTransition || persistedStateAheadOfHead)
                 {
-                    ulong bestFullState = _fullStateFinder.FindBestFullState();
-                    shouldProcess = firstBlock > bestFullState && bestFullState != 0;
+                    shouldProcess = firstBlockNumber > bestFullState && bestFullState != 0;
                     if (!shouldProcess)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlock}, bestFullState: {bestFullState}, trying to load receipts");
+                        if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlockNumber}, bestFullState: {bestFullState}, trying to load receipts");
                         shouldDownloadReceipt = true;
                     }
                 }

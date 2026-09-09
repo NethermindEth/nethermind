@@ -32,7 +32,9 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// Controls
     /// - <see cref="ReportSelfDestruct"/>
     /// - <see cref="ReportAction"/>
-    /// - <see cref="ReportActionEnd"/>
+    /// - <see cref="ReportActionEnd(ulong, ReadOnlyMemory{byte})"/>
+    /// - <see cref="ReportActionEnd(ulong, Address, ReadOnlyMemory{byte})"/>
+    /// - <see cref="ReportActionRevert"/>
     /// - <see cref="ReportActionError"/>
     /// </remarks>
     bool IsTracingActions { get; }
@@ -237,13 +239,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
-    /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(in ZeroPaddedSpan stackItem) => ReportStackPush(stackItem.ToArray().AsSpan());
-
-    /// <summary>
-    ///
-    /// </summary>
     /// <param name="memoryTrace"></param>
     /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
     void SetOperationMemory(TraceMemory memoryTrace);
@@ -292,14 +287,6 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
-
-    /// <summary>
-    ///
-    /// </summary>
-    /// <param name="offset"></param>
-    /// <param name="data"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data) => ReportMemoryChange(offset, data.ToArray());
 
     /// <summary>
     ///

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -20,20 +22,56 @@ namespace Nethermind.Network
         {
             int contentEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
             ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit);
-            return IsEnrString(firstItem)
-                ? DecodeEnrFormat(ref decoderContext, firstItem, contentEnd)
+            return IsNodeString(firstItem)
+                ? DecodeNodeStringFormat(ref decoderContext, firstItem, contentEnd)
                 : DecodeLegacyFormat(ref decoderContext, firstItem);
         }
 
-        private static NetworkNode DecodeEnrFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)
+        private static NetworkNode DecodeNodeStringFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)
         {
             string nodeString = Encoding.UTF8.GetString(firstItem);
             long reputation = decoderContext.DecodeLong();
             decoderContext.Check(contentEnd);
-            return new NetworkNode(nodeString)
+            NetworkNode node = new(NormalizeLegacyUnbracketedIpv6Enode(nodeString));
+            node.Reputation = reputation;
+            return node;
+        }
+
+        private static string NormalizeLegacyUnbracketedIpv6Enode(string nodeString)
+        {
+            if (!nodeString.StartsWith("enode://", StringComparison.OrdinalIgnoreCase))
             {
-                Reputation = reputation
-            };
+                return nodeString;
+            }
+
+            int hostSeparator = nodeString.IndexOf('@');
+            if (hostSeparator < 0)
+            {
+                return nodeString;
+            }
+
+            int hostStart = hostSeparator + 1;
+            int queryStart = nodeString.IndexOf('?', hostStart);
+            int endpointEnd = queryStart < 0 ? nodeString.Length : queryStart;
+            // The persisted legacy format always ends its endpoint with :port, including unbracketed IPv6 hosts.
+            int portSeparator = nodeString.LastIndexOf(':', endpointEnd - 1);
+            if (portSeparator <= hostStart)
+            {
+                return nodeString;
+            }
+
+            ReadOnlySpan<char> hostText = nodeString.AsSpan(hostStart, portSeparator - hostStart);
+            if (hostText[0] == '['
+                || !IPAddress.TryParse(hostText, out IPAddress? host)
+                || host.AddressFamily != AddressFamily.InterNetworkV6)
+            {
+                return nodeString;
+            }
+
+            return string.Concat(
+                nodeString.AsSpan(0, hostStart),
+                Enode.FormatEnodeHost(host),
+                nodeString.AsSpan(portSeparator));
         }
 
         private static NetworkNode DecodeLegacyFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> publicKeyBytes)
@@ -60,7 +98,7 @@ namespace Nethermind.Network
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             writer.StartSequence(contentLength);
-            if (!item.IsEnr)
+            if (!ShouldEncodeNodeString(item))
             {
                 EncodeLegacyFormat(ref writer, item);
                 return;
@@ -82,7 +120,7 @@ namespace Nethermind.Network
             writer.Encode(item.Reputation);
         }
 
-        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => item.IsEnr
+        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => ShouldEncodeNodeString(item)
             ? Rlp.LengthOf(item.ToString())
                 + Rlp.LengthOf(item.Reputation)
             : Rlp.LengthOf(item.NodeId.Bytes)
@@ -91,8 +129,10 @@ namespace Nethermind.Network
                 + 1
                 + Rlp.LengthOf(item.Reputation);
 
-        private static bool IsEnrString(ReadOnlySpan<byte> value) =>
+        private static bool ShouldEncodeNodeString(NetworkNode item) => item.IsEnr || item.DiscoveryPort != item.Port;
+
+        private static bool IsNodeString(ReadOnlySpan<byte> value) =>
             value.Length != PublicKey.LengthInBytes &&
-            value is [(byte)'e', (byte)'n', (byte)'r', (byte)':', ..];
+            (value.StartsWith("enr:"u8) || value.StartsWith("enode:"u8));
     }
 }

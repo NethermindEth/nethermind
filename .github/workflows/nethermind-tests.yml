@@ -25,9 +25,20 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
+  # Build the test binaries once per Linux RID and share as an artifact. Windows/macOS
+  # are excluded — their artifacts can't be deduped cheaply, so building in-job is faster.
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}'
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     outputs:
@@ -40,12 +51,14 @@ jobs:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-          - windows-latest
         project:
           - Nethermind.Abi.Test
+          - Nethermind.Analyzers.Test
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
+          - Nethermind.BalRecorder.Test
           - Nethermind.Blockchain.Test
+          - Nethermind.CensorshipDetector.Plugin.Test
           - Nethermind.Clique.Test
           - Nethermind.Config.Test
           - Nethermind.Consensus.Test
@@ -61,6 +74,7 @@ jobs:
           - Nethermind.HealthChecks.Test
           - Nethermind.History.Test
           - Nethermind.Hive.Test
+          - Nethermind.Init.Snapshot.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
@@ -73,14 +87,20 @@ jobs:
           - Nethermind.Network.Dns.Test
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
+          - Nethermind.OpcodeTracing.Plugin.Test
           - Nethermind.Optimism.Test
+          - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Serialization.SszGenerator.Test
           - Nethermind.Shutter.Test
           - Nethermind.Sockets.Test
           - Nethermind.Specs.Test
+          - Nethermind.State.Flat.History.Test
+          - Nethermind.State.Flat.Test
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
+          - Nethermind.StateDiffsWriter.Test
           - Nethermind.Synchronization.Test
           - Nethermind.Taiko.Test
           - Nethermind.Trie.Test
@@ -88,8 +108,11 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Synchronization.Test on ARM/macOS is chunked (see include block) — its unchunked variant hits the 15-min wall.
+        exclude: # Synchronization.Test is chunked on every runner (see include block) — its unchunked variant hits the 15-min wall.
           - runner: ubuntu-24.04-arm
+            project: Nethermind.Synchronization.Test
+            chunk: ''
+          - runner: ubuntu-latest
             project: Nethermind.Synchronization.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
@@ -110,12 +133,35 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
@@ -124,9 +170,16 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          dotnet build ${{ matrix.project }}.csproj -c release
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+          else
+            dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+          fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
@@ -136,10 +189,22 @@ jobs:
             exit 0
           elif [[ $rc -eq 1 ]]; then
             exit 1
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -151,8 +216,12 @@ jobs:
 
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
+    env:
+      # Only these EF fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -172,6 +241,7 @@ jobs:
           - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
+          - Ethereum.Ssz.Test
           - Ethereum.Transaction.Test
           - Ethereum.Trie.Test
         chunk: ['']
@@ -193,12 +263,19 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Fetch submodules
+        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
@@ -207,9 +284,16 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
-          dotnet build ${{ matrix.project }}.csproj -c release
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+          else
+            dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+          fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
@@ -219,10 +303,22 @@ jobs:
             exit 0
           elif [[ $rc -eq 1 ]]; then
             exit 1
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
+
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-hang-dump
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -234,6 +330,7 @@ jobs:
 
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -253,35 +350,10 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-        include:
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, label: Sequential } }
     steps:
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
         run: git config --system core.longpaths true
-
-      - name: Free up disk space
-        if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -289,10 +361,16 @@ jobs:
       - name: Fetch submodules
         uses: ./.github/actions/fetch-submodules
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -300,9 +378,16 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            dotnet restore ${{ matrix.test.project }}.csproj
+          else
+            dotnet build ${{ matrix.test.project }}.csproj -c release
+          fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
@@ -312,14 +397,68 @@ jobs:
             exit 0
           elif [[ $rc -eq 1 ]]; then
             exit 1
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
+      - name: Upload hang dump
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.runner }}-hang-dump
+          path: src/Nethermind/${{ matrix.test.project }}/TestResults/*_hang.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
+  # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
+  # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
+  # layout runs from nethermind-tests-flat.yml.
+  nethtest:
+    name: EEST nethtest
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
+      setup_group: sequential
+
+  matrix-guard:
+    name: Check test project matrix is exhaustive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check every test project has a matrix entry
+        run: |
+          # Intentional exclusions:
+          # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
+          # - Nethermind.Core.ZkEvm.Test, Nethermind.Trie.ZkEvm.Test, Nethermind.Evm.ZkEvm.Test: run with
+          #   EnableZkEvm=true in stateless-tests.yml
+          # - Ethereum.Blockchain.Pyspec.Test: the fixture shards are superseded by the nethtest job
+          #   (see run-nethtest.yml). The assembly also holds plain unit tests (StatelessSchemaTests)
+          #   that remain unwired: test discovery loads the full pyspec fixture sets, so a matrix
+          #   run exceeds the job timeout. Wiring those tests needs a project move.
+          allowlist="Nethermind.Precompiles.Benchmark.Test Nethermind.Core.ZkEvm.Test Nethermind.Trie.ZkEvm.Test Nethermind.Evm.ZkEvm.Test Ethereum.Blockchain.Pyspec.Test"
+          missing=0
+          for dir in src/Nethermind/*.Test; do
+            project=$(basename "$dir")
+            [[ -f "$dir/$project.csproj" ]] || continue
+            [[ " $allowlist " == *" $project "* ]] && continue
+            esc=$(printf '%s' "$project" | sed 's/\./\\./g')
+            if ! grep -qE "^ +- ${esc}\$|project: ${esc}[,} ]" .github/workflows/nethermind-tests.yml; then
+              echo "::error::$project runs in no CI matrix - add it to a matrix in nethermind-tests.yml or to the allowlist in this step"
+              missing=1
+            fi
+          done
+          exit $missing
+
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked]
+    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -328,7 +467,9 @@ jobs:
           [[ \
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.tests-spec.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
+            "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.nethtest.result }}" == "success" && \
+            "${{ needs.matrix-guard.result }}" == "success" \
           ]]
 
   codecov-upload:

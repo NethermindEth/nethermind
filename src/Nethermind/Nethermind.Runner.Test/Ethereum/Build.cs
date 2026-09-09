@@ -16,11 +16,9 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.KeyStore;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using Nethermind.Specs;
 using NSubstitute;
 using Nethermind.Core;
@@ -88,12 +86,8 @@ namespace Nethermind.Runner.Test.Ethereum
         public static void MockOutNethermindApi(NethermindApi api)
         {
             api.TxPool = Substitute.For<ITxPool>();
-            api.Wallet = Substitute.For<IWallet>();
             api.BlockProducer = Substitute.For<IBlockProducer>();
-            api.EngineSigner = Substitute.For<ISigner>();
-            api.KeyStore = Substitute.For<IKeyStore>();
             api.TxSender = Substitute.For<ITxSender>();
-            api.EngineSignerStore = Substitute.For<ISignerStore>();
             api.TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>();
         }
     }

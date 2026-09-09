@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -19,12 +20,15 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -67,6 +71,85 @@ public partial class EngineModuleTests
             return module;
         }
     }
+
+    private static IEnumerable<TestCaseData> WitnessPayloadVersionCases()
+    {
+        yield return new TestCaseData(
+            EngineApiVersions.NewPayload.V4,
+            nameof(IEngineRpcModule.engine_newPayloadV4));
+        yield return new TestCaseData(
+            EngineApiVersions.NewPayload.V5,
+            nameof(IEngineRpcModule.engine_newPayloadV5));
+    }
+
+    [TestCaseSource(nameof(WitnessPayloadVersionCases))]
+    public async Task Handler_delegates_to_matching_newPayload_version(int version, string expectedMethod)
+    {
+        IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+        ResultWrapper<PayloadStatusV1> status = ResultWrapper<PayloadStatusV1>.Success(
+            new PayloadStatusV1 { Status = PayloadStatus.Syncing });
+        module.engine_newPayloadV4(
+                Arg.Any<ExecutionPayloadV3>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(status);
+        module.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(status);
+        module.ClearReceivedCalls();
+
+        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await HandleWitnessPayloadAsync(handler, version, []);
+
+        ICall[] calls = [.. module.ReceivedCalls()];
+        Assert.That(calls, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].GetMethodInfo().Name, Is.EqualTo(expectedMethod));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+    }
+
+    [TestCaseSource(nameof(WitnessPayloadVersionCases))]
+    public async Task Handler_preserves_null_blobVersionedHashes_for_validation(int version, string expectedMethod)
+    {
+        IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
+        ResultWrapper<PayloadStatusV1> status = ResultWrapper<PayloadStatusV1>.Fail(
+            "Blob versioned hashes must not be null", ErrorCodes.InvalidParams);
+        module.engine_newPayloadV4(
+                Arg.Any<ExecutionPayloadV3>(), null!, Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(status);
+        module.engine_newPayloadV5(
+                Arg.Any<ExecutionPayloadV4>(), null!, Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(status);
+        module.ClearReceivedCalls();
+
+        NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await HandleWitnessPayloadAsync(handler, version, null);
+
+        ICall[] calls = [.. module.ReceivedCalls()];
+        Assert.That(calls, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].GetMethodInfo().Name, Is.EqualTo(expectedMethod));
+            Assert.That(calls[0].GetArguments()[1], Is.Null);
+        }
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    private static Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleWitnessPayloadAsync(
+        NewPayloadWithWitnessHandler handler,
+        int version,
+        Hash256?[]? blobVersionedHashes) => version switch
+        {
+            EngineApiVersions.NewPayload.V4 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV3>(
+                new ExecutionPayloadV3 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
+            EngineApiVersions.NewPayload.V5 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(
+                new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
+            _ => throw new ArgumentOutOfRangeException(nameof(version)),
+        };
 
     [Test]
     public void Rendezvous_RequestWitness_returns_incomplete_task_until_completed()
@@ -305,6 +388,33 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task E2E_empty_Prague_block_produces_VALID_with_non_null_witness()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        ExecutionPayloadV3 payload = await BuildAndGetPayloadResultV4(
+            rpc,
+            chain,
+            head.Hash!,
+            Keccak.Zero,
+            head.Hash!,
+            head.Timestamp + 1,
+            TestItem.KeccakH,
+            TestItem.AddressF,
+            []);
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result = await rpc.engine_newPayloadWithWitnessV4(
+            payload, [], payload.ParentBeaconBlockRoot, []);
+        using Witness? witness = result.Data.ExecutionWitness;
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(witness, Is.Not.Null);
+        Assert.That(witness!.State.Count, Is.GreaterThan(0),
+            "witness State must contain at least the state root proof node");
+    }
+
+    [Test]
     public async Task E2E_empty_Amsterdam_block_produces_VALID_with_non_null_witness()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -361,13 +471,13 @@ public partial class EngineModuleTests
 
         (ExecutionPayloadV4 p1, byte[][]? r1) = await BuildAmsterdamPayload(chain);
         ResultWrapper<NewPayloadWithWitnessV1Result> res1 =
-            await rpc.engine_newPayloadWithWitness(p1, [], TestItem.KeccakE, r1 ?? []);
+            await rpc.engine_newPayloadWithWitnessV5(p1, [], TestItem.KeccakE, r1 ?? []);
         await rpc.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(p1.BlockHash!, p1.BlockHash!, p1.BlockHash!), null);
 
         (ExecutionPayloadV4 p2, byte[][]? r2) = await BuildAmsterdamPayload(chain);
         ResultWrapper<NewPayloadWithWitnessV1Result> res2 =
-            await rpc.engine_newPayloadWithWitness(p2, [], TestItem.KeccakE, r2 ?? []);
+            await rpc.engine_newPayloadWithWitnessV5(p2, [], TestItem.KeccakE, r2 ?? []);
 
         Assert.That(res1.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(res2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -379,6 +489,52 @@ public partial class EngineModuleTests
         Assert.That(w2, Is.Not.Null);
         Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
+    }
+
+    [Test]
+    public async Task E2E_witness_is_serialized_as_an_rlp_data_string()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+
+        string response = await RpcTest.TestSerializedRequest(
+            chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            payload, Array.Empty<Hash256>(), TestItem.KeccakE, requests ?? []);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement result = document.RootElement.GetProperty("result");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.TryGetProperty("executionWitness", out _), Is.False,
+                "JSON uses witness DATA only");
+        }
+
+        RlpReader reader = new(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!));
+        reader.ReadSequenceLength();
+        int headersLength = reader.ReadSequenceLength();
+        int headersEnd = reader.Position + headersLength;
+
+        HeaderDecoder headerDecoder = new();
+        BlockHeader? lastHeader = null;
+        while (reader.Position < headersEnd)
+            lastHeader = headerDecoder.Decode(ref reader);
+
+        int headersPosition = reader.Position;
+        byte[][] codes = reader.DecodeByteArrays();
+        byte[][] state = reader.DecodeByteArrays();
+        reader.CheckEnd();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headersPosition, Is.EqualTo(headersEnd));
+            Assert.That(codes.All(static code => code.Length > 0), Is.True);
+            Assert.That(state, Is.Not.Empty);
+            Assert.That(state.All(static node => node.Length > 0), Is.True);
+            Assert.That(lastHeader?.Number, Is.EqualTo(payload.BlockNumber - 1));
+        }
     }
 
     [Test]
@@ -414,7 +570,7 @@ public partial class EngineModuleTests
         };
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(bad, [], TestItem.KeccakE, requests ?? []);
+            await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(bad, [], TestItem.KeccakE, requests ?? []);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success),
             "non-VALID status must still yield HTTP 200 / RPC success per the spec");
@@ -427,7 +583,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Regression_ProcessOne_called_exactly_once_during_engine_newPayloadWithWitness()
+    public async Task Regression_ProcessOne_called_exactly_once_during_engine_newPayloadWithWitnessV5()
     {
         int processCount = 0;
 
@@ -441,7 +597,7 @@ public partial class EngineModuleTests
         processCount = 0;
 
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(
+            await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(
                 payload, [], TestItem.KeccakE, requests ?? []);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -544,14 +700,16 @@ public partial class EngineModuleTests
 
     /// <summary>
     /// Builds one Amsterdam block on the current head (including <paramref name="txs"/>), submits it via
-    /// <c>engine_newPayloadWithWitness</c>, asserts the block is VALID, and returns the produced witness.
+    /// <c>engine_newPayloadWithWitnessV5</c>, asserts the block is VALID, and returns the produced witness.
     /// </summary>
     private static async Task<Witness> ProduceWitnessedBlock(MergeTestBlockchain chain, params Transaction[] txs)
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
-            await chain.EngineRpcModule.engine_newPayloadWithWitness(payload, [], TestItem.KeccakE, requests ?? []);
+            await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Witness? witness = result.Data.ExecutionWitness;
@@ -563,10 +721,17 @@ public partial class EngineModuleTests
     private static async Task ProduceCanonicalBlock(MergeTestBlockchain chain, params Transaction[] txs)
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
-        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain, txs.Length);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
-        await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+
+        Task txPoolHeadWait = chain.WaitForTxPoolHead(payload.BlockHash!);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
+        await txPoolHeadWait;
     }
 
     /// <summary>
@@ -585,19 +750,27 @@ public partial class EngineModuleTests
         foreach (byte[] node in witness.State)
             witnessNodes.Add(ValueKeccak.Compute(node));
 
-        Assert.That(proof.Proof, Is.Not.Null.And.Not.Empty, $"expected a non-empty account proof for {account}");
-        foreach (byte[] node in proof.Proof!)
+        Assert.That(proof.Proof, Is.Not.Empty, $"expected a non-empty account proof for {account}");
+        foreach (byte[] node in proof.Proof)
             Assert.That(witnessNodes, Does.Contain(ValueKeccak.Compute(node)),
                 $"witness State must contain the account-proof node for {account}");
 
-        foreach (StorageProof storageProof in proof.StorageProofs ?? [])
-            foreach (byte[] node in storageProof.Proof ?? [])
+        foreach (StorageProof storageProof in proof.StorageProofs)
+            foreach (byte[] node in storageProof.Proof)
                 Assert.That(witnessNodes, Does.Contain(ValueKeccak.Compute(node)),
                     $"witness State must contain the storage-proof node for {account}");
     }
 
+    /// <summary>
+    /// Builds one Amsterdam payload on the current head and returns it once it carries at least
+    /// <paramref name="expectedTxCount"/> transactions.
+    /// </summary>
+    /// <remarks>
+    /// Callers must pass what they submitted: the first improvement can complete before the tx pool has made
+    /// those transactions selectable, and a parent-only wait would then hand back the empty payload.
+    /// </remarks>
     private static async Task<(ExecutionPayloadV4 Payload, byte[][]? ExecutionRequests)>
-        BuildAmsterdamPayload(MergeTestBlockchain chain)
+        BuildAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount = 0)
     {
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block head = chain.BlockTree.Head!;
@@ -610,12 +783,13 @@ public partial class EngineModuleTests
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
             SlotNumber = (ulong?)(head.Number + 1),
+            TargetGasLimit = head.GasLimit,
         };
 
         Hash256 headHash = head.Hash!;
         ForkchoiceStateV1 fcu = new(headHash, headHash, headHash);
 
-        Task improvementWait = chain.WaitForImprovedBlock(headHash);
+        Task improvementWait = chain.WaitForImprovedBlock(headHash, expectedTxCount);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult =
             await rpc.engine_forkchoiceUpdatedV4(fcu, attributes);
         Assert.That(fcuResult.Result.ResultType, Is.EqualTo(ResultType.Success));
@@ -625,6 +799,8 @@ public partial class EngineModuleTests
         byte[] payloadIdBytes = Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
         ResultWrapper<GetPayloadV6Result?> getPayload = await rpc.engine_getPayloadV6(payloadIdBytes);
         Assert.That(getPayload.Data, Is.Not.Null);
+        Assert.That(getPayload.Data!.ExecutionPayload.Transactions, Has.Length.AtLeast(expectedTxCount),
+            "payload must carry the submitted transactions");
 
         return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
     }
@@ -642,6 +818,12 @@ public partial class EngineModuleTests
         {
             add => inner.BlocksProcessing += value;
             remove => inner.BlocksProcessing -= value;
+        }
+
+        public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted
+        {
+            add => inner.BranchProcessingCompleted += value;
+            remove => inner.BranchProcessingCompleted -= value;
         }
 
         public event EventHandler<BlockEventArgs>? BlockProcessing

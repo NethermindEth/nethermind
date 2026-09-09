@@ -57,8 +57,6 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         ulong blockNumber)
     {
-        // EIP-158 must not delete accounts whose code/nonce were zeroed
-        // while storage remains, or EIP-7610 CREATE collision checks will miss it.
         spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
         state.Commit(spec, commitRoots: true);
@@ -161,4 +159,3 @@ public static class StateOverridesExtensions
         }
     }
 }
-

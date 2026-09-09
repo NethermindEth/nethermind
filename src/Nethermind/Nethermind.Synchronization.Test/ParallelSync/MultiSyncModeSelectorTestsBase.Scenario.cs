@@ -242,6 +242,26 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder IfThisNodeRecoveredWithStateAheadOfHeaders()
+                {
+                    // Unclean shutdown lost the last block tree writes while the flat state WAL
+                    // survived: the block tree is consistent within itself but behind the state.
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            ulong bestHeader = ChainHead.Number - 2;
+                            SyncProgressResolver.FindBestHeader().Returns(bestHeader);
+                            SyncProgressResolver.FindBestFullBlock().Returns(bestHeader);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(bestHeader);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
+                            SyncProgressResolver.ChainDifficulty.Returns(bestHeader);
+                            return "recovered with state ahead of headers";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 {
                     _syncProgressSetups.Add(

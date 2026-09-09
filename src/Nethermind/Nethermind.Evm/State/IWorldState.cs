@@ -97,6 +97,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
+    /// <summary>Only valid where no revert can follow AND the round is committed before any further
+    /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
+    void MarkStorageDestroyed(Address address) => ClearStorage(address);
+
     void RecalculateStateRoot();
 
     void DeleteAccount(Address address);
@@ -156,11 +160,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
-    // See https://eips.ethereum.org/EIPS/eip-7610
+    // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
         accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address) || !(GetNonce(address) == 0) || !IsStorageEmpty(address));
+            && (IsContract(address) || GetNonce(address) != 0);
     }
 }

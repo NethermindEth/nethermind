@@ -61,6 +61,20 @@ public class AddressTests
     }
 
     [Test]
+    public void Equals_span_works()
+    {
+        Address address = new(Keccak.Compute("a"));
+        Address other = new(Keccak.Compute("b"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(address.Equals(address.Bytes), Is.True);
+            Assert.That(address.Equals(other.Bytes), Is.False);
+            Assert.That(address.Equals(address.Bytes[..19]), Is.False);
+            Assert.That(address.Equals(ReadOnlySpan<byte>.Empty), Is.False);
+        }
+    }
+
+    [Test]
     public void Equals_works()
     {
         Address addressA = new(Keccak.Compute("a"));
@@ -72,7 +86,7 @@ public class AddressTests
             // ReSharper disable once EqualExpressionComparison
             Assert.That(addressA.Equals(addressA), Is.True);
             Assert.That(addressA.Equals(addressB), Is.False);
-            Assert.That(addressA.Equals(null), Is.False);
+            Assert.That(addressA.Equals((Address?)null), Is.False);
         }
     }
 
@@ -242,6 +256,18 @@ public class AddressTests
             ValueHash256 expectedHash = new(expectedHashBytes);
 
             Assert.That(address.ToHash(), Is.EqualTo(expectedHash));
+        }
+    }
+
+    [Test]
+    public void Hash_matches_the_ValueAddress_hash_of_the_same_bytes()
+    {
+        Random random = new(42);
+        byte[] bytes = new byte[Address.Size];
+        for (int i = 0; i < 256; i++)
+        {
+            random.NextBytes(bytes);
+            Assert.That(new ValueAddress(bytes).GetHashCode(), Is.EqualTo(new Address(bytes).GetHashCode()));
         }
     }
 

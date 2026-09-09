@@ -31,7 +31,14 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
         if (decoderContext.Position < lastCheck)
         {
-            transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
+            try
+            {
+                transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
+            }
+            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+            {
+                throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
+            }
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -88,12 +95,29 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.Nonce = decoderContext.DecodeULong();
+        transaction.Nonce = DecodeNonce(ref decoderContext);
         DecodeGasPrice(transaction, ref decoderContext);
         transaction.GasLimit = decoderContext.DecodeULong();
-        transaction.To = decoderContext.DecodeAddress();
+        transaction.To = decoderContext.DecodeAddressOrNull();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
+    }
+
+    private static ulong DecodeNonce(ref RlpReader decoderContext)
+    {
+        if (decoderContext.PeekPrefixAndContentLength().ContentLength <= sizeof(ulong))
+        {
+            return decoderContext.DecodeULong();
+        }
+
+        int position = decoderContext.Position;
+        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.DefaultLimit);
+        if (nonceBytes[0] == 0)
+        {
+            RlpHelpers.ThrowNonCanonicalInteger(position);
+        }
+
+        return RlpHelpers.ThrowNonceTooWide(position);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();

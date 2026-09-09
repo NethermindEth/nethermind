@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+  </ItemGroup>
+
+  <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
+    <Error Text="Build this project with EnableZkEvm=true." />
+  </Target>
+
+</Project>

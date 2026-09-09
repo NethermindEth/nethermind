@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Contracts;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Xdc.Test.Helpers;
+using Nethermind.Blockchain;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
@@ -55,7 +58,8 @@ internal class XdcStateSyncSnapshotManagerTests
             masternodeVotingContract
         );
 
-        XdcBlockHeader[] result = manager.GetGapBlocks(pivotHeader);
+        XdcBlockHeader[]? result = manager.GetGapBlocks(pivotHeader);
+        Assert.That(result, Is.Not.Null);
 
         int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
 
@@ -103,12 +107,38 @@ internal class XdcStateSyncSnapshotManagerTests
             masternodeVotingContract
         );
 
-        XdcBlockHeader[] result = manager.GetGapBlocks(pivotHeader);
+        XdcBlockHeader[]? result = manager.GetGapBlocks(pivotHeader);
+        Assert.That(result, Is.Not.Null);
         int[] resultNumbers = result.Select(r => (int)r.Number).ToArray();
 
         Assert.That(resultNumbers, Is.EqualTo(expectedGapBlockNumbers));
         snapshotManager.Received(1).StoreSnapshot(Arg.Is<Snapshot>(s =>
             s.BlockNumber == switchBlock - gap &&
             s.NextEpochCandidates.SequenceEqual(masternodeAddresses)));
+    }
+
+    [Test]
+    public void GetGapBlocks_WhenHeadersBelowPivotAreNotDownloadedYet_ReturnsNull()
+    {
+        XdcReleaseSpec spec = new() { EpochLength = 10, Gap = 5, SwitchBlock = 0, V2Configs = [new V2ConfigParams()] };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        XdcBlockHeader pivotHeader = new XdcBlockHeaderBuilder().WithNumber(100).TestObject;
+
+        // Headers are downloaded descending from the pivot, so the gap blocks below it are not inserted yet
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.IsEpochSwitchAtBlock(pivotHeader).Returns(true);
+
+        XdcStateSyncSnapshotManager manager = new(
+            specProvider,
+            epochSwitchManager,
+            blockTree,
+            Substitute.For<ISnapshotManager>(),
+            Substitute.For<IMasternodeVotingContract>()
+        );
+
+        Assert.That(manager.GetGapBlocks(pivotHeader), Is.Null);
     }
 }

@@ -172,6 +172,7 @@ internal static class RlpHelpers
     /// <summary>
     /// Counts the number of top-level RLP items in the given data range.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CountItems(ReadOnlySpan<byte> data, int position, int end, int maxSearch)
     {
         int numberOfItems = 0;
@@ -297,6 +298,10 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static uint ThrowNonCanonicalInteger(int position)
         => throw new RlpException($"Non-canonical integer at position {position}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static ulong ThrowNonceTooWide(int position)
+        => throw new RlpException($"NonceTooWide: Transaction nonce exceeds uint64 at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedIntegerLength(int position, int length)

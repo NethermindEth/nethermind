@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Messages
             helloMessage.P2PVersion = ctx.DecodeByte();
             helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
-            helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref RlpReader c) =>
+            helloMessage.Capabilities = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;

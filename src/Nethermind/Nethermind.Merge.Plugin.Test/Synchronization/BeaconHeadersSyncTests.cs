@@ -215,7 +215,7 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
-    public void Feed_able_to_sync_when_new_pivot_is_set()
+    public async Task Feed_able_to_sync_when_new_pivot_is_set()
     {
         BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(1000).TestObject;
         Block genesisBlock = syncedBlockTree.FindBlock(syncedBlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
@@ -233,19 +233,19 @@ public class BeaconHeadersSyncTests
 
         Context ctx = new() { BlockTree = blockTree, SyncConfig = syncConfig, BeaconPivot = pivot };
 
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0UL, 501UL);
+        await BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0UL, 501UL);
 
         // move best pointers forward as proxy for chain merge
         Block highestBlock = syncedBlockTree.FindBlock(700, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
 
         pivot.EnsurePivot(syncedBlockTree.FindHeader(900, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700UL, 701UL);
+        await BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700UL, 701UL);
 
         highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900UL, 901UL);
+        await BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900UL, 901UL);
     }
 
     [Test]
@@ -272,7 +272,7 @@ public class BeaconHeadersSyncTests
 
         Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
         Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
-        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
+        await BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
         using HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
         Assert.That(result, Is.Null);
         Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
@@ -400,7 +400,7 @@ public class BeaconHeadersSyncTests
         Assert.That(request, Is.Null);
     }
 
-    private async void BuildAndProcessHeaderSyncBatches(
+    private async Task BuildAndProcessHeaderSyncBatches(
         Context ctx,
         BlockTree blockTree,
         BlockTree syncedBlockTree,
@@ -420,7 +420,7 @@ public class BeaconHeadersSyncTests
             Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pivotHeader?.Number));
         }
 
-        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
+        await BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
 
         HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
         using (Assert.EnterMultipleScope())
@@ -437,7 +437,7 @@ public class BeaconHeadersSyncTests
         }
     }
 
-    private async void BuildHeadersSyncBatches(
+    private async Task BuildHeadersSyncBatches(
         Context ctx,
         BlockTree blockTree,
         BlockTree syncedBlockTree,

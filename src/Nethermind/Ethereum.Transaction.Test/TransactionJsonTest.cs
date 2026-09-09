@@ -94,7 +94,7 @@ public class TransactionJsonTest : GeneralStateTestBase
                     Balance = UInt256.Parse("0xffffffffff"),
                 }
             },
-            PostHash = new Hash256("0x7b8e9fcbf409db592f7263787cb6440e5a0b534efd3dd92e9b287dda0a84c080"),
+            PostHash = new Hash256("0xbb8e5ab8df3709e0abf2d53bb3bdbbea8159d35ea16d2c7fb5921fbc3de31ef6"),
             Transaction = transaction,
         };
 

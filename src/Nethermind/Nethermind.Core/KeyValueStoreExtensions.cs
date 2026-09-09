@@ -142,6 +142,40 @@ namespace Nethermind.Core
                 db.Remove(key);
             }
 
+            /// <summary>Drops every block-number-prefixed key in <c>[fromInclusive, toExclusive)</c>. The capability is
+            /// checked before the empty-range guard, so an empty range is a side-effect-free probe for a caller with
+            /// something irreversible to do first.</summary>
+            [SkipLocalsInit]
+            public void DeleteBlockNumberRange(ulong fromInclusive, ulong toExclusive, string columnName)
+            {
+                if (db is not IRangeRemovableKeyValueStore rangeRemovable)
+                {
+                    throw new NotSupportedException($"The {columnName} database ({db.GetType().Name}) cannot remove a key range.");
+                }
+
+                if (fromInclusive >= toExclusive) return;
+
+                Span<byte> from = stackalloc byte[40];
+                Span<byte> to = stackalloc byte[40];
+                GetBlockNumPrefixedKey(fromInclusive, default, from);
+                GetBlockNumPrefixedKey(toExclusive, default, to);
+                rangeRemovable.RemoveRange(from, to);
+            }
+
+            /// <summary>Gives back the storage behind an already-deleted range. Separate because it touches only keys
+            /// already declared absent, so it must not run inside a caller's write lock.</summary>
+            [SkipLocalsInit]
+            public void ReclaimBlockNumberRange(ulong fromInclusive, ulong toExclusive)
+            {
+                if (fromInclusive >= toExclusive || db is not IRangeRemovableKeyValueStore rangeRemovable) return;
+
+                Span<byte> from = stackalloc byte[40];
+                Span<byte> to = stackalloc byte[40];
+                GetBlockNumPrefixedKey(fromInclusive, default, from);
+                GetBlockNumPrefixedKey(toExclusive, default, to);
+                rangeRemovable.ReclaimRange(from, to);
+            }
+
             public void Set(long key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
 
             public void Set(ulong key, byte[] value) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;

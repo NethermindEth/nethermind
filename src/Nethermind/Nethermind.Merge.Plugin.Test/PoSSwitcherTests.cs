@@ -69,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 Assert.That(chainSpec.Parameters.TerminalTotalDifficulty?.IsZero, Is.True);
                 Assert.That(specProvider.TerminalTotalDifficulty?.IsZero, Is.True);
-                Assert.That(specProvider.MergeBlockNumber, Is.Null);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(0));
                 Assert.That(isTerminal, Is.False);
                 Assert.That(isPostMerge, Is.True);
                 Assert.That(genesis.Header.IsPostMerge, Is.True);
@@ -101,9 +101,8 @@ namespace Nethermind.Merge.Plugin.Test
             }
         }
 
-        [TestCase(5000000)]
-        [TestCase(4900000)]
-        public void IsTerminalBlock_returning_expected_results(long terminalTotalDifficulty)
+        [Test]
+        public void IsTerminalBlock_returning_expected_results([Values(5000000, 4900000)] long terminalTotalDifficulty)
         {
             Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             TestSpecProvider specProvider = new(London.Instance);
@@ -162,9 +161,8 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(2001));
         }
 
-        [TestCase(5000000)]
-        [TestCase(4900000)]
-        public void GetBlockSwitchInfo_returning_expected_results(long terminalTotalDifficulty)
+        [Test]
+        public void GetBlockSwitchInfo_returning_expected_results([Values(5000000, 4900000)] long terminalTotalDifficulty)
         {
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
@@ -183,11 +181,8 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header), Is.EqualTo((false, true))); // block with post merge flag
         }
 
-        [TestCase(5000000, false)]
-        [TestCase(4900000, false)]
-        [TestCase(5000000, true)]
-        [TestCase(4900000, true)]
-        public void GetBlockSwitchInfo_returning_expected_results_when_td_null_or_zero(long terminalTotalDifficulty, bool nullTdValue)
+        [Test]
+        public void GetBlockSwitchInfo_returning_expected_results_when_td_null_or_zero([Values(5000000, 4900000)] long terminalTotalDifficulty, [Values] bool nullTdValue)
         {
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;

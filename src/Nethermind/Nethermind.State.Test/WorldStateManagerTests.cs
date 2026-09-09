@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using System;
 using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -103,7 +104,9 @@ public class WorldStateManagerTests
 
             stateDb = ctx.ResolveKeyed<IDb>(DbNames.State);
             blockInfosDb = ctx.ResolveKeyed<IDb>(DbNames.BlockInfos);
-            IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
+            MainProcessingContext mainProcessingContext = (MainProcessingContext)ctx.Resolve<IMainProcessingContext>();
+            IWorldState worldState = mainProcessingContext.WorldState;
+            PreBlockCaches preBlockCaches = mainProcessingContext.LifetimeScope.ResolveOptional<PreBlockCaches>();
 
             Hash256 stateRoot;
 
@@ -122,8 +125,9 @@ public class WorldStateManagerTests
                     .WithNumber(i - 1)
                     .TestObject;
 
-                // Model production: the driver clears prewarmer caches between blocks; do the same here.
-                (worldState.ScopeProvider as IPreBlockCaches)?.Caches?.ClearCaches();
+                // No driver here to prepare the caches for each block, so reset them rather than lean on the
+                // consumer scope's own staleness check.
+                preBlockCaches?.ClearCaches();
                 using (worldState.BeginScope(baseBlock))
                 {
                     worldState.IncrementNonce(TestItem.AddressA, 1);
@@ -141,9 +145,7 @@ public class WorldStateManagerTests
     }
 
     [Test]
-    [TestCase(false)]
-    [TestCase(true)]
-    public void CreateReadOnlyTrieStore_can_resolve_state_root(bool useFlat)
+    public void CreateReadOnlyTrieStore_can_resolve_state_root([Values] bool useFlat)
     {
         IConfigProvider configProvider = new ConfigProvider();
         if (useFlat)

@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,11 +28,11 @@ public class ReadOnlySnapshotBundleTests
         FlatTestHelpers.MakeSnapshot(_pool, populate);
 
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
-        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics);
+        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
+            PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_FoundInSnapshot_ReturnsIt(bool detailedMetrics)
+    [Test]
+    public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateIndexedAccount(1);
@@ -45,9 +46,8 @@ public class ReadOnlySnapshotBundleTests
         reader.DidNotReceive().GetAccount(Arg.Any<Address>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_FallsBackToPersistence(bool detailedMetrics)
+    [Test]
+    public void GetAccount_FallsBackToPersistence([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateIndexedAccount(1);
@@ -59,9 +59,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_PersistenceMiss_ReturnsNull_AndRecordsMetric(bool detailedMetrics)
+    [Test]
+    public void GetAccount_PersistenceMiss_ReturnsNull_AndRecordsMetric([Values] bool detailedMetrics)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.GetAccount(Arg.Any<Address>()).Returns((Account?)null);
@@ -111,9 +110,8 @@ public class ReadOnlySnapshotBundleTests
         reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetSlot_FallsBackToPersistence_WithMetricBranches(bool detailedMetrics)
+    [Test]
+    public void GetSlot_FallsBackToPersistence_WithMetricBranches([Values] bool detailedMetrics)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         // Returning false leaves the SlotValue at default (zero) -> exercises the "value is zero" metric branch.
@@ -163,9 +161,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(found, Is.SameAs(node));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryLoadStateRlp_DelegatesToReader(bool detailedMetrics)
+    [Test]
+    public void TryLoadStateRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("12");
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -176,9 +173,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xff }));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryLoadStorageRlp_DelegatesToReader(bool detailedMetrics)
+    [Test]
+    public void TryLoadStorageRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("ab");
         Hash256 address = TestItem.KeccakA;

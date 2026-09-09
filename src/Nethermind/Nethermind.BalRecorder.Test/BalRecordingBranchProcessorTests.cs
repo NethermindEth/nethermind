@@ -63,17 +63,23 @@ public class BalRecordingBranchProcessorTests
         Block? processed = null;
         Block? processing = null;
         IReadOnlyList<Block>? batch = null;
+        BranchProcessingCompletedEventArgs? completed = null;
         sut.BlockProcessed += (_, e) => processed = e.Block;
         sut.BlocksProcessing += (_, e) => batch = e.Blocks;
+        sut.BranchProcessingCompleted += (_, e) => completed = e;
         sut.BlockProcessing += (_, e) => processing = e.Block;
 
         inner.RaiseBlockProcessed(block);
         inner.RaiseBlocksProcessing([block]);
+        inner.RaiseBranchProcessingCompleted([block]);
         inner.RaiseBlockProcessing(block);
 
         Assert.That(processed, Is.SameAs(block));
         Assert.That(processing, Is.SameAs(block));
         Assert.That(batch, Is.EqualTo(new[] { block }));
+        Assert.That(completed?.SuggestedBlocks, Is.EqualTo(new[] { block }));
+        Assert.That(completed?.ProcessedBlocksCount, Is.EqualTo(1));
+        Assert.That(completed?.Succeeded, Is.True);
     }
 
     private sealed class StubBranchProcessor : IBranchProcessor
@@ -88,10 +94,13 @@ public class BalRecordingBranchProcessorTests
 
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+        public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
         public event EventHandler<BlockEventArgs>? BlockProcessing;
 
         public void RaiseBlockProcessed(Block block) => BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block, []));
         public void RaiseBlocksProcessing(IReadOnlyList<Block> blocks) => BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(blocks));
+        public void RaiseBranchProcessingCompleted(IReadOnlyList<Block> blocks) =>
+            BranchProcessingCompleted?.Invoke(this, new BranchProcessingCompletedEventArgs(blocks, blocks.Count));
         public void RaiseBlockProcessing(Block block) => BlockProcessing?.Invoke(this, new BlockEventArgs(block));
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -34,6 +33,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.TxPool;
 using Nethermind.Optimism.Precompiles;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Optimism.CL.Decoding;
@@ -49,7 +49,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
     public string Name => "Optimism";
     public string Description => "Optimism support for Nethermind";
 
-    private OptimismNethermindApi? _api;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
     #region IConsensusPlugin
@@ -63,20 +62,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
-    }
-
-    public Task Init(INethermindApi api)
-    {
-        _api = (OptimismNethermindApi)api;
-
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
-
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
-        return Task.CompletedTask;
     }
 
     public bool MustInitialize => true;
@@ -112,12 +97,15 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<IBlockProductionPolicy>(AlwaysStartBlockProductionPolicy.Instance)
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
             // Step override
             .AddStep(typeof(InitializeBlockchainOptimism))
 
             // Validators
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
+                static ctx => new OptimismSpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)

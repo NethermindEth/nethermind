@@ -230,36 +230,14 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override bool AccountExists(Address address)
-    {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
-
-        if (parentReader.AccountExists(address))
-        {
-            return true;
-        }
-
-        if (accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out _))
-        {
-            return true;
-        }
-
-        if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out _))
-        {
-            return true;
-        }
-
-        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange) &&
-               codeChange.Code.Length != 0;
-    }
+        // EIP-161 non-emptiness of the effective state at this index: reading only the parent would miss
+        // same-block deletions and wrongly refund EIP-8037 create-state gas on a later CREATE2 over the address.
+        => !GetBalance(address).IsZero
+           || GetNonce(address) != 0
+           || IsContract(address);
 
     public override bool IsContract(Address address)
         => GetCodeHash(address) != Keccak.OfAnEmptyString;
-
-    public override bool IsStorageEmpty(Address address)
-    {
-        (IWorldState parentReader, _) = ResolveContext(address);
-        return parentReader.IsStorageEmpty(address);
-    }
 
     public override bool IsDeadAccount(Address address)
         => !AccountExists(address) ||
@@ -322,6 +300,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         return _parentReader;
     }
+
+    private BlockHeader SuggestedBlockHeader
+        => _suggestedBlockHeader ?? throw new InvalidOperationException($"{nameof(_suggestedBlockHeader)} was not initialized.");
 
     private ReadOnlyAccountChanges GetAccountChangesOrThrow(Address address)
     {
@@ -411,9 +392,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingAccount(Address address)
-        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
-        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
 }

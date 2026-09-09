@@ -286,12 +286,12 @@ namespace Nethermind.Core.Test.Encoding
 
 
         [TestCaseSource(nameof(InvalidEncodingTestCases))]
-        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string error, Type exceptionType)
+        public void Rejects_invalid_tx_encoding(byte[] invalidTxBytes, string error, Type exceptionType, RlpBehaviors rlpBehaviors)
         {
             void DecodeStream()
             {
                 RlpReader ctx = new(invalidTxBytes);
-                _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                _txDecoder.Decode(ref ctx, rlpBehaviors);
             }
 
             Assert.That(DecodeStream, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
@@ -299,10 +299,70 @@ namespace Nethermind.Core.Test.Encoding
             void DecodeContext()
             {
                 RlpReader ctx = new(invalidTxBytes.AsSpan());
-                _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                _txDecoder.Decode(ref ctx, rlpBehaviors);
             }
 
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
+        }
+
+        [Test]
+        public void Rejects_transaction_nonce_too_wide_during_decoding([Values(9, 33)] int nonceLength)
+        {
+            byte[] txBytes = BuildLegacyTxWithNonce([0x01, .. new byte[nonceLength - 1]]);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(
+                Decode,
+                Throws.TypeOf<RlpException>().With.Message.Contains("NonceTooWide"));
+        }
+
+        [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
+        public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
+        {
+            byte[] txBytes = BuildLegacyTxWithNonce(nonceBytes);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("Non-canonical integer"));
+        }
+
+        [Test]
+        public void Rejects_trailing_bytes_for_skip_typed_wrapping_transactions()
+        {
+            Transaction tx = BuildTypedTransaction();
+            byte[] malformed = AppendTrailingByte(_txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+
+            void Decode()
+            {
+                RlpReader ctx = new(malformed);
+                _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            }
+
+            Assert.That(Decode, Throws.InstanceOf<RlpException>());
+        }
+
+        [Test]
+        public void Rejects_trailing_bytes_for_wrapped_typed_transactions()
+        {
+            Transaction tx = BuildTypedTransaction();
+            byte[] malformedWrapped = Rlp.Encode(AppendTrailingByte(_txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)).Bytes;
+
+            void Decode()
+            {
+                RlpReader ctx = new(malformedWrapped);
+                _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm);
+            }
+
+            Assert.That(Decode, Throws.InstanceOf<RlpException>());
         }
 
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
@@ -412,8 +472,13 @@ namespace Nethermind.Core.Test.Encoding
 
         private static IEnumerable<TestCaseData> InvalidEncodingTestCases()
         {
-            static TestCaseData TestCase(string testName, byte[] invalidTxBytes, string? error = null, Type? exceptionType = null) =>
-                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpException)) { TestName = testName };
+            static TestCaseData TestCase(
+                string testName,
+                byte[] invalidTxBytes,
+                string? error = null,
+                Type? exceptionType = null,
+                RlpBehaviors rlpBehaviors = RlpBehaviors.SkipTypedWrapping) =>
+                new(invalidTxBytes, error ?? "", exceptionType ?? typeof(RlpException), rlpBehaviors) { TestName = testName };
 
             yield return TestCase("Missing storage keys array in access list",
                 Convert.FromHexString("01e3010101825208808080d6d5940000000000000000000000000000000000000001010101"),
@@ -436,6 +501,38 @@ namespace Nethermind.Core.Test.Encoding
                 "SetCode null auth element",
                 BuildSetCodeTxBytes(1)
             );
+
+            yield return TestCase(
+                "Legacy transaction with v below 27",
+                Convert.FromHexString("C9808080808080800101"),
+                error: "InvalidTxSignature"
+            );
+
+            yield return TestCase(
+                "Legacy transaction with v below 27 when unsigned is allowed",
+                Convert.FromHexString("C9808080808080800101"),
+                error: "InvalidTxSignature",
+                rlpBehaviors: RlpBehaviors.SkipTypedWrapping | RlpBehaviors.AllowUnsigned
+            );
+
+            yield return TestCase(
+                "Legacy transaction with incomplete signature",
+                Convert.FromHexString("C88080808080801B01"),
+                error: "RLP data is truncated"
+            );
+
+            yield return TestCase(
+                "Legacy transaction with truncated signature length",
+                Convert.FromHexString("C98080808080801B01B8"),
+                error: "RLP data is truncated"
+            );
+        }
+
+        private static IEnumerable<TestCaseData> NonCanonicalNonceTestCases()
+        {
+            yield return new TestCaseData(new byte[] { 0 }).SetName("Zero byte nonce");
+            yield return new TestCaseData(new byte[] { 0, 1 }).SetName("Leading zero nonce");
+            yield return new TestCaseData(new byte[] { 0, 1, 0, 0, 0, 0, 0, 0, 0 }).SetName("Oversized nonce with leading zero");
         }
 
         private static byte[] BuildSetCodeTxBytes(int authCount) => _txDecoder.Encode(new Transaction
@@ -445,5 +542,49 @@ namespace Nethermind.Core.Test.Encoding
             GasLimit = 21000,
             AuthorizationList = new AuthorizationTuple[authCount]
         }, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        private static Transaction BuildTypedTransaction() => Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
+            .TestObject;
+
+        private static byte[] BuildLegacyTxWithNonce(ReadOnlySpan<byte> nonceBytes)
+        {
+            int nonceRlpLength = GetByteStringRlpLength(nonceBytes);
+            int payloadLength = nonceRlpLength + 8;
+            byte[] txBytes = new byte[1 + payloadLength];
+            txBytes[0] = (byte)(Rlp.EmptyListByte + payloadLength);
+
+            int position = 1;
+            EncodeByteString(txBytes, ref position, nonceBytes);
+            txBytes.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
+            return txBytes;
+        }
+
+        private static int GetByteStringRlpLength(ReadOnlySpan<byte> bytes) =>
+            bytes.Length == 1 && bytes[0] < Rlp.EmptyByteArrayByte ? 1 : 1 + bytes.Length;
+
+        private static void EncodeByteString(byte[] output, ref int position, ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length == 1 && bytes[0] < Rlp.EmptyByteArrayByte)
+            {
+                output[position++] = bytes[0];
+                return;
+            }
+
+            output[position++] = bytes.Length == 0 ? Rlp.EmptyByteArrayByte : (byte)(Rlp.EmptyByteArrayByte + bytes.Length);
+            bytes.CopyTo(output.AsSpan(position));
+            position += bytes.Length;
+        }
+
+        private static byte[] AppendTrailingByte(byte[] encoded)
+        {
+            byte[] malformed = new byte[encoded.Length + 1];
+            encoded.CopyTo(malformed, 0);
+            malformed[^1] = Rlp.EmptyByteArrayByte;
+            return malformed;
+        }
     }
 }

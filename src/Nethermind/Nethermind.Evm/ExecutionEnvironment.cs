@@ -5,12 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Queue =
-#if ZK_EVM
-        Nethermind.Evm.ZkEvmQueue<Nethermind.Evm.ExecutionEnvironment>;
-#else
-        System.Collections.Concurrent.ConcurrentQueue<Nethermind.Evm.ExecutionEnvironment>;
-#endif
+using Queue = Nethermind.Evm.EvmObjectPool<Nethermind.Evm.ExecutionEnvironment>;
 
 namespace Nethermind.Evm
 {
@@ -71,7 +66,7 @@ namespace Nethermind.Evm
             in UInt256 value,
             in ReadOnlyMemory<byte> inputData)
         {
-            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment pooled) ? pooled : new();
+            ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new();
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;

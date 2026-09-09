@@ -77,6 +77,12 @@ public class BalRecordingBranchProcessor(
         remove => inner.BlocksProcessing -= value;
     }
 
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted
+    {
+        add => inner.BranchProcessingCompleted += value;
+        remove => inner.BranchProcessingCompleted -= value;
+    }
+
     public event EventHandler<BlockEventArgs>? BlockProcessing
     {
         add => inner.BlockProcessing += value;

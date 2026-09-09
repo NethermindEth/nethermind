@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -99,7 +100,9 @@ namespace Ethereum.Test.Base
                 return engineNewPayload.ValidationError;
             }
 
-            int validationErrorParamIndex = newPayloadVersion >= 4 ? 4 : 3;
+            // An inline validation error trails the real arguments, and newPayloadV6 adds a fifth one,
+            // so index 4 there is the inclusion list rather than the error.
+            int validationErrorParamIndex = newPayloadVersion >= 6 ? 5 : newPayloadVersion >= 4 ? 4 : 3;
             if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {
                 return null;
@@ -115,10 +118,43 @@ namespace Ethereum.Test.Base
             };
         }
 
+        /// <summary>
+        /// Parses the JSON-RPC error code an engine fixture expects <c>engine_newPayloadV*</c> to
+        /// answer with, or null when it expects the payload to be validated.
+        /// </summary>
+        /// <exception cref="FormatException">The fixture carries an <c>errorCode</c> that is not an integer.</exception>
+        public static int? ParseErrorCode(TestEngineNewPayloadsJson engineNewPayload)
+        {
+            if (engineNewPayload.ErrorCode is null)
+            {
+                return null;
+            }
+
+            return int.TryParse(engineNewPayload.ErrorCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out int errorCode)
+                ? errorCode
+                : throw new FormatException($"Invalid engine payload errorCode: '{engineNewPayload.ErrorCode}'");
+        }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
             PrivateKey privateKey = new(transactionJson.SecretKey);
+
+            // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
+            // re-signed pre-EIP-155, which cannot reproduce signature-level invalidity (e.g. INVALID_CHAINID).
+            if (postStateJson.ExpectException is not null && postStateJson.Txbytes is not null)
+            {
+                try
+                {
+                    Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
+                    decoded.SenderAddress = privateKey.Address;
+                    return decoded;
+                }
+                catch (RlpException)
+                {
+                    // Undecodable txbytes: fall back to the template; non-signature invalidity
+                    // (e.g. intrinsic gas) is still caught by tx validation at execution time.
+                }
+            }
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
@@ -319,6 +355,7 @@ namespace Ethereum.Test.Base
             {
                 Name = name,
                 Category = category,
+                ForkName = testJson.Network,
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,

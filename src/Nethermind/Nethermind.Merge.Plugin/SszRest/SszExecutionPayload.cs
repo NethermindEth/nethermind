@@ -143,7 +143,7 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
             }
             byte[][] raw = new byte[value.Length][];
             for (int i = 0; i < value.Length; i++)
-                raw[i] = value[i].Bytes ?? [];
+                raw[i] = value[i].Bytes.ToByteArray();
             Inner.Transactions = raw;
         }
     }
@@ -262,11 +262,7 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 
-    // Keep at 0x0100_0000 (16 MiB) to match execution-spec-tests fixtures used by
-    // StatelessExecutor.InputDecoder, which embeds the SSZ merkle root of
-    // NewPayloadRequest in pyspec test data. The execution-apis #793 spec lists
-    // MAX_BAL_BYTES = MAX_BYTES_PER_TX (2^30) — divergence raised upstream.
-    [SszList(0x0100_0000)]
+    [SszList(0x4000_0000)]
     public byte[] BlockAccessList
     {
         get => Inner.BlockAccessList ?? [];

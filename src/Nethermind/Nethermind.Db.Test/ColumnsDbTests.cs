@@ -98,13 +98,37 @@ public class ColumnsDbTests
         IWriteBatch colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
         IWriteBatch colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
 
-        colA.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
-        colB.Set(TestItem.KeccakA.Bytes, TestItem.KeccakB.BytesToArray());
+        colA.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakA.Bytes);
+        colB.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes);
 
         batch.Dispose();
 
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+    }
+
+    [Test]
+    public void WriteBatch_PutSpan_DoesNotCopyValueToManagedArray()
+    {
+        const int valueLength = 128 * 1024;
+        byte[] value = GC.AllocateUninitializedArray<byte>(valueLength);
+        long allocated;
+        using (IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch())
+        {
+            IWriteBatch column = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+            column.PutSpan(TestItem.KeccakA.Bytes, [1]);
+
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            column.PutSpan(TestItem.KeccakB.Bytes, value);
+            allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.LessThan(valueLength));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakB), Is.EqualTo(value));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakB), Is.Null);
+        }
     }
 
     [Test]

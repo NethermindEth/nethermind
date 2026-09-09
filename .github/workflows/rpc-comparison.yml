@@ -672,6 +672,7 @@ jobs:
             rpc-results/
             integration/*/results/
           if-no-files-found: warn
+          retention-days: 30
 
   cleanup_spawned_nodes:
     name: Destroy spawned nodes

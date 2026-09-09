@@ -43,6 +43,9 @@ public class OptimismEngineRpcModule(
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(OptimismExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) => _engineRpcModule.engine_newPayloadV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
 
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV4(OptimismExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes,
+        Hash256? parentBeaconBlockRoot, byte[][]? executionRequests) => _engineRpcModule.engine_newPayloadWithWitnessV4(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests);
+
     public async Task<ResultWrapper<OptimismGetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId)
     {
         ResultWrapper<GetPayloadV4Result?> result = await _engineRpcModule.engine_getPayloadV4(payloadId);

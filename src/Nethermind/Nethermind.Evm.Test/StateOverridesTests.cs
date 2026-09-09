@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -77,5 +79,32 @@ public class StateOverridesTests
         _state.ApplyStateOverridesNoCommit(_codeRepo, overrides, Shanghai.Instance);
 
         Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.True);
+    }
+
+    [Test]
+    public void storage_only_override_preserves_synthetic_account_on_commit()
+    {
+        UInt256 slot = 1;
+        Dictionary<Address, AccountOverride> overrides = new()
+        {
+            {
+                TestItem.AddressA,
+                new AccountOverride
+                {
+                    StateDiff = new Dictionary<UInt256, Hash256>
+                    {
+                        [slot] = Hash256.FromBytesWithPadding([0x2a]),
+                    },
+                }
+            },
+        };
+
+        _state.ApplyStateOverrides(_codeRepo, overrides, Shanghai.Instance, 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.True);
+            Assert.That(_state.Get(new StorageCell(TestItem.AddressA, slot)).ToArray(), Is.EqualTo(new byte[] { 0x2a }));
+        }
     }
 }

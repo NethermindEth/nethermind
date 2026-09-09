@@ -8,11 +8,11 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -32,11 +32,12 @@ public partial class BlockProcessor
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
-        private readonly IncrementalValidationWorkItem _incrementalValidationWorkItem = new();
+        private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+        private int _pooledSlotsInUse;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -54,7 +55,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            TxReceipt[] receipts = !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = ExecutionFlags.ParallelExecution && !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
@@ -69,13 +70,11 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-            // Block-building has no suggested BAL to compare against — we are producing it
-            // here. ValidateBlockAccessList would early-return on `BlockAccessList is null`
-            // anyway, but skipping the call avoids the NextTransaction → Validate dance and
-            // makes the building intent explicit on this hot path.
-            bool shouldValidateBal = shouldValidate && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
+            bool shouldValidateBal = shouldValidate
+                && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock)
+                && !processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            ulong totalRegularGas = 0;
+            ulong totalExecutionGas = 0;
             ulong totalStateGas = 0;
 
             balManager.NextTransaction();
@@ -84,14 +83,17 @@ public partial class BlockProcessor
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
+                ITransactionProcessorAdapter txProcessor = balManager.GetTxProcessor(i + 1);
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                    // A simulate no-gas call defaults to GasCap, which the inclusion check would reject;
+                    // resolve it to the remaining block budget (state dimension too) before that check runs.
+                    txProcessor.PrepareForInclusionCheck(currentTx, block.Header.GasLimit.SaturatingSub(totalStateGas));
+                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalExecutionGas, totalStateGas);
                 }
 
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner, in intrinsicGas);
-                totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
+                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
+                totalExecutionGas = receiptsTracer.CumulativeExecutionGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
@@ -127,7 +129,19 @@ public partial class BlockProcessor
                 gasResults[i].Reset();
             }
 
-            IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
+            // Release the slots the previous block used but this one does not. Left alone they keep
+            // that block's receipts, the block itself and any InvalidBlockException in the gas slot;
+            // resetting them like the active ones would only swap the current block in. The pool
+            // never shrinks, so this runs once per shrink rather than every block.
+            for (int i = len; i < _pooledSlotsInUse; i++)
+            {
+                receiptsTracers[i].ReleaseForPooling();
+                gasResults[i].Reset();
+            }
+
+            _pooledSlotsInUse = len;
+
+            IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
@@ -144,9 +158,14 @@ public partial class BlockProcessor
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
+                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner,
+                            incrementalValidation),
                         static (i, state) =>
                         {
+                            // Block already rejected — executing the rest cannot change the outcome.
+                            // Iteration 0 is exempt so pre-execution keeps its previous semantics.
+                            if (i != 0 && state.incrementalValidation.HasFailed) return state;
+
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
                             // worker so processing-stats heuristics (e.g. allocation-thread filters)
                             // continue to attribute work correctly across the parallel boundary.
@@ -163,14 +182,8 @@ public partial class BlockProcessor
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
-                                // Pre-compute intrinsic gas on the worker thread; carry it through the
-                                // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
-                                // check doesn't recalculate dynamic state-byte costs on the validator.
-                                IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                                 try
                                 {
-                                    intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
-
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
                                     // recycles the pool slot via Dispose BEFORE we signal the gas result,
                                     // so the validator finds the canonical BAL slot populated when it awaits
@@ -185,10 +198,9 @@ public partial class BlockProcessor
                                             txIndex,
                                             state.receiptsTracers[txIndex],
                                             state.processingOptions,
-                                            state.inner,
-                                            in intrinsicGas);
+                                            state.inner);
                                     }
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                                 }
                                 catch (InvalidBlockException ex)
                                 {
@@ -198,7 +210,7 @@ public partial class BlockProcessor
                                     // rethrows on `ex is not null` before doing any accounting, so the
                                     // tuple values here are observed only as cross-mode telemetry; we
                                     // still report (0, 0) so any future consumer agrees with sequential.
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, intrinsicGas, ex));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, ex));
                                 }
                                 catch
                                 {
@@ -267,15 +279,24 @@ public partial class BlockProcessor
             // GasValidationResultSlot instances already pooled in slots [0, currentLength);
             // freshly allocated arrays would force re-instantiation of every slot every block.
             int newLength = Math.Max(length, currentLength == 0 ? 4 : currentLength * 2);
-            Array.Resize(ref _receiptsTracerPool, newLength);
-            Array.Resize(ref _gasResultPool, newLength);
-            Array.Resize(ref _txExecutionOrder, newLength);
-            Array.Resize(ref _txExecutionSortKeys, newLength);
+            BlockReceiptsTracer[] receiptsTracerPool = _receiptsTracerPool;
+            GasValidationResultSlot[] gasResultPool = _gasResultPool;
+            int[] txExecutionOrder = _txExecutionOrder;
+            TxExecutionSortKey[] txExecutionSortKeys = _txExecutionSortKeys;
+            Array.Resize(ref receiptsTracerPool, newLength);
+            Array.Resize(ref gasResultPool, newLength);
+            Array.Resize(ref txExecutionOrder, newLength);
+            Array.Resize(ref txExecutionSortKeys, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
-                _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
-                _gasResultPool[i] = new GasValidationResultSlot();
+                receiptsTracerPool[i] = new BlockReceiptsTracer(true);
+                gasResultPool[i] = new GasValidationResultSlot();
             }
+
+            _receiptsTracerPool = receiptsTracerPool;
+            _gasResultPool = gasResultPool;
+            _txExecutionOrder = txExecutionOrder;
+            _txExecutionSortKeys = txExecutionSortKeys;
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
@@ -379,14 +400,13 @@ public partial class BlockProcessor
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IBlockProcessor.IBlockTransactionsExecutor inner,
-            in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
+            IBlockProcessor.IBlockTransactionsExecutor inner)
         {
             long txStart = inner.StartTxTimer();
             TransactionResult result;
             try
             {
-                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
             }
             finally
             {
@@ -449,7 +469,11 @@ public partial class BlockProcessor
             private BlockReceiptsTracer[]? _receiptsTracers;
             private BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? _transactionProcessedEventHandler;
             private CancellationToken _token;
-            private Exception? _exception;
+            private volatile Exception? _exception;
+
+            /// <summary>Whether validation has terminally failed, so <see cref="GetResult"/> is
+            /// guaranteed to throw. Polled by the transaction workers.</summary>
+            public bool HasFailed => _exception is not null;
 
             public void Schedule(
                 IBlockAccessListManager balManager,

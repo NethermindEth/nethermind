@@ -97,8 +97,10 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual Hash256? SafeHash => Inner?.SafeHash;
     public virtual ulong LastFinalizedBlockLevel => Inner?.LastFinalizedBlockLevel ?? 0UL;
 
+    // A wrapped tree answers null until it has a best suggested block, so only the absence of a tree is
+    // "not implemented"; coalescing on the result instead would turn that legitimate null into a throw.
     public virtual BlockHeader FindBestSuggestedHeader() =>
-        Inner?.FindBestSuggestedHeader() ?? throw new NotImplementedException();
+        Inner is not null ? Inner.FindBestSuggestedHeader() : throw new NotImplementedException();
 
     public virtual Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         Inner?.FindBlock(blockHash, options, blockNumber);
@@ -189,12 +191,13 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash) =>
         Inner?.GetInfo(number, blockHash) ?? (null, null);
     public virtual ChainLevelInfo? FindLevel(ulong number) => Inner?.FindLevel(number);
-    public virtual BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber) ?? null!;
+    public virtual BlockInfo? FindCanonicalBlockInfo(ulong blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber);
     public virtual Hash256? FindHash(ulong blockNumber) => Inner?.FindHash(blockNumber);
     public virtual IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
         Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader>(0);
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
+    public virtual void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => Inner?.DeleteOldBlockRange(fromInclusive, toExclusive);
     public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);
     public virtual void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         Inner?.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);

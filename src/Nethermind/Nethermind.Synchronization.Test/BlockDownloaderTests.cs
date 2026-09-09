@@ -161,6 +161,39 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Full_sync_fast_forwards_over_blocks_already_covered_by_persisted_state()
+    {
+        SettableFullStateFinder stateFinder = new();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IFullStateFinder>(stateFinder));
+        Context ctx = node.Resolve<Context>();
+        Assert.That(node.Resolve<IFullStateFinder>(), Is.SameAs(stateFinder));
+
+        ulong persistedState = 16;
+        stateFinder.Best = persistedState;
+
+        SyncPeerMock syncPeer = new(persistedState + 1, withReceipts: true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(persistedState));
+
+        // The persisted state jumps ahead of the now non-genesis head, as after a crash with a flat
+        // backend. Blocks in the gap must fast-forward onto the main chain rather than be sent for
+        // processing (which would find no parent state, throw, and delete the branch).
+        ulong advancedState = 32;
+        stateFinder.Best = advancedState;
+        syncPeer.ExtendTree(64);
+
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+
+        Hash256 gapBlockHash = ctx.BlockTree.FindHeader(advancedState, BlockTreeLookupOptions.None)!.Hash!;
+        Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
+        Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
     public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
     {
         ulong headNumber = 200;
@@ -209,6 +242,35 @@ public partial class BlockDownloaderTests
             CancellationToken.None);
 
         Assert.That(async () => await act(), Throws.Nothing);
+    }
+
+    [Test]
+    public async Task Propagate_cancellation_from_forwardHeaderProvider()
+    {
+        using CancellationTokenSource cts = new();
+        IForwardHeaderProvider mockForwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        mockForwardHeaderProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cts.Cancel();
+                return Task.FromException<IOwnedReadOnlyList<BlockHeader?>?>(new OperationCanceledException(cts.Token));
+            });
+
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
+        {
+            FastSync = true
+        }),
+            configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
+
+        Context ctx = node.Resolve<Context>();
+        Func<Task<BlocksRequest?>> act = () => ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            cts.Token);
+
+        // A cancelled request must surface as cancellation to the dispatcher, which owns the cancel
+        // handling; converting it to a null request hides the shutdown from the feed lifecycle.
+        Assert.That(async () => await act(), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -310,13 +372,8 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(2048));
     }
 
-    [TestCase(32, true)]
-    [TestCase(1, true)]
-    [TestCase(0, true)]
-    [TestCase(32, false)]
-    [TestCase(1, false)]
-    [TestCase(0, false)]
-    public async Task Can_sync_with_peer_when_it_times_out(int ignoredBlocks, bool mergeDownloader)
+    [Test]
+    public async Task Can_sync_with_peer_when_it_times_out([Values(32, 1, 0)] int ignoredBlocks, [Values] bool mergeDownloader)
     {
         Action<ContainerBuilder> configurer = builder =>
             builder.AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>());
@@ -446,10 +503,8 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.BlockTree.BestSuggestedBody!.Number, Is.EqualTo(0));
     }
 
-    [TestCase(33UL)]
-    [TestCase(65UL)]
-    [Retry(3)]
-    public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(ulong headNumber)
+    [Test]
+    public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies([Values(33UL, 65UL)] ulong headNumber)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -568,9 +623,8 @@ public partial class BlockDownloaderTests
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(32));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Can_DownloadBlockOutOfOrder(bool isMerge)
+    [Test]
+    public async Task Can_DownloadBlockOutOfOrder([Values] bool isMerge)
     {
         uint chainLength = 1024;
         uint syncPivotNumber = 128;
@@ -920,20 +974,16 @@ public partial class BlockDownloaderTests
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
             SemaphoreSlim peerSemaphore = new(1, 1);
-            SyncPeerAllocation peerAllocation = new(peerInfo, AllocationContexts.Blocks, null);
-
             PeerPool
                 .Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci =>
                 {
                     CancellationToken token = ci.ArgAt<CancellationToken>(3);
                     await peerSemaphore.WaitAsync(token);
+                    SyncPeerAllocation peerAllocation = new(ci.ArgAt<AllocationContexts>(1), null, () => peerSemaphore.Release());
+                    peerAllocation.AllocatePeer(peerInfo);
                     return peerAllocation;
                 });
-
-            PeerPool
-                .When((p) => p.Free(peerAllocation))
-                .Do((c) => peerSemaphore.Release());
         }
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
@@ -1024,6 +1074,12 @@ public partial class BlockDownloaderTests
             ReceiptStorage = this.ReceiptStorage;
             PeerPool = this.PeerPool;
         }
+    }
+
+    private sealed class SettableFullStateFinder : IFullStateFinder
+    {
+        public ulong Best { get; set; }
+        public ulong FindBestFullState() => Best;
     }
 
     private class SyncPeerMock : ISyncPeer

@@ -11,7 +11,6 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -42,12 +41,10 @@ public class Eip8037BlockGasIntegrationTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         return new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
     }
 
     private static (BlockAccessListManager, Block) BuildAmsterdamBlock(ulong blockGasLimit, params Transaction[] txs)
@@ -74,11 +71,8 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     private static GasValidationResult
-        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null)
-    {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
-    }
+        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
+        new(blockGasUsed, blockStateGasUsed, exception);
 
     // Boundary: post-tx cumulative state hits the limit exactly (must accept,
     // IncrementalValidation uses strict >) vs exceeds by 1 (must reject).
@@ -108,6 +102,29 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
+    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in the execution dimension
+    /// with no <c>intrinsic.state</c> subtraction, so a creation tx whose full gas fits is accepted.
+    /// </summary>
+    [Test]
+    public void Eip8037_creation_tx_execution_check_actual_usage_modest_accepts()
+    {
+        ulong blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
+        Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
+        Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
+            .WithCode([])
+            .WithGasLimit(53_000 + IntrinsicNewAccountState)
+            .WithNonce(1ul).TestObject;
+        (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
+
+        GasValidationResultSlot[] results = ResultsForCount(2);
+        results[0].TrySetResult(GasResult(block, 0, 16_777_216, 0));
+        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
+
+        Assert.DoesNotThrow(() =>
+            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));
+    }
+
+    /// <summary>
     /// A single tx whose worst-case state contribution exceeds
     /// <c>block_gas_limit</c> must be rejected at inclusion.
     ///
@@ -120,7 +137,7 @@ public class Eip8037BlockGasIntegrationTests
     public void Eip8037_single_tx_state_check_exceeds_block_limit_rejects()
     {
         ulong blockGasLimit = 16_777_216ul + 100ul; // cap + tiny headroom
-        // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
+        // tx.gas = blockGasLimit + intrinsic_execution + 1 -> spec inclusion check rejects on state dim.
         Transaction onlyTx = Build.A.Transaction.WithHash(TestItem.KeccakA)
             .WithGasLimit(blockGasLimit + 21_000ul + 1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, onlyTx);
@@ -132,7 +149,7 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
-            "EIP-8037 requires rejection at inclusion when tx.gas > state_gas_available");
+            "EIP-8037 requires rejection at inclusion when tx.gas > state_gas_available (full reservation, no intrinsic subtraction)");
     }
 
     /// <summary>
@@ -162,9 +179,9 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// EIP-7825 cap: even when (tx.gas - intrinsic.state) is huge, regular worst-case is
+    /// EIP-7825 cap: even when (tx.gas - intrinsic.state) is huge, execution worst-case is
     /// capped at TX_MAX_GAS_LIMIT. Test that IncrementalValidation correctly accepts a
-    /// block where a single tx with massive headroom on regular dim still fits because
+    /// block where a single tx with massive headroom on execution dim still fits because
     /// post-execution actual gas is modest.
     /// </summary>
     [Test]
@@ -188,12 +205,10 @@ public class Eip8037BlockGasIntegrationTests
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         BlockAccessListManager balManager = new(
             stateProvider,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)

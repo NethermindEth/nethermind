@@ -12,7 +12,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
-using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -36,17 +35,6 @@ public class TestBlockchainUtil(
         AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
-        Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
-            ? Task.CompletedTask
-            : WaitAsync(blockTree.WaitForNewBlock(cancellationToken), "timeout waiting for new head");
-
-        Task txNewHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
-            ? Task.CompletedTask
-            : Wait.ForEventCondition<Block>(cancellationToken,
-                (h) => txPool.TxPoolHeadChanged += h,
-                (h) => txPool.TxPoolHeadChanged -= h,
-                b => true);
-
         Block? invalidBlock = null;
         void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e) => invalidBlock = e.InvalidBlock;
 
@@ -101,6 +89,22 @@ public class TestBlockchainUtil(
             }
             iteration++;
         }
+        bool shouldWaitForHead = !flags.HasFlag(AddBlockFlags.DoNotWaitForHead);
+        // Keyed to the produced block and armed before Suggest: a stale event from an earlier block must not satisfy these waits.
+        Task waitforHead = shouldWaitForHead
+            ? WaitAsync(Wait.ForEventCondition<BlockReplacementEventArgs>(cancellationToken,
+                (h) => blockTree.BlockAddedToMain += h,
+                (h) => blockTree.BlockAddedToMain -= h,
+                e => e.Block.Hash == block!.Hash), "timeout waiting for new head")
+            : Task.CompletedTask;
+
+        Task txNewHead = shouldWaitForHead
+            ? Wait.ForEventCondition<Block>(cancellationToken,
+                (h) => txPool.TxPoolHeadChanged += h,
+                (h) => txPool.TxPoolHeadChanged -= h,
+                b => b.Hash == block!.Hash)
+            : Task.CompletedTask;
+
         Hash256? headBeforeSuggest = blockTree.Head?.Hash;
         Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 

@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using System;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -23,11 +24,8 @@ public class SystemTransactionProcessor<TGasPolicy>(
     : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    /// <summary>
-    /// Hacky flag to execution options, to pass information how original validate should behave.
-    /// Needed to decide if we need to subtract transaction value.
-    /// </summary>
-    protected const int OriginalValidate = 2 << 30;
+    // Set in Execute and read within the same synchronous base.Execute -> PayValue chain (system txs don't recurse), so a plain field needs no synchronization.
+    private bool _payOriginalValue;
 
     /// <summary>
     /// Whether to suppress BAL reads of the SYSTEM_ADDRESS account for this transaction.
@@ -61,9 +59,9 @@ public class SystemTransactionProcessor<TGasPolicy>(
         OnBeforeSystemTransaction();
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | (ExecutionOptions)OriginalValidate | ExecutionOptions.SkipValidationAndCommit
-            : opts);
+        _payOriginalValue = (coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
+                            && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit);
+        return base.Execute(tx, tracer, _payOriginalValue ? opts | ExecutionOptions.SkipValidationAndCommit : opts);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
@@ -85,11 +83,11 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode) { }
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
-        if (opts.HasFlag((ExecutionOptions)OriginalValidate))
+        if (_payOriginalValue)
         {
             base.PayValue(tx, spec, opts);
         }
@@ -110,10 +108,13 @@ public class SystemTransactionProcessor<TGasPolicy>(
     {
         if (tx is SystemCall)
         {
-            gasAvailable = TGasPolicy.CreateSystemTransactionAvailableGas(tx.GasLimit, intrinsicGas.Standard, spec);
-            return TransactionResult.Ok;
+            return TGasPolicy.TryCreateSystemTransactionAvailableGas(tx.GasLimit, intrinsicGas.Standard, spec, out gasAvailable)
+                ? TransactionResult.Ok
+                : TransactionResult.GasLimitBelowIntrinsicGas;
         }
 
+        Debug.Assert(TGasPolicy.GetStateReservoir(intrinsicGas.Standard) == 0,
+            "System transactions other than SystemCall bypass minimum-gas validation and must have no intrinsic state reservoir.");
         return base.CalculateAvailableGas(tx, spec, in intrinsicGas, out gasAvailable);
     }
 

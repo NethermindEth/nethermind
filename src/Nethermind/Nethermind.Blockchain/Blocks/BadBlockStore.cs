@@ -12,9 +12,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
+public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDecoder = null) : IBadBlockStore
 {
-    private readonly BlockDecoder _blockDecoder = new();
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {

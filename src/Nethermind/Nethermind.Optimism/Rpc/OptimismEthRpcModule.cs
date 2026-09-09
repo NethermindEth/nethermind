@@ -117,7 +117,7 @@ public class OptimismEthRpcModule(
         return ResultWrapper<ReceiptForRpc[]?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
         if (!txResult.Success(out Transaction? tx, out string? error))
@@ -126,11 +126,14 @@ public class OptimismEthRpcModule(
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
-        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
-
         if (tx.SenderAddress is null)
         {
-            return ResultWrapper<Hash256>.Fail("Failed to recover sender");
+            if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+            {
+                return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+            }
+
+            tx.SenderAddress = senderAddress;
         }
 
         if (!sealer.TrySeal(tx, TxHandlingOptions.None))

@@ -67,5 +67,6 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public override int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal? item, RlpBehaviors _)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 }

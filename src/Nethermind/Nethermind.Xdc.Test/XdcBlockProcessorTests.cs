@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -15,9 +16,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using System.Threading;
 
 namespace Nethermind.Xdc.Test;
 
@@ -71,27 +74,54 @@ internal class XdcBlockProcessorTests
         });
     }
 
-    private class TestableXdcBlockProcessor : XdcBlockProcessor
+    [Test]
+    public void PostValidation_CopiesProcessedRewardsToSuggestedHeader()
     {
-        public TestableXdcBlockProcessor() : base(
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockValidator>(),
-            Substitute.For<IRewardCalculator>(),
-            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
-            Substitute.For<IWorldState>(),
-            Substitute.For<IReceiptStorage>(),
-            Substitute.For<IBeaconBlockRootHandler>(),
-            Substitute.For<IBlockhashStore>(),
-            NullLogManager.Instance,
-            Substitute.For<IWithdrawalProcessor>(),
-            Substitute.For<IExecutionRequestsProcessor>(),
-            Substitute.For<IBlockAccessListManager>())
-        { }
+        XdcBlockHeader suggestedHeader = Build.A.XdcBlockHeader().TestObject;
+        XdcBlockHeader processedHeader = suggestedHeader.CreateHeaderForProcessing();
+        XdcProcessedRewards rewards = new([new BlockReward(Address.FromNumber(1), (UInt256)42)], new XdcEpochRewards());
+        processedHeader.ProcessedRewards = rewards;
+        Block suggestedBlock = Build.A.Block.WithHeader(suggestedHeader).TestObject;
+        Block processedBlock = suggestedBlock.WithReplacedHeader(processedHeader);
 
+        _processor.PostValidation(suggestedBlock, processedBlock, [], ProcessingOptions.NoValidation);
+
+        Assert.That(suggestedHeader.ProcessedRewards, Is.SameAs(rewards));
+    }
+
+    private class TestableXdcBlockProcessor(IRewardCalculator? rewardCalculator = null) : XdcBlockProcessor(
+        Substitute.For<ISpecProvider>(),
+        Substitute.For<IBlockValidator>(),
+        rewardCalculator ?? Substitute.For<IRewardCalculator>(),
+        CreateTransactionsExecutor(),
+        Substitute.For<IWorldState>(),
+        Substitute.For<IReceiptStorage>(),
+        Substitute.For<IBeaconBlockRootHandler>(),
+        Substitute.For<IBlockhashStore>(),
+        NullLogManager.Instance,
+        Substitute.For<IWithdrawalProcessor>(),
+        Substitute.For<IExecutionRequestsProcessor>(),
+        Substitute.For<IBlockAccessListManager>())
+    {
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
             => base.CreateBlockExecutionContext(header, spec);
 
         public new Block PrepareBlockForProcessing(Block block)
             => base.PrepareBlockForProcessing(block);
+
+        public new void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+            => base.PostValidation(suggestedBlock, processedBlock, receipts, options);
+
+        private static IBlockProcessor.IBlockTransactionsExecutor CreateTransactionsExecutor()
+        {
+            IBlockProcessor.IBlockTransactionsExecutor executor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+            executor.ProcessTransactions(
+                    Arg.Any<Block>(),
+                    Arg.Any<ProcessingOptions>(),
+                    Arg.Any<BlockReceiptsTracer>(),
+                    Arg.Any<CancellationToken>())
+                .Returns([]);
+            return executor;
+        }
     }
 }

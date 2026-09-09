@@ -90,6 +90,49 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
+    public override Result FillDefaults(in TxFillContext context)
+    {
+        Result baseResult = base.FillDefaults(context);
+        if (!baseResult) return baseResult;
+
+        if (MaxFeePerBlobGas is null)
+        {
+            // Fail rather than default to 0x0, which is below the EIP-4844 minimum blob base fee of 1.
+            if (context.BlobBaseFee is null) return Result.Fail("unable to calculate the current blob base fee");
+            MaxFeePerBlobGas = context.BlobBaseFee.Value * 2;
+        }
+
+        return DeriveSidecar(context.Spec);
+    }
+
+    private Result DeriveSidecar(IReleaseSpec spec)
+    {
+        if (Blobs is not { Length: > 0 }) return Result.Success;
+        if (Commitments is not null && Proofs is not null && BlobVersionedHashes is { Length: > 0 }) return Result.Success;
+
+        // Bound the blob count before the expensive KZG work.
+        ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(Blobs.Length, spec);
+        if (!blobCountValidation) return Result.Fail(blobCountValidation.Error!);
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(spec.BlobProofVersion);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(Blobs);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        if (BlobVersionedHashes is { Length: > 0 })
+        {
+            if (!proofsManager.ValidateHashes(wrapper, BlobVersionedHashes))
+                return Result.Fail("blob versioned hashes do not match the supplied blobs");
+        }
+        else
+        {
+            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+        }
+
+        Commitments = wrapper.Commitments;
+        Proofs = wrapper.Proofs;
+        return Result.Success;
+    }
+
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 

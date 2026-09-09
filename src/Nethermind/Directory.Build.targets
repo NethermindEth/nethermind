@@ -22,8 +22,8 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(GenerateRpcJsonContext)' == 'true'">
-    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator\Nethermind.JsonRpc.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext" />
-    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator\Nethermind.JsonRpc.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext;RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" UndefineProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext;RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" UndefineProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" />
   </ItemGroup>
 
   <Target Name="_GenerateRpcJsonSerializerContext"
@@ -47,6 +47,7 @@
     <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
       Targets="GetTargetPath"
       Properties="Configuration=$(_RpcJsonContextGeneratorConfiguration);GenerateRpcJsonContext=false"
+      RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract"
       BuildInParallel="false">
       <Output TaskParameter="TargetOutputs" PropertyName="_RpcJsonContextGeneratorPath" />
     </MSBuild>
@@ -54,6 +55,7 @@
     <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
       Targets="Build"
       Properties="Configuration=$(_RpcJsonContextGeneratorConfiguration);GenerateRpcJsonContext=false"
+      RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract"
       BuildInParallel="false"
       Condition="!Exists('$(_RpcJsonContextGeneratorPath)')" />
 

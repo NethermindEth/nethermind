@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Init.Modules;
 using Nethermind.StateDiffsWriter.Service;
@@ -23,5 +24,7 @@ public class StateDiffsWriterModule : Module
         builder.AddSingleton<BlockDiffsStore>();
         builder.AddSingleton<DiffsWriterService>();
         builder.AddSingleton<DiffsPruner>();
+
+        builder.AddStep(typeof(InitializeStateDiffsWriterPlugin));
     }
 }

@@ -100,6 +100,7 @@ namespace Nethermind.Blockchain
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
         private ulong _oldestBlock;
+        private ulong _lowestServedBlock;
 
         private TaskCompletionSource? _taskCompletionSource;
 
@@ -446,8 +447,10 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                _blockStore.Insert(block);
-                _balStore.InsertFromBlock(block);
+                // Body and BAL persistence defer off the engine API path; visibility stays synchronous via
+                // each store's pending overlay, and the live block's BAL is freed synchronously as before.
+                _blockStore.InsertDeferred(block);
+                _balStore.InsertFromBlockDeferred(block);
             }
 
             if (!isKnown)
@@ -567,7 +570,7 @@ namespace Nethermind.Blockchain
                         if (Logger.IsInfo) Logger.Info($"Missing block info - creating level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                         SetTotalDifficulty(header);
                         blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
-                        level = UpdateOrCreateLevel(header.Number, blockInfo);
+                        level = UpdateOrCreateLevel(header.Number, blockInfo, keepExistingMetadata: true);
                     }
                 }
                 else
@@ -794,6 +797,13 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
+            => _blockStore.DeleteRange(fromInclusive, toExclusive);
+
+        /// <inheritdoc/>
+        public void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+            => _blockStore.DeleteRanges(ranges);
+
         public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
             => _blockStore.Delete(blockNumber, blockHash);
 
@@ -942,14 +952,15 @@ namespace Nethermind.Blockchain
 
         public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
         {
-            // The head itself must have a body to be moved onto the main chain (the walk below checks every
-            // ancestor the same way). Fail fast here rather than throwing later when GetBlock can't load it.
-            if (!_blockStore.HasBlock(newHead.Number, newHead.Hash!))
+            PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
+
+            // The head must have a body to be moved onto the main chain - preloaded by the caller or already in
+            // the store (the walk below checks every ancestor the same way). Fail fast here rather than throwing
+            // later when GetBlock can't load it.
+            if (!cache.TryGet(newHead.Hash!, out _) && !_blockStore.HasBlock(newHead.Number, newHead.Hash!))
             {
                 return false;
             }
-
-            PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
 
             // Walk back from the new head, collecting the branch of headers down to the current main chain.
             // Only headers are loaded here, so this stays cheap regardless of reorg depth. A missing
@@ -1113,7 +1124,10 @@ namespace Nethermind.Blockchain
                 BlockHeader header = deferred.Header;
                 Block block = headBlock is not null && headBlock.Hash == header.Hash ? headBlock : GetBlock(cache, header);
 
-                _balStore.InsertFromBlock(block);
+                // Deferred so the authoritative generated BAL supersedes any suggested BAL entry from Suggest
+                // (the later overlay entry wins; the stale suggested write no-ops). Falls back to synchronous
+                // when deferral is off.
+                _balStore.InsertFromBlockDeferred(block);
 
                 if (ShouldCache(block.Number)) _blockStore.Cache(block);
 
@@ -1453,7 +1467,7 @@ namespace Nethermind.Blockchain
             return new BlockEventArgs(block);
         }
 
-        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false)
+        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false, bool keepExistingMetadata = false)
         {
             using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
 
@@ -1466,7 +1480,7 @@ namespace Nethermind.Blockchain
 
             if (level is not null)
             {
-                level.InsertBlockInfo(blockInfo.BlockHash, blockInfo, setAsMain);
+                level.InsertBlockInfo(blockInfo.BlockHash, blockInfo, setAsMain, keepExistingMetadata);
             }
             else
             {
@@ -1608,7 +1622,7 @@ namespace Nethermind.Blockchain
                         if (Logger.IsInfo) Logger.Info($"Missing block info - creating level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                         SetTotalDifficulty(block.Header);
                         blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? UInt256.Zero);
-                        level = UpdateOrCreateLevel(block.Number, blockInfo);
+                        level = UpdateOrCreateLevel(block.Number, blockInfo, keepExistingMetadata: true);
                     }
                 }
                 else
@@ -1705,14 +1719,14 @@ namespace Nethermind.Blockchain
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);
                     blockInfo.WasProcessed = true;
-                    UpdateOrCreateLevel(current.Number, blockInfo);
+                    UpdateOrCreateLevel(current.Number, blockInfo, keepExistingMetadata: true);
                 }
 
                 while (stack.TryPop(out BlockHeader child))
                 {
                     child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
                     BlockInfo blockInfo = new(child.Hash, child.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(child.Number, blockInfo);
+                    UpdateOrCreateLevel(child.Number, blockInfo, keepExistingMetadata: true);
                     if (Logger.IsTrace)
                         Logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;
@@ -1890,6 +1904,10 @@ namespace Nethermind.Blockchain
         }
 
         public ulong GetLowestBlock() => _oldestBlock;
+
+        public ulong LowestServedBlock => Math.Max(_oldestBlock, Volatile.Read(ref _lowestServedBlock));
+
+        public void UpdateLowestServedBlock(ulong lowestServed) => Volatile.Write(ref _lowestServedBlock, lowestServed);
 
         public void NewOldestBlock(ulong oldestBlock) => _oldestBlock = oldestBlock;
     }

@@ -10,10 +10,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -84,16 +82,13 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddScoped<IWorldState>(recorder)
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            .AddScoped<ICodeCache>(NoopCodeCache.Instance)
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+                ctx.Resolve<BalTxProcessorFactory>()))
             // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
             .AddModule(validationModules));
 

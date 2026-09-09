@@ -362,6 +362,15 @@ public class TestBlockchain : IDisposable
                 state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
             }
 
+            if (finalSpec?.BuilderRequestsEnabled is true)
+            {
+                state.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+                state.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, specProvider.GenesisSpec);
+
+                state.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+                state.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, specProvider.GenesisSpec);
+            }
+
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
 
             if (specProvider.GenesisSpec.IsEip4844Enabled)

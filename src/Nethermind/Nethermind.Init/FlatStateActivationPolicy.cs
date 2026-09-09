@@ -13,7 +13,11 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Init;
 
-internal sealed class FlatStateActivationPolicy(
+/// <summary>
+/// Resolves whether the node actually runs on the flat state backend, as opposed to patricia. The decision
+/// combines the configured preference with the on-disk state (existing flat/patricia DBs, import settings).
+/// </summary>
+public sealed class FlatStateActivationPolicy(
     IFlatDbConfig flatDbConfig,
     IHardwareInfo hardwareInfo,
     Lazy<IPersistence> flatPersistence,

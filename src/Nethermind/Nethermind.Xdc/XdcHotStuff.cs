@@ -53,6 +53,9 @@ namespace Nethermind.Xdc
         private volatile bool _running;
         private CancellationTokenSource? _roundCts;
         private Task? _roundTask;
+        private CancellationTokenSource? _shutdownCts;
+        private CancellationToken _shutdownToken;
+        private CancellationTokenSource? _buildCts;
 
         // Sentinel meaning "no round recorded yet"; TryAdvance treats it specially so the first advance always succeeds.
         private const ulong NoRound = ulong.MaxValue;
@@ -61,6 +64,7 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private ulong _lastStartedRound = NoRound;
+        private ulong _scheduledRound = NoRound;
         private ulong _pendingPrevRound;
         private TimeSpan? _pendingLastRoundDuration;
 
@@ -77,8 +81,10 @@ namespace Nethermind.Xdc
                     _logger.Info("XdcHotStuff already started, ignoring duplicate Start() call");
                     return;
                 }
-
+                _scheduledRound = NoRound;
                 _running = true;
+                _shutdownCts = new CancellationTokenSource();
+                _shutdownToken = _shutdownCts.Token;
                 _blockTree.NewHeadBlock += OnNewHeadBlock;
                 _xdcContext.NewRoundSetEvent += OnNewRound;
                 _logger.Info("XdcHotStuff consensus runner started");
@@ -86,11 +92,12 @@ namespace Nethermind.Xdc
 
             if (_xdcContext.CurrentRound != 0)
             {
-                bool bootstrapFirstProposer = IsBootstrapFirstProposer();
-                if (IsSynced() || bootstrapFirstProposer)
+                bool synced = IsSynced();
+                bool bootstrapChain = IsBootstrap();
+                if (synced || bootstrapChain)
                 {
-                    if (!IsSynced() && bootstrapFirstProposer)
-                        _logger.Info("Starting round at genesis bootstrap, we are round-1 leader");
+                    if (!synced && bootstrapChain)
+                        _logger.Info("Starting round at genesis bootstrap");
 
                     XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
                     StartRoundTask(head, _xdcContext.CurrentRound);
@@ -113,6 +120,9 @@ namespace Nethermind.Xdc
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
                 _roundCts = null;
+                _shutdownCts?.Cancel();
+                _shutdownCts?.Dispose();
+                _shutdownCts = null;
                 runningTask = _roundTask;
                 _roundTask = null;
             }
@@ -140,7 +150,7 @@ namespace Nethermind.Xdc
 
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            if (!IsSynced()) return;
+            if (!IsSynced() && !IsBootstrap()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
@@ -150,7 +160,7 @@ namespace Nethermind.Xdc
 
         private void OnNewRound(object? sender, NewRoundEventArgs args)
         {
-            if (!IsSynced()) return;
+            if (!IsSynced() && !IsBootstrap()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
@@ -178,6 +188,15 @@ namespace Nethermind.Xdc
             lock (_lockObject)
             {
                 if (!_running) return;
+
+                // OnNewHeadBlock and NewRoundSetEvent handlers can be delivered out of order
+                if (_scheduledRound != NoRound && round < _scheduledRound) return;
+
+                if (round != _scheduledRound)
+                    // Same-round restarts must leave the build running (see TryPropose).
+                    _buildCts?.Cancel();
+
+                _scheduledRound = round;
 
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
@@ -238,7 +257,7 @@ namespace Nethermind.Xdc
 
             if (!await EnsureStateForProposalParent(proposalParent, round, ct)) return;
 
-            if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
+            if (Interlocked.Read(ref _highestSelfMinedRound) >= round) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
             TimeSpan now = TimeSpan.FromSeconds(_timestamper.UnixTime.Seconds);
@@ -246,9 +265,31 @@ namespace Nethermind.Xdc
             if (mineReadyAt > now)
                 await Task.Delay(mineReadyAt - now, ct);
 
-            if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested || _xdcContext.CurrentRound != round) return;
 
-            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
+            if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
+
+            // Only cancel the build if a higher round is scheduled; otherwise, let it finish and propose the block.
+            CancellationTokenSource buildCts;
+            lock (_lockObject)
+            {
+                if (!_running) return;
+                _buildCts = buildCts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownToken);
+            }
+
+            try
+            {
+                await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, buildCts.Token);
+            }
+            finally
+            {
+                lock (_lockObject)
+                {
+                    if (ReferenceEquals(_buildCts, buildCts))
+                        _buildCts = null;
+                }
+                buildCts.Dispose();
+            }
         }
 
         private async Task<bool> EnsureStateForProposalParent(XdcBlockHeader proposalParent, ulong round, CancellationToken ct)
@@ -396,7 +437,10 @@ namespace Nethermind.Xdc
             string headInfo = $"#{head.Number} round={head.ExtraConsensusData?.BlockRound} ({head.Hash?.ToShortString()})";
             string roundDuration = _pendingLastRoundDuration.HasValue ? $", prev={_pendingPrevRound} in {_pendingLastRoundDuration.Value.TotalSeconds:F2}s" : "";
             string myTurn = isMyTurn ? "true" : "false";
-            _logger.Info($"Round {round}{roundDuration}: head={headInfo} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
+            BlockRoundInfo? blockRoundInfo = _xdcContext.HighestCommitBlock;
+            string committedBlock = blockRoundInfo is null ? "Committed=none" : $"Committed=#{blockRoundInfo?.BlockNumber} round={blockRoundInfo?.Round} ({blockRoundInfo?.Hash?.ToShortString()})";
+
+            _logger.Info($"Round {round}{roundDuration}: head={headInfo} | {committedBlock} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
         }
 
         private static bool TryAdvance(ref ulong field, ulong value)
@@ -442,25 +486,26 @@ namespace Nethermind.Xdc
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
-        // TODO: consider using a another sync indicator
-        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing && _blockTree.Head is not null;
+        private bool IsSynced() => !_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null;
 
         /// <summary>
-        /// True when this node is the round-1 leader on a freshly bootstrapped chain where
+        /// True when this node is on a freshly bootstrapped chain where
         /// <see cref="IsSynced"/> is false only because genesis counts as syncing.
         /// </summary>
-        private bool IsBootstrapFirstProposer()
+        private bool IsBootstrap()
         {
-            if (_blockTree.Head?.Header is not XdcBlockHeader head || _xdcContext.CurrentRound != 1)
+            if (_blockTree.Head?.Header is not XdcBlockHeader head)
+                return false;
+
+            (_, ulong headNumber, ulong bestSuggested) = _blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
+            if (headNumber != 0 || bestSuggested != 0)
                 return false;
 
             BlockRoundInfo qc = _xdcContext.HighestQC.ProposedBlockInfo;
             if (qc.Round != 0 || qc.BlockNumber != head.Number || qc.Hash != head.Hash)
                 return false;
 
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, 1);
-            return _epochSwitchManager.GetEpochSwitchInfo(head) is { Masternodes.Length: > 0 }
-                && IsMyTurn(head, 1, spec);
+            return _epochSwitchManager.GetEpochSwitchInfo(head) is { Masternodes.Length: > 0 };
         }
     }
 }

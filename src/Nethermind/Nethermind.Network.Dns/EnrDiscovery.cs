@@ -1,29 +1,31 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
 using System.Runtime.CompilerServices;
 using DnsClient;
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
+[assembly: InternalsVisibleTo("Nethermind.Network.Dns.Test")]
+
 namespace Nethermind.Network.Dns;
 
 public class EnrDiscovery : INodeSource
 {
     private readonly IEnrRecordParser _parser;
+    private readonly IForkInfo _forkInfo;
     private readonly ILogger _logger;
     private readonly EnrTreeCrawler _crawler;
     private readonly string _domain;
 
-    public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, ILogManager logManager)
+    public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, IForkInfo forkInfo, ILogManager logManager)
     {
         _parser = parser;
+        _forkInfo = forkInfo;
         _logger = logManager.GetClassLogger<EnrDiscovery>();
         _crawler = new EnrTreeCrawler(_logger);
         _domain = networkConfig.DiscoveryDns!;
@@ -65,7 +67,14 @@ public class EnrDiscovery : INodeSource
                 try
                 {
                     NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
-                    node = CreateNode(nodeRecord);
+                    if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
+                    {
+                        TryCreateNode(nodeRecord, out node);
+                    }
+                    else if (_logger.IsTrace)
+                    {
+                        _logger.Trace($"Skipping DNS discovered ENR {nodeRecordText} with incompatible fork ID.");
+                    }
                 }
                 catch (Exception e)
                 {
@@ -85,15 +94,8 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    private static Node? CreateNode(NodeRecord nodeRecord)
-    {
-        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-        IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
-        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
-        return compressedPublicKey is not null && ipAddress is not null && port is not null
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
-            : null;
-    }
+    internal static bool TryCreateNode(NodeRecord nodeRecord, out Node? node) =>
+        Node.TryFromEnr(nodeRecord, out node);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

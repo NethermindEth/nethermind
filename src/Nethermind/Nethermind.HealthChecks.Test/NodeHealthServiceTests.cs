@@ -38,6 +38,7 @@ public class NodeHealthServiceTests
         IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
         IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.SynchronizationEnabled.Returns(true);
         IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
         blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
         blockProducerRunner.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);

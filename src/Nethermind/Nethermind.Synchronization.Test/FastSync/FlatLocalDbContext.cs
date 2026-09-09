@@ -83,7 +83,8 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
-        writeBatch.DeleteStateTrieNodeRange(TreePath.Empty, TreePath.Empty);
+        // The whole state trie is under the empty-path root, so [Zero, MaxValue] removes every node (heal re-fetches).
+        writeBatch.DeleteStateTrieNodeRange(ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     /// <summary>

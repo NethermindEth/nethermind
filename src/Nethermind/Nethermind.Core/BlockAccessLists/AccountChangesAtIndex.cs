@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -25,8 +26,8 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
-    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
-    private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
+    private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
 
     public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
@@ -68,7 +69,7 @@ public class AccountChangesAtIndex(Address address)
 
     public UInt256 GetOrCapturePreTxStorage(UInt256 key, in UInt256 captureValue)
     {
-        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8);
+        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8, UInt256Comparer.GetOptimized());
         ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
         if (!exists) slot = captureValue;
         return slot;
@@ -89,8 +90,8 @@ public class AccountChangesAtIndex(Address address)
         CodeChange = null;
         PreTxBalance = null;
         PreTxCode = null;
-        _preTxStorage?.Clear();
-        _storageChanges.Clear();
-        _storageReads.Clear();
+        _preTxStorage?.ClearAndTrim();
+        _storageChanges.ClearAndTrim();
+        _storageReads.ClearAndTrim();
     }
 }

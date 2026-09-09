@@ -30,6 +30,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
     {
+        public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
+
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
+
         public void Dispose()
         {
             innerScope.Dispose();
@@ -65,6 +69,20 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             new WriteBatchWrapper(innerScope.StartWriteBatch(estimatedAccountNum), scopeId, logger);
 
         public void Commit(ulong blockNumber) => innerScope.Commit(blockNumber);
+
+        public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) =>
+            innerScope.WriteBackCommittedState(() => new SnapshotWrapper(takeSnapshot(), scopeId, logger));
+    }
+
+    private sealed class SnapshotWrapper(
+        IWorldStateScopeProvider.IBlockChangeSnapshot innerSnapshot,
+        long scopeId,
+        ILogger logger) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch) =>
+            innerSnapshot.WriteTo(new WriteBatchWrapper(writeBatch, scopeId, logger));
+
+        public void Dispose() => innerSnapshot.Dispose();
     }
 
     private class StorageTreeWrapper(IWorldStateScopeProvider.IStorageTree storageTree, Address address, long scopeId, ILogger logger) : IWorldStateScopeProvider.IStorageTree
@@ -73,19 +91,12 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public byte[] Get(in UInt256 index)
         {
-            byte[]? bytes = storageTree.Get(in index);
-            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes?.ToHexString()}");
+            byte[] bytes = storageTree.Get(in index);
+            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes.ToHexString()}");
             return bytes;
         }
 
         public void HintSet(in UInt256 index, byte[]? value) => storageTree.HintSet(in index, value);
-
-        public byte[] Get(in ValueHash256 hash)
-        {
-            byte[]? bytes = storageTree.Get(in hash);
-            logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
-            return bytes;
-        }
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch
@@ -105,6 +116,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
                 logger.Trace($"{scopeId}: OnAccountUpdated callback. {updated.Address} -> {updated.Account}");
             };
         }
+
+        public bool AcceptsStorageWrites => _writeBatch.AcceptsStorageWrites;
 
         public void Dispose()
         {
@@ -143,7 +156,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void Set(in UInt256 index, byte[] value)
         {
             writeBatch.Set(in index, value);
-            logger.Trace($"{scopeId}: {address}, Set {index} to {value?.ToHexString()}");
+            logger.Trace($"{scopeId}: {address}, Set {index} to {value.ToHexString()}");
         }
 
         public void Clear()
