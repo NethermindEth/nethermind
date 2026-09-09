@@ -564,8 +564,8 @@ jobs:
           fi
 
           SETUP_ARGS="--chunk $CHUNK"
-          if [ "$FLATDB" = "1" ]; then
-            SETUP_ARGS="$SETUP_ARGS --flatdb"
+          if [ "$FLATDB" != "1" ]; then
+            SETUP_ARGS="$SETUP_ARGS --triedb"
           fi
           if [ -n "$PARALLEL" ]; then
             SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"

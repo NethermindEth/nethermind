@@ -1042,7 +1042,11 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
         object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
 
-        // Pin to flat to validate the block-override fix under flat's (number, root)-keyed state addressing.
+        if (Environment.GetEnvironmentVariable("TEST_USE_TRIE") == "1")
+        {
+            Assert.Ignore("This regression covers flat DB block addressing.");
+        }
+
         using Context ctx = await Context.Create();
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);

@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -114,7 +115,8 @@ public class XdcTestBlockchain : TestBlockchain
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = CreateConfigProvider();
+        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         configurer?.Invoke(builder);

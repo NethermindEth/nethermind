@@ -16,7 +16,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Db;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -110,7 +109,7 @@ public class MergePluginTests
         IConfigProvider effectiveConfigProvider = configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig);
         if (!preserveFlatDbConfig)
         {
-            effectiveConfigProvider.GetConfig<IFlatDbConfig>().Enabled = TestBlockchain.UseFlatDbByDefault;
+            effectiveConfigProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         }
 
         // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
