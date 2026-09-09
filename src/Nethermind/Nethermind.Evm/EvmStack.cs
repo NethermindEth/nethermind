@@ -122,6 +122,59 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
+    /// Writes the <paramref name="length"/> big-endian bytes at <paramref name="value"/> into
+    /// <paramref name="word"/>, zero-extended, in the slot's limb layout.
+    /// </summary>
+    /// <remarks>
+    /// Each limb is built in a register and the word stored once. Writing the big-endian bytes first
+    /// and reversing the slot afterwards costs a reload that overlaps the stores which just wrote it.
+    /// <para>
+    /// A limb the value covers is one reversed 8-byte load. The single limb it covers only partly
+    /// reads the first 8 bytes - in range for every <paramref name="length"/> here - and keeps the
+    /// leading <c>length % 8</c> of them. <paramref name="length"/> is a literal at every call site,
+    /// so the tests and shifts below fold away.
+    /// </para>
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteWordFromBigEndianBytes(ref EvmWord word, ref byte value, int length)
+    {
+        Debug.Assert(length is > sizeof(ulong) and <= WordSize, "Shorter values reach the stack through one limb.");
+        const int limbBytes = sizeof(ulong);
+        int fullLimbs = length / limbBytes;
+        int partialBytes = length % limbBytes;
+        ulong partial = partialBytes == 0
+            ? 0
+            : Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref value)) >> ((limbBytes - partialBytes) * 8);
+
+        ulong limb0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - limbBytes)));
+        ulong limb1 = fullLimbs > 1
+            ? Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - 2 * limbBytes)))
+            : partial;
+        ulong limb2 = fullLimbs > 2
+            ? Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - 3 * limbBytes)))
+            : fullLimbs == 2 ? partial : 0;
+        ulong limb3 = fullLimbs > 3
+            ? Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref value))
+            : fullLimbs == 3 ? partial : 0;
+
+        if (Vector256.IsHardwareAccelerated)
+        {
+            // A full-width value is one load and one shuffle; the shorter ones assemble their limbs.
+            word = length == WordSize
+                ? Unsafe.ReadUnaligned<EvmWord>(ref value).ByteSwap()
+                : Vector256.Create(limb0, limb1, limb2, limb3).AsByte();
+        }
+        else
+        {
+            ref ulong limbs = ref Unsafe.As<EvmWord, ulong>(ref word);
+            limbs = limb0;
+            Unsafe.Add(ref limbs, 1) = limb1;
+            Unsafe.Add(ref limbs, 2) = limb2;
+            Unsafe.Add(ref limbs, 3) = limb3;
+        }
+    }
+
+    /// <summary>
     /// Turns the big-endian bytes a producer wrote into a slot into the word's limb layout, or back.
     /// A slot holds the <see cref="UInt256"/> memory layout — least significant limb first — so
     /// arithmetic reads and writes it as is, and only the byte-oriented boundaries (code immediates,
@@ -465,15 +518,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 10);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        // This avoids expensive vpinsrq + vinserti128 dependency chain.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -496,15 +542,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 11);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        // This avoids expensive vpinsrq + vinserti128 dependency chain.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -527,14 +566,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 12);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -557,14 +590,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 13);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -587,14 +614,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 14);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -617,14 +638,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 15);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -647,20 +662,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        HalfWord src = Unsafe.ReadUnaligned<HalfWord>(ref value);
+        WriteWordFromBigEndianBytes(ref head, ref value, 16);
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            head = Vector256.Create(default, src);
-        }
-        else
-        {
-            ref HalfWord head128 = ref Unsafe.As<EvmWord, HalfWord>(ref head);
-            head128 = default;
-            Unsafe.Add(ref head128, 1) = src;
-        }
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -683,15 +686,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 17);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.Add(ref value, 0)) << 56;
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -714,15 +710,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 18);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -745,15 +734,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 19);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -776,15 +758,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 20);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -807,15 +782,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 21);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -838,15 +806,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 22);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -869,15 +830,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 23);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -900,15 +854,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 24);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref value);
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -931,15 +878,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 25);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = ((ulong)Unsafe.Add(ref value, 0)) << 56;
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 9));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 17));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -962,15 +902,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 26);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = (ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 48;
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 2));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 10));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 18));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -993,15 +926,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 27);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = ((ulong)Unsafe.ReadUnaligned<ushort>(ref value) << 40) | ((ulong)Unsafe.Add(ref value, 2) << 56);
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 3));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 11));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 19));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1024,15 +950,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 28);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = (ulong)Unsafe.ReadUnaligned<uint>(ref value) << 32;
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 4));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 12));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 20));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1055,15 +974,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 29);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 24) | ((ulong)Unsafe.Add(ref value, 4) << 56);
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 5));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 13));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 21));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1117,15 +1029,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 30);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 16) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 48);
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 6));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 14));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 22));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1148,15 +1053,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 31);
 
-        // Write all 4 lanes directly with scalar stores (no zeroing needed).
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        headU64 = ((ulong)Unsafe.ReadUnaligned<uint>(ref value) << 8) | ((ulong)Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref value, 4)) << 40) | ((ulong)Unsafe.Add(ref value, 6) << 56);
-        Unsafe.Add(ref headU64, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 7));
-        Unsafe.Add(ref headU64, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 15));
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 23));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1179,9 +1077,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
-        head = Unsafe.ReadUnaligned<EvmWord>(ref value);
+        WriteWordFromBigEndianBytes(ref head, ref value, 32);
 
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1391,14 +1288,8 @@ public ref partial struct EvmStack
         }
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
+        WriteWordFromBigEndianBytes(ref head, ref value, 9);
 
-        // Zero entire word with single vector store, then fill non-zero lanes with scalar stores.
-        head = default;
-        ref ulong headU64 = ref Unsafe.As<EvmWord, ulong>(ref head);
-        Unsafe.Add(ref headU64, 2) = ((ulong)Unsafe.Add(ref value, 0)) << 56;
-        Unsafe.Add(ref headU64, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 1));
-
-        SwapSlot(ref Unsafe.As<EvmWord, byte>(ref head));
         return EvmExceptionType.None;
     }
 
@@ -1422,8 +1313,11 @@ public ref partial struct EvmStack
 
         ref EvmWord head = ref Unsafe.As<byte, EvmWord>(ref Unsafe.Add(ref _stack, headOffset * WordSize));
 
-        // Zero entire word with single vector store, then fill lane 3 with scalar store.
-        WriteScalarWordFromUInt64(ref head, value);
+        if (Vector128.IsHardwareAccelerated)
+            head = CreateAcceleratedWordFromUInt64(value);
+        else
+            WriteScalarWordFromUInt64(ref head, value);
+
         return EvmExceptionType.None;
     }
 
