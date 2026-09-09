@@ -68,9 +68,13 @@ public static partial class ZkEvmBitOperations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Swap(ulong x, ulong m8, ulong m16)
     {
-        x = ((x & m8) << 8) | ((x >> 8) & m8);
-        x = ((x & m16) << 16) | ((x >> 16) & m16);
-        return (x << 32) | (x >> 32);
+        // Addition rather than disjunction: the prover charges `or` 60 units against `add`'s 15.5, and
+        // each pair below is disjoint by construction - the masked halves occupy alternating byte, then
+        // halfword, then word lanes - so the operators are equivalent here at a quarter of the price.
+        // Do not carry this over to a pair that can overlap; there the addition would carry.
+        x = ((x & m8) << 8) + ((x >> 8) & m8);
+        x = ((x & m16) << 16) + ((x >> 16) & m16);
+        return (x << 32) + (x >> 32);
     }
 
 }
