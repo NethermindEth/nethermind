@@ -250,7 +250,8 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
-        ValidationResult gasReservationResult = FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(transaction, releaseSpec);
+        // The POST_TX gate the head validator also carries is already answered by the call above.
+        ValidationResult gasReservationResult = FrameTxHeadFieldsTxValidator.ValidateGasReservation(transaction, releaseSpec);
         if (!gasReservationResult)
         {
             return gasReservationResult;
@@ -277,12 +278,15 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 /// <summary>The frame-transaction rules of <see cref="FrameTxFieldsTxValidator"/> whose verdict a change of
 /// head specification can flip: the EIP-7906 POST_TX gate and the spec-priced execution-gas reservation.</summary>
 /// <remarks>
-/// Everything else that validator checks is fork-independent frame shape, so re-running it against a new head
-/// could not change the answer. These two can: a POST_TX frame admitted after EIP-7906 is invalid on a head
-/// below it, and a repricing of the intrinsic or floored gas moves the reservation across the EIP-7825 cap
-/// while <see cref="GasLimitCapTxValidator"/> skips frame transactions. This therefore also runs in
-/// <see cref="HeadTxValidator"/>. A transaction carrying no frames — every other type, and a reloaded light
-/// record — passes through; a light record is judged when its body is read back.
+/// A POST_TX frame admitted after EIP-7906 is invalid on a head below it, and a repricing of the intrinsic or
+/// floored gas moves the reservation across the EIP-7825 cap while <see cref="GasLimitCapTxValidator"/> skips
+/// frame transactions. This therefore also runs in <see cref="HeadTxValidator"/>.
+/// What that validator checks and this one does not is either fork-independent frame shape, or the EIP-7594 blob
+/// leg, which is fork-priced but re-checked at the head by <see cref="MaxBlobCountBlobTxValidator"/> — a
+/// blob-carrying frame transaction falls through its type arm into the same bound. Out of scope here is
+/// <c>GasLimitTxFilter</c>'s admission bound, the head block gas limit: it is not a specification property, so a
+/// spec-change hook could not see it move. A transaction carrying no frames — every other type, and a reloaded
+/// light record — passes through; a light record is judged when its body is read back.
 /// </remarks>
 public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
 {
@@ -291,13 +295,7 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        TxFrame[]? frames = transaction.Frames;
-        if (frames is null)
-        {
-            return ValidationResult.Success;
-        }
-
-        if (!releaseSpec.IsEip7906Enabled)
+        if (!releaseSpec.IsEip7906Enabled && transaction.Frames is { } frames)
         {
             foreach (TxFrame frame in frames)
             {
@@ -306,6 +304,17 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
                     return FrameTxValidation.PostTxNotEnabled;
                 }
             }
+        }
+
+        return ValidateGasReservation(transaction, releaseSpec);
+    }
+
+    /// <summary>The reservation leg alone, for the caller that has already answered the POST_TX gate.</summary>
+    internal static ValidationResult ValidateGasReservation(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (transaction.Frames is null)
+        {
+            return ValidationResult.Success;
         }
 
         if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))

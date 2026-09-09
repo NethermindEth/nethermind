@@ -16,8 +16,10 @@ namespace Nethermind.TxPool.Filters;
 /// <c>eth_sendTransaction</c> never passes through it and would otherwise be priced as if those fields
 /// occupied no calldata — under-stating the intrinsic gas, and with it every bound derived from it. Rejects
 /// nothing; it exists so the pool prices the same transaction the processor does, which measures for itself
-/// before pricing. Must run after <see cref="MalformedTxFilter"/>: measuring encodes into a buffer sized for
-/// a well-formed reference list, and before any filter that prices the transaction.
+/// before pricing. Must run before every filter that prices a frame transaction, <see cref="GasLimitTxFilter"/>
+/// and <see cref="MalformedTxFilter"/> included, or admission and head revalidation price different transactions.
+/// An over-long set is left unmeasured rather than measured into an out-of-range buffer; <see cref="MalformedTxFilter"/>
+/// rejects it for the same bound further down the pipeline.
 /// </remarks>
 internal sealed class FrameTxCalldataStatsFilter : IIncomingTxFilter
 {
@@ -28,12 +30,16 @@ internal sealed class FrameTxCalldataStatsFilter : IIncomingTxFilter
             return AcceptTxResult.Accepted;
         }
 
-        if (tx.NonceKeys is not null)
+        if (tx.NonceKeys is { Length: <= Eip8250Constants.MaxNonceKeys })
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
-        tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
+        if (tx.RecentRootReferences is null or { Length: <= Eip8272Constants.MaxRecentRootReferences })
+        {
+            tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
+        }
+
         return AcceptTxResult.Accepted;
     }
 }

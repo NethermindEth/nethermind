@@ -3182,7 +3182,7 @@ namespace Nethermind.TxPool.Test
 
             _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, provider);
             _headInfo.BlockGasLimit = long.MaxValue;
-            Transaction frameTx = ForkGatedFrameTx(gate, preForkSpec);
+            Transaction frameTx = ForkGatedFrameTx(gate, preForkSpec, postForkSpec, revokedAtFork);
 
             using (Assert.EnterMultipleScope())
             {
@@ -3196,7 +3196,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(revokedAtFork ? 0 : 1));
         }
 
-        private Transaction ForkGatedFrameTx(FrameForkGate gate, IReleaseSpec preForkSpec)
+        private Transaction ForkGatedFrameTx(FrameForkGate gate, IReleaseSpec preForkSpec, IReleaseSpec postForkSpec, bool revokedAtFork)
         {
             switch (gate)
             {
@@ -3212,9 +3212,18 @@ namespace Nethermind.TxPool.Test
                     // next head is the whole difference. The half also absorbs the few tokens by which a fresh
                     // signature's own byte pattern moves the reservation.
                     Transaction probe = ValueTransferFrameTx(executionGasLimit: 0);
-                    FrameTxValidation.TryCalculateBlockGasReservations(probe, preForkSpec, out ulong baseline, out _);
-                    return ValueTransferFrameTx(
+                    Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, preForkSpec, out ulong baseline, out _), Is.True);
+
+                    Transaction nearCap = ValueTransferFrameTx(
                         Eip7825Constants.DefaultTxGasLimitCap - baseline - GasCostOf.TxValueCostEip2780 / 2);
+                    // Pins the arithmetic here rather than through the pool sweep it feeds.
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(nearCap, preForkSpec).AsBool(), Is.True);
+                        Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(nearCap, postForkSpec).AsBool(), Is.EqualTo(!revokedAtFork));
+                    }
+
+                    return nearCap;
             }
         }
 
@@ -3223,6 +3232,45 @@ namespace Nethermind.TxPool.Test
                 SelfVerifyPrefixFrame(),
                 new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
             ]);
+
+        // A locally built frame tx skips the decoder that measures its EIP-8272 reference calldata, so admission
+        // has to measure before it prices: head revalidation prices the measured transaction, and anything
+        // admitted on the lighter reading is pooled, unselectable and evicted at the next transition.
+        [TestCase(true, TestName = "frame_tx_over_the_cap_once_its_reference_calldata_is_measured_is_refused")]
+        [TestCase(false, TestName = "frame_tx_under_the_cap_once_its_reference_calldata_is_measured_is_admitted")]
+        public void SubmitTx_LocallyBuiltFrameTx_IsPricedOnMeasuredReferenceCalldata(bool overCapOnceMeasured)
+        {
+            OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue, FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(spec));
+            _headInfo.BlockGasLimit = long.MaxValue;
+
+            RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences];
+            for (int i = 0; i < references.Length; i++)
+            {
+                references[i] = new RecentRootReference(TestItem.KeccakA, (ulong)i + 1, TestItem.KeccakB);
+            }
+
+            Transaction probe = ReferenceFrameTx(0);
+            probe.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(references);
+            Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(probe, spec, out ulong measured, out _), Is.True);
+
+            ulong headroom = Eip7825Constants.DefaultTxGasLimitCap - measured;
+            Transaction frameTx = ReferenceFrameTx(overCapOnceMeasured ? headroom + 1 : headroom);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(!overCapOnceMeasured), result.ToString());
+                Assert.That(FrameTxHeadFieldsTxValidator.Instance.IsWellFormed(frameTx, spec).AsBool(), Is.EqualTo(!overCapOnceMeasured));
+            }
+
+            Transaction ReferenceFrameTx(ulong executionGasLimit) => SignedFrameTx(
+                [
+                    SelfVerifyPrefixFrame(),
+                    new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
+                ],
+                references);
+        }
 
         [TestCase(100_000UL, 0UL, 0, true)]
         [TestCase(118_000UL, 0UL, 0, false)]
@@ -5579,7 +5627,39 @@ namespace Nethermind.TxPool.Test
                 NonceKeys = [UInt256.One],
                 RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 1, TestItem.KeccakB)],
             },
+            NearCapFrameTx(),
         ];
+
+        /// <summary>A frame transaction reserving execution gas just under the EIP-7825 cap, so a repricing flag
+        /// moves it across.</summary>
+        /// <remarks>The presence gates above are reached by every corpus entry, but the priced leg of the head
+        /// validator reads far more of the specification than they do and no other entry sits near enough to the
+        /// cap for a price to move its verdict. Sized half the EIP-2780 transfer charge below the cap, so
+        /// enabling that charge is the whole difference between valid and invalid.</remarks>
+        private static Transaction NearCapFrameTx()
+        {
+            ReleaseSpec baseline = SpecChangeMarkerBaseline();
+            if (!FrameTxValidation.TryCalculateBlockGasReservations(ValueTransferFrameTx(0), baseline, out ulong reserved, out _))
+            {
+                throw new InvalidOperationException("the near-cap corpus entry could not be priced");
+            }
+
+            return ValueTransferFrameTx(Eip7825Constants.DefaultTxGasLimitCap - reserved - GasCostOf.TxValueCostEip2780 / 2);
+
+            static Transaction ValueTransferFrameTx(ulong executionGasLimit) => new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Frames =
+                [
+                    FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
+                    new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
+                ],
+                FrameSignatures = [],
+                NonceKeys = [UInt256.One],
+            };
+        }
 
         /// <summary>A stable rendering of how <paramref name="validator"/> judges <paramref name="corpus"/>.</summary>
         private static string Verdicts(ITxValidator validator, IReleaseSpec spec, Transaction[] corpus)
