@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc;
 /// <remarks>
 /// Every member is a no-op or a pass-through unless the corresponding diagnostic is switched on, so callers may
 /// invoke them unconditionally on the hot path. The recorder exists only for some values of
-/// <see cref="IJsonRpcConfig.RpcRecorderState"/>, so both <c>IsRecording</c> predicates test for it rather than
+/// <see cref="IJsonRpcConfig.RpcRecorderState"/>, so the <c>IsRecording</c> predicates test for it rather than
 /// inferring it from the flags.
 /// </remarks>
 internal sealed class JsonRpcDiagnostics
@@ -48,7 +48,7 @@ internal sealed class JsonRpcDiagnostics
         }
     }
 
-    public bool IsRecordingRequest => _recorder is not null && (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0;
+    private bool IsRecordingRequest => _recorder is not null && (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0;
 
     private bool IsRecordingResponse => _recorder is not null && (_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Response) != 0;
 
@@ -58,14 +58,32 @@ internal sealed class JsonRpcDiagnostics
     public JsonRpcResult.Entry RecordResponse(in JsonRpcResult.Entry result) =>
         !IsRecordingResponse ? result : RecordResponseSlow(result);
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public void RecordRequest(ReadOnlyMemory<byte> requestBody) =>
-        _recorder!.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
+    public void RecordRequest(ReadOnlyMemory<byte> requestBody)
+    {
+        if (IsRecordingRequest) RecordRequestSlow(requestBody);
+    }
 
     /// <summary>Records the whole request body, returning a reader positioned back at its start.</summary>
-    /// <remarks>The original reader is drained, so the caller must continue with the returned one.</remarks>
+    /// <remarks>The original reader is drained when recording is on, so the caller must continue with the returned one.</remarks>
+    public ValueTask<PipeReader> RecordRequest(PipeReader reader) =>
+        IsRecordingRequest ? RecordRequestSlow(reader) : new(reader);
+
+    public void TraceResult(in JsonRpcResult.Entry response)
+    {
+        if (_logger.IsTrace) TraceResultSlow(response);
+    }
+
+    public void TraceResult(JsonRpcErrorResponse response)
+    {
+        if (_logger.IsTrace) TraceResultSlow(response);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public async ValueTask<PipeReader> RecordRequest(PipeReader reader)
+    private void RecordRequestSlow(ReadOnlyMemory<byte> requestBody) =>
+        _recorder!.RecordRequest(Encoding.UTF8.GetString(requestBody.Span));
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private async ValueTask<PipeReader> RecordRequestSlow(PipeReader reader)
     {
         Stream memoryStream = RecyclableStream.GetStream("recorder");
         await reader.CopyToAsync(memoryStream);
@@ -81,11 +99,11 @@ internal sealed class JsonRpcDiagnostics
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void TraceResult(in JsonRpcResult.Entry response) =>
+    private void TraceResultSlow(in JsonRpcResult.Entry response) =>
         _logger.Trace($"Sending JSON RPC response: {SerializeForDiagnostics(response)}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void TraceResult(JsonRpcErrorResponse response) =>
+    private void TraceResultSlow(JsonRpcErrorResponse response) =>
         _logger.Trace($"Sending JSON RPC response: {SerializeResponseForDiagnostics(response)}");
 
     public static string SerializeResponseForDiagnostics(JsonRpcResponse response)

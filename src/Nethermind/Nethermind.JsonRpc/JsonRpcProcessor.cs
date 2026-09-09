@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -110,10 +110,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 return;
             }
 
-            if (_diagnostics.IsRecordingRequest)
-            {
-                _diagnostics.RecordRequest(requestBody);
-            }
+            _diagnostics.RecordRequest(requestBody);
 
             await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
         }
@@ -143,7 +140,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 return;
             }
 
-            if (recordRequest && _diagnostics.IsRecordingRequest)
+            if (recordRequest)
             {
                 reader = await _diagnostics.RecordRequest(reader);
             }
