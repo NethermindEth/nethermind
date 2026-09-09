@@ -441,6 +441,7 @@ public static partial class EvmInstructions
     /// <param name="gas">The gas state, updated by the operation's cost.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -626,6 +627,7 @@ public static partial class EvmInstructions
     /// <param name="gas">The gas state, updated by the operation's cost.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
