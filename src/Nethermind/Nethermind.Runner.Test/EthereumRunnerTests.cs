@@ -32,7 +32,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -92,7 +91,10 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            resultQueue.Enqueue((configFile, LoadConfigProvider(configFile)));
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource(configFile));
+            configProvider.Initialize();
+            resultQueue.Enqueue((configFile, configProvider));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
@@ -101,42 +103,32 @@ public class EthereumRunnerTests
 
         {
             // Special case for verify trie on state sync finished
-            ConfigProvider configProvider = LoadConfigProvider("configs/mainnet.json");
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Add(("mainnet-verify-trie-starter", configProvider));
         }
 
         {
             // Flashbots
-            ConfigProvider configProvider = LoadConfigProvider("configs/mainnet.json");
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
             result.Add(("flashbots", configProvider));
         }
 
         {
             // Censorship detector
-            ConfigProvider configProvider = LoadConfigProvider("configs/mainnet.json");
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
             configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
             result.Add(("censorship-detector", configProvider));
         }
 
         return result;
-    }
-
-    private static ConfigProvider LoadConfigProvider(string configFile)
-    {
-        JsonConfigSource configSource = new(configFile);
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(configSource);
-        configProvider.Initialize();
-
-        if (!TestBlockchain.UseFlatDbByDefault &&
-            !configSource.GetRawValue(nameof(FlatDbConfig), nameof(IFlatDbConfig.Enabled)).IsSet)
-        {
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
-        }
-
-        return configProvider;
     }
 
     [OneTimeTearDown]
