@@ -782,15 +782,21 @@ public class JsonRpcProcessorTests
         }
     }
 
-    [TestCase(false, 0, TestName = "Unauthenticated batch over limit is rejected")]
-    [TestCase(true, 2, TestName = "Authenticated batch over limit is processed")]
-    public async Task Batch_size_limit_respects_authentication(bool isAuthenticated, int expectedDispatchCount)
+    /// <remarks>
+    /// <paramref name="endpoint"/> picks the batch item source the limit is enforced from: an HTTP body arrives as
+    /// one complete document and takes the raw-bytes path, a WS body goes through the incremental parser and the
+    /// parsed-document path.
+    /// </remarks>
+    [Test]
+    public async Task Batch_size_limit_respects_authentication(
+        [Values] bool isAuthenticated,
+        [Values(RpcEndpoint.Http, RpcEndpoint.Ws)] RpcEndpoint endpoint)
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = 1 });
         using JsonRpcContext context = isAuthenticated
-            ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
-            : CreateHttpContext();
+            ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, []))
+            : new JsonRpcContext(endpoint);
 
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateTransactionCountBatchRequest(2), context);
 
@@ -807,10 +813,10 @@ public class JsonRpcProcessorTests
 
         Assert.That(response.Response, Is.Null);
         List<JsonRpcResponse> batchItems = response.BatchItems!;
-        Assert.That(batchItems, Has.Count.EqualTo(expectedDispatchCount));
+        Assert.That(batchItems, Has.Count.EqualTo(2));
         Assert.That(batchItems[0].Id, Is.EqualTo(new JsonRpcId(67)));
         Assert.That(batchItems[1].Id, Is.EqualTo(new JsonRpcId(67)));
-        await service.Received(expectedDispatchCount).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
     [Test]
