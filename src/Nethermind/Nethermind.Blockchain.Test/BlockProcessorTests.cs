@@ -34,6 +34,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Security;
 using System.Threading;
@@ -1215,12 +1216,8 @@ public class BlockProcessorTests
             .TestObject;
 
         ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
-            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
-            LimboLogs.Instance);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateBalRecordingParallelExecutor(stateProvider, balIndexes);
 
         TxReceipt[] receipts = executor.ProcessTransactions(
             block,
@@ -1387,6 +1384,65 @@ public class BlockProcessorTests
         }
         return slots;
     }
+
+    [Test]
+    public void Parallel_validation_releases_the_pooled_slots_a_shorter_block_leaves_unused()
+    {
+        const int wideTxCount = 8;
+        const int narrowTxCount = 2;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateBalRecordingParallelExecutor(stateProvider, balIndexes);
+
+        // The third block is what makes this bite: releasing only on the step down would leave the
+        // second block in the slots it did not use, and the third block's reset no longer reaches them.
+        ProcessParallelValidationBlock(executor, wideTxCount);
+        ProcessParallelValidationBlock(executor, narrowTxCount);
+        ProcessParallelValidationBlock(executor, narrowTxCount);
+
+        BlockReceiptsTracer[] pool = (BlockReceiptsTracer[])typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
+            .GetField("_receiptsTracerPool", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(executor)!;
+        FieldInfo tracedBlock = typeof(BlockReceiptsTracer)
+            .GetField("Block", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.That(pool, Has.Length.AtLeast(wideTxCount), "the pool must still hold the wide block's slots");
+        for (int i = narrowTxCount; i < wideTxCount; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool[i].TxReceipts.Length, Is.Zero, $"slot {i} still holds receipts");
+                Assert.That(tracedBlock.GetValue(pool[i]), Is.Null, $"slot {i} still references a block");
+            }
+        }
+    }
+
+    private static BlockProcessor.ParallelBlockValidationTransactionsExecutor CreateBalRecordingParallelExecutor(
+        IWorldState stateProvider,
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes) =>
+        new(Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
+            LimboLogs.Instance);
+
+    private static void ProcessParallelValidationBlock(
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor,
+        int txCount) =>
+        executor.ProcessTransactions(
+            BuildParallelValidationBlock(txCount), ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+
+    private static Block BuildParallelValidationBlock(int txCount) =>
+        Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit((ulong)txCount * 1_000_000ul)
+            .WithTransactions(CreateParallelValidationTransactions(txCount))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
 
     private static Transaction[] CreateParallelValidationTransactions(int txCount, ulong gasLimit = 21_000ul)
     {

@@ -26,13 +26,16 @@ public static class WorldStateExtensions
     public static void AddToBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.AddToBalance(address, balanceChange, spec, out _);
 
+    [SkipLocalsInit]
     public static bool AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public static void AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.AddToBalanceAndCreateIfNotExists(address, executionType.GetBalanceCredit(in balanceChange), spec, out _);
 
+    [SkipLocalsInit]
     public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.SubtractFromBalance(address, balanceChange, spec, out _);
 
