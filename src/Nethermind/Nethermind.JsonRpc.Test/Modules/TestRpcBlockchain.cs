@@ -41,7 +41,6 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.History;
@@ -52,7 +51,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        private bool? _previousStrictHexFormat;
 
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig() { Timeout = -1 };
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
@@ -216,8 +214,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
-            _previousStrictHexFormat ??= EthereumJsonSerializer.StrictHexFormat;
-            EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
+            // StrictHexFormat is not set here. It is a process-global that every fixture in this assembly shares,
+            // and writing it per build raced concurrent fixtures - see StrictHexFormatAssemblySetup and #13204.
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
@@ -251,22 +249,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
-        }
-
-        public override void Dispose()
-        {
-            try
-            {
-                base.Dispose();
-            }
-            finally
-            {
-                if (_previousStrictHexFormat is bool previousStrictHexFormat)
-                {
-                    EthereumJsonSerializer.StrictHexFormat = previousStrictHexFormat;
-                    _previousStrictHexFormat = null;
-                }
-            }
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>

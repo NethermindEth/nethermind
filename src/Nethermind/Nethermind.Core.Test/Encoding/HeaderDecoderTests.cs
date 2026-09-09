@@ -19,9 +19,8 @@ public class HeaderDecoderTests
     private const int MixHashFieldIndex = 13;
     private const int WithdrawalsRootFieldIndex = 16;
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_decode(bool hasWithdrawalsRoot)
+    [Test]
+    public void Can_decode([Values] bool hasWithdrawalsRoot)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithMixHash(Keccak.Compute("mix_hash"))
@@ -89,9 +88,8 @@ public class HeaderDecoderTests
         Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001"));
     }
 
-    [TestCase(ulong.MaxValue)]
-    [TestCase(ulong.MaxValue / 2)]
-    public void Can_encode_decode_with_large_ulong_fields(ulong largeValue)
+    [Test]
+    public void Can_encode_decode_with_large_ulong_fields([Values(ulong.MaxValue, ulong.MaxValue / 2)] ulong largeValue)
     {
         BlockHeader header = Build.A.BlockHeader.
             WithNumber(largeValue).
@@ -109,9 +107,8 @@ public class HeaderDecoderTests
         }
     }
 
-    [TestCase(ulong.MaxValue)]
-    [TestCase(ulong.MaxValue / 2)]
-    public void Can_encode_decode_with_large_ulong_when_using_span(ulong largeValue)
+    [Test]
+    public void Can_encode_decode_with_large_ulong_when_using_span([Values(ulong.MaxValue, ulong.MaxValue / 2)] ulong largeValue)
     {
         BlockHeader header = Build.A.BlockHeader.
             WithNumber(largeValue).
@@ -277,14 +274,8 @@ public class HeaderDecoderTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    public void Should_reject_empty_rlp_string_for_mandatory_fixed_size_field(int fieldIndex)
+    [Test]
+    public void Should_reject_empty_rlp_string_for_mandatory_fixed_size_field([Values(0, 1, 2, 3, 4, 5, 6)] int fieldIndex)
     {
         byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);

@@ -248,9 +248,8 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void GetAccount_ReportsWhetherAccountIsInCurrentSnapshot(bool isNull)
+    [Test]
+    public void GetAccount_ReportsWhetherAccountIsInCurrentSnapshot([Values] bool isNull)
     {
         using TestContext ctx = new();
         Address address = TestItem.AddressA;
@@ -1078,11 +1077,8 @@ public class FlatWorldStateScopeProviderTests
     }
 
     // Storage-only changes must still warm: the storage-root change rewrites the account leaf.
-    [TestCase(BalWriteKind.Balance)]
-    [TestCase(BalWriteKind.Nonce)]
-    [TestCase(BalWriteKind.Code)]
-    [TestCase(BalWriteKind.Storage)]
-    public async Task HintBal_WarmsAddress_ForEachWriteKind(BalWriteKind kind)
+    [Test]
+    public async Task HintBal_WarmsAddress_ForEachWriteKind([Values(BalWriteKind.Balance, BalWriteKind.Nonce, BalWriteKind.Code, BalWriteKind.Storage)] BalWriteKind kind)
     {
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;

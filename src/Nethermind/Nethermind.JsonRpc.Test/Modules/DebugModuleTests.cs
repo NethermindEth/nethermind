@@ -314,9 +314,8 @@ public class DebugModuleTests
         Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames(bool isBadBlock)
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames([Values] bool isBadBlock)
     {
         Hash256 blockHash = Keccak.EmptyTreeHash;
 
@@ -347,9 +346,8 @@ public class DebugModuleTests
         Assert.That(actual.Data, Is.EqualTo(GetFileNames(blockHash)));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void DebugStandardTraceBlockToFile_WhenBlockMissing_ReturnsResourceNotFound(bool isBadBlock)
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenBlockMissing_ReturnsResourceNotFound([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
         _blockFinder.FindHeader(blockHash).ReturnsNull();
@@ -361,9 +359,8 @@ public class DebugModuleTests
         Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void DebugStandardTraceBlockToFile_WhenStateUnavailable_ReturnsResourceUnavailable(bool isBadBlock)
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenStateUnavailable_ReturnsResourceUnavailable([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;

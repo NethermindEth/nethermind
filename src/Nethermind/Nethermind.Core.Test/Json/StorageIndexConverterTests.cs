@@ -31,9 +31,8 @@ public class StorageIndexConverterTests
             () => JsonSerializer.Deserialize<StorageIndex>("\"0x" + new string('f', 65) + "\""),
             Throws.InstanceOf<JsonException>());
 
-    [TestCase("\"0x\"")]
-    [TestCase("\"10\"")]
-    public void Rejects_invalid_key(string json) =>
+    [Test]
+    public void Rejects_invalid_key([Values("\"0x\"", "\"10\"")] string json) =>
         Assert.That(() => JsonSerializer.Deserialize<StorageIndex>(json), Throws.InstanceOf<JsonException>());
 
     [Test]
