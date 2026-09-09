@@ -210,26 +210,29 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
         }
 
-        [TestCase(1, 1_000_000)]
-        [TestCase(8, 200)]
-        public async Task Will_only_connect_up_to_max_peers(int outgoingConnectParallelism, int maxOutgoingConnectPerSec)
+        /// <remarks>
+        /// The numbers are the point of the case: eight workers against two slots, throttled to four dials a
+        /// second, so every worker dequeues a candidate and suspends in the rate limiter with its slot claimed
+        /// but not yet active. That is the window a plain capacity check cannot see - reverting the claim dials
+        /// five or six against a cap of two, on every run.
+        /// </remarks>
+        [Test]
+        public async Task Will_only_connect_up_to_max_peers()
         {
             const int candidateCount = 50;
-            const int expectedConnectCount = 25;
+            const int maxActivePeers = 2;
 
-            await using Context ctx = new(outgoingConnectParallelism);
-            // A throttled connect suspends in the rate limiter with its slot claimed but not yet active,
-            // which is where the workers used to lose count of each other.
-            ctx.NetworkConfig.MaxOutgoingConnectPerSec = maxOutgoingConnectPerSec;
+            await using Context ctx = new(parallelism: 8, maxActivePeers: maxActivePeers);
+            ctx.NetworkConfig.MaxOutgoingConnectPerSec = 4;
             ctx.CreatePeerManager();
             ctx.SetupPersistedPeers(candidateCount);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            await ctx.RlpxPeer.WaitForConnectCallsAsync(expectedConnectCount, TimeSpan.FromSeconds(30));
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(maxActivePeers, TimeSpan.FromSeconds(30));
             await Task.Delay(_delayLong);
 
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(expectedConnectCount));
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(maxActivePeers));
         }
 
         [Test]
@@ -997,6 +1000,8 @@ namespace Nethermind.Network.Test
         private class RlpxMock(List<Session> sessions) : IRlpxHost
         {
             private readonly List<Session> _sessions = sessions;
+            private int _connectAsyncCallsCount;
+
             public ISessionMonitor SessionMonitor { get; }
 
             public event Action? ConnectCalled;
@@ -1005,10 +1010,7 @@ namespace Nethermind.Network.Test
 
             public Task<bool> ConnectAsync(Node node)
             {
-                lock (this)
-                {
-                    ConnectAsyncCallsCount++;
-                }
+                Interlocked.Increment(ref _connectAsyncCallsCount);
 
                 if (_isFailing)
                 {
@@ -1069,7 +1071,7 @@ namespace Nethermind.Network.Test
                 session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
             }
 
-            public int ConnectAsyncCallsCount { get; set; }
+            public int ConnectAsyncCallsCount => Volatile.Read(ref _connectAsyncCallsCount);
 
             public Task Shutdown() => Task.CompletedTask;
 

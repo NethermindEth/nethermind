@@ -140,7 +140,7 @@ namespace Nethermind.Network
             }
 
             _stats.ReportEvent(peer.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount && CanConnectToPeer(peer))
+            if (HasAvailableActivePeerSlot() && CanConnectToPeer(peer))
             {
 #pragma warning disable 4014
 
@@ -507,11 +507,19 @@ namespace Nethermind.Network
         /// <remarks>
         /// Claims first and gives the claim back when there turns out to be no room, so that concurrent
         /// callers cannot all pass <see cref="HasAvailableActivePeerSlot"/> for the same slot and then
-        /// dial once they resume. The claim is released in <see cref="SetupOutgoingPeerConnection"/>.
+        /// dial once they resume. Static and trusted peers keep their claim either way: they are must-keep
+        /// and exempt from the cap everywhere else, and once the cap is full nothing re-selects them, so a
+        /// refusal here would drop them for good. The claim is released in
+        /// <see cref="SetupOutgoingPeerConnection"/>.
         /// </remarks>
-        private bool TryClaimActivePeerSlot()
+        private bool TryClaimActivePeerSlot(Peer peer)
         {
-            if (Interlocked.Increment(ref _pending) <= AvailableActivePeersCount) return true;
+            if (Interlocked.Increment(ref _pending) <= AvailableActivePeersCount
+                || peer.Node.IsStatic
+                || peer.Node.IsTrusted)
+            {
+                return true;
+            }
 
             Interlocked.Decrement(ref _pending);
             return false;
@@ -787,7 +795,13 @@ namespace Nethermind.Network
 
             // Claim the slot before the first await: a caller suspended in the rate limiter is invisible
             // to a plain capacity check, so without the claim all of them dial past MaxActivePeers.
-            if (!TryClaimActivePeerSlot()) return;
+            if (!TryClaimActivePeerSlot(peer))
+            {
+                // The candidate was selected and queued, so say it went nowhere - otherwise a slot freed
+                // in the meantime idles until the next PeersUpdateInterval.
+                SignalPeerUpdateNeeded();
+                return;
+            }
 
             bool result = false;
             try
