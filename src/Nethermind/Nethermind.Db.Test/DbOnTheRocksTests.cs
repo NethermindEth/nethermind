@@ -19,6 +19,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Nethermind.State.Flat;
 using NSubstitute;
 using NUnit.Framework;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -156,6 +157,113 @@ namespace Nethermind.Db.Test
             else
             {
                 Assert.That(act, Throws.InstanceOf<RocksDbException>());
+            }
+        }
+
+        [Test]
+        public void RocksDbFeatureCollectiveNine_ResolvesOptionsAndRoundTripsDeletesAndIteration()
+        {
+            DbConfig config = new();
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            IRocksDbConfig globalConfig = configFactory.GetForDatabase(DbNames.Blocks, null);
+            IDictionary<string, string> globalOptions = DbOnTheRocks.ExtractOptions(globalConfig.RocksDbOptions);
+            IRocksDbConfig flatConfig = configFactory.GetForDatabase(DbNames.Flat, null);
+            IDictionary<string, string> flatOptions = DbOnTheRocks.ExtractOptions(flatConfig.RocksDbOptions);
+            IRocksDbConfig accountConfig = configFactory.GetForDatabase(DbNames.Flat, nameof(FlatDbColumns.Account));
+            IDictionary<string, string> accountOptions = DbOnTheRocks.ExtractOptions(accountConfig.RocksDbOptions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(globalOptions["block_based_table_factory.format_version"], Is.EqualTo("7"));
+                Assert.That(globalOptions["block_based_table_factory.filter_policy"], Is.EqualTo("ribbonfilter:10:1"));
+                Assert.That(globalOptions["block_based_table_factory.separate_key_value_in_data_block"], Is.EqualTo("true"));
+                Assert.That(globalOptions["optimize_manifest_for_recovery"], Is.EqualTo("true"));
+                Assert.That(globalOptions["max_compaction_trigger_wakeup_seconds"], Is.EqualTo("60"));
+                Assert.That(flatOptions["block_based_table_factory.filter_policy"], Is.EqualTo("ribbonfilter:10:3"));
+                Assert.That(flatOptions["block_based_table_factory.cache_index_and_filter_blocks"], Is.EqualTo("true"));
+                Assert.That(flatOptions["min_tombstones_for_range_conversion"], Is.EqualTo("32"));
+                Assert.That(flatOptions["read_triggered_compaction_threshold"], Is.EqualTo("0.01"));
+                Assert.That(accountOptions["block_based_table_factory.filter_policy"], Is.EqualTo("ribbonfilter:10:3"));
+                Assert.That(accountOptions["block_based_table_factory.cache_index_and_filter_blocks"], Is.EqualTo("true"));
+                Assert.That(accountOptions["min_tombstones_for_range_conversion"], Is.EqualTo("32"));
+                Assert.That(accountOptions["read_triggered_compaction_threshold"], Is.EqualTo("0.01"));
+                Assert.That(accountOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kInterpolation"));
+                Assert.That(accountConfig.RocksDbOptions, Does.Not.Contain("kAuto"));
+            }
+
+            string blocksPath = Path.Combine(DbPath, "blocks");
+            using (DbOnTheRocks db = new(blocksPath, GetRocksDbSettings(blocksPath, DbNames.Blocks), config, configFactory, LimboLogs.Instance))
+            {
+                db.Set([1], [1]);
+                db.Set([2], [2]);
+                db.Flush();
+                db.Remove([1]);
+                db.Flush();
+            }
+
+            using (DbOnTheRocks reopenedBlocks = new(blocksPath, GetRocksDbSettings(blocksPath, DbNames.Blocks), config, configFactory, LimboLogs.Instance))
+            {
+                using ISortedView view = ((ISortedKeyValueStore)reopenedBlocks).GetViewBetween([0], [3]);
+                List<byte> keys = [];
+                while (view.MoveNext()) keys.Add(view.CurrentKey[0]);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(GetValue(reopenedBlocks, [1]), Is.Null);
+                    Assert.That(GetValue(reopenedBlocks, [2]), Is.EqualTo(new byte[] { 2 }));
+                    Assert.That(keys, Is.EqualTo(new byte[] { 2 }));
+                }
+            }
+
+            string flatPath = Path.Combine(DbPath, "flat");
+            byte[][] accountKeys = new byte[128][];
+            for (int i = 0; i < accountKeys.Length; i++)
+            {
+                accountKeys[i] = new byte[20];
+                accountKeys[i][0] = (byte)(i >> 8);
+                accountKeys[i][1] = (byte)i;
+            }
+
+            using (ColumnsDb<FlatDbColumns> db = new(flatPath, GetRocksDbSettings(flatPath, DbNames.Flat), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>()))
+            {
+                IDb account = db.GetColumnDb(FlatDbColumns.Account);
+                for (int i = 0; i < accountKeys.Length; i++) account.PutSpan(accountKeys[i], [(byte)i], WriteFlags.None);
+                db.Flush();
+
+                using IKeyValueStoreSnapshot beforeDeletes = ((IKeyValueStoreWithSnapshot)account).CreateSnapshot();
+                for (int i = 32; i < 96; i++) account.Remove(accountKeys[i]);
+                db.Flush();
+
+                List<byte> keys = [];
+                byte[] upperBound = new byte[20];
+                upperBound[1] = 128;
+                using (ISortedView view = ((ISortedKeyValueStore)account).GetViewBetween(accountKeys[0], upperBound))
+                {
+                    while (view.MoveNext()) keys.Add(view.CurrentKey[1]);
+                }
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(beforeDeletes.Get(accountKeys[32]), Is.EqualTo(new byte[] { 32 }));
+                    Assert.That(((IReadOnlyKeyValueStore)account).Get(accountKeys[32]), Is.Null);
+                    Assert.That(((IReadOnlyKeyValueStore)account).Get(accountKeys[96]), Is.EqualTo(new byte[] { 96 }));
+                    Assert.That(keys.Count, Is.EqualTo(64));
+                    Assert.That(keys[0], Is.EqualTo(0));
+                    Assert.That(keys[^1], Is.EqualTo(127));
+                }
+
+                account.Set(accountKeys[64], [0xF0]);
+                db.Flush();
+            }
+
+            using ColumnsDb<FlatDbColumns> reopenedFlat = new(flatPath, GetRocksDbSettings(flatPath, DbNames.Flat), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>());
+            IDb reopenedAccount = reopenedFlat.GetColumnDb(FlatDbColumns.Account);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(((IReadOnlyKeyValueStore)reopenedAccount).Get(accountKeys[32]), Is.Null);
+                Assert.That(((IReadOnlyKeyValueStore)reopenedAccount).Get(accountKeys[64]), Is.EqualTo(new byte[] { 0xF0 }));
+                Assert.That(((IReadOnlyKeyValueStore)reopenedAccount).Get(accountKeys[96]), Is.EqualTo(new byte[] { 96 }));
             }
         }
 

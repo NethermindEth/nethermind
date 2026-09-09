@@ -44,6 +44,8 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        "optimize_manifest_for_recovery=true;" +
+        "max_compaction_trigger_wakeup_seconds=60;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -63,7 +65,7 @@ public class DbConfig : IDbConfig
         // Make the index in cache have higher priority, so it is kept more in cache.
         "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
 
-        "block_based_table_factory.format_version=5;" +
+        "block_based_table_factory.format_version=7;" +
 
         // Two level index split the index into two level. First index point to second level index, which actually
         // point to the block, which get binary searched to the value. This means potentially two iop instead of one per
@@ -75,7 +77,10 @@ public class DbConfig : IDbConfig
         "block_based_table_factory.partition_filters=true;" +
         "block_based_table_factory.metadata_block_size=4096;" +
 
-        "block_based_table_factory.filter_policy=bloomfilter:10;" +
+        // Use Bloom-compatible filters for flush-created files; level 1 keeps the more expensive Ribbon builder for lower levels.
+        "block_based_table_factory.filter_policy=ribbonfilter:10:1;" +
+        // This data-block layout is incompatible with RocksDB versions before 11; format_version alone does not provide compatibility.
+        "block_based_table_factory.separate_key_value_in_data_block=true;" +
         "";
     public string? AdditionalRocksDbOptions { get; set; }
 
@@ -309,9 +314,12 @@ public class DbConfig : IDbConfig
         // We bsearch instead of partitioned tree. This take up memory for improved latency.
         "block_based_table_factory.partition_filters=false;" +
         "block_based_table_factory.index_type=kBinarySearch;" +
+        "block_based_table_factory.cache_index_and_filter_blocks=true;" +
 
         "ttl=0;" +
         "periodic_compaction_seconds=0;" +
+        "min_tombstones_for_range_conversion=32;" +
+        "read_triggered_compaction_threshold=0.01;" +
         "compression=kLZ4Compression;" +
 
         // Reduce num of files. Tend to be a good thing.
@@ -349,6 +357,8 @@ public class DbConfig : IDbConfig
 
         // account db have no benefit in locality whatsoever, and have compression disabled.
         "block_based_table_factory.block_size=4096;" +
+        // Flat account keys are 20-byte prefixes of Keccak hashes and are near-uniform.
+        "block_based_table_factory.index_block_search_type=kInterpolation;" +
 
         // Smaller
         "write_buffer_size=16000000;" +
