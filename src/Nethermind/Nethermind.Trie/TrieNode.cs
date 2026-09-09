@@ -773,13 +773,15 @@ namespace Nethermind.Trie
 
         /// <summary>Tells whether the child at <paramref name="position"/> is stored as its hash.</summary>
         /// <remarks>
-        /// One prefix test rather than a prefix decode: a 32-byte content length is reachable only for the
-        /// hash prefix and for a 33-byte sequence, and the trie embeds a child only below 32 bytes, so no
-        /// well-formed node carries the latter. Malformed input reads as "not a hash" instead of throwing.
+        /// One prefix test on the common path: the trie embeds a child only below 32 bytes, so on well-formed
+        /// data the hash prefix is the only item with 32 bytes of content. Anything else claiming 32 bytes is
+        /// malformed and answers "hash" here, leaving the decode to reject it rather than reading it back as
+        /// an embedded child.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsChildHashNext(ReadOnlySpan<byte> nodeRlp, int position)
-            => nodeRlp[position] == RlpHelpers.KeccakRlpPrefix;
+            => nodeRlp[position] == RlpHelpers.KeccakRlpPrefix
+                || RlpHelpers.PeekPrefixAndContentLength(nodeRlp, position).ContentLength == Hash256.Size;
 
         public byte[]? GetInlineNodeRlp(int i)
         {

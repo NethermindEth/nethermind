@@ -35,14 +35,12 @@ namespace Nethermind.Trie
             /// <summary>The children of a node already known to be a branch.</summary>
             /// <remarks>
             /// Walking the inline array keeps the encode passes below off <see cref="INodeData"/>'s
-            /// indexer, which is an interface call per child. The cast is unchecked, hence the assert.
+            /// indexer, which is an interface call per child. The type test is once per pass, and is a
+            /// test rather than an unchecked cast because reading a smaller node's data as sixteen
+            /// references would corrupt the heap instead of throwing.
             /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static ReadOnlySpan<object?> BranchChildren(TrieNode item)
-            {
-                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                return Unsafe.As<BranchData>(item._nodeData!).Branches;
-            }
+            private static ReadOnlySpan<object?> BranchChildren(TrieNode item) => Branch(item).Branches;
 
             /// <inheritdoc cref="BranchChildren"/>
             /// <remarks>
@@ -52,11 +50,14 @@ namespace Nethermind.Trie
             /// child, +995,495 ziskemu steps a block across the four passes that do so.
             /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static ref object? FirstBranchChild(TrieNode item)
-            {
-                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                return ref Unsafe.As<BranchData>(item._nodeData!)[0];
-            }
+            private static ref object? FirstBranchChild(TrieNode item) => ref Branch(item)[0];
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static BranchData Branch(TrieNode item) => item._nodeData as BranchData ?? ThrowNotABranch();
+
+            [DoesNotReturn, StackTraceHidden]
+            private static BranchData ThrowNotABranch() =>
+                throw new TrieException("A node encoded as a branch does not hold branch data.");
 
             [SkipLocalsInit]
             public static CappedArray<byte> EncodeExtension(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool, bool canBeParallel)
