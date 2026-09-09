@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -66,6 +67,104 @@ public class JsonRpcProcessorTests
         new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
+
+    private static JsonRpcContext CreateEngineContext() =>
+        new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
+
+    private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+
+    // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
+    // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
+    // The demotion is scoped to unauthenticated callers - see Engine_api_request_errors_keep_warn below.
+    [TestCase(ErrorCodes.ParseError, false, TestName = "ParseError (-32700) is not WARN")]
+    [TestCase(ErrorCodes.InvalidRequest, false, TestName = "InvalidRequest (-32600) is not WARN")]
+    [TestCase(ErrorCodes.MethodNotFound, false, TestName = "MethodNotFound (-32601) is not WARN")]
+    [TestCase(ErrorCodes.InvalidParams, false, TestName = "InvalidParams (-32602) is not WARN")]
+    [TestCase(ErrorCodes.InternalError, true, TestName = "InternalError (-32603) keeps WARN")]
+    [TestCase(ErrorCodes.Default, true, TestName = "Default (-32000) keeps WARN")]
+    [TestCase(ErrorCodes.LimitExceeded, true, TestName = "LimitExceeded (-32005) without suppression keeps WARN")]
+    public async Task Error_response_log_level_follows_error_class(int errorCode, bool expectWarn)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = errorCode, Message = "test message" }
+        });
+        string request = CreateRequest("1", "eth_getBalance", """["0x1234","latest"]""");
+
+        // Warn/Error-only capture: anything recorded here would be one stdout line per request on a default node.
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, CreateHttpContext());
+
+        // Full capture: the message must still be available at Debug for operators debugging a client.
+        TestLogger debugLogger = new();
+        await ProcessAsync(CreateProcessorWithLogger(service, debugLogger), request, CreateHttpContext());
+
+        string expectedFragment = $"Code: {errorCode} Message: test message";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warnLogger.LogList.Where(l => l.Contains(expectedFragment)), expectWarn ? Is.Not.Empty : Is.Empty,
+                $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+            Assert.That(debugLogger.LogList.Where(l => l.Contains(expectedFragment)), Is.Not.Empty);
+        }
+    }
+
+    // The #13156 rationale is that a client fault costs one unauthenticated request, so it must not dictate the
+    // operator's log volume. That does not hold for the JWT-authenticated Engine endpoint: -32601 is the canonical
+    // CL/EL version-mismatch signal and -32602 means the consensus client sent a payload this node could not bind.
+    // Both are the operator's problem and must stay visible at default level on a node running at Info.
+    [TestCase(ErrorCodes.MethodNotFound, TestName = "MethodNotFound (-32601) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParams (-32602) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.InvalidRequest, TestName = "InvalidRequest (-32600) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.ParseError, TestName = "ParseError (-32700) keeps WARN when authenticated")]
+    public async Task Engine_api_request_errors_keep_warn(int errorCode)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = errorCode, Message = "test message" }
+        });
+        string request = CreateRequest("1", "engine_newPayloadV4", "[]");
+
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        using (JsonRpcContext engineContext = CreateEngineContext())
+        {
+            await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, engineContext);
+        }
+
+        Assert.That(warnLogger.LogList.Where(l => l.Contains($"Code: {errorCode} Message: test message")), Is.Not.Empty,
+            $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+    }
+
+    // The two tests above cover errors a module produced. Bytes that never decode into a request never reach one, so
+    // -32700 is raised on the transport path instead, which had its own unconditional Error line. Same rule applies:
+    // undecodable bytes are the caller's fault, and the JWT endpoint keeps the operator's line.
+    [TestCase(false, TestName = "Parse error is not WARN for an unauthenticated caller")]
+    [TestCase(true, TestName = "Parse error keeps WARN when authenticated")]
+    public async Task Transport_parse_error_log_level_follows_authentication(bool isAuthenticated)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcSuccessResponse { Id = request.Id });
+        const string request = "{ not json";
+        const string fragment = "Error during parsing/validation";
+
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        TestLogger debugLogger = new();
+        foreach (TestLogger logger in (TestLogger[])[warnLogger, debugLogger])
+        {
+            using JsonRpcContext context = isAuthenticated ? CreateEngineContext() : CreateHttpContext();
+            using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessorWithLogger(service, logger), request, context);
+            Assert.That(((JsonRpcErrorResponse)AssertSingleResponse(result).Response!).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warnLogger.LogList.Where(l => l.Contains(fragment)), isAuthenticated ? Is.Not.Empty : Is.Empty,
+                $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+            Assert.That(debugLogger.LogList.Where(l => l.Contains(fragment)), Is.Not.Empty,
+                "the detail must stay recoverable at Debug");
+        }
+    }
 
     [Test]
     public async Task Http_engine_newPayloadV4_keeps_envelope_and_params_on_direct_utf8_path()
@@ -749,6 +848,202 @@ public class JsonRpcProcessorTests
         }
 
         AssertBatchResponse(result, expectedBatchItems.Value);
+    }
+
+    public enum RequestTransport
+    {
+        HttpMemory,
+        HttpPipe,
+        WsPipe
+    }
+
+    private static readonly byte[] _methodPrefixUtf8 = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_");
+    private static readonly byte[] _methodSuffixUtf8 = Encoding.UTF8.GetBytes("\",\"params\":[]}");
+
+    private static byte[] CreateRequestWithRawMethodTail(params byte[] rawMethodTail) =>
+        [.. _methodPrefixUtf8, .. rawMethodTail, .. _methodSuffixUtf8];
+
+    private static IEnumerable<TestCaseData> MalformedMethodTextCases()
+    {
+        (string name, byte[] tail)[] cases =
+        [
+            ("Invalid UTF-8 continuation byte", [0xC3]),
+            ("Overlong UTF-8 encoding", [0xC0, 0xAF]),
+            ("Truncated 4-byte UTF-8 sequence", [0xF0, 0x9F]),
+            ("Lone high surrogate escape", Encoding.ASCII.GetBytes("\\ud800")),
+            ("Lone low surrogate escape", Encoding.ASCII.GetBytes("\\udc00")),
+        ];
+
+        foreach ((string name, byte[] tail) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(CreateRequestWithRawMethodTail(tail), transport).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(MalformedMethodTextCases))]
+    public async Task Malformed_utf8_or_utf16_in_method_name_is_a_parse_error(byte[] request, RequestTransport transport)
+    {
+        bool dispatched = false;
+        IJsonRpcService service = CreateService(rpcRequest =>
+        {
+            dispatched = true;
+            return new JsonRpcSuccessResponse { Id = rpcRequest.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport);
+
+        CollectedJsonRpcResult only = AssertOnlyResult(result);
+        Assert.That(only.BatchItems, Is.Null, "a malformed single request must produce a single framed error, not a batch");
+        Assert.That(only.Response, Is.TypeOf<JsonRpcErrorResponse>());
+        Assert.That(((JsonRpcErrorResponse)only.Response!).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
+        Assert.That(dispatched, Is.False, "a request that cannot be decoded must never reach the service");
+    }
+
+    private static IEnumerable<TestCaseData> NonObjectBatchElementCases()
+    {
+        (string name, byte[] request, int expectedItems, int validItemIndex)[] cases =
+        [
+            ("Null element", "[null]"u8.ToArray(), 1, -1),
+            ("Array element", "[[]]"u8.ToArray(), 1, -1),
+            ("Number element", "[1]"u8.ToArray(), 1, -1),
+            ("String element", "[\"x\"]"u8.ToArray(), 1, -1),
+            ("Null element followed by valid request", "[null,{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 2, 1),
+            ("Object element with invalid UTF-8 method", [(byte)'[', .. CreateRequestWithRawMethodTail(0xC3), (byte)']'], 1, -1),
+            ("Object element with fractional id", "[{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(), 1, -1),
+        ];
+
+        foreach ((string name, byte[] request, int expectedItems, int validItemIndex) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(request, expectedItems, validItemIndex, transport).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(NonObjectBatchElementCases))]
+    public async Task Batch_with_undecodable_element_returns_invalid_request_for_that_element(byte[] request, int expectedItems, int validItemIndex, RequestTransport transport)
+    {
+        int dispatched = 0;
+        IJsonRpcService service = CreateService(rpcRequest =>
+        {
+            dispatched++;
+            return new JsonRpcSuccessResponse { Id = rpcRequest.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport);
+
+        CollectedJsonRpcResult only = AssertOnlyResult(result);
+        Assert.That(only.Response, Is.Null, "a syntactically valid JSON array must be answered with a batch response");
+        Assert.That(only.BatchItems, Has.Count.EqualTo(expectedItems));
+        for (int i = 0; i < expectedItems; i++)
+        {
+            JsonRpcResponse item = only.BatchItems![i];
+            if (i == validItemIndex)
+            {
+                Assert.That(item, Is.TypeOf<JsonRpcSuccessResponse>(), $"item {i} is a valid request and must be dispatched");
+                Assert.That(item.Id, Is.EqualTo(new JsonRpcId(1)));
+                continue;
+            }
+
+            Assert.That(item, Is.TypeOf<JsonRpcErrorResponse>(), $"item {i} is not a request object");
+            Assert.That(((JsonRpcErrorResponse)item).Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        }
+
+        Assert.That(dispatched, Is.EqualTo(validItemIndex < 0 ? 0 : 1));
+    }
+
+    /// <summary>
+    /// An element that cannot be decoded still produces a response entry, so it still consumes response body.
+    /// Its <c>continue</c> must not skip the sink's stop signal: the next element would then be dispatched and
+    /// serialized in full after the response was already over <c>MaxBatchResponseBodySize</c>.
+    /// </summary>
+    [Test]
+    public async Task Batch_with_undecodable_element_does_not_bypass_the_response_limit(
+        [Values] RequestTransport transport)
+    {
+        int dispatched = 0;
+        IJsonRpcService service = CreateService(rpcRequest =>
+        {
+            dispatched++;
+            return new JsonRpcSuccessResponse { Id = rpcRequest.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+        CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor,
+            "[null,{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}]"u8.ToArray(),
+            transport,
+            sink);
+
+        IReadOnlyList<JsonRpcResponse> batchItems = AssertOnlyResult(result).BatchItems!;
+        Assert.That(batchItems, Has.Count.EqualTo(2));
+        Assert.That(((JsonRpcErrorResponse)batchItems[0]).Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        Assert.That(batchItems[1], Is.TypeOf<JsonRpcErrorResponse>(), "the element after the limit was reached must not be dispatched");
+        Assert.That(((JsonRpcErrorResponse)batchItems[1]).Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+        Assert.That(dispatched, Is.Zero);
+    }
+
+    private static IEnumerable<TestCaseData> ServerSideDecodeLookalikeExceptionCases()
+    {
+        (string name, Func<Exception> factory)[] cases =
+        [
+            ("InvalidOperationException", static () => new InvalidOperationException("module went away")),
+            ("ObjectDisposedException", static () => new ObjectDisposedException("RentedModule")),
+        ];
+
+        foreach ((string name, Func<Exception> factory) in cases)
+        {
+            foreach (RequestTransport transport in Enum.GetValues<RequestTransport>())
+            {
+                yield return new TestCaseData(factory, transport).SetName($"{name} ({transport})");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// A server-side <see cref="InvalidOperationException"/> or <see cref="ObjectDisposedException"/> raised *after* a
+    /// well-formed request has decoded must never be reported to the caller as -32700 parse error: that hides a real
+    /// server fault behind a message blaming the client. Only the decode steps may treat those types as caller input
+    /// errors, which is why the guards sit inside the decode helpers rather than around request execution.
+    /// </remarks>
+    [TestCaseSource(nameof(ServerSideDecodeLookalikeExceptionCases))]
+    public void Server_side_exception_after_a_request_decodes_is_not_reported_as_a_parse_error(Func<Exception> factory, RequestTransport transport)
+    {
+        Exception expected = factory();
+        IJsonRpcService service = CreateService(_ => throw expected);
+        JsonRpcProcessor processor = CreateProcessor(service);
+        byte[] request = """{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray();
+
+        Exception? thrown = Assert.CatchAsync(async () =>
+        {
+            using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, request, transport);
+        });
+
+        Assert.That(thrown, Is.SameAs(expected), "the server fault must surface, not be reframed as a client parse error");
+    }
+
+    private static async ValueTask<CollectedJsonRpcResponses> ProcessAsync(
+        JsonRpcProcessor processor,
+        byte[] request,
+        RequestTransport transport,
+        CollectingJsonRpcResponseSink? sink = null)
+    {
+        if (transport == RequestTransport.HttpMemory)
+        {
+            sink ??= new CollectingJsonRpcResponseSink();
+            await processor.ProcessAsync(request.AsMemory(), CreateHttpContext(), sink, new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+            return sink.Responses;
+        }
+
+        JsonRpcContext context = transport == RequestTransport.HttpPipe ? CreateHttpContext() : new JsonRpcContext(RpcEndpoint.Ws);
+        return await ProcessAsync(processor, PipeReader.Create(new ReadOnlySequence<byte>(request)), context, sink);
     }
 
     [Test]
