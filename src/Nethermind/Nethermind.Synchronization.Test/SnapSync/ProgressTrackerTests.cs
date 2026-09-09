@@ -247,6 +247,91 @@ public class ProgressTrackerTests
         Assert.That(batch1?.StorageRangeRequest?.LimitHash, Is.EqualTo(limitHash ?? Keccak.MaxValue));
     }
 
+    // Regression for #13200. SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through UpdatePivot, and a
+    // forced move costs every in-flight and queued range its root. On a chain whose head moves between two failure
+    // streaks an unguarded move chases the head forever and the invalidated ranges feed the next streak.
+    [TestCase(0UL, false, TestName = "Head level with the pivot")]
+    [TestCase(1UL, false, TestName = "Head one block ahead - not worth invalidating in-flight ranges")]
+    [TestCase(2UL, false, TestName = "Head two blocks ahead - one OP Mainnet block time")]
+    [TestCase(31UL, false, TestName = "One block below the minimum step")]
+    [TestCase(32UL, true, TestName = "Exactly the minimum step")]
+    [TestCase(500UL, true, TestName = "Far behind - always worth moving")]
+    public void UpdatePivot_only_moves_the_pivot_once_the_head_is_a_minimum_step_ahead(ulong diff, bool shouldMove)
+    {
+        IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+        pivot.Diff.Returns(diff);
+        SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1, StateMinDistanceFromHead = 32UL };
+        using ProgressTracker progressTracker = new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
+
+        progressTracker.UpdatePivot();
+
+        pivot.Received(shouldMove ? 1 : 0).UpdateHeaderForcefully();
+    }
+
+    // A refresh answered with an expired root re-queues itself before its worker is released, so an unconditional
+    // priority for that queue hands it every dispatcher slot while it cannot drain. Code requests are keyed by hash
+    // and succeed against a peer behind the pivot, so they must still get served.
+    [Test]
+    public void Will_not_let_account_refreshes_take_every_dispatcher_slot()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        DrainAccountRangePartition(progressTracker);
+
+        for (int i = 0; i < ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES + 4; i++)
+        {
+            progressTracker.EnqueueAccountRefresh(new PathWithAccount { Path = TestItem.ValueKeccaks[i] }, null, null);
+        }
+
+        progressTracker.EnqueueCodeHashes([TestItem.ValueKeccaks[0]]);
+
+        // Nothing is ever reported finished, so every dequeued refresh stays in flight.
+        for (int i = 0; i < ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES; i++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? refresh);
+            Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null, $"request {i} is within the cap");
+            refresh.Dispose();
+        }
+
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        using (request)
+        {
+            Assert.That(request!.AccountsToRefreshRequest, Is.Null, "the cap is reached, so the refresh queue must yield");
+            Assert.That(request.CodesRequest, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Will_still_serve_account_refreshes_over_the_cap_when_nothing_else_is_queued()
+    {
+        using ProgressTracker progressTracker = CreateProgressTracker();
+        DrainAccountRangePartition(progressTracker);
+
+        for (int i = 0; i < ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES + 1; i++)
+        {
+            progressTracker.EnqueueAccountRefresh(new PathWithAccount { Path = TestItem.ValueKeccaks[i] }, null, null);
+        }
+
+        for (int i = 0; i <= ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES; i++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? refresh);
+            using (refresh)
+            {
+                Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null,
+                    $"request {i}: the tail of the sync must not run at {ProgressTracker.MAX_CONCURRENT_ACCOUNT_REFRESHES} requests");
+            }
+        }
+    }
+
+    /// <summary>Takes the one account-range partition out of the way so the priority chain reaches the queues under test.</summary>
+    private static void DrainAccountRangePartition(ProgressTracker progressTracker)
+    {
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        using (batch)
+        {
+            Assert.That(batch!.AccountRangeRequest, Is.Not.Null);
+        }
+    }
+
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;

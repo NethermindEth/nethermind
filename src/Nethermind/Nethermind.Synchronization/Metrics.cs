@@ -66,6 +66,18 @@ namespace Nethermind.Synchronization
         public static long SnapSyncedCodes;
 
         [CounterMetric]
+        [Description("Storage ranges handed to an account refresh after a streak of empty responses during SNAP Sync")]
+        public static long SnapStorageRangesRefreshedAfterEmptyResponses;
+
+        [CounterMetric]
+        [Description("State sync pivot updates requested by a streak of unusable range responses and not rate-limited. The pivot can still decline (unchanged header hash, Sync.StaticSnapPivot, or a chain whose pivot ignores forced moves), so this counts requests that passed the rate limit rather than moves")]
+        public static long ForcedStatePivotUpdates;
+
+        [CounterMetric]
+        [Description("Forced state sync pivot updates skipped because the head had not moved far enough to be worth invalidating in-flight ranges")]
+        public static long ForcedStatePivotUpdatesSuppressed;
+
+        [CounterMetric]
         [Description("SNAP Sync requests that produced no response at all. Distinguishes an unresponsive or non-serving peer set from one answering with unusable data, which SnapRangeResult covers.")]
         public static long SnapRequestTimeouts;
 

@@ -295,6 +295,11 @@ namespace Nethermind.Synchronization.SnapSync
                                     {
                                         PublicKey? peerNodeId = peer.SyncPeer?.Node?.Id;
                                         bool repeatOffender = peerNodeId is not null && peerNodeId.Equals(_stalePivotUpdateTrigger);
+                                        // Armed on the request, not on the move. ProgressTracker.UpdatePivot rate-limits
+                                        // the move, and UpdateHeaderForcefully was already a no-op whenever the head had
+                                        // not advanced, so gating the punishment on an actual move would disable it for
+                                        // exactly the peer set this guard exists for: on a head that is not advancing the
+                                        // fastest-but-useless peer would be re-allocated forever and never punished.
                                         _stalePivotUpdateTrigger = peerNodeId;
                                         _snapProvider.UpdatePivot();
 

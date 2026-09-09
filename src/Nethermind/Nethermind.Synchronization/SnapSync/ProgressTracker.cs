@@ -28,6 +28,19 @@ namespace Nethermind.Synchronization.SnapSync
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
 
+        /// <remarks>
+        /// This queue is served ahead of every other request type, and a refresh answered with an expired root
+        /// re-queues itself before its worker is released. Unthrottled, that hands every dispatcher slot to a queue
+        /// that cannot drain until the pivot moves, while code and storage requests - which are keyed by hash and
+        /// succeed against a peer behind the pivot - get none. The fallback below the priority chain restores full
+        /// concurrency once refreshes are the only work left.
+        ///
+        /// The bound is therefore "at most this many in flight <em>while other work is queued</em>", not an absolute
+        /// one: when the fallback is reached there is nothing left to starve, and the next queued partition, storage
+        /// or code item puts the capped branch back in charge on the following call.
+        /// </remarks>
+        internal const int MAX_CONCURRENT_ACCOUNT_REFRESHES = 4;
+
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
         // In any case, all partition will be touched when calculating progress, so we can't really put like 1024 for this.
@@ -61,8 +74,17 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
+        /// <remarks>
+        /// <see cref="IsFinished"/> serves this queue ahead of every other request type up to
+        /// <see cref="MAX_CONCURRENT_ACCOUNT_REFRESHES"/> in flight, so a caller that enqueues speculatively still has
+        /// to keep it short: over that cap the queue is only served once nothing else is queued. See
+        /// <see cref="SnapProvider.MaxQueuedEmptyStreakRefreshes"/>.
+        /// </remarks>
+        internal int AccountsToRefreshCount => AccountsToRefresh.Count;
+
         private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
+        private readonly ulong _stateMinDistanceFromHead;
 
         public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
@@ -77,6 +99,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             _accountRangePartitionCount = accountRangePartitionCount;
             _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
+            _stateMinDistanceFromHead = syncConfig.StateMinDistanceFromHead;
 
             SetupAccountRangePartition();
         }
@@ -134,7 +157,43 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
-        public void UpdatePivot() => _pivot.UpdateHeaderForcefully();
+        /// <summary>
+        /// Moves the state sync pivot in response to a streak of unusable range responses, but only once the head has
+        /// advanced at least <see cref="ISyncConfig.StateMinDistanceFromHead"/> blocks past it.
+        /// </summary>
+        /// <remarks>
+        /// Moving the pivot changes the state root that every in-flight and queued range was requested at, so each one
+        /// comes back unusable. That cost is only worth paying when the new pivot is a genuinely different target.
+        /// <see cref="FastSync.IStateSyncPivot.UpdateHeaderForcefully"/> moves whenever the pivot is at or behind the
+        /// head - i.e. always - which is mostly harmless on a slow chain, where the head rarely moves between two
+        /// streaks and the pivot is re-set to the block it already had. On a fast chain the head has advanced by the
+        /// time the next streak lands, so every move invalidates the very work that would have ended the streak and
+        /// manufactures the next one. The OP Mainnet measurements that motivated the guard are on
+        /// https://github.com/NethermindEth/nethermind/issues/13200.
+        /// <para>
+        /// The rate limit lives here rather than on the pivot because it is a property of this caller: the state sync
+        /// round start (<c>TreeSync.ResetStateRootToBestSuggested</c>) needs the newest state root on every round and
+        /// must keep the unrestricted path. <see cref="FastSync.IStateSyncPivot.Diff"/> saturates, so a head behind
+        /// the pivot reads 0 and is suppressed rather than wrapping into a large distance.
+        /// </para>
+        /// <para>
+        /// A declined move is deliberately invisible to the caller. <c>UpdateHeaderForcefully</c> was already a no-op
+        /// whenever the head had not advanced, so callers have never been able to assume a call moved anything, and
+        /// SnapSyncFeed's repeat-offender guard depends on that: it arms on the request, not on the move. The two
+        /// metrics below are where the difference is observable.
+        /// </para>
+        /// </remarks>
+        public void UpdatePivot()
+        {
+            if (_pivot.Diff < _stateMinDistanceFromHead)
+            {
+                Interlocked.Increment(ref Metrics.ForcedStatePivotUpdatesSuppressed);
+                return;
+            }
+
+            Interlocked.Increment(ref Metrics.ForcedStatePivotUpdates);
+            _pivot.UpdateHeaderForcefully();
+        }
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
@@ -150,7 +209,7 @@ namespace Nethermind.Synchronization.SnapSync
             Hash256 rootHash = pivotHeader!.StateRoot!;
             ulong blockNumber = pivotHeader.Number;
 
-            if (!AccountsToRefresh.IsEmpty)
+            if (!AccountsToRefresh.IsEmpty && _activeAccRefreshRequests < MAX_CONCURRENT_ACCOUNT_REFRESHES)
             {
                 nextBatch = DequeAccountToRefresh(rootHash);
             }
@@ -177,6 +236,11 @@ namespace Nethermind.Synchronization.SnapSync
             else if (!CodesToRetrieve.IsEmpty)
             {
                 nextBatch = DequeCodeRequest();
+            }
+            else if (!AccountsToRefresh.IsEmpty)
+            {
+                // Over the cap, but nothing else is queued: the tail of the sync must not run at four requests.
+                nextBatch = DequeAccountToRefresh(rootHash);
             }
             else
             {
@@ -561,6 +625,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             return true;
         }
+
+        internal int LargeStorageProgressCount => _largeStorageProgress.Count;
 
         public void OnCompletedLargeStorage(PathWithAccount pathWithAccount)
         {
