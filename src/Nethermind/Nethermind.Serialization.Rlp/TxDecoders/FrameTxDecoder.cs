@@ -24,11 +24,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     // Every entry is a four-item sequence, so five bytes at least.
     private const int MinSignatureRlpLength = 5;
 
-    /// <summary>The bytes this transaction's own payload still declares, as <see cref="IsNetworkWrapper"/>
-    /// bounds its peek: the reader spans the whole message, and an overlong declared length is not its bytes.</summary>
-    private static int BytesLeftInPayload(ref RlpReader decoderContext, int payloadEnd) =>
-        Math.Max(0, Math.Min(payloadEnd, decoderContext.Length) - decoderContext.Position);
-
     // The spec bounds the signature list only through gas: each entry is charged at least the ARBITRARY
     // verification price. The array is sized from the declared count, so the bytes on hand bound it too.
     private static RlpLimit SignaturesCountLimit(int bytesLeft) => RlpLimit.For<Transaction>(
@@ -147,7 +142,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.SenderAddress = decoderContext.DecodeAddress();
         transaction.Frames = decoderContext.DecodeNonNullArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
         transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance,
-            limit: SignaturesCountLimit(BytesLeftInPayload(ref decoderContext, payloadEnd)));
+            limit: SignaturesCountLimit(Math.Max(0, payloadEnd - decoderContext.Position)));
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas

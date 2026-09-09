@@ -29,6 +29,8 @@ public class FrameTxDecoderTests
     private const int FrameDataDecodeCap = 30 * 1024 * 1024;
     // The largest RLP sequence prefix still carrying its content length inline (0xc0 + 55).
     private const int ShortSequencePrefixMax = 0xf7;
+    // What the decoder divides the available bytes by: a signature entry is a four-item sequence.
+    private const int MinSignatureRlpLength = 5;
 
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
@@ -609,6 +611,37 @@ public class FrameTxDecoderTests
 
         Assert.That(() => DecodeConsensusPayload(payload, allowExtraBytes ? RlpBehaviors.AllowExtraBytes : RlpBehaviors.None),
             Throws.InstanceOf<RlpLimitException>());
+    }
+
+    // The direction an attacker uses: an honest envelope around a payload that declares more than it holds.
+    // Pre-fix the limit came from the bytes of the transaction behind it, so the list was payable and the
+    // 100,000-entry array was allocated before the over-declaration surfaced.
+    [Test]
+    public void Decode_BatchedMessageWhereATransactionOverDeclaresItsPayload_IsRefusedBeforeAllocating()
+    {
+        const int count = 100_000;
+        const int siblingBytes = MinSignatureRlpLength * count;
+
+        byte[] body = FrameTxBody(signatures: PlaceholderList(count)).Bytes;
+        RlpReader walk = new(body);
+        walk.ReadSequenceLength();
+        int contentStart = walk.Position;
+        Rlp overDeclared = WithDeclaredContentLength(body, contentStart, body.Length - contentStart + siblingBytes);
+
+        Transaction sibling = CreateFrameTx(signatures: [new TxFrameSignature(
+            TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(siblingBytes, 0x01))]);
+        byte[] message = Rlp.Encode([
+            Rlp.Encode(TypedPayload(overDeclared)),
+            Rlp.Encode(EncodeConsensusPayload(sibling))]).Bytes;
+
+        Assert.That(() => DecodeMessage(message), Throws.InstanceOf<RlpLimitException>());
+    }
+
+    /// <summary>Decodes a batched <c>Transactions</c>-style message: many transactions, one reader.</summary>
+    private static Transaction[] DecodeMessage(byte[] message)
+    {
+        RlpReader reader = new(message);
+        return reader.DecodeNonNullArray(_txDecoder);
     }
 
     /// <summary>Re-emits <paramref name="body"/>'s sequence header declaring <paramref name="declared"/> content
