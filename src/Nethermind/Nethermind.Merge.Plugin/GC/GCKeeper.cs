@@ -13,61 +13,188 @@ namespace Nethermind.Merge.Plugin.GC;
 
 using Nethermind.Core.Extensions;
 
-public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposable
+public class GCKeeper : IDisposable
 {
     private static ulong _forcedGcCount = 0;
-    private readonly Lock _lock = new();
-    private readonly IGCStrategy _gcStrategy = gcStrategy;
-    private readonly int _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
-    private readonly ILogger _logger = logManager.GetClassLogger<GCKeeper>();
+    private static long _lastGcTimeMs;
     // The runtime splits totalSize as soh = total - loh; when lohSize is omitted it budgets the
     // full totalSize for LOH as well, committing that much LOH inside the per-call EE suspension.
     private static readonly long _lohSize = 64.MB;
     private static readonly long _defaultSize = 512.MB + _lohSize;
+    // Starting a region takes well under a millisecond unless GCHeap::StartNoGCRegion is waiting for an
+    // in-flight background gen2 collection to finish, which on a large heap is seconds of engine API
+    // latency; a payload that does not get its region by then runs without one.
+    internal static readonly TimeSpan RegionStartWaitBound = TimeSpan.FromMilliseconds(20);
+
+    private readonly Lock _lock = new();
+    private readonly Lock _regionLock = new();
+    private readonly IGCStrategy _gcStrategy;
+    private readonly IGCRuntime _runtime;
+    private readonly int _postBlockDelayMs;
+    private readonly ILogger _logger;
+    private readonly SemaphoreSlim _startRequested = new(0);
+    private readonly ManualResetEventSlim _startCompleted = new();
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
+    private Thread? _regionStarter;
+    private bool _startPending;
+    private bool _payloadActive;
+    private bool _regionHeldForPayload;
+    private FailCause _startResult;
+
+    public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : this(gcStrategy, logManager, GCRuntime.Instance)
+    {
+    }
+
+    internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGCRuntime runtime)
+    {
+        _gcStrategy = gcStrategy;
+        _runtime = runtime;
+        _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
+        _logger = logManager.GetClassLogger<GCKeeper>();
+    }
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
+    /// <summary>Brackets a payload's processing with a no-GC region when one can be started promptly.</summary>
+    /// <remarks>
+    /// The region is started on a dedicated thread and the payload waits at most <see cref="RegionStartWaitBound"/>
+    /// for it. A start still pending after that is waiting for a background gen2 collection: the payload runs
+    /// without a region, adopts it if it lands before the payload finishes, and otherwise the keeper ends it as
+    /// soon as it starts. Only one start is ever pending; later payloads reuse it instead of queueing another.
+    /// </remarks>
     public IDisposable TryStartNoGCRegion()
     {
         long size = _defaultSize;
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
-        if (_gcStrategy.CanStartNoGCRegion())
+        if (!_gcStrategy.CanStartNoGCRegion())
         {
-            FailCause failCause = FailCause.None;
-            try
+            return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
+        }
+
+        lock (_regionLock)
+        {
+            _payloadActive = true;
+            if (_startPending)
             {
-                if (!System.GC.TryStartNoGCRegion(size, _lohSize, disallowFullBlockingGC: true))
+                return new NoGCRegion(this, FailCause.StartDeferred, size, pausedGCScheduler, _logger);
+            }
+
+            _startPending = true;
+            _startCompleted.Reset();
+        }
+
+        EnsureRegionStarter();
+        _startRequested.Release();
+        FailCause failCause = _startCompleted.Wait(RegionStartWaitBound) ? _startResult : FailCause.StartDeferred;
+        return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
+    }
+
+    private void EnsureRegionStarter()
+    {
+        if (_regionStarter is not null) return;
+
+        Thread starter = new(RunRegionStarter) { IsBackground = true, Name = "GC region starter" };
+        if (Interlocked.CompareExchange(ref _regionStarter, starter, null) is null)
+        {
+            starter.Start();
+        }
+    }
+
+    private void RunRegionStarter()
+    {
+        CancellationToken token = _shutdownCts?.Token ?? CancellationToken.None;
+        try
+        {
+            while (true)
+            {
+                _startRequested.Wait(token);
+                FailCause failCause = StartRegion();
+                lock (_regionLock)
                 {
-                    failCause = FailCause.GCFailedToStartNoGCRegion;
+                    _startPending = false;
+                    _startResult = failCause;
+                    if (failCause == FailCause.None)
+                    {
+                        if (_payloadActive)
+                        {
+                            _regionHeldForPayload = true;
+                        }
+                        else
+                        {
+                            // The payload that asked for it has finished; nothing is left to protect.
+                            EndRegion();
+                        }
+                    }
+                    _startCompleted.Set();
                 }
             }
-            catch (ArgumentOutOfRangeException)
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private FailCause StartRegion()
+    {
+        try
+        {
+            return _runtime.TryStartNoGCRegion(_defaultSize, _lohSize) ? FailCause.None : FailCause.GCFailedToStartNoGCRegion;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return FailCause.TotalSizeExceededTheEphemeralSegmentSize;
+        }
+        catch (InvalidOperationException)
+        {
+            return FailCause.AlreadyInNoGCRegion;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
+            return FailCause.Exception;
+        }
+    }
+
+    private void OnPayloadDone()
+    {
+        lock (_regionLock)
+        {
+            _payloadActive = false;
+            if (_regionHeldForPayload)
             {
-                failCause = FailCause.TotalSizeExceededTheEphemeralSegmentSize;
+                _regionHeldForPayload = false;
+                EndRegion();
+            }
+        }
+    }
+
+    private void EndRegion()
+    {
+        if (_runtime.IsInNoGCRegion)
+        {
+            try
+            {
+                _runtime.EndNoGCRegion();
+                ScheduleGC();
             }
             catch (InvalidOperationException)
             {
-                failCause = FailCause.AlreadyInNoGCRegion;
+                if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with Exception with {_defaultSize} bytes");
             }
             catch (Exception e)
             {
-                failCause = FailCause.Exception;
-
-                if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
+                if (_logger.IsError) _logger.Error($"{nameof(System.GC.EndNoGCRegion)} failed with exception.", e);
             }
-
-            return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
         }
-
-        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
+        else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_defaultSize} bytes");
     }
 
     private enum FailCause
     {
         None,
         StrategyDisallowed,
+        StartDeferred,
         GCFailedToStartNoGCRegion,
         TotalSizeExceededTheEphemeralSegmentSize,
         AlreadyInNoGCRegion,
@@ -97,31 +224,10 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
             {
                 GCScheduler.MarkGCResumed();
             }
-            if (_failCause == FailCause.None)
-            {
-                if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
-                {
-                    try
-                    {
-                        System.GC.EndNoGCRegion();
-                        _gcKeeper.ScheduleGC();
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with Exception with {_size} bytes");
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsError) _logger.Error($"{nameof(System.GC.EndNoGCRegion)} failed with exception.", e);
-                    }
-                }
-                else if (_logger.IsDebug) _logger.Debug($"Failed to keep in NoGCRegion with {_size} bytes");
-            }
-            else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
+            _gcKeeper.OnPayloadDone();
+            if (_failCause != FailCause.None && _logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
         }
     }
-
-    private static long _lastGcTimeMs;
 
     private void ScheduleGC()
     {
@@ -164,7 +270,7 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 if (!await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts?.Token ?? CancellationToken.None)) return;
             }
 
-            if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
+            if (!_runtime.IsInNoGCRegion)
             {
                 ulong forcedGcCount = Interlocked.Increment(ref _forcedGcCount);
                 int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
