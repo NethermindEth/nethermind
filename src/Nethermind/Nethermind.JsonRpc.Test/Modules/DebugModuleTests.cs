@@ -17,6 +17,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -467,6 +468,101 @@ public class DebugModuleTests
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
+    }
+
+    [Test]
+    public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_DisposesDiscardedTracesAndPipelineDisposesSelectedTrace()
+    {
+        (IDisposable[] engines, GethLikeTxTrace[] traces) = CreateSentinelTraces(3);
+        SetUpBlockTrace(traces);
+
+        // A custom Tracer forces the non-streaming path (CanStreamStructLogs returns false when it's set),
+        // which is where the rest of the block's traces would otherwise leak.
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+
+        ResultWrapper<GethLikeTxTrace> result = CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(3), 1, options);
+
+        try
+        {
+            Assert.That(result.Data, Is.SameAs(traces[1]));
+            engines[1].DidNotReceive().Dispose();
+
+            // Dispose explicitly, rather than `using`, so the returned trace's own disposal - owned by the
+            // RPC pipeline - is exercised and asserted alongside the discarded ones.
+            result.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                engines[0].Received(1).Dispose();
+                engines[1].Received(1).Dispose();
+                engines[2].Received(1).Dispose();
+            }
+        }
+        finally
+        {
+            result?.Dispose();
+        }
+    }
+
+    [Test]
+    public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_WhenIndexOutOfRange_DisposesEveryTrace([Values(-1, 5)] int txIndex)
+    {
+        (IDisposable[] engines, GethLikeTxTrace[] traces) = CreateSentinelTraces(2);
+        SetUpBlockTrace(traces);
+
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+
+        using ResultWrapper<GethLikeTxTrace> result = CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(2), txIndex, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            engines[0].Received(1).Dispose();
+            engines[1].Received(1).Dispose();
+        }
+    }
+
+    private static byte[] BlockRlpFixture(int txCount)
+    {
+        // Decoding the block RLP requires each transaction to carry a real signature - an unsigned
+        // Transaction() fails RLP decode ("VRS is 0 length when decoding Transaction").
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.SignedAndResolved().TestObject;
+        }
+
+        return new BlockDecoder().Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject).Bytes;
+    }
+
+    private static (IDisposable[] Engines, GethLikeTxTrace[] Traces) CreateSentinelTraces(int count)
+    {
+        IDisposable[] engines = new IDisposable[count];
+        GethLikeTxTrace[] traces = new GethLikeTxTrace[count];
+        for (int i = 0; i < count; i++)
+        {
+            engines[i] = Substitute.For<IDisposable>();
+            traces[i] = new GethLikeTxTrace(engines[i]);
+        }
+
+        return (engines, traces);
+    }
+
+    private void SetUpBlockTrace(GethLikeTxTrace[] traces)
+    {
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
+        // Production backs the collection with a DisposableResettableList<GethLikeTxTrace> (BlockTracerBase.cs),
+        // whose own Dispose() disposes every item a second time on top of GethLikeTxTraceCollection.DisposeItems()
+        // - matching that here pins the invariant that the collection itself must stay undisposed (see the
+        // why-comment in DebugRpcModule), rather than letting a plain array's no-op TryDispose() silently hide a
+        // reintroduced double dispose.
+        DisposableResettableList<GethLikeTxTrace> traceList = [.. traces];
+
+        _debugBridge
+            .GetBlockTrace(Arg.Any<Block>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(new GethLikeTxTraceCollection(traceList));
     }
 
     private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)

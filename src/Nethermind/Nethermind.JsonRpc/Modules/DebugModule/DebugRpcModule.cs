@@ -306,7 +306,20 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        GethLikeTxTrace? transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
+
+        // Not disposing blockTrace itself: disposing the collection would also dispose the trace
+        // we are about to return.
+        GethLikeTxTrace? transactionTrace = null;
+        if (blockTrace is not null)
+        {
+            int index = 0;
+            foreach (GethLikeTxTrace trace in blockTrace)
+            {
+                if (index++ == txIndex) transactionTrace = trace;
+                else trace.Dispose();
+            }
+        }
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
