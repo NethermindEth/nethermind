@@ -58,7 +58,7 @@ internal class SpecialTransactionsTests
             .WithTo(destination.Address)
             .WithValue(amount)
             .WithType(TxType.Legacy)
-            .WithGasPrice(XdcConstants.MinGasPrice)
+            .WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier)
             .WithNonce(nonce)
             .TestObject;
 

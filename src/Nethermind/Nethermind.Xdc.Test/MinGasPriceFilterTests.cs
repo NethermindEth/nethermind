@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
@@ -20,16 +21,17 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 internal class MinGasPriceFilterTests
 {
-    private const ulong MinGasPrice = XdcConstants.MinGasPrice;
+    private const ulong MinGasPrice = XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier;
     private static readonly Address BlockSigner = TestItem.AddressA;
     private static readonly Address Randomize = TestItem.AddressB;
 
-    private static MinGasPriceFilter CreateFilter(ulong headNumber = 100, ISpecProvider? specProvider = null)
+    private static MinGasPriceFilter CreateFilter(UInt256? minimumGasPrice = null, ulong headNumber = 100, ISpecProvider? specProvider = null)
     {
         IChainHeadInfoProvider chainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
         chainHeadInfoProvider.HeadNumber.Returns(headNumber);
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.MinimumGasPrice.Returns(minimumGasPrice ?? MinGasPrice);
         xdcSpec.BlockSignerContract.Returns(BlockSigner);
         xdcSpec.RandomizeSMCBinary.Returns(Randomize);
 
@@ -45,16 +47,31 @@ internal class MinGasPriceFilterTests
         return filter.Accept(tx, ref state, options);
     }
 
-    [TestCase(MinGasPrice, true, TestName = "Exactly at the minimum accepted")]
-    [TestCase(MinGasPrice + 1, true, TestName = "Above the minimum accepted")]
-    [TestCase(MinGasPrice - 1, false, TestName = "Below the minimum rejected")]
-    [TestCase(0ul, false, TestName = "Zero gas price rejected")]
-    public void Accept_ComparesLegacyGasPriceWithMinimum(ulong gasPrice, bool expectedAccepted)
+    [TestCase(MinGasPrice, true, null, TestName = "Exactly at the minimum accepted")]
+    [TestCase(MinGasPrice + 1, true, null, TestName = "Above the minimum accepted")]
+    [TestCase(MinGasPrice - 1, false, "under min gas price", TestName = "Below the minimum rejected")]
+    [TestCase(0ul, false, "zero gas price", TestName = "Zero gas price reported separately")]
+    public void Accept_ComparesLegacyGasPriceWithMinimum(ulong gasPrice, bool expectedAccepted, string? expectedMessage)
     {
         MinGasPriceFilter filter = CreateFilter();
         Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).WithGasPrice(gasPrice).WithTo(TestItem.AddressC).TestObject;
 
-        Assert.That((bool)Accept(filter, tx), Is.EqualTo(expectedAccepted));
+        AcceptTxResult result = Accept(filter, tx);
+
+        Assert.That((bool)result, Is.EqualTo(expectedAccepted));
+        if (expectedMessage is not null)
+            Assert.That(result.ToString(), Does.Contain(expectedMessage));
+    }
+
+    // A gasless subnet states a zero floor, which disables both checks as common.Gasless does in the reference.
+    [TestCase(0ul, TestName = "Gasless accepts a zero gas price")]
+    [TestCase(1ul, TestName = "Gasless accepts one wei")]
+    public void Accept_ZeroFloor_AcceptsAnything(ulong gasPrice)
+    {
+        MinGasPriceFilter filter = CreateFilter(UInt256.Zero);
+        Transaction tx = Build.A.Transaction.WithType(TxType.Legacy).WithGasPrice(gasPrice).WithTo(TestItem.AddressC).TestObject;
+
+        Assert.That(Accept(filter, tx), Is.EqualTo(AcceptTxResult.Accepted));
     }
 
     // The reference client compares tx.GasPrice(), which is the fee cap for a dynamic fee transaction. XDC's base fee
@@ -108,6 +125,7 @@ internal class MinGasPriceFilterTests
     public async Task SubmitTx_UnderMinGasPrice_IsRejectedOnPoolAdmission(ulong gasPrice, bool expectedAccepted)
     {
         using XdcTestBlockchain chain = await XdcTestBlockchain.Create(5, false);
+        chain.ChangeReleaseSpec(spec => spec.MinimumGasPrice = MinGasPrice);
 
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(TestItem.AddressB)

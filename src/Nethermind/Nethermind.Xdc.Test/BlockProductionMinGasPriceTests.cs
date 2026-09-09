@@ -18,7 +18,9 @@ namespace Nethermind.Xdc.Test;
 /// XDC's base fee is a constant equal to the gas price floor its reference client demands, so a transaction paying
 /// exactly that floor - the reference's minimum, and what its gas price oracle suggests - has no priority fee left.
 /// <see cref="MinGasPriceTxFilter"/> compares the priority fee, so any non-zero <c>Blocks.MinGasPrice</c> makes the
-/// block producer skip transactions the reference client both accepts and mines.
+/// block producer skip transactions the reference client both accepts and mines. The reference has no equivalent
+/// floor to match: its <c>NewTransactionsByPriceAndNonce</c> takes no base fee and orders on the raw gas price, so
+/// nothing in its block building converts to an effective tip.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 internal class BlockProductionMinGasPriceTests
@@ -32,7 +34,7 @@ internal class BlockProductionMinGasPriceTests
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Legacy)
-            .WithGasPrice(XdcConstants.MinGasPrice)
+            .WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier)
             .WithTo(TestItem.AddressC)
             .TestObject;
 

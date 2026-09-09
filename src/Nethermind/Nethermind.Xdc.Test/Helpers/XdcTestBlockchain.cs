@@ -607,7 +607,7 @@ public class XdcTestBlockchain : TestBlockchain
     {
         // MinGasPriceFilter keeps anything cheaper out of the pool, so a transaction below the floor would never
         // reach a block.
-        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction.WithGasPrice(XdcConstants.MinGasPrice);
+        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction.WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier);
 
         Block? head = BlockFinder.Head;
         if (head is not null)
