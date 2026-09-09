@@ -63,6 +63,40 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void AccountContext_FollowsAddressIndexAndBlockChanges()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 10), new BalanceChange(1, 20)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB)
+                    .WithBalanceChanges(new BalanceChange(0, 30)).TestObject)
+            .TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            Assert.That(bws.GetBalance(new Address(TestItem.AddressA.Bytes)), Is.EqualTo((UInt256)10));
+            Assert.That(bws.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)30));
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.GetBalance(TestItem.AddressC));
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+
+            bws.SetBlockAccessIndex(2);
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)20));
+
+            ReadOnlyBlockAccessList next = Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 40)).TestObject).TestObject;
+            bws.Setup(Build.A.Block.WithBlockAccessList(next).TestObject);
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)40));
+            bws.ClearParentReader();
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+        }
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList

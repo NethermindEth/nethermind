@@ -30,6 +30,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
+    private Address? _contextAccount;
+    private ReadOnlyAccountChanges? _contextChanges;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -46,6 +48,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
+        _contextAccount = null;
+        _contextChanges = null;
     }
 
     public void SetParentReader(IWorldState parentReader)
@@ -64,6 +68,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
         _codeChangesByHash = null;
+        _contextAccount = null;
+        _contextChanges = null;
     }
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
@@ -319,7 +325,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private (IWorldState ParentReader, ReadOnlyAccountChanges AccountChanges) ResolveContext(Address address)
     {
         CheckInitialized();
-        return (GetParentReader(), GetAccountChangesOrThrow(address));
+        if (!address.Equals(_contextAccount))
+        {
+            _contextChanges = GetAccountChangesOrThrow(address);
+            _contextAccount = address;
+        }
+        return (GetParentReader(), _contextChanges!);
     }
 
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
