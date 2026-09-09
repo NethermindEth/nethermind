@@ -37,6 +37,7 @@ public partial class BlockProcessor
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+        private int _pooledSlotsInUse;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -127,6 +128,18 @@ public partial class BlockProcessor
                 receiptsTracers[i].ResetForParallelTx(block, parallelSafeTracer);
                 gasResults[i].Reset();
             }
+
+            // Release the slots the previous block used but this one does not. Left alone they keep
+            // that block's receipts, the block itself and any InvalidBlockException in the gas slot;
+            // resetting them like the active ones would only swap the current block in. The pool
+            // never shrinks, so this runs once per shrink rather than every block.
+            for (int i = len; i < _pooledSlotsInUse; i++)
+            {
+                receiptsTracers[i].ReleaseForPooling();
+                gasResults[i].Reset();
+            }
+
+            _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
@@ -266,15 +279,24 @@ public partial class BlockProcessor
             // GasValidationResultSlot instances already pooled in slots [0, currentLength);
             // freshly allocated arrays would force re-instantiation of every slot every block.
             int newLength = Math.Max(length, currentLength == 0 ? 4 : currentLength * 2);
-            Array.Resize(ref _receiptsTracerPool, newLength);
-            Array.Resize(ref _gasResultPool, newLength);
-            Array.Resize(ref _txExecutionOrder, newLength);
-            Array.Resize(ref _txExecutionSortKeys, newLength);
+            BlockReceiptsTracer[] receiptsTracerPool = _receiptsTracerPool;
+            GasValidationResultSlot[] gasResultPool = _gasResultPool;
+            int[] txExecutionOrder = _txExecutionOrder;
+            TxExecutionSortKey[] txExecutionSortKeys = _txExecutionSortKeys;
+            Array.Resize(ref receiptsTracerPool, newLength);
+            Array.Resize(ref gasResultPool, newLength);
+            Array.Resize(ref txExecutionOrder, newLength);
+            Array.Resize(ref txExecutionSortKeys, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
-                _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
-                _gasResultPool[i] = new GasValidationResultSlot();
+                receiptsTracerPool[i] = new BlockReceiptsTracer(true);
+                gasResultPool[i] = new GasValidationResultSlot();
             }
+
+            _receiptsTracerPool = receiptsTracerPool;
+            _gasResultPool = gasResultPool;
+            _txExecutionOrder = txExecutionOrder;
+            _txExecutionSortKeys = txExecutionSortKeys;
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
