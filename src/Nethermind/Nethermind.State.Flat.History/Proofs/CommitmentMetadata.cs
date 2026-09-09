@@ -49,32 +49,41 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public int StorageTrieDepth(in ValueHash256 accountPath)
     {
-        if (_storageTrieDepths.TryGet(accountPath, out int depth)) return depth;
+        ValueHash256 identity = DepthRecordIdentity(accountPath);
+        if (_storageTrieDepths.TryGet(identity, out int depth)) return depth;
 
         lock (_depthWriteLock)
         {
-            if (_storageTrieDepths.TryGet(accountPath, out depth)) return depth;
+            if (_storageTrieDepths.TryGet(identity, out depth)) return depth;
 
-            depth = _storages.ReadStorageTrieDepth(accountPath);
-            _storageTrieDepths.Set(accountPath, depth);
+            depth = _storages.ReadStorageTrieDepth(identity);
+            _storageTrieDepths.Set(identity, depth);
             return depth;
         }
     }
 
     public int NoteStorageTrieDepth(in ValueHash256 accountPath, int depth)
     {
-        int known = StorageTrieDepth(accountPath);
+        ValueHash256 identity = DepthRecordIdentity(accountPath);
+        int known = StorageTrieDepth(identity);
         if (depth <= known) return known;
 
         lock (_depthWriteLock)
         {
-            known = StorageTrieDepth(accountPath);
+            known = StorageTrieDepth(identity);
             if (depth <= known) return known;
 
-            _storages.WriteStorageTrieDepth(accountPath, depth);
-            _storageTrieDepths.Set(accountPath, depth);
+            _storages.WriteStorageTrieDepth(identity, depth);
+            _storageTrieDepths.Set(identity, depth);
             return depth;
         }
+    }
+
+    private static ValueHash256 DepthRecordIdentity(in ValueHash256 accountPath)
+    {
+        ValueHash256 identity = default;
+        accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].CopyTo(identity.BytesAsSpan);
+        return identity;
     }
 
     public bool TryReadStamp(CommitmentDepthPolicy policy, out bool matches)

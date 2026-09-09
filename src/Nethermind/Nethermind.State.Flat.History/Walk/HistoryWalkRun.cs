@@ -109,7 +109,7 @@ internal sealed class HistoryWalkRun
                 {
                     if (_metadata.IsWalkItemDone(item))
                     {
-                        if (item >= AccountPartitions || reader.HasRowAtOrBelow(AccountSeriesKey(TreePath.FromNibble([(byte)(item >> 4), (byte)(item & 0x0F)])), _from))
+                        if (item >= AccountPartitions || reader.HasRowAtOrBelow(AccountSeriesKey(AccountPartitionPrefix(item)), _from))
                         {
                             _sink.Decode(_metadata.WalkItemMismatches(item));
                             continue;
@@ -133,26 +133,27 @@ internal sealed class HistoryWalkRun
 
         List<Action> partitions = [];
         int previouslyCompleted = 0;
-        for (int index = 0; index < AccountPartitions; index++)
+        for (int range = 0; range < StorageRanges; range++)
         {
-            int storageItem = AccountPartitions + index;
+            int storageItem = AccountPartitions + range;
             if (_metadata.IsWalkItemDone(storageItem))
             {
                 previouslyCompleted++;
                 _progress.PreviouslyCompleted(storageItem);
-            }
-            else
-            {
-                byte firstByte = (byte)index;
-                partitions.Add(() => WithSlot(() =>
-                {
-                    MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-                    ProcessStorageRange(firstByte, storageItem, found);
-                    CompleteItem(storageItem, found);
-                }));
+                continue;
             }
 
-            int accountItem = index;
+            byte firstByte = (byte)range;
+            partitions.Add(() => WithSlot(() =>
+            {
+                MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
+                ProcessStorageRange(firstByte, storageItem, found);
+                CompleteItem(storageItem, found);
+            }));
+        }
+
+        for (int accountItem = 0; accountItem < AccountPartitions; accountItem++)
+        {
             if (_metadata.IsWalkItemDone(accountItem))
             {
                 previouslyCompleted++;
@@ -160,12 +161,13 @@ internal sealed class HistoryWalkRun
                 continue;
             }
 
-            TreePath prefix = TreePath.FromNibble([(byte)(index >> 4), (byte)(index & 0x0F)]);
+            TreePath prefix = AccountPartitionPrefix(accountItem);
+            int item = accountItem;
             partitions.Add(() => WithSlot(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-                ProcessAccountPartition(prefix, accountItem, found);
-                CompleteItem(accountItem, found);
+                ProcessAccountPartition(prefix, item, found);
+                CompleteItem(item, found);
             }));
         }
 
@@ -190,6 +192,17 @@ internal sealed class HistoryWalkRun
             List<HistoryWalkMismatch> mismatches = _sink.Drain();
             return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
         }
+    }
+
+    private static TreePath AccountPartitionPrefix(int item)
+    {
+        byte[] nibbles = new byte[AccountPartitionDepth];
+        for (int depth = 0; depth < AccountPartitionDepth; depth++)
+        {
+            nibbles[depth] = (byte)((item >> (4 * (AccountPartitionDepth - 1 - depth))) & 0x0F);
+        }
+
+        return TreePath.FromNibble(nibbles);
     }
 
     private void WithSlot(Action item)

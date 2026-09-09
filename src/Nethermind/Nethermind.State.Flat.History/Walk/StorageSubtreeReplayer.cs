@@ -195,10 +195,11 @@ internal sealed class StorageSubtreeReplayer(
 
         public void Snapshot(ulong block, CommitmentEmitter emitter)
         {
-            if (slotPrefix.Length > 0 && publisher is not null) PublishView(block, emitter);
+            bool published = slotPrefix.Length > 0 && publisher is not null;
+            if (published) PublishView(block, emitter);
 
-            _changes.CollectAll(Tree!.RootRef, CommitmentEmitter.StorageSnapshotDepth, _store!);
-            _changes.RecordStorage(emitter, Identity, slotPrefix.Length);
+            _changes.CollectAll(Tree!.RootRef, emitter.StorageRecordDepth, _store!);
+            _changes.RecordStorage(emitter, Identity, published ? slotPrefix.Length + 1 : slotPrefix.Length);
         }
 
         public void Recompute()

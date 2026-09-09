@@ -84,7 +84,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
     private static ulong PublishEpochStarts(SeriesPublisher publisher, in NodeView current, CommitmentEmitter? emitter, ulong nextEpochStart, ulong beforeBlock, ulong to)
     {
-        while (emitter is not null && nextEpochStart <= to && nextEpochStart < beforeBlock)
+        while (emitter is not null && nextEpochStart <= to && nextEpochStart <= beforeBlock)
         {
             emitter.BeginBlock(nextEpochStart);
             publisher.Publish(nextEpochStart, current, emitter);
@@ -140,7 +140,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                     if (next < block) block = next;
                 }
 
-                while (nextEpochStart <= to && nextEpochStart < block)
+                while (nextEpochStart <= to && nextEpochStart <= block)
                 {
                     emitter!.BeginBlock(nextEpochStart);
                     for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(nextEpochStart, groupViews[nibble], emitter);

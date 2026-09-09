@@ -881,6 +881,80 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_child_change_that_lands_on_an_epoch_start_keeps_its_changed_row_after_the_snapshot()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        TreePath parent = TreePath.FromHexString("abc");
+        SeriesKey own = SeriesScope.Accounts.Key(parent, scratch: true);
+        SeriesKey Child(int nibble) => SeriesScope.Accounts.Key(parent.Append(nibble), scratch: true);
+        ulong epochStart = EpochPolicy.EpochBlocks;
+        using (SeriesWriter children = new(_historyColumns))
+        {
+            children.WriteWhole(Child(0), 0, NodeView.Leaf([0x1, 0x2, 0x3], [0xA1, 0xA2, 0xA3, 0xA4]).Rlp);
+            children.WriteWhole(Child(1), 0, NodeView.Leaf([0x4, 0x5, 0x6], [0xB1, 0xB2, 0xB3, 0xB4]).Rlp);
+            children.WriteWhole(Child(0), epochStart, NodeView.Leaf([0x1, 0x2, 0x3], [0xC1, 0xC2, 0xC3, 0xC4]).Rlp);
+        }
+
+        SeriesReader reader = new(_historyColumns, EpochPolicy);
+        using (CommitmentEmitter emitter = CommitmentEmitter.ForWalk(_historyColumns, EpochPolicy, metadata))
+        using (SeriesWriter series = new(_historyColumns))
+        {
+            new SubtreeCombiner(reader, HistoryWalkVerifier.DefaultMaxRowsPerPartition).Combine(SeriesScope.Accounts, parent, Child, own, 0, 2 * epochStart - 1, emitter, series, observer: null, CancellationToken.None);
+        }
+
+        using SeriesReader.SeriesCursor atEpochStart = reader.Open(own, epochStart - 1, epochStart, SeriesReader.SeriesCursor.MinRowsBuffered, CancellationToken.None);
+        Assert.That(atEpochStart.MoveNext(), Is.True, "precondition: the parent published a row at the block its child changed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atEpochStart.Block, Is.EqualTo(epochStart));
+            Assert.That(ParentRowCodec.Changed(atEpochStart.Row) & 1, Is.EqualTo(1),
+                "the child that changed at the epoch start must stay marked changed in the row at that block: an epoch-start snapshot republished after the block overwrote it with a changed mask of zero, and the fold then read the child from its pre-block value");
+        }
+    }
+
+    [Test]
+    public void The_storage_trie_depth_is_one_record_however_the_contract_is_identified()
+    {
+        ValueHash256 full = Keccak.Compute(Contract.Bytes).ValueHash256;
+        ValueHash256 truncated = default;
+        full.Bytes[..CommitmentKeyLayout.IdentityLength].CopyTo(truncated.BytesAsSpan);
+        using (CommitmentMetadata metadata = new(_historyColumns, EpochPolicy))
+        {
+            metadata.NoteStorageTrieDepth(full, 4);
+            metadata.NoteStorageTrieDepth(truncated, 6);
+            metadata.NoteStorageTrieDepth(full, 5);
+        }
+
+        using CommitmentMetadata reread = new(_historyColumns, EpochPolicy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reread.StorageTrieDepth(full), Is.EqualTo(6),
+                "the tip names a contract by its full hashed address and the walk by the twenty bytes the row key keeps; both must land on one cache entry, or a stale entry under one name lets a lower depth overwrite the higher one the other name persisted");
+            Assert.That(reread.StorageTrieDepth(truncated), Is.EqualTo(6));
+        }
+    }
+
+    [Test]
+    public void An_epoch_start_snapshot_anchors_storage_nodes_down_to_the_record_depth()
+    {
+        _policy = EpochPolicy;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+
+        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
+        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
+        byte firstSlotByte = Keccak.Compute(slots[0].ToBigEndian()).Bytes[0];
+        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
+        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(quiet.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
+
+        Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Not.Null,
+            "a contract that stands still gets no row from its changes; the epoch-start snapshot is the only anchor its checkpoint nodes have, so it must reach the record depth as the account snapshot does, or every drop re-composes them");
+    }
+
+    [Test]
     public void A_node_that_moves_once_inside_the_retained_epoch_still_gets_its_anchor_carried()
     {
         _policy = EpochPolicy;
@@ -944,9 +1018,9 @@ public class ArchiveProofTests
             Assert.That(accounts.Any(key => IsEpochTier(key, epoch: 2, CommitmentKeyLayout.CoarseTier) && SuffixOf(key) == carriedWindow), Is.False,
                 "the walk snapshots every account tier at the epoch start, so every account node already has its anchor and a carried copy would only sit dead below it");
             Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 1) && SuffixOf(key) == carriedWindow), Is.False,
-                "the storage snapshot reaches depth 1, so those nodes are anchored too, including the one whose epoch-start row remembers the child that appeared and vanished inside that window");
-            Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.True,
-                "depth 2 is below the snapshot, so its rows are exactly what the carry exists for");
+                "the storage snapshot anchors the root's children too, including the one whose epoch-start row remembers the child that appeared and vanished inside that window");
+            Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.False,
+                "the storage snapshot reaches the record depth like the account snapshot, so the checkpoint nodes below the root are anchored at the epoch start and the carry has nothing left to write for a walk-built epoch");
         }
     }
 
