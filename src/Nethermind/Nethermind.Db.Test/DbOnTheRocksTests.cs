@@ -161,7 +161,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void FlatAccountColumn_UsesAutoIndexAndRoundTripsAfterReopen([Values] bool writeLegacyBinarySst)
+        public void FlatAccountColumn_UsesForcedInterpolationAndRoundTripsAfterReopen([Values] bool writeLegacyBinarySst)
         {
             DbConfig config = new();
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
@@ -171,8 +171,8 @@ namespace Nethermind.Db.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(resolvedOptions["block_based_table_factory.index_type"], Is.EqualTo("kBinarySearch"));
-                Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kAuto"));
-                Assert.That(resolvedOptions["block_based_table_factory.uniform_cv_threshold"], Is.EqualTo("0.2"));
+                Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kInterpolation"));
+                Assert.That(resolvedOptions.ContainsKey("block_based_table_factory.uniform_cv_threshold"), Is.False);
             }
 
             byte[][] keys = CreateAccountKeys();

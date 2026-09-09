@@ -353,10 +353,8 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
-        // Flat account keys are 20-byte prefixes of Keccak hashes and are near-uniform. Auto selects interpolation
-        // for sufficiently uniform indexes while retaining binary search for legacy or non-uniform SSTs.
-        "block_based_table_factory.index_block_search_type=kAuto;" +
-        "block_based_table_factory.uniform_cv_threshold=0.2;" +
+        // Flat account keys are 20-byte prefixes of Keccak hashes and are near-uniform.
+        "block_based_table_factory.index_block_search_type=kInterpolation;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
