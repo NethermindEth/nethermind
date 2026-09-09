@@ -137,13 +137,11 @@ namespace Nethermind.Synchronization.Peers
 
         public async Task<int?> EstimateRequestLimit(RequestType requestType, IPeerAllocationStrategy allocationStrategy, AllocationContexts context, CancellationToken token)
         {
-            // So, to know which peer is next, we just try to allocate it, and then free it back.
-            SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
+            // So, to know which peer is next, we just try to allocate it, and then dispose it.
+            using SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
             if (!syncPeerAllocation.HasPeer) return null;
 
-            int requestSize = _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
-            Free(syncPeerAllocation);
-            return requestSize;
+            return _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
         }
 
         public void Start()
@@ -363,9 +361,10 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks, SignalPeersChanged);
             if (cancellationToken.IsCancellationRequested)
             {
-                return SyncPeerAllocation.FailedAllocation;
+                return allocation;
             }
 
             int tryCount = 1;
@@ -373,7 +372,6 @@ namespace Nethermind.Synchronization.Peers
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
-            SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks);
             while (true)
             {
                 // Snapshot the signal task before attempting allocation so that any
@@ -389,7 +387,7 @@ namespace Nethermind.Synchronization.Peers
                 bool timeoutReached = timeoutMilliseconds == 0
                                       || elapsedMilliseconds < 0
                                       || elapsedMilliseconds > timeoutMilliseconds;
-                if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
+                if (timeoutReached) return allocation;
 
                 int waitTime = GetAllocationWaitTime(tryCount++);
                 waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
@@ -399,7 +397,7 @@ namespace Nethermind.Synchronization.Peers
                     await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
                     if (cts.IsCancellationRequested)
                     {
-                        return SyncPeerAllocation.FailedAllocation;
+                        return allocation;
                     }
                 }
             }
@@ -417,19 +415,6 @@ namespace Nethermind.Synchronization.Peers
                 allocation.AllocatePeer(selected);
                 return allocation.HasPeer;
             }
-        }
-
-        /// <summary>
-        ///     Frees the allocation space borrowed earlier for some sync consumer.
-        /// </summary>
-        /// <param name="syncPeerAllocation">Allocation to free</param>
-        public void Free(SyncPeerAllocation syncPeerAllocation)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Returning {syncPeerAllocation}");
-
-            syncPeerAllocation.Cancel();
-
-            SignalPeersChanged();
         }
 
         private async Task RunRefreshPeerLoop()

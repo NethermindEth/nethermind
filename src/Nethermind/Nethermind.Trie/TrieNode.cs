@@ -105,6 +105,12 @@ namespace Nethermind.Trie
 
         internal bool IsWarmerResolved => (ReadBlockAndFlags() & _warmerResolvedMask) != 0;
 
+        /// <summary>Whether this node is owned by the trie warmer and has not yet been resolved with verified RLP.</summary>
+        /// <remarks>Shared parent slots retain the hash of an unresolved warmer-owned child so live readers
+        /// use their own snapshot lookup.</remarks>
+        internal bool IsUnresolvedWarmerOwned =>
+            (ReadBlockAndFlags() & (_warmerOwnedMask | _warmerResolvedMask)) == _warmerOwnedMask;
+
         internal void MarkWarmerOwned()
         {
             byte previousValue = ReadBlockAndFlags();
@@ -933,7 +939,7 @@ namespace Nethermind.Trie
             // Don't unresolve nodes with path length <= 4; there should be relatively few and they should fit
             // in RAM, but they are hit quite a lot, and don't have very good data locality.
             // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
-            if (child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 && childPath.Length % 2 == 0)
+            if (PruneTraversedChildren && child?.IsPersisted == true && !keepChildRef && childPath.Length > 4 && childPath.Length % 2 == 0)
             {
                 UnresolveChild(childIndex);
             }
@@ -1454,7 +1460,8 @@ namespace Nethermind.Trie
                                 Hash256 keccak = rlpReader.DecodeKeccak();
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                data = childOrRef = child;
+                                data = child.IsUnresolvedWarmerOwned ? keccak : child;
+                                childOrRef = child;
 
                                 break;
                             }
@@ -1634,7 +1641,8 @@ namespace Nethermind.Trie
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    data = childOrRef = child;
+                                    data = child.IsUnresolvedWarmerOwned ? keccak : child;
+                                    childOrRef = child;
 
                                     break;
                                 }

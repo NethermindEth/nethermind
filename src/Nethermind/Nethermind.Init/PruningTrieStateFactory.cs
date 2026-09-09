@@ -34,6 +34,7 @@ public class PruningTrieStateFactory(
     IFullPrunerFactory fullPrunerFactory,
     CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
+    Lazy<ICodeRecovery> codeRecovery,
     StateBoundaryStore boundaryStore,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
@@ -59,6 +60,7 @@ public class PruningTrieStateFactory(
                 codeDb,
                 mainNodeStorage,
                 pathRecovery,
+                codeRecovery,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
