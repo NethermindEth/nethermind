@@ -691,8 +691,8 @@
   },
   {
     "pname": "Nethermind.Crypto.SecP256k1",
-    "version": "1.6.0",
-    "hash": "sha256-t0ESYOPFQ2OXhadHENIfXvXsX4GfRIX+N/LrNzjnoyg="
+    "version": "1.7.0",
+    "hash": "sha256-WHAnlQapZkCwo7Z4a9cY3Awkku/6LRZgKDA3JhcQ7j0="
   },
   {
     "pname": "Nethermind.Crypto.SecP256r1",

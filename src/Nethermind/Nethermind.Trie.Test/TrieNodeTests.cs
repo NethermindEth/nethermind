@@ -405,6 +405,33 @@ public class TrieNodeTests
         Assert.That(getResult, Is.Not.Null);
     }
 
+    /// <remarks>
+    /// A 33-byte sequence in a child slot claims the 32 content bytes only a hash can carry - the trie embeds a
+    /// child only below 32 bytes. Reading it as "not a hash" would send the caller on to <c>GetInlineNodeRlp</c>,
+    /// which accepts a sequence and hands back a 33-byte "inline node", so corruption has to be rejected here.
+    /// </remarks>
+    [Test]
+    public void Get_child_hash_rejects_a_33_byte_sequence_in_place_of_a_hash()
+    {
+        Context ctx = new();
+        TrieNode trieNode = new(NodeType.Extension);
+        trieNode[0] = ctx.HeavyLeaf;
+        trieNode.Key = new byte[] { 5 };
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        byte[] corrupted = rlp.AsSpan().ToArray();
+        // The hash prefix ends the node; 0xe0 keeps the length and the content but says "short list of 32 bytes".
+        corrupted[^(Hash256.Size + 1)] = 0xe0;
+        TrieNode decoded = new(NodeType.Extension, corrupted);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => decoded.GetChildHash(0), Throws.InstanceOf<RlpException>());
+            Assert.That(() => decoded.GetChildHashAsValueKeccak(0, out _), Throws.InstanceOf<RlpException>());
+        }
+    }
+
     [Test]
     public void Get_child_hash_works_on_inlined_child_of_an_extension()
     {
