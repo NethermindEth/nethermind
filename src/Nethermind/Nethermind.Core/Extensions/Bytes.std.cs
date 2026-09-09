@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 
@@ -53,4 +54,8 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool IsZero32(ref byte a)
         => Unsafe.ReadUnaligned<Vector256<byte>>(ref a) == default;
+
+    /// <summary>Number of leading zero bytes in a 64-bit value; <c>8</c> when it is zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LeadingZeroBytes(ulong value) => BitOperations.LeadingZeroCount(value) >> 3;
 }

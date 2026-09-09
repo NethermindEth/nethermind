@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -303,7 +302,7 @@ public static class RlpWriterExtensions
                 return;
             }
 
-            int leadingZeroBytes = BitOperations.LeadingZeroCount(value) >> 3;
+            int leadingZeroBytes = Bytes.LeadingZeroBytes(value);
             int valueLength = sizeof(ulong) - leadingZeroBytes;
 
             value = BinaryPrimitives.ReverseEndianness(value);
