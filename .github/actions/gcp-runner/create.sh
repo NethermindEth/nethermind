@@ -41,6 +41,10 @@ cleanup_failed() {
   rm -f "$JIT_FILE"
 }
 
+# Without this, a cancelled or timed-out create step leaves an instance whose insert already
+# succeeded server-side, racing destroy.sh's lookup.
+trap 'cleanup_failed; exit 143' INT TERM
+
 response=$(jq -n \
     --arg name "$INSTANCE_NAME" \
     --argjson group "$RUNNER_GROUP_ID" \
@@ -103,24 +107,38 @@ build_create_args() {
   fi
 }
 
-RETRYABLE='ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone'
-FATAL='QUOTA_EXCEEDED|Quota .* exceeded|PERMISSION_DENIED|Required .* permission'
+# A create can also fail after the insert succeeded (operation timeout, a partial failure
+# attaching SSDs). Without this, a later zone succeeding would leave two instances sharing a
+# name and destroy.sh could delete the wrong one.
+delete_partial() {
+  gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
+    --zone="$1" --quiet --delete-disks=all >/dev/null 2>&1 || true
+}
 
 MODELS=("$PROVISIONING_MODEL")
 if [ "$PROVISIONING_MODEL" = SPOT ] && [ "$SPOT_FALLBACK_TO_STANDARD" = true ]; then
   MODELS+=(STANDARD)
 fi
 
-IFS=',' read -ra ZONE_LIST <<<"$ZONES"
+if [ "${ZONE_ORDER:-listed}" = rotate ]; then
+  IFS=',' read -ra ZONE_LIST <<<"$(order_zones "$INSTANCE_NAME" "$ZONES")"
+else
+  IFS=',' read -ra ZONE_LIST <<<"$ZONES"
+fi
 CHOSEN_ZONE=""
 MODEL_USED=""
 INSTANCE_JSON=""
+QUOTA_SEEN=""
 
 for model in "${MODELS[@]}"; do
   build_create_args "$model"
+  # Preemptible Local SSD has its own quota, so a SPOT wall says nothing about STANDARD.
+  QUOTA_BLOCKED=" "
   for zone in "${ZONE_LIST[@]}"; do
     zone="${zone//[[:space:]]/}"
     [ -n "$zone" ] || continue
+    region="${zone%-*}"
+    case "$QUOTA_BLOCKED" in *" ${region} "*) continue ;; esac
     echo "::group::create ${INSTANCE_NAME} in ${zone} (${model})"
     set +e
     out=$(gcloud "${CREATE_ARGS[@]}" --zone="$zone" 2>"${RUNNER_TEMP}/create.err")
@@ -136,18 +154,22 @@ for model in "${MODELS[@]}"; do
       INSTANCE_JSON="$out"
       break 2
     fi
-    if grep -qE "$FATAL" <<<"$err"; then
+    if grep -qE "$FATAL_CREATE_ERR" <<<"$err"; then
       echo "::error title=GCP runner::non-retryable create failure: ${err}"
       cleanup_failed
       exit 1
     fi
-    if grep -qE "$RETRYABLE" <<<"$err"; then
+    if grep -qE "$QUOTA_CREATE_ERR" <<<"$err"; then
+      # Local SSD and CPU quotas are regional, so the sibling zones would fail identically.
+      QUOTA_BLOCKED+="${region} "
+      QUOTA_SEEN+=" ${model}/${region}"
+      echo "::notice title=GCP runner::${region} is at quota for ${model}, skipping its zones"
+      delete_partial "$zone"
+      continue
+    fi
+    if grep -qE "$RETRYABLE_CREATE_ERR" <<<"$err"; then
       echo "::notice title=GCP runner::${zone} has no ${model} capacity, trying next"
-      # A create can also fail after the insert succeeded (operation timeout, a partial
-      # failure attaching SSDs). Without this, a later zone succeeding would leave two
-      # instances sharing a name and destroy.sh could delete the wrong one.
-      gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
-        --zone="$zone" --quiet --delete-disks=all >/dev/null 2>&1 || true
+      delete_partial "$zone"
       continue
     fi
     echo "::error title=GCP runner::unrecognised create failure in ${zone}: ${err}"
@@ -157,7 +179,13 @@ for model in "${MODELS[@]}"; do
 done
 
 if [ -z "$CHOSEN_ZONE" ]; then
-  echo "::error title=GCP runner::no capacity for ${MACHINE_TYPE} in any of ${ZONES}"
+  # Being at quota and having no capacity need different responses: the first is a quota
+  # increase or too many concurrent runs, the second is only ever transient. Naming the
+  # quota-blocked regions is what tells the two apart when both happened.
+  echo "::error title=GCP runner::could not create ${MACHINE_TYPE} in any of ${ZONES}"
+  if [ -n "$QUOTA_SEEN" ]; then
+    echo "::error title=GCP runner::regions at quota:${QUOTA_SEEN}"
+  fi
   cleanup_failed
   exit 1
 fi

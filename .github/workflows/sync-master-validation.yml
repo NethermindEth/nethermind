@@ -47,6 +47,14 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
+# Each run holds 4 VMs for up to 6h, all drawing on one regional Local SSD quota, so
+# unbounded overlap exhausts it and the resulting create failures page as sync regressions.
+# cancel-in-progress stays false: it would kill a running sync, which is why #12817 removed
+# the guard. Only pending runs, which hold no VM, are superseded.
+concurrency:
+  group: sync-master-validation-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest

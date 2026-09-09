@@ -110,6 +110,7 @@ jobs:
           provisioning_model: ${{ inputs.provisioning_model }}
           max_run_duration: ${{ inputs.max_run_duration }}
           zones: ${{ vars.GCP_ZONES }}
+          zone_order: rotate
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}

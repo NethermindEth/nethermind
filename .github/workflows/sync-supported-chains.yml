@@ -42,6 +42,14 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
+# A default run is 22 VMs holding 9,750 GB of Local SSD for up to 10h, two thirds of one
+# region's C2 quota. Queueing a second dispatch keeps it from starving master validation.
+# max-parallel is not the tool here: entries run 180-600 min, so capping the fan-out would
+# stretch a run past a day.
+concurrency:
+  group: sync-supported-chains
+  cancel-in-progress: false
+
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
