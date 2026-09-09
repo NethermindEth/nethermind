@@ -58,12 +58,12 @@ namespace Nethermind.Trie
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void WriteRlp(CappedArray<byte> value) => InitRlp(value);
-    
+
         /// <inheritdoc cref="PruneTraversedChildren"/>
         /// <remarks>The guest verifies one block and exits, so there is no cache to keep small and nothing
         /// to amortise a re-resolve against: dropping a child only guarantees decoding its RLP again the
         /// next time the path is walked. Over a mainnet block the witness holds 26,025 distinct nodes while
         /// the trie decodes 34,789 times, so 8,764 of those decodes are repeats.</remarks>
         private const bool PruneTraversedChildren = false;
-}
+    }
 }
