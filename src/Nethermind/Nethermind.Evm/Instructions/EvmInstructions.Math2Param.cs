@@ -81,18 +81,27 @@ public static partial class EvmInstructions
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
-            System.UInt128 sum = (System.UInt128)swap.Bswap64(Add(ref top, 3)) +
-                swap.Bswap64(Add(ref popped, 3));
-            Add(ref top, 3) = swap.Bswap64((ulong)sum);
-            sum = (sum >> 64) + swap.Bswap64(Add(ref top, 2)) +
-                swap.Bswap64(Add(ref popped, 2));
-            Add(ref top, 2) = swap.Bswap64((ulong)sum);
-            sum = (sum >> 64) + swap.Bswap64(Add(ref top, 1)) +
-                swap.Bswap64(Add(ref popped, 1));
-            Add(ref top, 1) = swap.Bswap64((ulong)sum);
-            sum = (sum >> 64) + swap.Bswap64(top) +
-                swap.Bswap64(popped);
-            top = swap.Bswap64((ulong)sum);
+            // Carry tracked in a ulong rather than through UInt128: shifting a UInt128 down by 64 is
+            // free in principle but reaches a software helper here, which ran 189,789 times - three
+            // per ADD - for what is just the high word. SUB already carries its borrow this way.
+            ulong augend = swap.Bswap64(Add(ref top, 3));
+            ulong addend = swap.Bswap64(Add(ref popped, 3));
+            ulong limb = augend + addend;
+            ulong carry = limb < augend ? 1UL : 0UL;
+            Add(ref top, 3) = swap.Bswap64(limb);
+
+            for (nint i = 2; i >= 0; i--)
+            {
+                augend = swap.Bswap64(Add(ref top, i));
+                addend = swap.Bswap64(Add(ref popped, i));
+                limb = augend + addend;
+                // The two carries are mutually exclusive: a wrap on augend + addend leaves a result
+                // below both, which cannot then be ulong.MaxValue and wrap again on the incoming carry.
+                ulong wrapped = limb < augend ? 1UL : 0UL;
+                limb += carry;
+                carry = wrapped + (limb < carry ? 1UL : 0UL);
+                Add(ref top, i) = swap.Bswap64(limb);
+            }
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;
