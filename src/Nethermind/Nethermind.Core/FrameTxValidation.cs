@@ -30,6 +30,12 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
+    /// <summary>The EIP-7825 gas-cap failure message, which names the offending amounts rather than being a
+    /// fixed constant.</summary>
+    /// <remarks>The cap is the fixed <see cref="Eip7825Constants.DefaultTxGasLimitCap"/>, applied unconditionally
+    /// as EIP-8141 § Constraints specifies. The check sits in the release-spec-aware validator only because
+    /// <see cref="TryCalculateBlockGasReservations"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
+    /// so just its wording is kept here alongside the other messages.</remarks>
     public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
         $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
@@ -45,6 +51,26 @@ public static class FrameTxValidation
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
     public const string RecentRootReferencesNotEnabled = "recent root references are not enabled";
 
+    /// <summary>
+    /// Runs the EIP-8141 §Constraints checks a frame transaction can be judged on without state, over its frame
+    /// list, its signature entries and the fields the frame envelope adds.
+    /// </summary>
+    /// <remarks>
+    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="postTxEnabled"/>: it
+    /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
+    /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
+    /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
+    /// EIP-7825 gas cap among them — are left to the validators in <c>TxValidator</c>'s frame composite, which is
+    /// also the only place several of this type's own message constants are raised, so passing this is necessary
+    /// but not sufficient for validity.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
+    /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
+    /// <param name="postTxEnabled">Whether EIP-7906 is active, which decides only whether
+    /// <see cref="TxFrame.ModePostTx"/> frames are admitted at all.</param>
+    /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
+    /// <see langword="null"/> on success.</param>
+    /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
         error = null;
@@ -507,6 +533,8 @@ public static class FrameTxValidation
     /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
     /// caller from the unmeasured reading.
     /// </remarks>
+    /// <param name="transaction">The frame transaction to price.</param>
+    /// <param name="spec">The release spec the pricing is taken at; it also keys the memo.</param>
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>

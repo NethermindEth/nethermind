@@ -21,16 +21,28 @@ namespace Nethermind.Core;
 /// <param name="data">The frame's calldata.</param>
 public class TxFrame(byte mode, byte flags, Address? target, ulong executionGasLimit, ulong stateGasLimit, UInt256 value, ReadOnlyMemory<byte> data)
 {
-    /// <summary>An ordinary frame, called by the transaction sender.</summary>
+    /// <summary>An ordinary frame, called by <c>ENTRY_POINT</c>.</summary>
     public const byte ModeDefault = 0;
 
-    /// <summary>A validation-prefix frame: it may approve execution or payment, and runs before any body frame.</summary>
+    /// <summary>A read-only frame, called by <c>ENTRY_POINT</c>, whose failure invalidates the whole transaction
+    /// instead of merely reverting.</summary>
+    /// <remarks>
+    /// Ordinarily the transaction's validation prefix, where <see cref="Flags"/> lets it approve execution or
+    /// payment; the approval scope comes from the flags, not from this mode. Consensus does not confine a VERIFY
+    /// frame to that prefix — one may sit behind a body frame — though it may neither follow a POST_TX frame nor
+    /// directly follow an atomic-batch one. The public mempool additionally refuses a VERIFY frame behind the
+    /// first frame flagged to approve payment (<see cref="FrameTxValidation.HasVerifyFrameAfterPrefix"/>): its
+    /// revert would invalidate an already-announced transaction on state the pool never simulated.
+    /// </remarks>
     public const byte ModeVerify = 1;
 
-    /// <summary>A frame whose calls appear to come from the transaction sender rather than from the frame's caller.</summary>
+    /// <summary>The one mode called by the transaction sender rather than <c>ENTRY_POINT</c>, and so the only one
+    /// that may carry <see cref="Value"/>.</summary>
+    /// <remarks>Rejected at execution unless an earlier frame has already approved execution for the sender.</remarks>
     public const byte ModeSender = 2;
 
-    /// <summary>EIP-7906: a read-only trailing frame that asserts the transaction's outcome.</summary>
+    /// <summary>EIP-7906: a read-only trailing frame, called by <c>ENTRY_POINT</c>, that asserts the
+    /// transaction's outcome.</summary>
     public const byte ModePostTx = 3;
 
     /// <summary>The frame may approve nothing; an <c>APPROVE</c> from it always reverts.</summary>
