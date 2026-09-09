@@ -608,6 +608,28 @@ public class FrameTransactionForRpcTests
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
 
+    /// <summary>The stored receipt decoder holds the wire decoder's status bound, so an undefined status has to be
+    /// refused here too rather than stored as a receipt no read path, local or remote, accepts.</summary>
+    [TestCase(TxFrameReceipt.StatusFailure, false)]
+    [TestCase(TxFrameReceipt.StatusSuccess, false)]
+    [TestCase(TxFrameReceipt.StatusSkipped, false)]
+    [TestCase((byte)3, true)]
+    [TestCase(byte.MaxValue, true)]
+    public void ReceiptForRpc_FrameTx_RejectsAFrameStatusOutsideThePayloadValues(byte status, bool rejected)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts = [new FrameReceiptForRpc { Status = status }];
+
+        if (rejected)
+        {
+            Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+        }
+        else
+        {
+            Assert.That(receiptForRpc.ToReceipt().FrameReceipts![0].Status, Is.EqualTo(status));
+        }
+    }
+
     /// <summary>The same hazard on the top-level logs, which every receipt type carries.</summary>
     [Test]
     public void ReceiptForRpc_RejectsANullLogEntry()

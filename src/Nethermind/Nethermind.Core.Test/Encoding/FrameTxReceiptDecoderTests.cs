@@ -228,6 +228,131 @@ public class FrameTxReceiptDecoderTests
             "the per-frame copy holds the same logs as the top-level union, the duplication this size pins");
     }
 
+    /// <summary>A pre-fork receipt's tx-hash mark and error sit in the same trailing region the frame extension
+    /// was appended to. This pins that a non-frame receipt already on disk still reads back with both fields, and
+    /// that an array of them stays aligned, under the storage behaviours the read paths use.</summary>
+    [Test]
+    public void StorageDecode_NonFrameReceiptsInTheOnDiskShape_KeepTxHashAndErrorAndStayAligned(
+        [Values(RlpBehaviors.Storage, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes)] RlpBehaviors decodeBehaviors)
+    {
+        byte[] encoded = Bytes.FromHexString(NonFrameArrayNonCompactHex);
+
+        ReceiptStorageDecoder decoder = new();
+        RlpReader reader = new(encoded);
+        TxReceipt[] decoded = decoder.DecodeArray(ref reader, decodeBehaviors)!;
+
+        Assert.That(decoded, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded[0].TxHash, Is.EqualTo(TestItem.KeccakA), "leading receipt tx hash");
+            Assert.That(decoded[0].Error, Is.EqualTo("error"), "leading receipt error");
+            Assert.That(decoded[0].Sender, Is.EqualTo(TestItem.AddressD), "leading receipt sender");
+            Assert.That(decoded[0].TxType, Is.EqualTo(TxType.Legacy));
+
+            Assert.That(decoded[1].TxHash, Is.EqualTo(TestItem.KeccakB), "trailing receipt tx hash");
+            Assert.That(decoded[1].Error, Is.EqualTo("error"), "trailing receipt error");
+            Assert.That(decoded[1].Sender, Is.EqualTo(TestItem.AddressE),
+                "the trailing receipt decodes intact only if the reader realigned past the leading one");
+            Assert.That(decoded[1].TxType, Is.EqualTo(TxType.Legacy));
+        }
+    }
+
+    /// <summary>The stored write path is null-tolerant on the payer while every read path is not, so a payer-less
+    /// frame receipt used to persist and then fail every later read of its block. Refused at the encoder instead.</summary>
+    [Test]
+    public void Encode_FrameTxReceiptWithoutPayer_IsRefusedRatherThanStoredUnreadable(
+        [Values(Format.NonCompactStorage, Format.CompactStorage, Format.Message)] Format format)
+    {
+        TxReceipt payerless = CreateStorageFrameReceipt(
+            [Log(0x01)], new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [Log(0x01)]));
+        payerless.Payer = null;
+
+        Assert.That(() => EncodeStored(payerless, format), Throws.InstanceOf<RlpException>());
+    }
+
+    // The counterpart: the refusal must not stand between a payer-carrying frame receipt and the round trip.
+    [Test]
+    public void Encode_FrameTxReceiptWithPayer_RoundtripsThePayer(
+        [Values(Format.NonCompactStorage, Format.CompactStorage, Format.Message)] Format format)
+    {
+        TxReceipt receipt = CreateStorageFrameReceipt(
+            [Log(0x01)], new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [Log(0x01)]));
+
+        Assert.That(DecodeStored(EncodeStored(receipt, format), format).Payer, Is.EqualTo(receipt.Payer));
+    }
+
+    /// <summary>The stored frames decoder reads a datadir, which a corrupted or hostile node can still supply, and
+    /// what it accepts is re-served over the wire. It therefore holds the payload decoder's frame-count bound.</summary>
+    [TestCase(Format.NonCompactStorage, Eip8141Constants.MaxFrames, false)]
+    [TestCase(Format.CompactStorage, Eip8141Constants.MaxFrames, false)]
+    [TestCase(Format.NonCompactStorage, Eip8141Constants.MaxFrames + 1, true)]
+    [TestCase(Format.CompactStorage, Eip8141Constants.MaxFrames + 1, true)]
+    public void StorageDecode_FrameCountHoldsTheWireBound(Format format, int frameCount, bool rejected)
+    {
+        TxFrameReceipt[] frames = new TxFrameReceipt[frameCount];
+        Array.Fill(frames, new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, []));
+        byte[] encoded = EncodeStored(CreateStorageFrameReceipt([], frames), format);
+
+        if (rejected)
+        {
+            Assert.That(() => DecodeStored(encoded, format), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(DecodeStored(encoded, format).FrameReceipts, Has.Length.EqualTo(frameCount));
+        }
+    }
+
+    // Same reasoning for the status byte: AggregateStatus folds anything but success to failure while RPC surfaces
+    // the raw byte, so an undefined status reads differently at the two ends of the same stored receipt.
+    [TestCase(Format.NonCompactStorage, TxFrameReceipt.StatusFailure, false)]
+    [TestCase(Format.NonCompactStorage, TxFrameReceipt.StatusSuccess, false)]
+    [TestCase(Format.NonCompactStorage, TxFrameReceipt.StatusSkipped, false)]
+    [TestCase(Format.NonCompactStorage, (byte)3, true)]
+    [TestCase(Format.NonCompactStorage, byte.MaxValue, true)]
+    [TestCase(Format.CompactStorage, TxFrameReceipt.StatusSkipped, false)]
+    [TestCase(Format.CompactStorage, (byte)3, true)]
+    [TestCase(Format.CompactStorage, byte.MaxValue, true)]
+    public void StorageDecode_FrameStatusOutsideThePayloadValues_Throws(Format format, byte status, bool rejected)
+    {
+        byte[] encoded = EncodeStored(
+            CreateStorageFrameReceipt([], new TxFrameReceipt(status, 21_000, 0, [])), format);
+
+        if (rejected)
+        {
+            Assert.That(() => DecodeStored(encoded, format), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            Assert.That(DecodeStored(encoded, format).FrameReceipts![0].Status, Is.EqualTo(status));
+        }
+    }
+
+    /// <summary>The receipt codecs a frame receipt can be written through.</summary>
+    public enum Format
+    {
+        NonCompactStorage,
+        CompactStorage,
+        Message,
+    }
+
+    private static RlpDecoder<TxReceipt> DecoderFor(Format format) => format switch
+    {
+        Format.NonCompactStorage => new ReceiptStorageDecoder(),
+        Format.CompactStorage => new CompactReceiptStorageDecoder(),
+        _ => new ReceiptMessageDecoder(),
+    };
+
+    private static byte[] EncodeStored(TxReceipt receipt, Format format) => format == Format.Message
+        ? new ReceiptMessageDecoder().EncodeNew(receipt, RlpBehaviors.None)
+        : DecoderFor(format).EncodeAsBytes(receipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+    private static TxReceipt DecodeStored(byte[] encoded, Format format)
+    {
+        RlpReader reader = new(encoded);
+        return DecoderFor(format).Decode(ref reader, format == Format.Message ? RlpBehaviors.None : RlpBehaviors.Storage)!;
+    }
+
     private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp, bool compact)
     {
         RlpReader reader = new(logsRlp);
@@ -334,6 +459,10 @@ public class FrameTxReceiptDecoderTests
         "f905a5f901ce01a0017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72020294475674cb523a0a2736b7f7534390288fce16982c94942921b14f1b1c385cd7e0cc2ef7abe5598c83589476e68a8696537e4141926f3e528733af9e237d69648203e8b9010000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000f83af838940000000000000000000000000000000000000000e1a0000000000000000000000000000000000000000000000000000000000000000080ffa003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760856572726f72b9020006f901fc018080809476e68a8696537e4141926f3e528733af9e237d6980808082c738b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000002000000000000000000000000000000080000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000f83af83894942921b14f1b1c385cd7e0cc2ef7abe5598c8358e1a05fe7f977e71dba2ea1a68e21057beebb9be2ac30c6410aa38d4f3fbe41dcffd201ff808094b7705ae4c6f81b66cdb323c65f4e8133690fc099f884f84001825208f83af83894942921b14f1b1c385cd7e0cc2ef7abe5598c8358e1a05fe7f977e71dba2ea1a68e21057beebb9be2ac30c6410aa38d4f3fbe41dcffd201f84080827530f83af83894942921b14f1b1c385cd7e0cc2ef7abe5598c8358e1a0f2ee15ea639b73fa3db9b34a245bdfa015c260c598b211bf05a1ecc4b3e3b4f202f901ce01a0017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f720202942d36e6c27c34ea22620e7b7c45de774599406cf394942921b14f1b1c385cd7e0cc2ef7abe5598c83589476e68a8696537e4141926f3e528733af9e237d69648207d0b9010000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000f83af838940000000000000000000000000000000000000000e1a0000000000000000000000000000000000000000000000000000000000000000080ffa003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760856572726f72";
     private const string OldArrayCompactHex =
         "7ff9015ef40194475674cb523a0a2736b7f7534390288fce16982c8203e8dad9940000000000000000000000000000000000000000c1008080f8f3019476e68a8696537e4141926f3e528733af9e237d6982c738f83bf83994942921b14f1b1c385cd7e0cc2ef7abe5598c8358e1a05fe7f977e71dba2ea1a68e21057beebb9be2ac30c6410aa38d4f3fbe41dcffd2800194b7705ae4c6f81b66cdb323c65f4e8133690fc099f886f84101825208f83bf83994942921b14f1b1c385cd7e0cc2ef7abe5598c8358e1a05fe7f977e71dba2ea1a68e21057beebb9be2ac30c6410aa38d4f3fbe41dcffd28001f84180827530f83bf83994942921b14f1b1c385cd7e0cc2ef7abe5598c8358e1a0f2ee15ea639b73fa3db9b34a245bdfa015c260c598b211bf05a1ecc4b3e3b4f28002f401942d36e6c27c34ea22620e7b7c45de774599406cf38207d0dad9940000000000000000000000000000000000000000c1008080";
+
+    // Two pre-fork receipts as the non-compact storage codec has always written them: logs, the 0xff tx-hash
+    // mark, the hash, then the error string. Captured before the frame extension was appended after it.
+    private const string NonFrameArrayNonCompactHex = "f903a2f901ce01a0017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72020294475674cb523a0a2736b7f7534390288fce16982c94942921b14f1b1c385cd7e0cc2ef7abe5598c83589476e68a8696537e4141926f3e528733af9e237d69648203e8b9010000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000f83af838940000000000000000000000000000000000000000e1a0000000000000000000000000000000000000000000000000000000000000000080ffa003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760856572726f72f901ce01a0017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f720202942d36e6c27c34ea22620e7b7c45de774599406cf394942921b14f1b1c385cd7e0cc2ef7abe5598c83589476e68a8696537e4141926f3e528733af9e237d69648203e8b9010000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000f83af838940000000000000000000000000000000000000000e1a0000000000000000000000000000000000000000000000000000000000000000080ffa01f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111856572726f72";
 
     [Test]
     public void StorageDecode_PreTwoDimensionalScalarGasUsed_ReadsExecutionWithZeroState(

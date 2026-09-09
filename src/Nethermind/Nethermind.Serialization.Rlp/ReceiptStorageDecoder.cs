@@ -194,8 +194,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 // Repeats the logs the top-level union already holds: DecodeStructRef hands eth_getLogs one
                 // contiguous LogsRlp span, which N per-frame sequences cannot supply.
-                writer.Encode(item.Payer);
-                FrameReceiptRlp.EncodeFrames(ref writer, item.FrameReceipts ?? [], LogEntryDecoder.Instance);
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, LogEntryDecoder.Instance);
             }
         }
 
@@ -242,8 +241,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                contentLength += Rlp.LengthOf(item.Payer);
-                contentLength += Rlp.LengthOfSequence(FrameReceiptRlp.GetFramesLength(item.FrameReceipts ?? [], LogEntryDecoder.Instance));
+                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, LogEntryDecoder.Instance);
             }
 
             return (contentLength, logsLength);

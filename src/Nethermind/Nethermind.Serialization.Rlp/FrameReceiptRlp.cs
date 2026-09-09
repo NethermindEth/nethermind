@@ -14,9 +14,9 @@ namespace Nethermind.Serialization.Rlp;
 /// <c>[payer, [frame_receipt, ...]]</c> extension both storage formats append.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </summary>
-/// <remarks>The storage formats differ only in their log codec, so they pass their own, and they decode
-/// leniently where the wire is strict. Every format writes through the same length and encode paths, so a
-/// change to the frame layout cannot reach one of them alone.</remarks>
+/// <remarks>The storage formats differ only in their log codec, so they pass their own, and they relax the
+/// wire's bounds only where an older on-disk shape needs it. Every format writes through the same length and
+/// encode paths, so a change to the frame layout cannot reach one of them alone.</remarks>
 public static class FrameReceiptRlp
 {
     /// <summary>The most logs a receipt may carry: a 100M gas ceiling still allows roughly 266k LOG0
@@ -44,15 +44,21 @@ public static class FrameReceiptRlp
         => EncodeFrames(ref writer, frameReceipts, logDecoder, GetFramesLength(frameReceipts, logDecoder));
 
     /// <summary>Decodes the frames list of a stored receipt's <c>[payer, [frame_receipt, ...]]</c> extension.</summary>
-    /// <remarks>Lenient by design: the data is locally written, and it may predate the 2D <c>gas_used</c>.</remarks>
+    /// <remarks>Lenient only where the on-disk history demands it — a pre-2D scalar <c>gas_used</c>, and an empty
+    /// frames list. The frame count and the status byte are bounded as on the wire, so a datadir cannot hold a
+    /// receipt this node reads back but no peer would accept.</remarks>
     internal static TxFrameReceipt[] DecodeStoredFrames(ref RlpReader reader, IRlpDecoder<LogEntry?> logDecoder)
     {
         int framesEnd = reader.ReadSequenceLength() + reader.Position;
-        using ArrayPoolListRef<TxFrameReceipt> frameReceipts = new(Eip8141Constants.MaxFrames);
-        while (reader.Position < framesEnd)
+        int frameCount = reader.PeekNumberOfItemsRemaining(framesEnd, Eip8141Constants.MaxFrames + 1);
+        reader.GuardLimit(frameCount, FrameReceiptsRlpLimit);
+
+        TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frameCount];
+        for (int i = 0; i < frameCount; i++)
         {
             int frameEnd = reader.ReadSequenceLength() + reader.Position;
             byte status = reader.DecodeByte();
+            GuardFrameStatus(status);
             DecodeStoredGasUsed(ref reader, out ulong executionGasUsed, out ulong stateGasUsed);
 
             int logsEnd = reader.ReadSequenceLength() + reader.Position;
@@ -62,19 +68,60 @@ public static class FrameReceiptRlp
                 frameLogs.Add(logDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.AllowExtraBytes));
             }
 
-            frameReceipts.Add(new TxFrameReceipt(status, executionGasUsed, stateGasUsed, frameLogs.ToArray()));
+            frameReceipts[i] = new TxFrameReceipt(status, executionGasUsed, stateGasUsed, frameLogs.ToArray());
             reader.Check(frameEnd);
         }
 
-        return frameReceipts.ToArray();
+        // Counting items only requires a frame to start before the declared end, so an under-declared
+        // frames header is only caught here.
+        reader.Check(framesEnd);
+        return frameReceipts;
+    }
+
+    /// <summary>The content length of a stored receipt's trailing <c>[payer, frames]</c> extension.</summary>
+    /// <exception cref="RlpException">The receipt carries no payer.</exception>
+    internal static int GetStoredExtensionLength(TxReceipt receipt, IRlpDecoder<LogEntry?> logDecoder)
+    {
+        GuardPayer(receipt);
+        return Rlp.LengthOf(receipt.Payer)
+               + Rlp.LengthOfSequence(GetFramesLength(receipt.FrameReceipts ?? [], logDecoder));
+    }
+
+    /// <summary>Writes a stored receipt's trailing <c>[payer, frames]</c> extension.</summary>
+    /// <exception cref="RlpException">The receipt carries no payer.</exception>
+    internal static void EncodeStoredExtension<TWriter>(ref TWriter writer, TxReceipt receipt, IRlpDecoder<LogEntry?> logDecoder)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        GuardPayer(receipt);
+        writer.Encode(receipt.Payer);
+        EncodeFrames(ref writer, receipt.FrameReceipts ?? [], logDecoder);
+    }
+
+    /// <summary>Rejects a receipt the strict read side could not decode back, rather than persisting it.</summary>
+    private static void GuardPayer(TxReceipt receipt)
+    {
+        if (receipt.Payer is null)
+        {
+            ThrowMissingPayer();
+        }
+    }
+
+    private static void GuardFrameStatus(byte status)
+    {
+        if (status is not (TxFrameReceipt.StatusFailure or TxFrameReceipt.StatusSuccess or TxFrameReceipt.StatusSkipped))
+        {
+            ThrowUnknownFrameStatus(status);
+        }
     }
 
     /// <summary>The content length of the payload fields <c>[cumulative_gas_used, payer, frames]</c>,
     /// the sequence enclosing them excluded.</summary>
     /// <param name="receipt">The frame-transaction receipt to measure.</param>
     /// <param name="framesLength">The content length of the frames list, to hand back to the encoder.</param>
+    /// <exception cref="RlpException">The receipt carries no payer.</exception>
     public static int GetPayloadLength(TxReceipt receipt, out int framesLength)
     {
+        GuardPayer(receipt);
         framesLength = GetFramesLength(receipt.FrameReceipts ?? [], LogEntryDecoder.Instance);
         return Rlp.LengthOf(receipt.GasUsedTotal)
                + Rlp.LengthOf(receipt.Payer)
@@ -117,12 +164,9 @@ public static class FrameReceiptRlp
         {
             int frameEnd = reader.ReadSequenceLength() + reader.Position;
             byte status = reader.DecodeByte();
-            if (status is not (TxFrameReceipt.StatusFailure or TxFrameReceipt.StatusSuccess or TxFrameReceipt.StatusSkipped))
-            {
-                // AggregateStatus folds anything but success to failure while RPC surfaces the raw byte,
-                // so an out-of-range status would read differently at the two ends of the same receipt.
-                ThrowUnknownFrameStatus(status);
-            }
+            // AggregateStatus folds anything but success to failure while RPC surfaces the raw byte,
+            // so an out-of-range status would read differently at the two ends of the same receipt.
+            GuardFrameStatus(status);
 
             int gasUsedEnd = reader.ReadSequenceLength() + reader.Position;
             ulong executionGasUsed = reader.DecodeULong();
@@ -174,13 +218,17 @@ public static class FrameReceiptRlp
             => throw new RlpException("Frame transaction receipt carries no frame receipts");
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnknownFrameStatus(byte status)
-            => throw new RlpException($"Frame receipt status {status} is not one of failure, success or skipped");
-
-        [DoesNotReturn, StackTraceHidden]
         static void ThrowTooManyFrameLogs(int totalLogs)
             => throw new RlpException($"Frame transaction receipt carries {totalLogs} logs, over the {LogsRlpLimit.Limit} a receipt may hold");
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowUnknownFrameStatus(byte status)
+        => throw new RlpException($"Frame receipt status {status} is not one of failure, success or skipped");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMissingPayer()
+        => throw new RlpException("Frame transaction receipt carries no payer");
 
     /// <summary>
     /// Decodes a stored frame receipt's <c>gas_used</c>, tolerating both the current
