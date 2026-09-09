@@ -22,6 +22,11 @@ public static partial class KeccakCache
     internal const int MemoSlotBits = 15;
     private const int MemoSlotCount = 1 << MemoSlotBits;
 
+    // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the multiplied hash
+    // is shifted by 32 and the index is undefined, at 32 the count folds to one slot while the index
+    // reaches 2^32 and the store runs off the array.
+    private const nuint MemoSlotBitsInRange = ((nuint)MemoSlotBits - 1) + (31 - (nuint)MemoSlotBits);
+
     /// <summary>Knuth's multiplicative hash constant, 2^32 / phi rounded to an odd integer.</summary>
     private const uint MemoSlotMultiplier = 2654435761;
 
@@ -165,7 +170,7 @@ public static partial class KeccakCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong MemoLastKeyWord(ref byte inputRef, nuint length, nuint partial) => partial == 0
         ? 0
-        : Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, length - sizeof(ulong))) >> (int)((MinMemoLength - partial) << 3);
+        : Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inputRef, length - sizeof(ulong))) >> (int)((sizeof(ulong) - partial) << 3);
 
     /// <summary>The input's slot in <see cref="Memo"/>.</summary>
     /// <remarks>
