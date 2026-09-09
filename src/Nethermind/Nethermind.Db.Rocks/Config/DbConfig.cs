@@ -356,7 +356,7 @@ public class DbConfig : IDbConfig
         // Flat account keys are 20-byte prefixes of Keccak hashes and are near-uniform. Auto selects interpolation
         // for sufficiently uniform indexes while retaining binary search for legacy or non-uniform SSTs.
         "block_based_table_factory.index_block_search_type=kAuto;" +
-        "block_based_table_factory.uniform_cv_threshold=0.2;" +
+        "block_based_table_factory.uniform_cv_threshold=0.5;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
