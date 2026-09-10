@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -21,6 +22,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 
+[assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
+
 namespace Nethermind.Consensus.Stateless;
 
 public class StatelessBlockProcessingEnv(
@@ -31,6 +34,15 @@ public class StatelessBlockProcessingEnv(
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
+    private readonly StatelessBlockTree? _blockTree;
+
+    internal StatelessBlockProcessingEnv(
+        Witness witness,
+        ISpecProvider specProvider,
+        ISealValidator sealValidator,
+        ILogManager logManager,
+        StatelessBlockTree blockTree) : this(witness, specProvider, sealValidator, logManager)
+        => _blockTree = blockTree;
     // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
     // witness code. The first fetch of each hash still reads through the world state.
     private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
@@ -55,8 +67,8 @@ public class StatelessBlockProcessingEnv(
 
     private BlockProcessor GetProcessor()
     {
-        using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
-        StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
+        using ArrayPoolList<BlockHeader>? readOnlyCollection = _blockTree is null ? witness.DecodeHeaders() : null;
+        StatelessBlockTree statelessBlockTree = _blockTree ?? new(readOnlyCollection!);
         BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(

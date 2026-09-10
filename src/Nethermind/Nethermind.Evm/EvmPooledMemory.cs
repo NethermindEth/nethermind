@@ -338,7 +338,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + WordSize;
         byte[]? memory = _memory;
-        if (memory is not null && overwriteEnd <= (ulong)memory.Length)
+        if (memory is not null)
         {
             ulong initializedSize = _initializedSize;
             if (overwriteEnd <= initializedSize)
@@ -347,7 +347,7 @@ public struct EvmPooledMemory
                 return;
             }
 
-            if (location.u0 <= initializedSize)
+            if (location.u0 <= initializedSize && overwriteEnd <= (ulong)memory.Length)
             {
                 WriteWord(memory, offset, word);
                 _initializedSize = overwriteEnd;
@@ -394,7 +394,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + 1;
         byte[]? memory = _memory;
-        if (memory is not null && overwriteEnd <= (ulong)memory.Length && overwriteEnd <= _initializedSize)
+        if (memory is not null && overwriteEnd <= _initializedSize)
         {
             ref byte memoryData = ref MemoryMarshal.GetArrayDataReference(memory);
             Unsafe.Add(ref memoryData, offset) = value;
@@ -687,7 +687,8 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureRented(ulong requiredEnd)
     {
-        if (requiredEnd > GetBackingCapacity() || requiredEnd > _initializedSize)
+        Debug.Assert(_initializedSize <= GetBackingCapacity());
+        if (requiredEnd > _initializedSize)
         {
             RentSlow(requiredEnd);
         }
