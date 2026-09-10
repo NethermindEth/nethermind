@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -57,4 +58,17 @@ public partial class BlockAccessListManager
             (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
         executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
+
+    public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+    {
+        CheckInitialized();
+
+        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
+        IIndexTableHandler handler = (indexTableHandlerFactory ?? IndexTableHandlerFactory.Default).Create(postExecution.TxProcessor);
+        handler.CommitIndexTableRoots(block, receipts, spec, tracer);
+    }
+
+    public void RollbackBlock(Block block) => indexTableHandlerFactory?.RollbackBlock(block);
+
+    public void UpdateFinalBlockHash(Block block) => indexTableHandlerFactory?.UpdateFinalBlockHash(block);
 }

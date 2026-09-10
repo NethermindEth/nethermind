@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,14 +18,15 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockProcessor
 {
     public interface ISystemContractHandler
-        : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
+        : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor, IIndexTableHandler
     { }
 
     public sealed class SystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        IIndexTableHandler? indexTableHandler = null) : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
@@ -46,5 +48,15 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+            => (indexTableHandler ?? NullIndexTableHandler.Instance).CommitIndexTableRoots(block, receipts, spec, tracer);
+
+        public void RollbackBlock(Block block)
+            => (indexTableHandler ?? NullIndexTableHandler.Instance).RollbackBlock(block);
+
+        public void UpdateFinalBlockHash(Block block)
+            => (indexTableHandler ?? NullIndexTableHandler.Instance).UpdateFinalBlockHash(block);
     }
 }
+

@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -17,7 +18,8 @@ public partial class BlockProcessor
     public sealed class BlockAccessListSystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
-        IBlockAccessListManager balManager)
+        IBlockAccessListManager balManager,
+        IIndexTableHandler? indexTableHandler = null)
         : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
@@ -40,5 +42,20 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => balManager.ProcessWithdrawals(block, spec);
+
+        public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+            => balManager.CommitIndexTableRoots(block, receipts, spec, tracer);
+
+        public void RollbackBlock(Block block)
+        {
+            balManager.RollbackBlock(block);
+            indexTableHandler?.RollbackBlock(block);
+        }
+
+        public void UpdateFinalBlockHash(Block block)
+        {
+            balManager.UpdateFinalBlockHash(block);
+            indexTableHandler?.UpdateFinalBlockHash(block);
+        }
     }
 }

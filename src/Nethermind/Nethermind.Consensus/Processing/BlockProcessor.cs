@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -42,7 +43,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    IIndexTableHandler? indexTableHandler = null)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
@@ -55,10 +57,11 @@ public partial class BlockProcessor(
         new(
             beaconBlockRootHandler,
             blockHashStore,
-            balManager
+            balManager,
+            indexTableHandler ?? NullIndexTableHandler.Instance
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, indexTableHandler ?? NullIndexTableHandler.Instance));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -92,19 +95,36 @@ public partial class BlockProcessor(
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
+            _systemContractHandler.RollbackBlock(block);
             throw new BlockAccessListSequentialRetryException(ex);
         }
         catch (BlockAccessListManager.ParallelExecutionException ex) when (
             _balManager.ParallelExecutionEnabled &&
             ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
         {
+            _systemContractHandler.RollbackBlock(block);
             throw new BlockAccessListSequentialRetryException(blockAccessListException);
+        }
+        catch
+        {
+            _systemContractHandler.RollbackBlock(block);
+            throw;
         }
         finally
         {
             if (!processed) block.DisposeAccountChanges();
         }
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
+        try
+        {
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+        }
+        catch
+        {
+            _systemContractHandler.RollbackBlock(block);
+            _systemContractHandler.RollbackBlock(suggestedBlock);
+            throw;
+        }
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
@@ -202,6 +222,8 @@ public partial class BlockProcessor(
 
             _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
+            _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
+
             ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
 
             CommitStateAndStorageRoots(spec);
@@ -239,6 +261,8 @@ public partial class BlockProcessor(
         }
 
         header.Hash = header.CalculateHash();
+
+        _systemContractHandler.UpdateFinalBlockHash(block);
 
         return receipts;
     }
