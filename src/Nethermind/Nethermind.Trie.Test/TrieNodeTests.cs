@@ -28,7 +28,8 @@ public class TrieNodeTests
 {
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
-        [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2)] int replacementKind)
+        [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
+        [Values(0, 2, 4)] int dirtyBranchCount)
     {
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
@@ -40,6 +41,7 @@ public class TrieNodeTests
         }
         TreePath path = TreePath.Empty;
         CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        Assert.That(oldRlp.Length, Is.EqualTo(532));
         TrieNode restored = new(NodeType.Branch, oldRlp);
         restored.ResolveNode(NullTrieNodeResolver.Instance, path);
         restored = restored.Clone();
@@ -51,7 +53,23 @@ public class TrieNodeTests
         };
         restored.SetChild(changedIndex, replacement);
         expected.SetChild(changedIndex, replacement);
-        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        if (replacementKind == 3) restored.UnresolveChild(changedIndex);
+
+        for (int i = 1; i <= dirtyBranchCount; i++)
+        {
+            int index = (changedIndex + i) % TrieNode.BranchesCount;
+            TrieNode branch = new(NodeType.Branch);
+            for (int childIndex = 0; childIndex < TrieNode.BranchesCount; childIndex++)
+            {
+                branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)index, (byte)childIndex])));
+            }
+            restored.SetChild(index, branch);
+            expected.SetChild(index, branch);
+        }
+
+        // Four materialized children select the parallel measuring path even without AVX-512VL;
+        // two dirty branches select batched measuring on hosts that support it.
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: dirtyBranchCount == 4);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
         Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
     }

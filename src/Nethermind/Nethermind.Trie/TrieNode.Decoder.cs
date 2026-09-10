@@ -668,7 +668,8 @@ namespace Nethermind.Trie
             private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
                 ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                // A canonical branch reaches 532 bytes only when all sixteen children are hashes.
+                // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
+                Debug.Assert(nodeRlp[^1] == 128);
                 nodeRlp.Slice(3, BranchesCount * Rlp.LengthOfKeccakRlp).CopyTo(destination);
                 ref object? child = ref FirstBranchChild(item);
                 for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
