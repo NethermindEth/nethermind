@@ -110,7 +110,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
-    private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
+    /// <remarks>Has to stay small enough that <c>Retry</c> fits inside the CI job budget, and below the
+    /// hang-dump inactivity window, or a stalled sync is reported as a dumped test host instead of as a
+    /// failing test. The whole assembly runs in about two minutes per chunk, so this is ample headroom.</remarks>
+    private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(3);
     private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int PartialBalActivationBlock = 400;
@@ -598,49 +601,48 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
         }
 
-        // Not routed through RunWithTimeout: at a 10-minute budget a retried timeout would exceed the
-        // job budget, turning a clean error into a report-less job timeout.
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(BalSyncTestTimeout);
-
-        PrivateKey serverKey = TestItem.PrivateKeyE;
-        await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+        await RunWithTimeout(BalSyncTestTimeout, async cancellationToken =>
         {
-            EnableBlockAccessListsFromGenesis(spec);
-            ConfigureLocalNetwork(cfg, AllocatePort());
-            return Task.CompletedTask;
-        }, serverKey);
+            PrivateKey serverKey = TestItem.PrivateKeyE;
+            await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+            {
+                EnableBlockAccessListsFromGenesis(spec);
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
 
-        await StartServerAndBuildStorageChain(server, BalSyncChainLength, cancellationTokenSource.Token, "BAL sync server");
+            await StartServerAndBuildStorageChain(server, BalSyncChainLength, cancellationToken, "BAL sync server");
 
-        IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
-        Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(BalSyncChainLength));
+            IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+            Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(BalSyncChainLength));
 
-        IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
-        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(1, serverBlockTree.FindBlock(1)!.Hash!))
-        {
-            Assert.That(serverBal, Is.Not.Null);
-        }
+            IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
+            using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(1, serverBlockTree.FindBlock(1)!.Hash!))
+            {
+                Assert.That(serverBal, Is.Not.Null);
+            }
 
-        ulong syncPivotNumber = 0;
-        PrivateKey clientKey = TestItem.PrivateKeyF;
-        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
-        {
-            EnableBlockAccessListsFromGenesis(spec);
+            ulong syncPivotNumber = 0;
+            PrivateKey clientKey = TestItem.PrivateKeyF;
+            await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+            {
+                EnableBlockAccessListsFromGenesis(spec);
 
-            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
-            syncConfig.FastSync = true;
+                SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+                syncConfig.FastSync = true;
 
-            await SetPivot(server, syncConfig, cancellationTokenSource.Token, HeadPivotDistance);
-            syncPivotNumber = syncConfig.PivotNumber;
+                await SetPivot(server, syncConfig, cancellationToken, HeadPivotDistance);
+                syncPivotNumber = syncConfig.PivotNumber;
 
-            ConfigureLocalNetwork(cfg, AllocatePort());
-        }, serverKey);
+                ConfigureLocalNetwork(cfg, AllocatePort());
+            }, serverKey);
 
-        Assert.That(syncPivotNumber, Is.GreaterThan(1));
-        TestContext.Progress.WriteLine($"BAL sync test: head {BalSyncChainLength}, pivot {syncPivotNumber}.");
+            Assert.That(syncPivotNumber, Is.GreaterThan(1));
+            TestContext.Progress.WriteLine($"BAL sync test: head {BalSyncChainLength}, pivot {syncPivotNumber}.");
 
-        await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationTokenSource.Token);
-        Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+            await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
+            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+        });
     }
 
     [Test]
@@ -679,55 +681,56 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
         }
 
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(BalSyncTestTimeout);
-
-        PrivateKey serverKey = TestItem.PrivateKeyE;
-        await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+        await RunWithTimeout(BalSyncTestTimeout, async cancellationToken =>
         {
-            EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
-            ConfigureLocalNetwork(cfg, AllocatePort());
-            return Task.CompletedTask;
-        }, serverKey);
+            PrivateKey serverKey = TestItem.PrivateKeyE;
+            await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+            {
+                EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
 
-        await StartServerAndBuildStorageChain(server, PartialBalSyncChainLength, cancellationTokenSource.Token, "Partial BAL sync server");
+            await StartServerAndBuildStorageChain(server, PartialBalSyncChainLength, cancellationToken, "Partial BAL sync server");
 
-        IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
-        Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(PartialBalSyncChainLength));
+            IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+            Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(PartialBalSyncChainLength));
 
-        IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
-        Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
-        Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
-        Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
-        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Number, lastPreActivationBlock.Hash!))
-        {
-            Assert.That(preActivationBal, Is.Null);
-        }
-        Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
-        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Number, firstActivatedBlock.Hash!))
-        {
-            Assert.That(firstActivatedBal, Is.Not.Null);
-        }
+            IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
+            Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
+            Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
+            Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
+            using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Number, lastPreActivationBlock.Hash!))
+            {
+                Assert.That(preActivationBal, Is.Null);
+            }
+            Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
+            using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Number, firstActivatedBlock.Hash!))
+            {
+                Assert.That(firstActivatedBal, Is.Not.Null);
+            }
 
-        ulong syncPivotNumber = 0;
-        PrivateKey clientKey = TestItem.PrivateKeyF;
-        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
-        {
-            EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
+            ulong syncPivotNumber = 0;
+            PrivateKey clientKey = TestItem.PrivateKeyF;
+            await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+            {
+                EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
 
-            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
-            syncConfig.FastSync = true;
+                SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+                syncConfig.FastSync = true;
 
-            await SetPivot(server, syncConfig, cancellationTokenSource.Token, PartialBalSyncHeadPivotDistance);
-            syncPivotNumber = syncConfig.PivotNumber;
+                await SetPivot(server, syncConfig, cancellationToken, PartialBalSyncHeadPivotDistance);
+                syncPivotNumber = syncConfig.PivotNumber;
 
-            ConfigureLocalNetwork(cfg, AllocatePort());
-        }, serverKey);
+                ConfigureLocalNetwork(cfg, AllocatePort());
+            }, serverKey);
 
-        Assert.That(syncPivotNumber, Is.GreaterThan(PartialBalActivationBlock));
-        TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
+            Assert.That(syncPivotNumber, Is.GreaterThan(PartialBalActivationBlock));
+            TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
 
-        await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationTokenSource.Token);
-        Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+            await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
+            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+        });
     }
 
     // Post and pre merge have slightly different operation for these.
@@ -875,6 +878,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IReceiptStorage receiptStorage,
         IBlockProcessingQueue blockProcessingQueue,
         ITestEnv testEnv,
+        ISyncPointers syncPointers,
+        ISyncModeSelector syncModeSelector,
         IRlpxHost rlpxHost,
         IWorldStateManager worldStateManager,
         PseudoNethermindRunner runner,
@@ -1083,16 +1088,32 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             CancellationToken cancellationToken,
             ulong finalizedDistanceFromHead = 250)
         {
-            await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
+            try
             {
-                await blockProcessorExceptionDetector.WatchForFailure(async (token) =>
+                await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
                 {
-                    await runner.StartNetwork(token);
-                    await ConnectTo(server, token);
-                    await testEnv.SyncUntilFinished(server, token, finalizedDistanceFromHead);
-                    await verification(server, token);
-                }, token);
-            }, cancellationToken);
+                    await blockProcessorExceptionDetector.WatchForFailure(async (token) =>
+                    {
+                        await runner.StartNetwork(token);
+                        await ConnectTo(server, token);
+                        await testEnv.SyncUntilFinished(server, token, finalizedDistanceFromHead);
+                        await verification(server, token);
+                    }, token);
+                }, cancellationToken);
+            }
+            catch (OperationCanceledException e) when (cancellationToken.IsCancellationRequested)
+            {
+                // A sync that never finishes cancels inside a mode wait, whose stack trace says nothing
+                // about which descent stalled. The frontier pointers do, and only the failure message
+                // survives to the CI log.
+                throw new OperationCanceledException(
+                    $"Sync did not finish. Mode {syncModeSelector.Current.ToFlagsString()}, head {Describe(blockTree.Head?.Number)}, " +
+                    $"lowest inserted body {Describe(syncPointers.LowestInsertedBodyNumber)}, " +
+                    $"receipt {Describe(syncPointers.LowestInsertedReceiptBlockNumber)}, " +
+                    $"block access list {Describe(syncPointers.LowestInsertedBlockAccessListBlockNumber)}.", e, cancellationToken);
+
+                static string Describe(ulong? pointer) => pointer?.ToString() ?? "none";
+            }
 
             cancellationToken.ThrowIfCancellationRequested();
 
