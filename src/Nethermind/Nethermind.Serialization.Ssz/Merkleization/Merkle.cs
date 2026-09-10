@@ -285,14 +285,16 @@ public static partial class Merkle
 
     private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
-        if (limit == 0 && (value.Length + lastChunk.Length == 1))
+        if (limit <= 1 && (value.Length + lastChunk.Length == 1))
         {
             root = value.Length == 0 ? lastChunk[0] : value[0];
             return;
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
-        Merkleizer merkleizer = new(depth);
+        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
+        scratch.Clear();
+        Merkleizer merkleizer = new(scratch);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {
@@ -309,14 +311,16 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
     {
-        if (limit == 0 && value.Length == 1)
+        if (limit <= 1 && value.Length == 1)
         {
             root = value[0];
             return;
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Merkleizer merkleizer = new(depth);
+        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
+        scratch.Clear();
+        Merkleizer merkleizer = new(scratch);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {
