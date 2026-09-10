@@ -198,8 +198,23 @@ internal static partial class TrieUpdater<TKey, TPath>
             PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
             // The existing subtree may diverge before the mutations do. Stop at the four-bit group containing
             // that divergence rather than jumping solely by the mutations' shared prefix.
-            int branchDepth = FindBranchDepth(current, operations[0].Key, bitDepth, partition.Plan);
+            TKey firstKey = operations[0].Key;
+            int branchDepth = partition.Plan.KnownCommonPrefixLength;
+            if (!current.IsEmpty && current.IsLeaf)
+            {
+                TKey leafKey = current.Key;
+                int difference = leafKey.FirstDifferingBit(firstKey, bitDepth);
+                branchDepth = Math.Min(branchDepth, difference);
+            }
+            else if (!current.IsEmpty)
+            {
+                int prefixStart = current.Path!.BitDepth;
+                branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Prefix, current.PrefixBitCount, firstKey, prefixStart));
+            }
             int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
+            // This is the shared-prefix path: both the mutations and existing subtree fit below one slot
+            // of this group, so skip ahead. If branching occurs within this group, groupDepth == bitDepth
+            // even when branchDepth is a few bits deeper; fold the current group below instead.
             if (groupDepth != bitDepth)
             {
                 // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
@@ -363,23 +378,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             left.Dispose();
             right.Dispose();
         }
-    }
-
-    private static int FindBranchDepth(Subtree current, TKey firstKey, int bitDepth, BucketPlan plan)
-    {
-        int branchDepth = plan.KnownCommonPrefixLength;
-        if (!current.IsEmpty && current.IsLeaf)
-        {
-            TKey leafKey = current.Key;
-            int difference = leafKey.FirstDifferingBit(firstKey, bitDepth);
-            branchDepth = Math.Min(branchDepth, difference);
-        }
-        else if (!current.IsEmpty)
-        {
-            int prefixStart = current.Path!.BitDepth;
-            branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Prefix, current.PrefixBitCount, firstKey, prefixStart));
-        }
-        return branchDepth;
     }
 
     internal static void Dispose(Span<Subtree> subtrees)
