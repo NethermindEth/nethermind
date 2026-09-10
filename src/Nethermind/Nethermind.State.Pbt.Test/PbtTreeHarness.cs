@@ -187,22 +187,4 @@ internal static class PbtStoreTestExtensions
         records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
         return records;
     }
-
-    internal static int CountNodeChanges(this IPbtStore store, IPbtNodePath groupKey, RefCountingMemory? payload)
-    {
-        using RefCountingMemory? priorPayload = store.GetNodeGroup(groupKey);
-        PbtNodeGroupReader priorReader = priorPayload is null ? default : new(groupKey, priorPayload.GetSpan());
-        PbtNodeGroupReader replacementReader = payload is null ? default : new(groupKey, payload.GetSpan());
-        int changes = 0;
-        for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
-        {
-            if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-            ReadOnlySpan<byte> priorEncoding = default;
-            ReadOnlySpan<byte> replacementEncoding = default;
-            if (priorPayload is not null) priorReader.TryGetNode(position, out priorEncoding);
-            if (payload is not null) replacementReader.TryGetNode(position, out replacementEncoding);
-            if (!priorEncoding.SequenceEqual(replacementEncoding)) changes++;
-        }
-        return changes;
-    }
 }

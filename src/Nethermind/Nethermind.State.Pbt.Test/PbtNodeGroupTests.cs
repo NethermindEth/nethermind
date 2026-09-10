@@ -493,60 +493,56 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Multiple_node_changes_publish_one_complete_group_and_unchanged_batch_publishes_none()
+    public void Multiple_node_changes_and_unchanged_batch_publish_complete_groups()
     {
         using PublishingStore store = new();
-        TrieUpdaterMetrics metrics = new();
         using PbtWriteBatchBuilder<PbtFullKey> batch = new(0);
         batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(1)));
         batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Publishes, Is.EqualTo(1));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(3));
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(3));
         }
 
         using PbtWriteBatchBuilder<PbtFullKey> changedBatch = new(0);
         changedBatch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(3)));
         changedBatch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(4)));
-        root = TrieUpdater.UpdateRoot(store, root, changedBatch.Build(), metrics);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.Publishes, Is.EqualTo(2));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(6));
-        }
+        root = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
+        Assert.That(store.Publishes, Is.EqualTo(2));
+        PbtNodePath rootPath = new([], 0);
+        using RefCountingMemory priorPayload = store.Inner.GetNodeGroup(rootPath)!;
+        byte[] expectedPayload = priorPayload.GetSpan().ToArray();
 
-        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, changedBatch.Build(), metrics);
+        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
+        using RefCountingMemory unchangedPayload = store.Inner.GetNodeGroup(rootPath)!;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(unchangedPayload.GetSpan().ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(unchangedRoot, Is.EqualTo(root));
-            Assert.That(store.Publishes, Is.EqualTo(2));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(6));
+            Assert.That(store.Publishes, Is.EqualTo(3));
         }
 
         PbtNodePath siblingPath = new([0x80], 1);
         byte[]? sibling = store.Inner.GetNode(siblingPath);
         using PbtWriteBatchBuilder<PbtFullKey> siblingChangeBatch = new(0);
         siblingChangeBatch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(5)));
-        root = TrieUpdater.UpdateRoot(store, root, siblingChangeBatch.Build(), metrics);
+        root = TrieUpdater.UpdateRoot(store, root, siblingChangeBatch.Build());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Publishes, Is.EqualTo(3));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(8));
+            Assert.That(store.Publishes, Is.EqualTo(4));
             Assert.That(store.Inner.GetNode(siblingPath), Is.EqualTo(sibling));
         }
 
         using PbtWriteBatchBuilder<PbtFullKey> deleteBatch = new(0);
         deleteBatch.Delete(new PbtFullKey([0x00]));
         deleteBatch.Delete(new PbtFullKey([0x80]));
-        root = TrieUpdater.UpdateRoot(store, root, deleteBatch.Build(), metrics);
+        root = TrieUpdater.UpdateRoot(store, root, deleteBatch.Build());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(default(ValueHash256)));
-            Assert.That(store.Publishes, Is.EqualTo(4));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(11));
+            Assert.That(store.Publishes, Is.EqualTo(5));
             Assert.That(store.Inner.EnumerateNodeGroupKeys(), Is.Empty);
         }
     }

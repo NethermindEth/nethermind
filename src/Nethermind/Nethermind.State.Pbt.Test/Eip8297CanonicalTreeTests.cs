@@ -240,7 +240,9 @@ public class Eip8297CanonicalTreeTests
             else TrieUpdater.UpdateRoot(store, default, batch);
         };
 
-        if (fail) Assert.Throws<InvalidOperationException>(update);
+        if (fail && mode == 2)
+            Assert.That(Assert.Throws<AggregateException>(update)!.InnerException, Is.TypeOf<InvalidOperationException>());
+        else if (fail) Assert.Throws<InvalidOperationException>(update);
         else update();
 
         using (Assert.EnterMultipleScope())
@@ -1641,7 +1643,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False);
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
             Assert.That(metrics.GroupParses, Is.EqualTo(store.Reads));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
         }
     }
 
@@ -1807,7 +1808,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.SynthesizedSingleBuckets, Is.Zero);
             Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(1));
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
         }
         AssertAllMemoryReleased(store);
     }
@@ -1837,7 +1837,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));
             Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
             Assert.That(metrics.GroupFrameResolutions, Is.GreaterThanOrEqualTo(metrics.PhysicalGroupFetches));
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
         }
 
         AssertAllMemoryReleased(store);
@@ -1883,7 +1882,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Same_group_recursion_uses_one_frame_and_suppresses_noop_node_writes()
+    public void Same_group_recursion_uses_one_frame_and_publishes_unchanged_group()
     {
         CountingPbtStore store = new();
         using PbtWriteBatchBuilder<PbtStorageFullKey> initial = BatchBuilder(([0x00], Value(1)), ([0x40], Value(2)));
@@ -1899,8 +1898,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1));
             Assert.That(metrics.GroupParses, Is.EqualTo(1));
             Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(1), "same-group logical nodes use the active frame");
-            Assert.That(metrics.EmittedNodeWrites, Is.Zero);
-            Assert.That(store.LastNodeWrites, Is.Zero);
+            Assert.That(store.Applies, Is.EqualTo(2));
         }
 
         AssertAllMemoryReleased(store);
@@ -1925,7 +1923,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(2), "one frame resolution per entered physical group");
             Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False, "the untouched right group is not fetched");
-            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(store.LastNodeWrites));
         }
     }
 
@@ -2389,7 +2386,6 @@ public class Eip8297CanonicalTreeTests
         internal int UnreleasedMemoryCount => TrackingMemoryProvider.CountUnreleased(MemoryProvider.Rented);
         internal int Reads { get; private set; }
         internal int Applies { get; private set; }
-        internal int LastNodeWrites { get; private set; }
         internal Dictionary<IPbtNodePath, int> GroupReads { get; } = [];
         internal Func<IPbtNodePath, byte[]?>? OverrideNode { get; set; }
         internal Func<IPbtNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
@@ -2438,7 +2434,6 @@ public class Eip8297CanonicalTreeTests
         {
             Applies++;
             OnApply?.Invoke(groupKey);
-            LastNodeWrites += Inner.CountNodeChanges(groupKey, payload);
             if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
             Inner.SetNodeGroup(groupKey, payload);
         }
@@ -2446,7 +2441,6 @@ public class Eip8297CanonicalTreeTests
         internal void ResetReads()
         {
             Reads = 0;
-            LastNodeWrites = 0;
             GroupReads.Clear();
         }
     }

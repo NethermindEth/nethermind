@@ -46,10 +46,10 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public async Task Concurrent_group_overlays_keep_fetch_parse_and_write_counters_local()
+    public async Task Concurrent_group_overlays_keep_fetch_and_parse_counters_local()
     {
         (byte[] Key, byte[]? Value)[] initial = Entries(seed: 73, count: 256);
-        Task<(ValueHash256 Root, TrieUpdaterMetrics Metrics, int Writes)>[] tasks =
+        Task<(ValueHash256 Root, TrieUpdaterMetrics Metrics)>[] tasks =
         [
             Task.Run(() => ApplyWithMetrics(initial)),
             Task.Run(() => ApplyWithMetrics(initial)),
@@ -57,8 +57,8 @@ public class ParallelUpdateRootTests
             Task.Run(() => ApplyWithMetrics(initial)),
         ];
 
-        (ValueHash256 Root, TrieUpdaterMetrics Metrics, int Writes)[] results = await Task.WhenAll(tasks);
-        foreach ((ValueHash256 root, TrieUpdaterMetrics metrics, int writes) in results)
+        (ValueHash256 Root, TrieUpdaterMetrics Metrics)[] results = await Task.WhenAll(tasks);
+        foreach ((ValueHash256 root, TrieUpdaterMetrics metrics) in results)
         {
             using (Assert.EnterMultipleScope())
             {
@@ -66,7 +66,6 @@ public class ParallelUpdateRootTests
                 Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(metrics.GroupFrameResolutions));
                 Assert.That(metrics.GroupFrameResolutions, Is.LessThan(256), "frame resolutions follow group crossings, not logical nodes");
                 Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
-                Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(writes));
             }
         }
     }
@@ -353,16 +352,16 @@ public class ParallelUpdateRootTests
         return tree;
     }
 
-    private static (ValueHash256 Root, TrieUpdaterMetrics Metrics, int Writes) ApplyWithMetrics(
+    private static (ValueHash256 Root, TrieUpdaterMetrics Metrics) ApplyWithMetrics(
         (byte[] Key, byte[]? Value)[] entries)
     {
-        using CountingStore store = new();
+        using PbtNodeGroupStore store = new();
         using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in entries)
             batch.Set(new PbtStorageFullKey(key), new ValueHash256(value!));
         TrieUpdaterMetrics metrics = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
-        return (root, metrics, store.Writes);
+        return (root, metrics);
     }
 
     private static (byte[] Key, byte[]? Value)[] Entries(int seed, int count)
@@ -396,22 +395,5 @@ public class ParallelUpdateRootTests
         byte[] value = new byte[32];
         value[^1] = marker;
         return value;
-    }
-
-    private sealed class CountingStore : IPbtStore, IDisposable
-    {
-        private readonly PbtNodeGroupStore _inner = new();
-
-        internal int Writes { get; private set; }
-
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => _inner.GetNodeGroup(groupKey);
-
-        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
-        {
-            Writes += _inner.CountNodeChanges(groupKey, payload);
-            _inner.SetNodeGroup(groupKey, payload);
-        }
-
-        public void Dispose() => _inner.Dispose();
     }
 }

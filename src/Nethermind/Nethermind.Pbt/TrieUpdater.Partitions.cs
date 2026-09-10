@@ -111,13 +111,16 @@ public static partial class TrieUpdater
                     if (sharedWriters[slot] is not { } sharedWriter) continue;
                     ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                     rootBoundaries[slot] = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
-                    Flush(store, metrics, ref sharedReader, sharedWriter);
+                    using RefCountingMemory? payload = sharedWriter.Detach();
+                    store.SetNodeGroup(sharedReader.GroupKey, payload);
                 }
                 Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan(), touchedRootMask);
                 try
                 {
-                    ValueHash256 hash = Write(ref rootReader, rootWriter, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
-                    Flush(store, metrics, ref rootReader, rootWriter);
+                    rootReader.Resolve(rootWriter, ref result);
+                    ValueHash256 hash = Write(rootWriter, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                    using (RefCountingMemory? payload = rootWriter.Detach())
+                        store.SetNodeGroup(RootPath, payload);
                     return hash;
                 }
                 finally { result.Dispose(); }
@@ -189,7 +192,8 @@ public static partial class TrieUpdater
                     // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                     result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
                         operations.AsSpan(), 8, new(table.AsSpan(), 8, false));
-                    TrieUpdater<TKey, TPath>.Flush(store, Metrics, ref reader, writer);
+                    using (RefCountingMemory? payload = writer.Detach())
+                        store.SetNodeGroup(reader.GroupKey, payload);
                     Result = Subtree.TakeFrom<TKey, TPath>(ref result);
                 }
                 finally

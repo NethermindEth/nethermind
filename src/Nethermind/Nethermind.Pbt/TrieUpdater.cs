@@ -89,8 +89,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             try
             {
                 result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref root, operations, 0, plan);
-                ValueHash256 hash = Write(ref reader, writer, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
-                Flush(store, metrics, ref reader, writer);
+                reader.Resolve(writer, ref result);
+                ValueHash256 hash = Write(writer, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                using (RefCountingMemory? payload = writer.Detach())
+                    store.SetNodeGroup(reader.GroupKey, payload);
                 return hash;
             }
             finally
@@ -241,7 +243,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                 Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
                 try
                 {
-                    Flush(store, metrics, ref reader, writer);
+                    using (RefCountingMemory? payload = writer.Detach())
+                        store.SetNodeGroup(reader.GroupKey, payload);
                     return Subtree.Move(ref result);
                 }
                 finally { result.Dispose(); }
@@ -309,7 +312,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                 if (frame.Stage == ComposeStage.LeftCompleted)
                 {
                     // The left root must be emitted before any descendants of the right subtree.
-                    frame.LeftHash = Write(ref reader, writer, frame.Path.Position - frame.Path.Width, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
+                    reader.Resolve(writer, ref result);
+                    frame.LeftHash = Write(writer, frame.Path.Position - frame.Path.Width, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
                     frame.Stage = ComposeStage.RightCompleted;
                     if (halfWidth == 1)
                         result = Subtree.Move(ref boundaries[frame.Path.Slot + 1]);
@@ -319,7 +323,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 if (frame.Stage == ComposeStage.RightCompleted)
                 {
-                    ValueHash256 rightHash = Write(ref reader, writer, frame.Path.Position - 1, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
+                    reader.Resolve(writer, ref result);
+                    ValueHash256 rightHash = Write(writer, frame.Path.Position - 1, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
                     TPath branchPath = BoundaryPath(reader.GroupKey, frame.Path.Slot, frame.Path.Length);
                     result = new Subtree(branchPath, frame.LeftHash, rightHash);
                     frameCount--;
@@ -380,34 +385,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    /// <summary>Emits the selected subtree root at its final position and consumes its lease.</summary>
-    internal static ValueHash256 Write(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, int position, int depth, ref Subtree node)
+    /// <summary>Emits the resolved subtree root at its final position and consumes its lease.</summary>
+    internal static ValueHash256 Write(PbtNodeGroupWriter writer, int position, int depth, ref Subtree node)
     {
         if (node.IsEmpty) return default;
-        reader.Resolve(writer, ref node);
         Span<byte> encoding = writer.GetSpan(position, node.EncodedLength(depth));
         ValueHash256 hash = node.Encode(encoding, depth);
         writer.Commit();
         node.Dispose();
         return hash;
-    }
-
-    /// <summary>Publishes the complete emitted group only when its stored nodes differ from the source.</summary>
-    internal static void Flush(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer)
-    {
-        using RefCountingMemory? payload = writer.Detach();
-        PbtNodeGroupReader output = payload is null ? default : new(reader.GroupKey, payload.GetSpan());
-        int changedNodes = 0;
-        for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
-        {
-            ReadOnlySpan<byte> encoding = default;
-            if (payload is not null && !(position == PbtFourLevelGroupGeometry.RootPosition && reader.BitDepth != 0))
-                output.TryGetNode(position, out encoding);
-            if (!reader.GetEncoding(position).Span.SequenceEqual(encoding)) changedNodes++;
-        }
-        if (changedNodes == 0) return;
-        store.SetNodeGroup(reader.GroupKey, payload);
-        metrics?.AddEmittedNodeWrites(changedNodes);
     }
 
     private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
@@ -647,7 +633,6 @@ internal sealed class TrieUpdaterMetrics
     internal int PhysicalGroupFetches { get; private set; }
     internal int GroupParses { get; private set; }
     internal int GroupFrameResolutions { get; private set; }
-    internal int EmittedNodeWrites { get; private set; }
     internal int BulkCopiedNodes { get; private set; }
     internal int BulkCopyOperations { get; private set; }
 
@@ -662,7 +647,6 @@ internal sealed class TrieUpdaterMetrics
         PhysicalGroupFetches += metrics.PhysicalGroupFetches;
         GroupParses += metrics.GroupParses;
         GroupFrameResolutions += metrics.GroupFrameResolutions;
-        EmittedNodeWrites += metrics.EmittedNodeWrites;
         BulkCopiedNodes += metrics.BulkCopiedNodes;
         BulkCopyOperations += metrics.BulkCopyOperations;
     }
@@ -681,5 +665,4 @@ internal sealed class TrieUpdaterMetrics
     internal void IncrementPhysicalGroupFetches() => PhysicalGroupFetches++;
     internal void IncrementGroupParses() => GroupParses++;
     internal void IncrementGroupFrameResolutions() => GroupFrameResolutions++;
-    internal void AddEmittedNodeWrites(int count) => EmittedNodeWrites += count;
 }
