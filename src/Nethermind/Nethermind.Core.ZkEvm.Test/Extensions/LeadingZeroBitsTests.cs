@@ -15,17 +15,12 @@ namespace Nethermind.Core.ZkEvm.Test.Extensions;
 public class LeadingZeroBitsTests
 {
     [Test]
-    public void Counts_the_same_bits_as_a_clz([Range(0, 63)] int bit)
+    public void Counts_the_same_bits_as_a_clz([Range(0, 63)] int bit, [Values] bool saturated)
     {
+        // A saturated word sets every bit below the leading one too, so an in-byte boundary read the
+        // wrong way shows up.
         ulong value = 1UL << bit;
-        Assert.That(Bytes.LeadingZeroBits(value), Is.EqualTo(BitOperations.LeadingZeroCount(value)));
-    }
-
-    [Test]
-    public void Counts_from_the_most_significant_set_bit([Range(0, 63)] int bit)
-    {
-        // Every bit below the leading one is set too, so an in-byte boundary read the wrong way shows up.
-        ulong value = (1UL << bit) | ((1UL << bit) - 1);
+        if (saturated) value |= value - 1;
         Assert.That(Bytes.LeadingZeroBits(value), Is.EqualTo(BitOperations.LeadingZeroCount(value)));
     }
 

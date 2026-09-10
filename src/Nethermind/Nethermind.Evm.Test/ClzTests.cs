@@ -15,12 +15,12 @@ public class ClzTests : VirtualMachineTestsBase
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
 
     [Test]
-    public void Counts_the_zero_bits_above_a_single_set_bit([Range(0, 255)] int bit)
-        => AssertClz(UInt256.One << bit, 255 - bit);
-
-    [Test]
-    public void Counts_the_zero_bits_above_the_most_significant_set_bit([Range(0, 255)] int bit)
-        => AssertClz((UInt256.One << bit) | ((UInt256.One << bit) - UInt256.One), 255 - bit);
+    public void Counts_the_zero_bits_above_the_most_significant_set_bit([Range(0, 255)] int bit, [Values] bool saturated)
+    {
+        UInt256 value = UInt256.One << bit;
+        if (saturated) value |= value - UInt256.One;
+        AssertClz(value, 255 - bit);
+    }
 
     [Test]
     public void An_empty_word_counts_every_bit() => AssertClz(UInt256.Zero, 256);

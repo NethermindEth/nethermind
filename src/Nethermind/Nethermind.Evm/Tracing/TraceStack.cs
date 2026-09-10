@@ -24,6 +24,21 @@ public readonly struct TraceStack(ReadOnlyMemory<byte> slots, Memory<byte> bigEn
     private readonly ReadOnlyMemory<byte> _slots = slots;
     private readonly Memory<byte> _bigEndianWords = bigEndianWords;
 
+    /// <summary>Wraps words already in big-endian order, for a caller that builds a stack itself.</summary>
+    /// <remarks>
+    /// The words are reversed into a slot buffer of their own up front; the VM's tracing path uses the
+    /// two-buffer form and pays for a word only when it is read.
+    /// </remarks>
+    public TraceStack(ReadOnlyMemory<byte> bigEndianWords)
+        : this(ToSlots(bigEndianWords), new byte[bigEndianWords.Length]) { }
+
+    private static byte[] ToSlots(ReadOnlyMemory<byte> bigEndianWords)
+    {
+        byte[] slots = new byte[bigEndianWords.Length];
+        EvmStack.WriteBigEndianWords(bigEndianWords.Span, slots);
+        return slots;
+    }
+
     public ReadOnlyMemory<byte> this[int index]
     {
         get
