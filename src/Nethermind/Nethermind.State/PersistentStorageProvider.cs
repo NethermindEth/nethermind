@@ -714,7 +714,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _spare = null;
-            _dictionary.ClearAndTrim(capacity, capacity);
+            if (_dictionary.Count > capacity)
+            {
+                // These arrays will be discarded; clearing their entries first only adds writes.
+                _dictionary = new Dictionary<UInt256, StorageChangeTrace>(capacity, UInt256Comparer.Instance);
+            }
+            else
+            {
+                _dictionary.ClearAndTrim(capacity, capacity);
+            }
         }
         public void ClearAndSetMissingAsDefault()
         {
