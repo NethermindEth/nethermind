@@ -180,9 +180,32 @@ public ref partial struct EvmStack
     /// arithmetic reads and writes it as is, and only the byte-oriented boundaries (code immediates,
     /// memory, storage values, hashes, addresses) pay for the reversal.
     /// </summary>
+    /// <remarks>
+    /// The guest reverses the limbs itself instead of routing a <see cref="EvmWord"/> through
+    /// <c>ByteSwap</c>: that form takes the address of both the argument and the result, staging the
+    /// word on the frame twice, and re-forms the swap masks for each of the four lanes. Reading every
+    /// limb before writing any is what lets the swap run over the slot in place.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SwapSlot(ref byte slot)
-        => Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref slot).ByteSwap());
+    {
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Unsafe.WriteUnaligned(ref slot, Unsafe.ReadUnaligned<EvmWord>(ref slot).ByteSwap());
+            return;
+        }
+
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        ulong limb0 = limbs;
+        ulong limb1 = Unsafe.Add(ref limbs, 1);
+        ulong limb2 = Unsafe.Add(ref limbs, 2);
+        ulong limb3 = Unsafe.Add(ref limbs, 3);
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
+        limbs = swap.Bswap64(limb3);
+        Unsafe.Add(ref limbs, 1) = swap.Bswap64(limb2);
+        Unsafe.Add(ref limbs, 2) = swap.Bswap64(limb1);
+        Unsafe.Add(ref limbs, 3) = swap.Bswap64(limb0);
+    }
 
     /// <summary>
     /// Writes the slot at <paramref name="slot"/> to <paramref name="word"/> reversed into big-endian
