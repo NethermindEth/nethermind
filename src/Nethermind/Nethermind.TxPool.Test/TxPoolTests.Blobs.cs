@@ -3403,6 +3403,101 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_preserve_latest_blob_update_when_retry_writer_exits()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            ManualTimeProvider timeProvider = new();
+            using BlockingBlobTxStorage storage = new(failedUpdateCount: 2);
+            using ManualResetEventSlim releaseRetryLogging = new();
+            using ManualResetEventSlim releaseOverlappingWrite = new();
+            TaskCompletionSource retryLogged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource overlappingWriteEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            logger.When(l => l.Error(
+                    Arg.Is<string>(message => message.StartsWith("Failed to persist blob transaction update for ")),
+                    Arg.Any<Exception>()))
+                .Do(_ =>
+                {
+                    retryLogged.TrySetResult();
+                    if (!releaseRetryLogging.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("Timed out waiting to finish logging the failed blob update.");
+                });
+            storage.BeforePersist = attempt =>
+            {
+                if (attempt == 4 && !releaseRetryLogging.IsSet)
+                {
+                    overlappingWriteEntered.TrySetResult();
+                    if (!releaseOverlappingWrite.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("Timed out waiting to release the overlapping blob write.");
+                }
+            };
+            storage.ReleaseFirstUpdate();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(
+                storage, txPoolConfig, comparer, new OneLoggerLogManager(new ILogger(logger)), timeProvider);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask firstMask = BlobCellMask.FromIndices([3]);
+            BlobCellMask secondMask = BlobCellMask.FromIndices([5]);
+            BlobCellMask thirdMask = BlobCellMask.FromIndices([7]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, firstMask, out byte[][] firstCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, secondMask, out byte[][] secondCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, thirdMask, out byte[][] thirdCells), Is.True);
+            ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
+            Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> firstUpdate = RunOnDedicatedThread(() =>
+                blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, firstMask, firstCells));
+            Task<BlobCellMergeResult> secondUpdate = null;
+            Task<BlobCellMergeResult> thirdUpdate = null;
+            try
+            {
+                await retryLogged.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                secondUpdate = RunOnDedicatedThread(() =>
+                    blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondMask, secondCells));
+
+                // The current writer either retains the second update or an overlapping writer reaches storage.
+                await Task.WhenAny(secondUpdate, overlappingWriteEntered.Task).WaitAsync(TimeSpan.FromSeconds(5));
+                releaseRetryLogging.Set();
+                Assert.That(await firstUpdate.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(BlobCellMergeResult.Accepted));
+
+                thirdUpdate = RunOnDedicatedThread(() =>
+                    blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, thirdMask, thirdCells));
+                Assert.That(await thirdUpdate.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(BlobCellMergeResult.Accepted));
+                releaseOverlappingWrite.Set();
+                Assert.That(await secondUpdate.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(BlobCellMergeResult.Accepted));
+
+                Assert.That(storage.TryGet(
+                    fullBlobTx.Hash!.ValueHash256, fullBlobTx.SenderAddress!, fullBlobTx.Timestamp,
+                    out Transaction storedTx), Is.True);
+                Assert.That(
+                    ((ShardBlobNetworkWrapper)storedTx.NetworkWrapper!).CellMask,
+                    Is.EqualTo(initialMask | firstMask | secondMask | thirdMask));
+            }
+            finally
+            {
+                releaseRetryLogging.Set();
+                releaseOverlappingWrite.Set();
+                await firstUpdate.WaitAsync(TimeSpan.FromSeconds(5));
+                if (secondUpdate is not null)
+                    await secondUpdate.WaitAsync(TimeSpan.FromSeconds(5));
+                if (thirdUpdate is not null)
+                    await thirdUpdate.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+
+        [Test]
         public async Task should_retry_sparse_blob_update_after_immediate_storage_retries_fail()
         {
             TxPoolConfig txPoolConfig = new()
@@ -4486,6 +4581,8 @@ namespace Nethermind.TxPool.Test
 
             public ConcurrentQueue<int> ReplaceDeleteBatchSizes { get; } = [];
 
+            public Action<int> BeforePersist { get; set; }
+
             public bool WaitForFirstUpdate(TimeSpan timeout) => _firstUpdateEntered.Wait(timeout);
 
             public void ReleaseFirstUpdate() => _releaseFirstUpdate.Set();
@@ -4533,6 +4630,15 @@ namespace Nethermind.TxPool.Test
                 bool replace)
             {
                 int addCount = Interlocked.Increment(ref _addCount);
+                if (BeforePersist is not null)
+                {
+                    // Capture the payload before blocking, as an encoded storage write would.
+                    Transaction snapshot = new();
+                    transaction.CopyTo(snapshot, copyHash: true);
+                    transaction = snapshot;
+                    BeforePersist(addCount);
+                }
+
                 if (addCount == 2)
                 {
                     _firstUpdateEntered.Set();

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -22,6 +23,21 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlobTxStorageTests
 {
+    [Test]
+    public void database_constructor_remains_available_to_precompiled_callers()
+    {
+        using MemColumnsDb<BlobTxsColumns> database = new();
+        ConstructorInfo constructor = typeof(BlobTxStorage).GetConstructor([typeof(IColumnsDb<BlobTxsColumns>)]);
+        Assert.That(constructor, Is.Not.Null);
+
+        BlobTxStorage storage = (BlobTxStorage)constructor.Invoke([database]);
+        Transaction tx = CreateBlobTransaction();
+        storage.Add(tx);
+
+        Assert.That(storage.TryGet(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction restored), Is.True);
+        Assert.That(restored.Hash, Is.EqualTo(tx.Hash));
+    }
+
     [Test]
     public void should_throw_when_trying_to_add_null_tx()
     {

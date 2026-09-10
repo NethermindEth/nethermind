@@ -42,6 +42,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
+    public BlobTxStorage(IColumnsDb<BlobTxsColumns> database) : this(database, null) { }
+
     public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];

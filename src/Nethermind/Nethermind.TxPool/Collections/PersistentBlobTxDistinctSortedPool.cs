@@ -963,7 +963,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 catch (Exception ex)
                 {
                     bool retry;
-                    DateTimeOffset? retryAt = null;
                     using (McsLock.Disposable lockRelease = Lock.Acquire())
                     {
                         if (!_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? current)
@@ -973,16 +972,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                         }
 
                         retry = ++failedWriteAttempts < MaxBlobUpdateWriteAttempts;
-                        if (!retry)
-                        {
-                            retryAt = PrepareBlobUpdateRetryNonLocked(current);
-                        }
                     }
 
                     if (!retry)
                     {
                         if (_logger.IsError) _logger.Error($"Failed to persist blob transaction update for {hash}; retry scheduled.", ex);
-                        ScheduleBlobUpdateRetry(retryAt!.Value);
                         return;
                     }
                 }
