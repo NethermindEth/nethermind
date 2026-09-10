@@ -17,7 +17,7 @@ public class WithdrawalTrieTests
 {
     private static readonly int[] RootCounts = [0, 1, 2, 8, 15, 16, 17, 64, 65, 127, 128, 129, 255, 256, 257];
 
-    [Test]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool largeFields)
     {
         Withdrawal[] withdrawals = new Withdrawal[count];
@@ -26,7 +26,7 @@ public class WithdrawalTrieTests
             {
                 Index = largeFields ? ulong.MaxValue - (ulong)i : (ulong)i + 1000,
                 ValidatorIndex = largeFields ? ulong.MaxValue : (ulong)i,
-                Address = TestItem.AddressA,
+                Address = i % 2 == 0 ? TestItem.AddressA : TestItem.AddressB,
                 AmountInGwei = largeFields ? ulong.MaxValue : (ulong)i
             };
 
@@ -37,10 +37,8 @@ public class WithdrawalTrieTests
     public void Should_compute_hash_root()
     {
         Block block = Build.A.Block.WithWithdrawals(10).TestObject;
-        WithdrawalTrie trie = new(block.Withdrawals!);
-
         Assert.That(
-            trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
+            WithdrawalTrie.CalculateRoot(block.Withdrawals!).ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

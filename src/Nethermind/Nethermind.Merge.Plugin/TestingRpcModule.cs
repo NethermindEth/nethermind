@@ -219,7 +219,7 @@ public class TestingRpcModule(
 
         if (spec.WithdrawalsEnabled)
         {
-            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null || payloadAttributes.Withdrawals.Length == 0
+            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null
                 ? Keccak.EmptyTreeHash
                 : WithdrawalTrie.CalculateRoot(payloadAttributes.Withdrawals);
         }

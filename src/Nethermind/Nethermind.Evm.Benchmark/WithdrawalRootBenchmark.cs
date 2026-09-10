@@ -27,4 +27,7 @@ public class WithdrawalRootBenchmark
 
     [Benchmark]
     public Hash256 CalculateRoot() => WithdrawalTrie.CalculateRoot(_withdrawals);
+
+    [Benchmark(Baseline = true)]
+    public Hash256 MutableTrie() => new WithdrawalTrie(_withdrawals).RootHash;
 }
