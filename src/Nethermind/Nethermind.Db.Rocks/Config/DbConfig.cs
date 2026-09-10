@@ -44,6 +44,7 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        "use_direct_io_for_compaction_reads=true;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -312,6 +313,7 @@ public class DbConfig : IDbConfig
 
         "ttl=0;" +
         "periodic_compaction_seconds=0;" +
+        "min_tombstones_for_range_conversion=32;" +
         "compression=kLZ4Compression;" +
 
         // Reduce num of files. Tend to be a good thing.
@@ -353,6 +355,8 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
+        // Flat account keys are 20-byte prefixes of Keccak hashes and are near-uniform.
+        "block_based_table_factory.index_block_search_type=kInterpolation;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
