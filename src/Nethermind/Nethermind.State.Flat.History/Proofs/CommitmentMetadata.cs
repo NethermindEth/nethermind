@@ -306,7 +306,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         {
             coveredFrom = fromInclusive;
             coveredTo = toInclusive;
-            if (TryReadRange(CoverageKey, out ulong from, out ulong to))
+            if (TryReadRange(CoverageKey, out ulong from, out ulong to) && to >= policy.EpochStart(RetainedFromEpoch))
             {
                 if ((to != ulong.MaxValue && fromInclusive > to + 1) || (toInclusive != ulong.MaxValue && toInclusive + 1 < from))
                 {

@@ -227,6 +227,41 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public async Task AVerifyOnlyRunDoesNotStandInForABuild_WhenBuildingIsEnabledLater()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.MarkWalkVerified(0, 8);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict, Is.Not.Null, "an earlier verify-only run proved the rows but built no commitments; enabling the build must walk again to build them");
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == 8, Is.True);
+        }
+    }
+
+    [Test]
     public async Task AFinishedWalkBelowAnUncommittedTail_ContinuesFromWhereItStopped()
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true };

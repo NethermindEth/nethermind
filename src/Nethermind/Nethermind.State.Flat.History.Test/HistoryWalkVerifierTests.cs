@@ -318,6 +318,23 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
+    public void A_contract_with_a_storage_root_but_no_slot_history_fails_a_range_that_starts_above_genesis()
+    {
+        Account b0 = ThreeSlotAccount(1, ThreeSlotsV1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrB, b0));
+        headers.Roots[1] = headers.Roots[0];
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(1, 1, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Does.Contain((1UL, HistoryWalkMismatchKind.MissingSlotHistory)),
+            "a range that starts above genesis never sees the block that created this contract's storage; its anchor row claims a storage root, so the rows behind that root must exist, or a contract whose entire slot history is missing passes the walk");
+    }
+
+    [Test]
     public void A_corrupt_slot_at_the_anchor_of_a_quiet_contract_fails_a_range_that_starts_above_genesis()
     {
         Account b0 = ThreeSlotAccount(1, ThreeSlotsV1);

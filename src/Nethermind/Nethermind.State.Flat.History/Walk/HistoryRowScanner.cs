@@ -97,6 +97,7 @@ internal sealed class HistoryRowScanner(
             if (value.IsEmpty) continue;
             if (rows.Count >= maxRows) return Overflow(rows, currentPath, distinctPaths);
 
+            check.OnAnchor(currentPath, from, root);
             rows.Start.Add(new AccountRowRef(currentPath, from, rows.Arena.Append(value), value.Length));
         }
 

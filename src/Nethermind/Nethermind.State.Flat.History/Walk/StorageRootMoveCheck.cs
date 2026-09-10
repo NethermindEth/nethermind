@@ -13,4 +13,11 @@ internal sealed class StorageRootMoveCheck(StoragePresenceProbe probe, MismatchS
 
         mismatches.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingSlotHistory, previous, current));
     }
+
+    public void OnAnchor(in ValueHash256 accountPath, ulong block, in ValueHash256 root)
+    {
+        if (root == Keccak.EmptyTreeHash.ValueHash256 || probe.HasSlotRows(accountPath)) return;
+
+        mismatches.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingSlotHistory, root, default));
+    }
 }

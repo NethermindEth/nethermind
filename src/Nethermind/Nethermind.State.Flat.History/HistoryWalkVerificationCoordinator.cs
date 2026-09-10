@@ -144,7 +144,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                     if (from > 0 && _logger.IsInfo) _logger.Info(
                         $"History walk verification will cover [{from}, {to}] rather than the whole chain: only the most recent commitment epochs are kept, so the blocks below that are neither built nor served, and the walk is a fraction of the work.");
 
-                    if (!_metadata.TryGetWalkInProgress(out _, out _) && _metadata.TryGetWalkVerified(out ulong verifiedFrom, out ulong verifiedTo) && verifiedFrom <= from && verifiedTo >= from)
+                    if (!_metadata.TryGetWalkInProgress(out _, out _) && _metadata.TryGetWalkVerified(out ulong verifiedFrom, out ulong verifiedTo) && verifiedFrom <= from && verifiedTo >= from
+                        && (_retrofit is null || (_metadata.TryGetCoverage(out ulong builtFrom, out ulong builtTo) && builtFrom <= from && builtTo >= verifiedTo)))
                     {
                         if (verifiedTo >= to || TipCovers(verifiedTo + 1, to))
                         {

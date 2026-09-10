@@ -932,6 +932,24 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Coverage_that_expired_below_the_retained_floor_does_not_fence_a_newly_retained_range()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        ulong epoch = EpochPolicy.EpochBlocks;
+        Assert.That(metadata.TryPublishVerifiedCoverage(0, epoch - 1, out _, out _), Is.True, "precondition: the first epoch was published");
+        metadata.TryRaiseRetainedFromEpoch(3);
+
+        bool published = metadata.TryPublishVerifiedCoverage(3 * epoch, 3 * epoch + 1, out ulong coveredFrom, out ulong coveredTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(published, Is.True, "the old interval is wholly below the retained floor and no reader can see it, so it must not be the range a new build has to touch");
+            Assert.That((coveredFrom, coveredTo), Is.EqualTo((3 * epoch, 3 * epoch + 1)));
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 3 * epoch && to == 3 * epoch + 1, Is.True);
+        }
+    }
+
+    [Test]
     public void The_storage_trie_depth_is_one_record_however_the_contract_is_identified()
     {
         ValueHash256 full = Keccak.Compute(Contract.Bytes).ValueHash256;
