@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.Qbft.Bft;
 using Nethermind.Core;
 
@@ -17,6 +16,7 @@ public sealed class VoteTally
     private readonly SortedSet<Address> _validators;
     private readonly Dictionary<Address, HashSet<Address>> _addVotesBySubject;
     private readonly Dictionary<Address, HashSet<Address>> _removeVotesBySubject;
+    private Address[]? _validatorsSnapshot;
 
     public VoteTally(IEnumerable<Address> initialValidators)
         : this([.. initialValidators], [], []) { }
@@ -28,8 +28,8 @@ public sealed class VoteTally
         _removeVotesBySubject = removeVotes;
     }
 
-    /// <summary>Validators in ascending address order.</summary>
-    public IReadOnlyList<Address> Validators => _validators.ToArray();
+    /// <summary>Validators in ascending address order; cached because it is read for every inbound consensus message.</summary>
+    public IReadOnlyList<Address> Validators => _validatorsSnapshot ??= [.. _validators];
 
     public void AddVote(ValidatorVote vote)
     {
@@ -50,12 +50,14 @@ public sealed class VoteTally
         if (addVotes.Count >= limit)
         {
             _validators.Add(vote.Recipient);
+            _validatorsSnapshot = null;
             DiscardOutstandingVotesFor(vote.Recipient);
         }
 
         if (removeVotes.Count >= limit)
         {
             _validators.Remove(vote.Recipient);
+            _validatorsSnapshot = null;
             DiscardOutstandingVotesFor(vote.Recipient);
             foreach (HashSet<Address> votes in _addVotesBySubject.Values) votes.Remove(vote.Recipient);
             foreach (HashSet<Address> votes in _removeVotesBySubject.Values) votes.Remove(vote.Recipient);
@@ -74,10 +76,18 @@ public sealed class VoteTally
         _removeVotesBySubject.Clear();
     }
 
-    public VoteTally Copy() => new(
-        [.. _validators],
-        _addVotesBySubject.ToDictionary(static kv => kv.Key, static kv => new HashSet<Address>(kv.Value)),
-        _removeVotesBySubject.ToDictionary(static kv => kv.Key, static kv => new HashSet<Address>(kv.Value)));
+    public VoteTally Copy() => new([.. _validators], CopyVotes(_addVotesBySubject), CopyVotes(_removeVotesBySubject));
+
+    private static Dictionary<Address, HashSet<Address>> CopyVotes(Dictionary<Address, HashSet<Address>> votes)
+    {
+        Dictionary<Address, HashSet<Address>> copy = new(votes.Count);
+        foreach ((Address subject, HashSet<Address> voters) in votes)
+        {
+            copy[subject] = [.. voters];
+        }
+
+        return copy;
+    }
 
     private int ValidatorLimit => _validators.Count / 2 + 1;
 

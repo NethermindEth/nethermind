@@ -46,6 +46,37 @@ public sealed class BftEventQueue(int messageQueueLimit, ILogManager logManager)
         _queue.Writer.TryWrite(bftEvent);
     }
 
+    /// <summary>
+    /// Blocks the calling thread until the next event arrives; returns null when
+    /// <paramref name="cancellationToken"/> is cancelled or the queue is completed.
+    /// </summary>
+    /// <remarks>
+    /// The consensus loop owns a dedicated thread and creates blocks synchronously, so it blocks here
+    /// rather than awaiting and continuing on a pool thread that a proposal build would then occupy.
+    /// </remarks>
+    public BftEvent? Read(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                if (TryRead(out BftEvent? bftEvent))
+                {
+                    return bftEvent;
+                }
+
+                if (!_queue.Reader.WaitToReadAsync(cancellationToken).AsTask().GetAwaiter().GetResult())
+                {
+                    return null;
+                }
+            }
+        }
+        catch (System.OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Waits for the next event; returns null when <paramref name="cancellationToken"/> is cancelled.</summary>
     public async ValueTask<BftEvent?> ReadAsync(CancellationToken cancellationToken)
     {

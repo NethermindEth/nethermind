@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Qbft.Bft;
 /// </summary>
 /// <remarks>
 /// The seal shape is the standard one, so encoding is inherited unchanged. Registered by
-/// <see cref="QbftHeaderModule"/> both as the global <see cref="BlockHeader"/> RLP decoder and the DI
+/// <see cref="QbftModule"/> both as the global <see cref="BlockHeader"/> RLP decoder and the DI
 /// <see cref="IHeaderDecoder"/>.
 /// </remarks>
 public sealed class QbftHeaderDecoder(IBftExtraDataCodecSelector codecs) : HeaderDecoder

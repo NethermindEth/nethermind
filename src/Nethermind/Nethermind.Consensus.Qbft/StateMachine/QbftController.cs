@@ -73,6 +73,8 @@ public sealed class QbftController(
         if (Interlocked.CompareExchange(ref _started, 0, 1) == 1)
         {
             _currentHeightManager = heightManagerFactory.CreateNoOpBlockHeightManager(ChainHead);
+            finalState.RoundTimer.CancelTimer();
+            finalState.BlockTimer.CancelTimer();
             if (_logger.IsDebug) _logger.Debug("QBFT height manager stop");
         }
     }
@@ -90,6 +92,12 @@ public sealed class QbftController(
         HandleMessage(raw);
     }
 
+    /// <remarks>
+    /// Decoding recovers a signature per piggy-backed payload and precedes the validator-membership check, as in
+    /// Besu: the author is only known once the payload is decoded. The cost per message is bounded by
+    /// <see cref="BftMessage.MaxListEntries"/> (Besu's own cap) and the number of queued messages by the
+    /// configured <c>messagequeuelimit</c>.
+    /// </remarks>
     private void HandleMessage(QbftReceivedMessage raw)
     {
         BftMessage message;
@@ -123,6 +131,14 @@ public sealed class QbftController(
     private void ConsumeMessage<T>(QbftReceivedMessage raw, T message, Action<T> handle) where T : BftMessage
     {
         if (_logger.IsTrace) _logger.Trace($"Received BFT {typeof(T).Name} message");
+        // A round above the round-change ceiling is unreachable in consensus, so treat it as junk rather
+        // than gossiping it and letting the height manager allocate per-round state for it.
+        if (message.RoundIdentifier.Round is < 0 or > RoundChangePayloadValidator.MaxAllowedRound)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Discarding a message for out-of-range round {message.RoundIdentifier.Round}.");
+            return;
+        }
+
         // Messages at or below the chain head are stale: the head manager is one above it, except right after an import.
         long headNumber = (long)ChainHead.Number;
         if (message.RoundIdentifier.Sequence <= headNumber)

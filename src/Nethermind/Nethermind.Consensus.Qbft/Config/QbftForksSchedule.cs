@@ -161,13 +161,14 @@ public sealed class QbftForksSchedule
 
                 contractAddress = null;
             }
-            else if (mode.Equals("contract", StringComparison.OrdinalIgnoreCase) && transition.ValidatorContractAddress is not null)
+            else if (mode.Equals("contract", StringComparison.OrdinalIgnoreCase))
             {
-                contractAddress = transition.ValidatorContractAddress;
+                contractAddress = transition.ValidatorContractAddress
+                    ?? throw new InvalidOperationException("QBFT transition has config with contract mode but no contract address");
             }
-            else if (transition.ValidatorContractAddress is null)
+            else
             {
-                throw new InvalidOperationException("QBFT transition has config with contract mode but no contract address");
+                throw new InvalidOperationException($"QBFT transition has an unknown validator selection mode '{mode}'");
             }
         }
 

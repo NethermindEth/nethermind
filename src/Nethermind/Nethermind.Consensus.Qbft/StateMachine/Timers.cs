@@ -10,11 +10,17 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Qbft.StateMachine;
 
-/// <summary>Round timeout: <c>requestTimeoutSeconds * 2^round</c>.</summary>
+/// <summary>Round timeout: <c>requestTimeoutSeconds * 2^round</c>, saturating at <see cref="MaxExpiry"/>.</summary>
+/// <remarks>Besu saturates too, by casting the same power of two to a <c>long</c>.</remarks>
 public sealed class BftRoundExpiryTimeCalculator(TimeSpan baseExpiryPeriod)
 {
-    public TimeSpan CalculateRoundExpiry(ConsensusRoundIdentifier round) =>
-        TimeSpan.FromMilliseconds(baseExpiryPeriod.TotalMilliseconds * Math.Pow(2, round.Round));
+    public static readonly TimeSpan MaxExpiry = TimeSpan.FromDays(1);
+
+    public TimeSpan CalculateRoundExpiry(ConsensusRoundIdentifier round)
+    {
+        double milliseconds = baseExpiryPeriod.TotalMilliseconds * Math.Pow(2, round.Round);
+        return milliseconds >= MaxExpiry.TotalMilliseconds ? MaxExpiry : TimeSpan.FromMilliseconds(milliseconds);
+    }
 }
 
 /// <summary>Fires <see cref="RoundExpiryEvent"/> when the current round runs out of time; one round at a time.</summary>
@@ -45,9 +51,10 @@ public sealed class RoundTimer(IBftEventQueue queue, BftRoundExpiryTimeCalculato
     {
         lock (_lock)
         {
-            _current?.Dispose();
             TimeSpan expiry = expiryCalculator.CalculateRoundExpiry(round);
+            IDisposable? previous = _current;
             _current = scheduler.Schedule(() => queue.Add(new RoundExpiryEvent(round)), expiry);
+            previous?.Dispose();
             if (round.Round >= 2 && _logger.IsInfo)
             {
                 _logger.Info($"Moved to round {round.Round} which will expire in {expiry.TotalSeconds:F0} seconds");

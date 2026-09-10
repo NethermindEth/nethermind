@@ -27,6 +27,9 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 {
     private const string TransitionsKey = "transitions";
 
+    /// <summary>Consensus sections a Besu genesis may carry; other <c>config</c> objects are left to the Geth path.</summary>
+    private static readonly string[] _besuEngineKeys = ["qbft", "ibft2"];
+
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<GethGenesisLoader>();
 
     public ChainSpec Load(Stream streamData)
@@ -85,11 +88,9 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         }
 
         Dictionary<string, JsonElement> engines = new(StringComparer.OrdinalIgnoreCase);
-        foreach ((string key, JsonElement value) in config.ExtensionData)
+        foreach (string key in _besuEngineKeys)
         {
-            if (value.ValueKind == JsonValueKind.Object
-                && !key.Equals(SealEngineType.Ethash, StringComparison.OrdinalIgnoreCase)
-                && !key.Equals(TransitionsKey, StringComparison.OrdinalIgnoreCase))
+            if (TryGetIgnoreCase(config.ExtensionData, key, out JsonElement value) && value.ValueKind == JsonValueKind.Object)
             {
                 engines[key] = WithBesuTransitions(key, value, config.ExtensionData);
             }
@@ -104,9 +105,9 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         {
             return new ChainSpecParametersProvider(engines, serializer);
         }
-        catch (InvalidOperationException e)
+        catch (Exception e) when (e is InvalidOperationException or JsonException)
         {
-            // None of the sections belongs to a consensus engine this build knows; keep Geth semantics.
+            // The section does not describe a consensus engine this build knows; keep Geth semantics.
             if (_logger.IsDebug) _logger.Debug($"Genesis config sections {string.Join(", ", engines.Keys)} do not describe a known consensus engine: {e.Message}");
             return null;
         }

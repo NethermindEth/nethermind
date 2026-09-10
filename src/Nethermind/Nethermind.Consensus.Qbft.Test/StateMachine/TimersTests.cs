@@ -46,6 +46,11 @@ public class TimersTests
     public void RoundExpiryDoublesEachRound(int round, int expectedMillis) =>
         Assert.That(new BftRoundExpiryTimeCalculator(TimeSpan.FromSeconds(1)).CalculateRoundExpiry(new ConsensusRoundIdentifier(1, round)), Is.EqualTo(TimeSpan.FromMilliseconds(expectedMillis)));
 
+    [TestCase(40)]
+    [TestCase(1000)]
+    public void RoundExpirySaturatesInsteadOfOverflowing(int round) =>
+        Assert.That(new BftRoundExpiryTimeCalculator(TimeSpan.FromSeconds(1)).CalculateRoundExpiry(new ConsensusRoundIdentifier(1, round)), Is.EqualTo(BftRoundExpiryTimeCalculator.MaxExpiry));
+
     [Test]
     public void RoundTimerSchedulesExpiryEventAndCancelsPrevious()
     {

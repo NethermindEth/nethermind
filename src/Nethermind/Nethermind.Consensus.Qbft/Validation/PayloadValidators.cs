@@ -194,18 +194,14 @@ public sealed class ProposalPayloadValidator(Address expectedProposer, Consensus
         }
 
         Block block = payload.ProposedBlock;
-        if (validateBlock && !ValidateBlock(block, payload.BlockAccessList))
-        {
-            return false;
-        }
-
         if ((long)block.Number != payload.RoundIdentifier.Sequence)
         {
             if (_logger.IsInfo) _logger.Info($"{ErrorPrefix}: block number does not match sequence number");
             return false;
         }
 
-        return true;
+        // Execution is the expensive part, so it comes after every cheap check.
+        return !validateBlock || ValidateBlock(block, payload.BlockAccessList);
     }
 
     private bool ValidateBlock(Block block, ReadOnlyBlockAccessList? blockAccessList)

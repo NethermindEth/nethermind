@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Qbft.Bft;
 /// </summary>
 public static class BftSignatures
 {
-    /// <summary>Parses <c>r || s || recoveryId</c> where the recovery id is 0 or 1.</summary>
+    /// <summary>Parses <c>r || s || recoveryId</c>; consensus signatures carry 0 or 1, and 2 or 3 are accepted so recovery decides.</summary>
     /// <exception cref="RlpException">The input is not 65 bytes or the recovery id is out of range.</exception>
     public static Signature Decode(ReadOnlySpan<byte> encoded)
     {

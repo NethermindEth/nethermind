@@ -24,11 +24,7 @@ public sealed class ForkingValidatorProvider(
     public IReadOnlyList<Address> GetValidatorsForBlock(BlockHeader header) =>
         Resolve((long)header.Number, header.Timestamp).GetValidatorsForBlock(header);
 
-    public IVoteProvider? GetVoteProviderAtHead()
-    {
-        BlockHeader head = Head;
-        return Resolve((long)head.Number, head.Timestamp).GetVoteProviderAtHead();
-    }
+    public IVoteProvider? GetVoteProviderAtHead() => GetVoteProviderAfterBlock(Head);
 
     public IVoteProvider? GetVoteProviderAfterBlock(BlockHeader header) =>
         Resolve((long)header.Number + 1, header.Timestamp).GetVoteProviderAtHead();

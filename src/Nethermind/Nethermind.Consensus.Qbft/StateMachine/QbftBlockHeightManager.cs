@@ -321,6 +321,13 @@ public sealed class QbftBlockHeightManager : IBlockHeightManager
         ConsensusRoundIdentifier targetRound = message.RoundIdentifier;
         if (_logger.IsDebug) _logger.Debug($"Round change from {message.Author}: block {targetRound.Sequence}, round {targetRound.Round}");
 
+        // Validating a round change can execute the block it prepared, so it happens once for both consumers below.
+        if (!_roundChangeManager.RoundChangeMessageValidator.Validate(message))
+        {
+            if (_logger.IsInfo) _logger.Info("RoundChange message was invalid.");
+            return;
+        }
+
         _roundChangeManager.StoreAndLogRoundChangeSummary(message);
 
         MessageAge age = DetermineAgeOfPayload(targetRound.Round);

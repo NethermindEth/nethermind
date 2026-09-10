@@ -35,13 +35,14 @@ public class QbftSealValidator(
     /// </summary>
     public static IDisposable EnterProposalValidation()
     {
+        ProposalValidationScope scope = new(_validatingProposal);
         _validatingProposal = true;
-        return new ProposalValidationScope();
+        return scope;
     }
 
-    private sealed class ProposalValidationScope : IDisposable
+    private sealed class ProposalValidationScope(bool previous) : IDisposable
     {
-        public void Dispose() => _validatingProposal = false;
+        public void Dispose() => _validatingProposal = previous;
     }
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false) => ValidateParams(parent, header, out _);

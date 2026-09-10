@@ -34,7 +34,7 @@ public sealed class QbftBlockProducerRunner(
     private readonly BftEventMultiplexer _multiplexer = new(controller, logManager);
     private readonly Lock _lock = new();
     private CancellationTokenSource? _cts;
-    private Task? _loop;
+    private TaskCompletionSource? _loopCompleted;
     private bool _controllerStarted;
 
     public event EventHandler<BlockEventArgs>? BlockProduced { add { } remove { } }
@@ -43,34 +43,35 @@ public sealed class QbftBlockProducerRunner(
     {
         lock (_lock)
         {
-            if (_loop is not null) return;
+            if (_loopCompleted is not null) return;
             _cts = new CancellationTokenSource();
             eventQueue.Start();
             blockTree.NewHeadBlock += OnNewHeadBlock;
-            _loop = Task.Factory.StartNew(() => RunLoop(_cts.Token), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+            TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _loopCompleted = completed;
+            CancellationToken token = _cts.Token;
+            // A dedicated thread: the loop creates blocks synchronously and must not occupy a pool thread while it does.
+            Thread thread = new(() => RunLoop(token, completed)) { IsBackground = true, Name = "QBFT consensus" };
+            thread.Start();
             eventQueue.Add(new SyncCheckEvent());
         }
     }
 
     public async Task StopAsync()
     {
-        Task? loop;
+        TaskCompletionSource? completed;
         lock (_lock)
         {
             blockTree.NewHeadBlock -= OnNewHeadBlock;
             eventQueue.Stop();
             _cts?.Cancel();
-            loop = _loop;
-            _loop = null;
+            completed = _loopCompleted;
+            _loopCompleted = null;
         }
 
-        if (loop is not null)
+        if (completed is not null)
         {
-            try
-            {
-                await loop;
-            }
-            catch (OperationCanceledException) { }
+            await completed.Task;
         }
 
         lock (_lock)
@@ -86,34 +87,63 @@ public sealed class QbftBlockProducerRunner(
         lock (_lock) return _controllerStarted;
     }
 
+    /// <summary>Whether the consensus loop thread is running; false once <see cref="StopAsync"/> has been called.</summary>
+    internal bool IsLoopRunning
+    {
+        get
+        {
+            lock (_lock) return _loopCompleted is not null;
+        }
+    }
+
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         eventQueue.Add(new SyncCheckEvent());
         eventQueue.Add(new NewChainHeadEvent(e.Block.Header));
     }
 
-    private async Task RunLoop(CancellationToken token)
+    private void RunLoop(CancellationToken token, TaskCompletionSource completed)
     {
         if (_logger.IsInfo) _logger.Info("QBFT consensus loop started");
-        while (!token.IsCancellationRequested)
+        try
         {
-            BftEvent? bftEvent = await eventQueue.ReadAsync(token);
-            if (bftEvent is null)
+            while (!token.IsCancellationRequested)
             {
-                break;
-            }
+                BftEvent? bftEvent = eventQueue.Read(token);
+                if (bftEvent is null)
+                {
+                    break;
+                }
 
-            if (bftEvent is SyncCheckEvent)
-            {
-                UpdateControllerForSyncState();
-            }
-            else if (_controllerStarted)
-            {
-                _multiplexer.HandleBftEvent(bftEvent);
+                if (bftEvent is SyncCheckEvent)
+                {
+                    // Starting a height manager reads the chain and the validator contract, so it can throw;
+                    // one failure must not fault the loop and leave the node with an unread event queue.
+                    try
+                    {
+                        UpdateControllerForSyncState();
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error("Failed to update QBFT consensus for the current sync state", e);
+                    }
+                }
+                else if (_controllerStarted)
+                {
+                    _multiplexer.HandleBftEvent(bftEvent);
+                }
             }
         }
-
-        if (_logger.IsInfo) _logger.Info("Shutting down QBFT consensus loop");
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("QBFT consensus loop stopped unexpectedly", e);
+        }
+        finally
+        {
+            blockTree.NewHeadBlock -= OnNewHeadBlock;
+            if (_logger.IsInfo) _logger.Info("Shutting down QBFT consensus loop");
+            completed.TrySetResult();
+        }
     }
 
     private void UpdateControllerForSyncState()

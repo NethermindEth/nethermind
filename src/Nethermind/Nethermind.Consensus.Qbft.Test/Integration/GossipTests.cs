@@ -96,6 +96,16 @@ public class GossipTests
         creator.ClearReceivedMessages();
     }
 
+    [TestCase(999, true, TestName = "A round below the round-change ceiling is still gossiped")]
+    [TestCase(1001, false, TestName = "A round above the round-change ceiling is discarded")]
+    public void RoundsBeyondTheRoundChangeCeilingAreDiscarded(int round, bool expectGossip)
+    {
+        ConsensusRoundIdentifier futureRound = new(RoundId.Sequence, round);
+        Prepare prepare = _sender.InjectPrepare(futureRound, _context.Digest(_block));
+        if (expectGossip) _peers.VerifyMessagesReceivedNonProposing(prepare);
+        else _peers.VerifyNoMessagesReceivedNonProposing();
+    }
+
     [Test]
     public void FutureMessageIsNotGossipedImmediately()
     {

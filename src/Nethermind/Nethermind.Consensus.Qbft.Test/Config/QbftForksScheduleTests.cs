@@ -192,6 +192,12 @@ public class QbftForksScheduleTests
     }
 
     [Test]
+    public void UnknownValidatorSelectionModeIsRejected() =>
+        Assert.That(
+            () => Create(Parameters(new QbftTransition { Block = 1, ValidatorSelectionMode = "committee" })),
+            Throws.InvalidOperationException.With.Message.Contains("unknown validator selection mode"));
+
+    [Test]
     public void TransitionAtGenesisIsRejected() =>
         Assert.That(() => Create(Parameters(new QbftTransition { Block = 0 })), Throws.ArgumentException.With.Message.Contains("genesis"));
 

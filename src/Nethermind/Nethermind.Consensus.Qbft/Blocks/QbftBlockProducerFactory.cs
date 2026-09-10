@@ -68,6 +68,12 @@ public sealed class QbftBlockProducerFactory(
             logManager);
     }
 
+    /// <remarks>
+    /// The state machine is assembled here rather than registered in the container because every part of it
+    /// belongs to one runner: the timers, the event queue reader, the round factory and the controller share a
+    /// single consensus thread and are replaced together when production restarts. This mirrors Besu, which
+    /// builds the same graph in its controller builder.
+    /// </remarks>
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
     {
         if (blockProducer is not QbftBlockProducer qbftProducer)

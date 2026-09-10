@@ -38,13 +38,34 @@ public sealed class ValidatorPeers(IValidatorProvider validatorProvider, ILogMan
     private readonly ConcurrentDictionary<Address, ConcurrentDictionary<IQbftPeer, byte>> _peersByAddress = new();
     private readonly ILogger _logger = logManager.GetClassLogger<ValidatorPeers>();
 
-    public void Add(IQbftPeer peer) => _peersByAddress.GetOrAdd(peer.NodeAddress, static _ => new ConcurrentDictionary<IQbftPeer, byte>())[peer] = 0;
+    /// <summary>Addresses with at least one connected peer; kept small by pruning in <see cref="Remove"/>.</summary>
+    internal int TrackedAddressCount => _peersByAddress.Count;
+
+    public void Add(IQbftPeer peer)
+    {
+        while (true)
+        {
+            ConcurrentDictionary<IQbftPeer, byte> peers = _peersByAddress.GetOrAdd(peer.NodeAddress, static _ => new ConcurrentDictionary<IQbftPeer, byte>());
+            peers[peer] = 0;
+            // A concurrent Remove may have dropped this set between the GetOrAdd and the write; retry on the next one.
+            if (_peersByAddress.TryGetValue(peer.NodeAddress, out ConcurrentDictionary<IQbftPeer, byte>? current) && ReferenceEquals(current, peers))
+            {
+                return;
+            }
+        }
+    }
 
     public void Remove(IQbftPeer peer)
     {
         if (_peersByAddress.TryGetValue(peer.NodeAddress, out ConcurrentDictionary<IQbftPeer, byte>? peers))
         {
             peers.TryRemove(peer, out _);
+            if (peers.IsEmpty)
+            {
+                // Any peer that ever spoke the sub-protocol would otherwise keep its address here for the life of the node.
+                ((ICollection<KeyValuePair<Address, ConcurrentDictionary<IQbftPeer, byte>>>)_peersByAddress)
+                    .Remove(new KeyValuePair<Address, ConcurrentDictionary<IQbftPeer, byte>>(peer.NodeAddress, peers));
+            }
         }
     }
 

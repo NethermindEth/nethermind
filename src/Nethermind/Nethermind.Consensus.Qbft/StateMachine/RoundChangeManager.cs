@@ -61,14 +61,9 @@ public sealed class RoundChangeManager(long quorum, RoundChangeMessageValidator 
     public RoundChangeMessageValidator RoundChangeMessageValidator { get; } = roundChangeMessageValidator;
 
     /// <summary>Diagnostic: records the round each validator is in and logs a summary once the chain has stalled past round 2.</summary>
+    /// <remarks>Expects an already validated message; validating it here again would execute its prepared block twice.</remarks>
     public void StoreAndLogRoundChangeSummary(RoundChange message)
     {
-        if (!RoundChangeMessageValidator.Validate(message))
-        {
-            if (_logger.IsInfo) _logger.Info("RoundChange message is invalid.");
-            return;
-        }
-
         _roundSummary[message.Author] = message.RoundIdentifier;
 
         int lowestTrackedRound = int.MaxValue;
@@ -106,14 +101,9 @@ public sealed class RoundChangeManager(long quorum, RoundChangeMessageValidator 
     }
 
     /// <summary>Stores a valid round change; returns the certificate when its target round just reached quorum.</summary>
+    /// <remarks>Expects an already validated message, for the same reason as <see cref="StoreAndLogRoundChangeSummary"/>.</remarks>
     public IReadOnlyCollection<RoundChange>? AppendRoundChangeMessage(RoundChange message)
     {
-        if (!RoundChangeMessageValidator.Validate(message))
-        {
-            if (_logger.IsInfo) _logger.Info("RoundChange message was invalid.");
-            return null;
-        }
-
         ConsensusRoundIdentifier target = message.RoundIdentifier;
         if (!_roundChangeCache.TryGetValue(target, out RoundChangeStatus? status))
         {

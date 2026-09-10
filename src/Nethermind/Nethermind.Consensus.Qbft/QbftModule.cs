@@ -103,7 +103,6 @@ public class QbftModule : Module
             .RegisterSingletonJsonRpcModule<IQbftRpcModule, QbftRpcModule>();
     }
 
-    /// <summary>Loads <see cref="QbftHeaderModule"/> with the codec selector derived from the chainspec once it is available.</summary>
     /// <summary>
     /// Proposed blocks are executed on the parent's state in a throwaway overridable world scope with its own
     /// processing chain, the same way receipt regeneration and <c>eth_call</c> build theirs; the typed

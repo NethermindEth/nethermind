@@ -32,8 +32,7 @@ public sealed class QbftBlockHeader(
     : BlockHeader(parentHash!, unclesHash!, beneficiary!, in difficulty, number, gasLimit, timestamp, extraData),
       IHashResolver
 {
-    private byte[]? _decodedFrom;
-    private BftExtraData? _decoded;
+    private volatile DecodedExtraData? _cache;
 
     /// <summary>The extra data codec of the consensus era this header belongs to.</summary>
     public IBftExtraDataCodec Codec { get; init; } = QbftExtraDataCodec.Instance;
@@ -42,14 +41,18 @@ public sealed class QbftBlockHeader(
     public BftExtraData GetBftExtraData()
     {
         byte[] current = ExtraData;
-        if (!ReferenceEquals(_decodedFrom, current) || _decoded is null)
+        DecodedExtraData? cache = _cache;
+        if (cache is null || !ReferenceEquals(cache.Source, current))
         {
-            _decoded = Codec.Decode(current);
-            _decodedFrom = current;
+            cache = new DecodedExtraData(current, Codec.Decode(current));
+            _cache = cache;
         }
 
-        return _decoded;
+        return cache.Value;
     }
+
+    /// <summary>Both halves of the cache, published by a single write so a reader never pairs new bytes with an old decode.</summary>
+    private sealed record DecodedExtraData(byte[] Source, BftExtraData Value);
 
     public bool TryGetBftExtraData([NotNullWhen(true)] out BftExtraData? extraData)
     {
