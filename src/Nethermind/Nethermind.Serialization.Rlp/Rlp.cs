@@ -499,6 +499,7 @@ namespace Nethermind.Serialization.Rlp
             return 1 + lengthOfLength + length;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SerializeLength(int value, Span<byte> destination)
         {
             // We assume 0 <= value <= int.MaxValue
@@ -527,11 +528,9 @@ namespace Nethermind.Serialization.Rlp
             return 4;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfLength(int value)
-        {
-            int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
-            return (bits + 7) / 8;
-        }
+            => sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes((uint)value | 1);
 
         public static Rlp Encode(Hash256? keccak)
         {
@@ -675,7 +674,7 @@ namespace Nethermind.Serialization.Rlp
                 size = 1 + sizeof(ulong);
             }
 
-            return size - (BitOperations.LeadingZeroCount(value) / 8);
+            return size - Core.Extensions.Bytes.LeadingZeroBytes(value);
         }
 
         public static int LengthOfByteArrayList(IByteArrayList? list)
@@ -722,7 +721,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount(value) / 8);
+                return 1 + sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes(value);
             }
         }
 
@@ -788,6 +787,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(Bloom? bloom) => bloom is null ? 1 : 259;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfSequence(int contentLength)
         {
             if (contentLength < RlpHelpers.SmallPrefixBarrier)
@@ -817,6 +817,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(ReadOnlySpan<byte> array) => array.Length == 0 ? 1 : LengthOfByteString(array.Length, array[0]);
 
         // Assumes that length is greater then 0
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfByteString(int length, byte firstByte)
         {
             if (length == 0)
