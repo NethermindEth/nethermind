@@ -28,6 +28,24 @@ namespace Nethermind.Core.Extensions
         public static partial void SeedHashes(in Int256.UInt256 seed) { }
 
         /// <inheritdoc />
+        /// <remarks>Mixes each seed limb into its key limb before any information is lost to folding.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static partial ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
+        {
+            ulong a = MultiplyFold(u0 ^ seeds, u1 ^ Unsafe.Add(ref seeds, 1));
+            ulong b = MultiplyFold(u2 ^ Unsafe.Add(ref seeds, 2), u3 ^ Unsafe.Add(ref seeds, 3));
+            return (ulong)MumFold(a, b);
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static partial ulong MultiplyFold(ulong a, ulong b)
+        {
+            ulong high = Math.BigMul(a, b, out ulong low);
+            return low ^ high;
+        }
+
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static partial int CombineHash(uint hash, ulong value) => (int)BitOperations.Crc32C(hash, value);
 
