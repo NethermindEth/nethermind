@@ -21,16 +21,13 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int receiptLength);
+            int receiptEnd = position + receiptLength;
 
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -40,11 +37,12 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = decoderContext.DecodeAddressOrNull();
-            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
+            (position, txReceipt.Sender) = RlpHelpers.DecodeAddressOrNull(rlp, position);
+            (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int lastCheck = sequenceLength + decoderContext.Position;
+            int sequenceStart = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int lastCheck = sequenceStart + sequenceLength;
+            decoderContext.Position = sequenceStart;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
@@ -64,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                RlpHelpers.Check(decoderContext.Position, lastCheck);
             }
 
             // Handle any remaining extra bytes

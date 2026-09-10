@@ -51,18 +51,12 @@ public class JsonRpcServiceTests
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
-        _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
-        EthereumJsonSerializer.StrictHexFormat = _configurationProvider.GetConfig<IJsonRpcConfig>().StrictHexFormat;
+        // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
+        // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
-        _context?.Dispose();
-    }
-
-    private bool _previousStrictHexFormat;
+    public void TearDown() => _context?.Dispose();
 
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;

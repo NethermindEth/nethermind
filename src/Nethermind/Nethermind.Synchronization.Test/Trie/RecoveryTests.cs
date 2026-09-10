@@ -1,12 +1,19 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core.Test.Modules;
+using Nethermind.History;
 using Nethermind.Core.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -43,8 +50,10 @@ public class RecoveryTests
     private PeerInfo _peerEth67_2 = null!;
     private ISnapSyncPeer _snapSyncPeer = null!;
     private ISyncPeerPool _syncPeerPool = null!;
+    private IContainer _container = null!;
     private SnapRangeRecovery _snapRecovery = null!;
     private NodeDataRecovery _nodeDataDataRecovery = null!;
+    private ICodeRecovery _codeRecovery = null!;
 
     [SetUp]
     public void SetUp()
@@ -72,6 +81,8 @@ public class RecoveryTests
                 Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp }),
                 PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(_fullPath, TestItem.GenerateIndexedAccount(0)) },
             }));
+        _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp })));
 
         ISyncPeer MakeEth67Peer()
         {
@@ -90,20 +101,36 @@ public class RecoveryTests
         _peerEth67_2 = new(MakeEth67Peer());
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        // Production hand-builds these two inside the IPathRecovery factory, so there is no
+        // registration to resolve them from; ICodeRecovery is registered and comes from the container.
         _snapRecovery = new SnapRangeRecovery(_syncPeerPool, LimboLogs.Instance);
         _nodeDataDataRecovery = new NodeDataRecovery(_syncPeerPool, new NodeStorage(new MemDb()), LimboLogs.Instance);
+
+        ConfigProvider configProvider = new();
+        // Code healing rides the patricia store's recovery wiring; the flat layout has no equivalent.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+        configProvider.GetConfig<IPruningConfig>().Mode = PruningMode.Full;
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton(_syncPeerPool)
+            .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
+            .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(1).TestObject)
+            .Build();
+        _codeRecovery = _container.Resolve<ICodeRecovery>();
     }
 
     [TearDown]
-    public void TearDown() =>
+    public void TearDown()
+    {
+        _container?.Dispose();
         _syncPeerPool?.DisposeAsync();
+    }
 
     [Test]
     public async Task can_recover_eth66()
     {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
-        Assert.That(response![0].Item1, Is.EqualTo(_path));
-        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_nodeDataDataRecovery, _peerEth66);
+        AssertRecoveredNode(response);
     }
 
     [Test]
@@ -142,25 +169,47 @@ public class RecoveryTests
     }
 
     [Test]
-    public async Task can_recover_eth67()
+    public async Task can_recover_eth67([Range(1, 2)] int peerCount)
     {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67);
-        Assert.That(response![0].Item1, Is.EqualTo(_path));
-        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
-    }
-
-    [Test]
-    public async Task can_recover_eth67_2_peer()
-    {
-        IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth67, _peerEth67_2);
-        Assert.That(response![0].Item1, Is.EqualTo(_path));
-        Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp));
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, Eth67Peers(peerCount));
+        AssertRecoveredNode(response);
     }
 
     [Test]
     public async Task cannot_recover_eth67_no_peers()
     {
         IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(_snapRecovery, _peerEth66);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task can_recover_code_eth67([Range(1, 2)] int peerCount)
+    {
+        byte[]? response = await RecoverCode(Eth67Peers(peerCount));
+        Assert.That(response, Is.EqualTo(_nodeRlp));
+    }
+
+    [Test]
+    public async Task cannot_recover_code_eth67_no_peers()
+    {
+        byte[]? response = await RecoverCode(_peerEth66);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task cannot_recover_code_eth67_empty_response()
+    {
+        _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance));
+        byte[]? response = await RecoverCode(_peerEth67);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task cannot_recover_code_eth67_hash_mismatch()
+    {
+        _returnedRlp = [5, 6, 7];
+        byte[]? response = await RecoverCode(_peerEth67);
         Assert.That(response, Is.Null);
     }
 
@@ -217,14 +266,134 @@ public class RecoveryTests
 
     private Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(IPathRecovery recovery, params PeerInfo[] peers)
     {
+        SetupPeers(peers);
+        return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
+    }
+
+    private void SetupPeers(PeerInfo[] peers)
+    {
         _syncPeerPool.InitializedPeers.Returns(peers);
+        int allocated = -1;
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
             SyncPeerAllocation allocation = new(allocationContexts);
-            allocation.AllocatePeer(peers[0]);
+            // Hand the peers out in turn, so a multi-peer case allocates more than just the first.
+            allocation.AllocatePeer(peers[Interlocked.Increment(ref allocated) % peers.Length]);
             return allocation;
         });
-        return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
+    }
+
+    [Test]
+    public async Task cannot_recover_code_when_no_peer_can_be_allocated()
+    {
+        // Peer allocation runs on an unbounded budget, so CodeRecovery has to bound the wait itself,
+        // otherwise the code db read that blocks on it never returns.
+        _syncPeerPool.InitializedPeers.Returns([]);
+        _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(c => NeverAllocates((CancellationToken)c[3]));
+
+        byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256).WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(response, Is.Null);
+
+        static async Task<SyncPeerAllocation> NeverAllocates(CancellationToken token)
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return new SyncPeerAllocation(AllocationContexts.Snap);
+        }
+    }
+
+    [Test]
+    public async Task recovers_via_snap_when_node_data_recovery_throws()
+    {
+        // Wait.AnyWhere surfaces the first task to complete, so a faulting recovery used to discard the
+        // result of the sibling racing it.
+        INodeStorage throwingNodeStorage = Substitute.For<INodeStorage>();
+        throwingNodeStorage.Get(Arg.Any<Hash256?>(), Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>())
+            .Returns<byte[]?>(_ => throw new InvalidOperationException("node storage unavailable"));
+
+        PathNodeRecovery recovery = new(
+            new NodeDataRecovery(_syncPeerPool, throwingNodeStorage, LimboLogs.Instance),
+            _snapRecovery,
+            LimboLogs.Instance);
+
+        using IOwnedReadOnlyList<(TreePath, byte[])>? response = await Recover(recovery, _peerEth67);
+        AssertRecoveredNode(response);
+    }
+
+    [Test]
+    public async Task cannot_recover_code_when_allocation_throws()
+    {
+        SetupThrowingAllocation();
+        byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task cannot_recover_path_when_allocation_throws([Values("snap", "nodeData", "composite")] string recoveryKind)
+    {
+        IPathRecovery recovery = recoveryKind switch
+        {
+            "snap" => _snapRecovery,
+            "nodeData" => _nodeDataDataRecovery,
+            _ => new PathNodeRecovery(_nodeDataDataRecovery, _snapRecovery, LimboLogs.Instance),
+        };
+
+        SetupThrowingAllocation();
+        IOwnedReadOnlyList<(TreePath, byte[])>? response = await recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);
+        Assert.That(response, Is.Null);
+    }
+
+    [Test]
+    public async Task recovers_code_when_one_allocation_throws()
+    {
+        // A single faulted attempt must not discard the siblings that are about to succeed.
+        // The surviving attempts must resolve asynchronously, otherwise every attempt is already
+        // complete when Wait.AnyWhere runs and it is enumeration order that decides which is seen first.
+        _snapSyncPeer.GetByteCodes(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                await Task.Yield();
+                return (IByteArrayList)new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { _returnedRlp });
+            });
+
+        int allocations = 0;
+        _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
+        _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(c =>
+            {
+                if (Interlocked.Increment(ref allocations) == 1) throw new InvalidOperationException("peer pool unavailable");
+                SyncPeerAllocation allocation = new((AllocationContexts)c[1]);
+                allocation.AllocatePeer(_peerEth67);
+                return allocation;
+            });
+
+        byte[]? response = await _codeRecovery.Recover(_hash.ValueHash256);
+        Assert.That(response, Is.EqualTo(_nodeRlp));
+    }
+
+    private void SetupThrowingAllocation()
+    {
+        _syncPeerPool.InitializedPeers.Returns([_peerEth67]);
+        _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<SyncPeerAllocation>(_ => throw new InvalidOperationException("peer pool unavailable"));
+    }
+
+    private void AssertRecoveredNode(IOwnedReadOnlyList<(TreePath, byte[])>? response)
+    {
+        Assert.That(response, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response![0].Item1, Is.EqualTo(_path), "path");
+            Assert.That(response![0].Item2, Is.EqualTo(_nodeRlp), "rlp");
+        }
+    }
+
+    private PeerInfo[] Eth67Peers(int count) => count == 1 ? [_peerEth67] : [_peerEth67, _peerEth67_2];
+
+    private Task<byte[]?> RecoverCode(params PeerInfo[] peers)
+    {
+        SetupPeers(peers);
+        return _codeRecovery.Recover(_hash.ValueHash256);
     }
 }
