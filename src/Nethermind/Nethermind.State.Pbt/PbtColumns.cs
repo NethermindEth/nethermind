@@ -10,7 +10,7 @@ public enum PbtColumns
     /// <summary>Legacy EIP-8297 split leaves, retained for schema detection.</summary>
     FullLeaves,
 
-    /// <summary>Canonical four-level node groups keyed by their boundary path.</summary>
+    /// <summary>Legacy unpartitioned node groups, retained for schema detection.</summary>
     NodeGroups,
 
     /// <summary>Content-addressed overflow-code reference records.</summary>
@@ -41,4 +41,13 @@ public enum PbtColumns
 
     /// <summary>Whole bytecode keyed by its code hash.</summary>
     Codes,
+
+    /// <summary>Account and shared account/code node groups keyed by boundary path.</summary>
+    AccountNodeGroups,
+
+    /// <summary>Code node groups keyed by boundary path.</summary>
+    CodeNodeGroups,
+
+    /// <summary>Storage node groups keyed by boundary path.</summary>
+    StorageNodeGroups,
 }

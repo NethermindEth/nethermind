@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -29,7 +30,8 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
         int rangeCount = (int)Math.Min((long)workerCount * RangesPerWorker, PrefixSpace);
         PbtScanReport report = new();
-        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.NodeGroups })
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes,
+            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
             await ScanColumn(column, CreateBounds(column, rangeCount), report, workerCount, cancellationToken);
         return report;
     }
@@ -97,7 +99,10 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         stats.RecordCount++;
                         stats.KeyBytes += view.CurrentKey.Length;
                         stats.ValueBytes += view.CurrentValue.Length;
-                        if (columnName == PbtColumns.NodeGroups) ScanGroup(view.CurrentKey, view.CurrentValue, shard.NodeGroups);
+                        if (columnName == PbtColumns.Metadata)
+                            ScanGroup(new PbtNodePath([], 0), view.CurrentValue, shard.NodeGroups);
+                        else if (IsNodeGroupColumn(columnName))
+                            ScanGroup(PbtPathOperations.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
                         if (++pending == ProgressPublishInterval)
                         {
                             Interlocked.Add(ref scanned, pending);
@@ -138,9 +143,11 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         LogProgress(true);
     }
 
-    private static void ScanGroup(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats)
+    private static bool IsNodeGroupColumn(PbtColumns column) =>
+        column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups;
+
+    private static void ScanGroup(IPbtNodePath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats)
     {
-        IPbtNodePath groupPath = PbtPathOperations.Decode(key);
         PbtNodeGroupReader reader = new(groupPath, value);
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
@@ -167,8 +174,16 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private static byte[][] CreateBounds(PbtColumns column, int rangeCount)
     {
+        if (column == PbtColumns.Metadata)
+        {
+            byte[] rootKey = PbtRocksDbPersistence.RootNodeGroupKey.ToArray();
+            byte[] pastRootKey = new byte[rootKey.Length + 1];
+            rootKey.CopyTo(pastRootKey, 0);
+            return [rootKey, pastRootKey];
+        }
+
         List<byte[]> bounds = [[]];
-        if (column == PbtColumns.NodeGroups)
+        if (IsNodeGroupColumn(column))
         {
             // Depth precedes the path in group keys; split paths within each depth as well.
             for (int depth = 0; depth <= PbtFourLevelGroupGeometry.MaxGroupDepth; depth += PbtFourLevelGroupGeometry.LevelsPerGroup)
@@ -227,16 +242,17 @@ public sealed class PbtScanReport
     public ColumnStats Storages { get; } = new();
     /// <summary>Stored whole-bytecode records, including unreferenced code.</summary>
     public ColumnStats Codes { get; } = new();
-    /// <summary>Stored node groups and their locally decoded shape.</summary>
+    /// <summary>Aggregate stored node groups across partition columns and the metadata root, with their locally decoded shape.</summary>
     public NodeGroupStats NodeGroups { get; } = new();
 
-    /// <summary>Gets the statistics for an active data column.</summary>
+    /// <summary>Gets flat-column statistics or aggregate node-group statistics for any group column or root metadata.</summary>
     public ColumnStats this[PbtColumns column] => column switch
     {
         PbtColumns.Accounts => Accounts,
         PbtColumns.Storages => Storages,
         PbtColumns.Codes => Codes,
-        PbtColumns.NodeGroups => NodeGroups,
+        PbtColumns.NodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups
+            or PbtColumns.StorageNodeGroups or PbtColumns.Metadata => NodeGroups,
         _ => throw new ArgumentOutOfRangeException(nameof(column)),
     };
 

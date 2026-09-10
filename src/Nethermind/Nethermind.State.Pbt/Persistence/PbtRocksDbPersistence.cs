@@ -23,7 +23,8 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
-    private const int SchemaEpoch = 11;
+    internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
+    private const int SchemaEpoch = 12;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
@@ -76,13 +77,16 @@ public class PbtRocksDbPersistence(
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
-            throw new InvalidDataException("The epoch-11 PBT database contains an interrupted initialization. Rebuild into a new pbt database, or enable the preimage-flat import to clear and retry it.");
+            throw new InvalidDataException($"The epoch-{SchemaEpoch} PBT database contains an interrupted initialization. Rebuild into a new pbt database, or enable the preimage-flat import to clear and retry it.");
         }
     }
 
     private static bool HasPopulatedDataColumn(IColumnsDb<PbtColumns> db)
     {
+        if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
+
         PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.NodeGroups, PbtColumns.CodeReferences,
+            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
             PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes,
             PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes];
@@ -131,6 +135,20 @@ public class PbtRocksDbPersistence(
                 throw new InvalidDataException("Malformed PBT validity metadata. Rebuild or re-import into a new pbt database.");
         }
     }
+
+    private static PbtColumns NodeGroupColumn(IPbtNodePath groupKey)
+    {
+        if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
+        if (groupKey.BitDepth == 4 && groupKey.Path[0] == 0xF0
+            || groupKey.BitDepth >= 8 && groupKey.Path[0] == Eip8297KeyDerivation.StorageZone)
+            return PbtColumns.StorageNodeGroups;
+        if (groupKey.BitDepth >= 8 && groupKey.Path[0] == Eip8297KeyDerivation.CodeZone)
+            return PbtColumns.CodeNodeGroups;
+        return PbtColumns.AccountNodeGroups;
+    }
+
+    private static ReadOnlySpan<byte> NodeGroupStorageKey(IPbtNodePath groupKey) =>
+        groupKey.BitDepth == 0 ? RootNodeGroupKey : groupKey.Encode();
 
     private static byte[] PrefixUpperBound(ReadOnlySpan<byte> prefix)
     {
@@ -206,15 +224,37 @@ public class PbtRocksDbPersistence(
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
-            MemoryManager<byte>? owned = snapshot.GetColumn(PbtColumns.NodeGroups).GetOwnedMemory(groupKey.Encode());
+            MemoryManager<byte>? owned = snapshot.GetColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey));
             return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
         public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys()
         {
-            ISortedKeyValueStore groups = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.NodeGroups);
-            using ISortedView view = groups.GetViewBetween([], [0xFF, 0xFF]);
-            while (view.MoveNext()) yield return DecodeGroupKey(view.CurrentKey);
+            if (snapshot.GetColumn(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null)
+                yield return PbtPathOperations.Create([], 0);
+
+            using ISortedView accounts = OpenGroups(PbtColumns.AccountNodeGroups);
+            using ISortedView codes = OpenGroups(PbtColumns.CodeNodeGroups);
+            using ISortedView storage = OpenGroups(PbtColumns.StorageNodeGroups);
+            bool hasAccount = accounts.MoveNext();
+            bool hasCode = codes.MoveNext();
+            bool hasStorage = storage.MoveNext();
+            while (hasAccount || hasCode || hasStorage)
+            {
+                ISortedView next = hasAccount ? accounts : hasCode ? codes : storage;
+                if (hasCode && codes.CurrentKey.SequenceCompareTo(next.CurrentKey) < 0) next = codes;
+                if (hasStorage && storage.CurrentKey.SequenceCompareTo(next.CurrentKey) < 0) next = storage;
+                yield return DecodeGroupKey(next.CurrentKey);
+                if (ReferenceEquals(next, accounts)) hasAccount = accounts.MoveNext();
+                else if (ReferenceEquals(next, codes)) hasCode = codes.MoveNext();
+                else hasStorage = storage.MoveNext();
+            }
+        }
+
+        private ISortedView OpenGroups(PbtColumns column)
+        {
+            ISortedKeyValueStore groups = (ISortedKeyValueStore)snapshot.GetColumn(column);
+            return groups.GetViewBetween([], [0xFF, 0xFF]);
         }
 
         private static IPbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
@@ -302,9 +342,9 @@ public class PbtRocksDbPersistence(
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
             if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
-            IWriteBatch groups = _batch.GetColumnBatch(PbtColumns.NodeGroups);
-            if (payload is null) groups.Set(groupKey.Encode(), null, flags);
-            else groups.PutSpan(groupKey.Encode(), payload.GetSpan(), flags);
+            IWriteBatch groups = _batch.GetColumnBatch(NodeGroupColumn(groupKey));
+            if (payload is null) groups.Set(NodeGroupStorageKey(groupKey), null, flags);
+            else groups.PutSpan(NodeGroupStorageKey(groupKey), payload.GetSpan(), flags);
         }
 
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount)

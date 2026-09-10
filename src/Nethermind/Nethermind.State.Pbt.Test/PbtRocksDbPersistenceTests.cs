@@ -33,7 +33,7 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
 
     [Test]
-    public void Completed_epoch_11_store_reopens_and_serves_canonical_records()
+    public void Completed_epoch_12_store_reopens_and_serves_canonical_records()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
@@ -69,7 +69,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
             db.GetColumnDb(column)[new byte[] { 1 }] = [2];
-        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(10);
+        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(11);
         Dictionary<PbtColumns, KeyValuePair<byte[], byte[]>[]> before = [];
         foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
             before[column] = db.GetColumnDb(column).GetAll(ordered: true).ToArray();
@@ -195,8 +195,8 @@ public class PbtRocksDbPersistenceTests
             batch.Commit();
         }
 
-        IDb physicalGroups = db.GetColumnDb(PbtColumns.NodeGroups);
-        Assert.That(physicalGroups.GetAll().ToArray(), Has.Length.EqualTo(1));
+        IDb physicalGroups = db.GetColumnDb(PbtColumns.Metadata);
+        Assert.That(physicalGroups.Get("rootNodeGroup"u8), Is.Not.Null);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(firstState, secondState, default, WriteFlags.None))
         {
             WriteGroup(batch, secondPath, secondNode);
@@ -211,7 +211,7 @@ public class PbtRocksDbPersistenceTests
                 Assert.That(ReadNode(reader, firstPath), Is.Null);
                 Assert.That(ReadNode(reader, secondPath), Is.EqualTo(secondNode));
                 Assert.That(groupKeys, Is.EqualTo(new[] { PbtFourLevelGroupGeometry.GroupKeyOf(secondPath) }));
-                Assert.That(physicalGroups.GetAll().ToArray(), Has.Length.EqualTo(1));
+                Assert.That(physicalGroups.Get("rootNodeGroup"u8), Is.Not.Null);
             }
         }
 
@@ -220,7 +220,7 @@ public class PbtRocksDbPersistenceTests
             batch.SetNodeGroup(PbtFourLevelGroupGeometry.GroupKeyOf(secondPath), null);
             batch.Commit();
         }
-        Assert.That(physicalGroups.GetAll(), Is.Empty);
+        Assert.That(physicalGroups.Get("rootNodeGroup"u8), Is.Null);
     }
 
     [Test]
@@ -240,7 +240,7 @@ public class PbtRocksDbPersistenceTests
             batch.Commit();
         }
 
-        byte[] payload = db.GetColumnDb(PbtColumns.NodeGroups).GetAll().Single().Value!;
+        byte[] payload = db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8)!;
         PbtNodeGroupReader reader = new(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
         using (Assert.EnterMultipleScope())
         {
@@ -266,7 +266,7 @@ public class PbtRocksDbPersistenceTests
         batch.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(inner.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
+            Assert.That(inner.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
     }
@@ -277,7 +277,9 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        PbtNodePath[] paths = [new([0x80, 0], 9), new([], 0), new([0], 5)];
+        PbtNodePath[] paths = [new(Bytes.FromHexString("8000"), 9), new([], 0), new(Bytes.FromHexString("00"), 5),
+            new(Bytes.FromHexString("0100"), 9), new(Bytes.FromHexString("ff00"), 9), new(Bytes.FromHexString("000000"), 17)];
+        using IPbtPersistence.IReader olderReader = persistence.CreateReader();
         TrackingMemoryProvider memoryProvider = new();
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
             StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None))
@@ -288,9 +290,13 @@ public class PbtRocksDbPersistenceTests
         }
 
         using IPbtPersistence.IReader reader = persistence.CreateReader();
-        PbtNodePath[] expected = commit ? [new([], 0), new([0], 4), new([0x80], 8)] : [];
+        PbtNodePath[] expected = commit ? [new([], 0), new(Bytes.FromHexString("00"), 4), new(Bytes.FromHexString("01"), 8),
+            new(Bytes.FromHexString("80"), 8), new(Bytes.FromHexString("ff"), 8), new(Bytes.FromHexString("0000"), 16)] : [];
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(olderReader.EnumerateNodeGroupKeys(), Is.Empty);
+            Assert.That(olderReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+            foreach (PbtNodePath path in paths) Assert.That(ReadNode(olderReader, path), Is.Null);
             Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(expected));
             Assert.That(reader.CurrentState, Is.EqualTo(commit ? new StateId(1, default) : StateId.PreGenesis));
             foreach (PbtNodePath path in paths)
@@ -316,7 +322,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(() => batch.SetNodeGroup(groupKey, malformed), Throws.TypeOf<InvalidDataException>());
         }
         batch.Commit();
-        Assert.That(db.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
+        Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
         Assert.That(malformed.GetSpan().Length, Is.EqualTo(PbtNodeGroupCodec.TrailerLength));
     }
 
@@ -372,8 +378,11 @@ public class PbtRocksDbPersistenceTests
         }
     }
 
-    [Test]
-    public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed()
+    [TestCase("00", 1)]
+    [TestCase("0000", 9)]
+    [TestCase("0100", 9)]
+    [TestCase("ff00", 9)]
+    public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed(string prefix, int depth)
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
@@ -381,7 +390,7 @@ public class PbtRocksDbPersistenceTests
         ColumnsDb<PbtColumns> db = new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        PbtNodePath path = new([0], 1);
+        PbtNodePath path = new(Bytes.FromHexString(prefix), depth);
         IPbtNodePath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
         byte[] originalNode = BranchNode(1);
         byte[] replacementNode = BranchNode(2);
@@ -430,7 +439,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(11)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(12)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -510,7 +519,7 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(inner.GetColumnDb(PbtColumns.Accounts).Get(stagedAddressHash.Bytes), Is.Not.Null);
-            Assert.That(inner.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
+            Assert.That(inner.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
             Assert.That(() => new PbtRocksDbPersistence(inner, new PbtConfig()),
@@ -525,11 +534,11 @@ public class PbtRocksDbPersistenceTests
         yield return new TestCaseData(Epoch(8), null, null, false).SetName("Rejects_epoch_8");
         yield return new TestCaseData(Epoch(9), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_9");
         yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(11), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(11), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(11), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(11), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(11), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(12), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(12), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(12), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(12), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(12), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }
@@ -558,6 +567,9 @@ public class PbtRocksDbPersistenceTests
     [TestCase(PbtColumns.Codes)]
     [TestCase(PbtColumns.FullLeaves)]
     [TestCase(PbtColumns.NodeGroups)]
+    [TestCase(PbtColumns.AccountNodeGroups)]
+    [TestCase(PbtColumns.CodeNodeGroups)]
+    [TestCase(PbtColumns.StorageNodeGroups)]
     [TestCase(PbtColumns.CodeReferences)]
     [TestCase(PbtColumns.AccountLeaves)]
     [TestCase(PbtColumns.CodeLeaves)]
@@ -574,6 +586,86 @@ public class PbtRocksDbPersistenceTests
             Throws.TypeOf<InvalidDataException>().With.Message.Contains("no schema epoch"));
     }
 
+    private static IEnumerable<TestCaseData> PartitionCases()
+    {
+        yield return new TestCaseData(new PbtNodePath([], 0), PbtColumns.Metadata);
+        yield return new TestCaseData(new PbtNodePath(Bytes.FromHexString("00"), 5), PbtColumns.AccountNodeGroups);
+        yield return new TestCaseData(new PbtNodePath(Bytes.FromHexString("f0"), 5), PbtColumns.StorageNodeGroups);
+        yield return new TestCaseData(new PbtNodePath(Bytes.FromHexString("0000"), 9), PbtColumns.AccountNodeGroups);
+        yield return new TestCaseData(new PbtNodePath(Bytes.FromHexString("0100"), 9), PbtColumns.CodeNodeGroups);
+        yield return new TestCaseData(new PbtNodePath(Bytes.FromHexString("ff00"), 9), PbtColumns.StorageNodeGroups);
+        yield return new TestCaseData(new PbtNodePath(Bytes.FromHexString("8000"), 9), PbtColumns.AccountNodeGroups);
+        yield return new TestCaseData(new PbtStorageNodePath(Bytes.FromHexString("ff" + new string('0', 130)), 525), PbtColumns.StorageNodeGroups);
+    }
+
+    [TestCaseSource(nameof(PartitionCases))]
+    public void Partition_groups_replace_and_delete_only_their_physical_record(IPbtNodePath path, PbtColumns column)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        IPbtNodePath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
+        byte[] physicalKey = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : groupKey.Encode();
+        StateId first = new(1, TestItem.KeccakA.ValueHash256);
+        StateId second = new(2, TestItem.KeccakB.ValueHash256);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        {
+            WriteGroup(batch, path, BranchNode(1));
+            batch.Commit();
+        }
+        using IPbtPersistence.IReader olderReader = persistence.CreateReader();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        {
+            WriteGroup(batch, path, BranchNode(2));
+            batch.Commit();
+        }
+        using (IPbtPersistence.IReader reader = persistence.CreateReader())
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReadNode(reader, path), Is.EqualTo(BranchNode(2)));
+                Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
+                Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey }));
+                Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Not.Null);
+                foreach (PbtColumns otherColumn in new[] { PbtColumns.NodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
+                    if (otherColumn != column) Assert.That(db.GetColumnDb(otherColumn).GetAll(), Is.Empty, otherColumn.ToString());
+                if (column != PbtColumns.Metadata) Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
+            }
+        }
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, new StateId(3, default), default, WriteFlags.None))
+        {
+            batch.SetNodeGroup(groupKey, null);
+            batch.Commit();
+        }
+        using IPbtPersistence.IReader deletedReader = persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadNode(deletedReader, path), Is.Null);
+            Assert.That(deletedReader.EnumerateNodeGroupKeys(), Is.Empty);
+            Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Null);
+            Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(12)));
+        }
+    }
+
+    [Test]
+    public void Unpublished_group_content_is_detected_in_every_location(
+        [Values(PbtColumns.Metadata, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups)] PbtColumns column,
+        [Values] bool stamped)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath(Bytes.FromHexString("00"), 4).Encode();
+        db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
+        if (stamped) db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(12));
+
+        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains(stamped ? "interrupted initialization" : "no schema epoch"));
+        if (stamped)
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = true }), Throws.Nothing);
+        else
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = true }), Throws.TypeOf<InvalidDataException>());
+        Assert.That(db.GetColumnDb(column).Get(key), Is.EqualTo(Bytes.FromHexString("01")));
+    }
+
     private static RefCountingMemory EncodeGroup(IRefCountingMemoryProvider? memoryProvider, params PbtNodeRecord[] records)
     {
         BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
@@ -588,13 +680,13 @@ public class PbtRocksDbPersistenceTests
         }
     }
 
-    private static void WriteGroup(IPbtPersistence.IWriteBatch batch, PbtNodePath path, byte[] node, IRefCountingMemoryProvider? memoryProvider = null)
+    private static void WriteGroup(IPbtPersistence.IWriteBatch batch, IPbtNodePath path, byte[] node, IRefCountingMemoryProvider? memoryProvider = null)
     {
         using RefCountingMemory payload = EncodeGroup(memoryProvider, new PbtNodeRecord(path, node));
         batch.SetNodeGroup(PbtFourLevelGroupGeometry.GroupKeyOf(path), payload);
     }
 
-    private static byte[]? ReadNode(IPbtPersistence.IReader reader, PbtNodePath path)
+    private static byte[]? ReadNode(IPbtPersistence.IReader reader, IPbtNodePath path)
     {
         PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(path);
         using RefCountingMemory? payload = reader.GetNodeGroup(location.GroupKey);
@@ -668,7 +760,7 @@ public class PbtRocksDbPersistenceTests
 
         public IDb GetColumnDb(PbtColumns key)
         {
-            if (key == PbtColumns.NodeGroups)
+            if (key is PbtColumns.NodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups)
             {
                 NodeGroupsAccessed = true;
                 throw new AssertionException("Node groups were accessed before metadata rejection.");

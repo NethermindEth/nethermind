@@ -56,7 +56,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "RocksDB options of the pbt storage words column, keyed by complete EIP-8297 storage keys.", HiddenFromDocs = true)]
     string StoragesRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt canonical four-level node groups column, keyed by boundary path.", HiddenFromDocs = true)]
+    [ConfigItem(Description = "RocksDB options shared by the pbt account, code and storage node-group columns, keyed by boundary path.", HiddenFromDocs = true)]
     string NodeGroupsRocksDbOptions { get; set; }
 
     [ConfigItem(Description = "RocksDB options of the pbt content-addressed overflow-code reference records column.", HiddenFromDocs = true)]
