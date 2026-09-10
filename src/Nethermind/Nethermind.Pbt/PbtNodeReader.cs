@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
@@ -12,11 +13,15 @@ internal readonly ref struct PbtNodeReader
 {
     private readonly ReadOnlySpan<byte> _encoding;
 
-    internal PbtNodeReader(ReadOnlySpan<byte> encoding)
+    internal PbtNodeReader(ReadOnlySpan<byte> encoding) : this(encoding, validated: false) { }
+
+    private PbtNodeReader(ReadOnlySpan<byte> encoding, bool validated)
     {
-        PbtNodeCodec.ValidateExact(encoding);
+        if (!validated) PbtNodeCodec.ValidateExact(encoding);
         _encoding = encoding;
     }
+
+    internal static PbtNodeReader FromValidated(ReadOnlySpan<byte> encoding) => new(encoding, validated: true);
 
     internal ReadOnlySpan<byte> Encoding { get { EnsureInitialized(); return _encoding; } }
     internal bool IsLeaf => Encoding[0] == 0;
@@ -35,11 +40,13 @@ internal readonly ref struct PbtNodeReader
 
     private int Length => BinaryPrimitives.ReadUInt16BigEndian(_encoding[1..]);
 
+    [Conditional("DEBUG")]
     private void EnsureInitialized()
     {
         if (_encoding.IsEmpty) throw new InvalidOperationException("The PBT node reader is uninitialized.");
     }
 
+    [Conditional("DEBUG")]
     private void EnsureKind(bool leaf)
     {
         if (IsLeaf != leaf) throw new InvalidOperationException("The PBT node has a different kind.");

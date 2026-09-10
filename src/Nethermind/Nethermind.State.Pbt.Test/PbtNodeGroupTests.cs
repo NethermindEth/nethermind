@@ -166,7 +166,7 @@ public class PbtNodeGroupTests
 
     [Test]
     public void Partial_append_and_conversion_preserve_identity(
-        [Values] bool storage, [Values(0, 1, 4, 7, 8, 268, 269, 272)] int depth, [Range(0, 4)] int bitCount)
+        [Values] bool storage, [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 268, 269, 272, -1)] int depth, [Range(0, 4)] int bitCount)
     {
         if (storage) AssertPartialAppendIdentity<PbtStorageNodePath>(depth, bitCount);
         else AssertPartialAppendIdentity<PbtNodePath>(depth, bitCount);
@@ -174,6 +174,7 @@ public class PbtNodeGroupTests
 
     private static void AssertPartialAppendIdentity<TPath>(int depth, int bitCount) where TPath : struct, IPbtNodePath<TPath>
     {
+        if (depth == -1) depth = TPath.MaxBitDepth - bitCount;
         byte[] bytes = new byte[(depth + 7) >> 3];
         Array.Fill(bytes, (byte)0xAD);
         if ((depth & 7) != 0) bytes[^1] &= (byte)(0xFF << (8 - (depth & 7)));
@@ -208,6 +209,39 @@ public class PbtNodeGroupTests
                 else
                     Assert.Throws<ArgumentOutOfRangeException>(() => typed.ToPath<PbtNodePath>());
             }
+        }
+    }
+
+    [Test]
+    public void Compressed_prefix_append_preserves_bits_and_padding(
+        [Values] bool storage, [Range(0, 7)] int alignment, [Values(0, 1, 7, 8, 9, 255)] int prefixDepth, [Values(0, 1)] int direction)
+    {
+        if (storage) AssertCompressedAppend<PbtStorageNodePath>(alignment, prefixDepth, direction);
+        else AssertCompressedAppend<PbtNodePath>(alignment, prefixDepth, direction);
+    }
+
+    private static void AssertCompressedAppend<TPath>(int alignment, int prefixDepth, int direction) where TPath : struct, IPbtNodePath<TPath>
+    {
+        int depth = 8 + alignment;
+        byte[] source = Bytes.FromHexString("ad60");
+        source = source.AsSpan(0, (depth + 7) >> 3).ToArray();
+        if (alignment != 0) source[^1] &= (byte)(0xFF << (8 - alignment));
+        TPath path = TPath.Create(source, depth);
+        byte[] encoding = new byte[2 + ((prefixDepth + 7) >> 3)];
+        BinaryPrimitives.WriteUInt16BigEndian(encoding, (ushort)prefixDepth);
+        encoding.AsSpan(2).Fill(0xAD);
+        if ((prefixDepth & 7) != 0) encoding[^1] &= (byte)(0xFF << (8 - (prefixDepth & 7)));
+        TPath appended = path.Append(new CompressedPrefix(encoding), direction);
+        byte[] expected = new byte[(depth + prefixDepth + 8) >> 3];
+        source.CopyTo(expected, 0);
+        for (int index = 0; index < prefixDepth; index++)
+            expected[(depth + index) >> 3] |= (byte)(((encoding[2 + (index >> 3)] >> (7 - (index & 7))) & 1) << (7 - ((depth + index) & 7)));
+        expected[(depth + prefixDepth) >> 3] |= (byte)(direction << (7 - ((depth + prefixDepth) & 7)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(appended.BitDepth, Is.EqualTo(depth + prefixDepth + 1));
+            Assert.That(appended.ToPathArray(), Is.EqualTo(expected));
+            Assert.That(path.ToPathArray(), Is.EqualTo(source));
         }
     }
 
@@ -387,6 +421,8 @@ public class PbtNodeGroupTests
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(location.GroupKey, Is.EqualTo(groupKey));
             Assert.That(location.Position, Is.EqualTo(position));
+            Assert.That(PbtFourLevelGroupGeometry.GroupKeyOf(actual), Is.EqualTo(groupKey));
+            Assert.That(PbtFourLevelGroupGeometry.PositionOf(actual), Is.EqualTo(position));
             Assert.That(PbtFourLevelGroupGeometry.Reconstruct(groupKey, position), Is.EqualTo(expected));
         }
 
@@ -423,7 +459,7 @@ public class PbtNodeGroupTests
         {
             int slot = prefix << (4 - length);
             NodeGroupPath path = new(slot, length);
-            PbtNodePath nodePath = IPbtNodePath<PbtNodePath>.FromKey<PbtNodePath>([(byte)(slot << 4)], length);
+            PbtNodePath nodePath = PbtNodePathOperations.FromKey<PbtNodePath>([(byte)(slot << 4)], length);
 
             using (Assert.EnterMultipleScope())
             {
@@ -451,7 +487,7 @@ public class PbtNodeGroupTests
         byte[] keyBytes = new byte[PbtStorageFullKey.MaxLength];
         keyBytes[0] = Eip8297KeyDerivation.StorageZone;
         PbtStorageFullKey storageKey = new(keyBytes);
-        PbtNodePath smallPath = IPbtNodePath<PbtNodePath>.FromKey<PbtNodePath>(keyBytes, depth);
+        PbtNodePath smallPath = PbtNodePathOperations.FromKey<PbtNodePath>(keyBytes, depth);
         PbtStorageNodePath storagePath = PbtStorageNodePath.FromKey(storageKey, depth);
         Dictionary<PbtStorageNodePath, int?> entries = new() { [smallPath.ToPath<PbtStorageNodePath>()] = 1 };
         entries[storagePath] = null;
@@ -1724,12 +1760,12 @@ public class PbtNodeGroupTests
         Assert.Throws<ObjectDisposedException>(() => writer.Detach());
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
     [TestCase(2)]
     [TestCase(3)]
-    [TestCase(4)]
 #if DEBUG
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(4)]
     [TestCase(5)]
 #endif
     public void Streaming_writer_rejects_invalid_appends_without_leaking(int scenario)

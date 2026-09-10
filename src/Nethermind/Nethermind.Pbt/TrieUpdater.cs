@@ -234,7 +234,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
             // is left for the caller to place, allowing composition to promote it through a compressed path.
-            GroupFrameReader<TKey, TPath> reader = new(store, IPbtNodePath<TPath>.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
+            GroupFrameReader<TKey, TPath> reader = new(store, PbtNodePathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
             try
             {
                 using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
@@ -572,7 +572,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return result;
         }
 
-        private readonly PbtNodeReader Reader => new(_encoding.Span);
+        private readonly PbtNodeReader Reader => PbtNodeReader.FromValidated(_encoding.Span);
         internal readonly TPath? Path { get; }
         internal readonly bool IsEmpty => _kind == NodeKind.Empty;
         internal readonly bool IsLeaf => _kind == NodeKind.Leaf || (_kind == NodeKind.Original && Reader.IsLeaf);
@@ -595,7 +595,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (IsLeaf)
             {
                 PbtNodeCodec.EncodeLeaf(encoding, _key, _valueOrLeft.Bytes);
-                return PbtNodeCodec.Hash(new PbtNodeReader(encoding));
+                return PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding));
             }
 
             // EIP-8297 promotion absorbs skipped path bits; the source anchor remains unchanged until placement.

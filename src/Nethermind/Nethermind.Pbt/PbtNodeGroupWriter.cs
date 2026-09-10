@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -27,8 +28,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     internal PbtNodeGroupWriter(TPath groupKey, IRefCountingMemoryProvider memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(memoryProvider);
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth), "A group key depth must be a four-level boundary.");
         _groupKey = groupKey;
         _memoryProvider = memoryProvider;
     }
@@ -44,7 +44,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         if ((uint)position >= PbtNodeGroupCodec.PositionCount
             || (position == PbtFourLevelGroupGeometry.RootPosition && _groupKey.BitDepth != 0))
             throw new ArgumentOutOfRangeException(nameof(position));
-        if (position <= _lastPosition) throw new InvalidDataException("PBT nodes must be written in increasing position order.");
+        ValidatePositionOrder(position);
         if (encodingLength <= 0 || encodingLength > MaxEntriesLength - _written)
             throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit or have an invalid length.");
 
@@ -54,14 +54,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         return _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, encodingLength);
     }
 
-    /// <summary>Validates and commits the node in the last reserved span.</summary>
+    /// <summary>Commits the node in the last reserved span.</summary>
     internal void Commit()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_pendingPosition < 0) throw new InvalidOperationException("No PBT node is reserved.");
+        ValidateReservedNode();
         ReadOnlySpan<byte> encoding = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, _pendingLength);
-        PbtNodeCodec.ValidateExact(encoding);
-        PbtNodeGroupReader<TPath>.ValidateLeafPath(_groupKey, _pendingPosition, encoding);
+        ValidateEncoding(encoding);
         if (!PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding))
         {
             _offsets[_pendingPosition] = (ushort)_written;
@@ -97,8 +96,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         int firstPosition, int lastPosition)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_pendingPosition >= 0) throw new InvalidOperationException("A reserved PBT node has not been committed.");
-        if (firstPosition <= _lastPosition) throw new InvalidDataException("PBT nodes must be written in increasing position order.");
+        ValidateCommitted();
+        ValidatePositionOrder(firstPosition);
         if (entries.Length > MaxEntriesLength - _written)
             throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
         EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length + PbtNodeGroupCodec.MaxTrailerLength);
@@ -121,7 +120,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     internal RefCountingMemory? Detach()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_pendingPosition >= 0) throw new InvalidOperationException("A reserved PBT node has not been committed.");
+        ValidateCommitted();
         if (_availability == 0)
         {
             Dispose();
@@ -145,6 +144,31 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _disposed = true;
         ((IDisposable?)_memory)?.Dispose();
         _memory = null;
+    }
+
+    [Conditional("DEBUG")]
+    private void ValidatePositionOrder(int position)
+    {
+        if (position <= _lastPosition) throw new InvalidDataException("PBT nodes must be written in increasing position order.");
+    }
+
+    [Conditional("DEBUG")]
+    private void ValidateReservedNode()
+    {
+        if (_pendingPosition < 0) throw new InvalidOperationException("No PBT node is reserved.");
+    }
+
+    [Conditional("DEBUG")]
+    private void ValidateCommitted()
+    {
+        if (_pendingPosition >= 0) throw new InvalidOperationException("A reserved PBT node has not been committed.");
+    }
+
+    [Conditional("DEBUG")]
+    private void ValidateEncoding(ReadOnlySpan<byte> encoding)
+    {
+        PbtNodeCodec.ValidateExact(encoding);
+        PbtNodeGroupReader<TPath>.ValidateLeafPath(_groupKey, _pendingPosition, encoding);
     }
 
     private void EnsureCapacity(int required)

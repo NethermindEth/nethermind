@@ -983,6 +983,7 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+#if DEBUG
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
@@ -1000,6 +1001,7 @@ public class Eip8297CanonicalTreeTests
             else _ = reader.Key.Length;
         });
     }
+#endif
 
     [TestCase(true)]
     [TestCase(false)]

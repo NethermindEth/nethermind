@@ -16,49 +16,49 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
 
     public PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth)
     {
-        IPbtNodePath<PbtStorageNodePath>.Validate(path, bitDepth, MaxBitDepth);
+        PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
         _path = path.IsEmpty ? default : new PbtStorageFullKey(path);
         BitDepth = bitDepth;
     }
 
     public int BitDepth { get; }
     /// <inheritdoc/>
-    public int GetBit(int bitIndex) => IPbtNodePath<PbtStorageNodePath>.GetBit(_path.Bytes, BitDepth, bitIndex);
+    public int GetBit(int bitIndex) => PbtNodePathOperations.GetBit(_path.Bytes, BitDepth, bitIndex);
     /// <inheritdoc/>
     public byte GetByte(int byteIndex) => _path.Bytes[byteIndex];
     /// <inheritdoc/>
     public void CopyBitsTo(int sourceBitOffset, Span<byte> destination, int destinationBitOffset, int bitCount) =>
-        IPbtNodePath<PbtStorageNodePath>.CopyBitsTo(_path.Bytes, BitDepth, sourceBitOffset, destination, destinationBitOffset, bitCount);
+        PbtNodePathOperations.CopyBitsTo(_path.Bytes, BitDepth, sourceBitOffset, destination, destinationBitOffset, bitCount);
     /// <inheritdoc/>
     public bool MatchesPrefix(ReadOnlySpan<byte> key, int bitCount) =>
-        IPbtNodePath<PbtStorageNodePath>.MatchesPrefix(_path.Bytes, BitDepth, key, bitCount);
+        PbtNodePathOperations.MatchesPrefix(_path.Bytes, BitDepth, key, bitCount);
 
     /// <inheritdoc/>
-    public PbtStorageNodePath Prefix(int depth) => IPbtNodePath<PbtStorageNodePath>.Prefix(this, depth);
+    public PbtStorageNodePath Prefix(int depth) => PbtNodePathOperations.Prefix<PbtStorageNodePath>(_path.Bytes, BitDepth, depth);
 
     /// <inheritdoc/>
     public PbtStorageNodePath AppendNib(int nibble) => AppendBits(nibble, 4);
 
     /// <inheritdoc/>
     public PbtStorageNodePath AppendBits(int bits, int bitCount) =>
-        IPbtNodePath<PbtStorageNodePath>.AppendBits<PbtStorageNodePath>(_path.Bytes, BitDepth, bits, bitCount);
+        PbtNodePathOperations.AppendBits<PbtStorageNodePath>(_path.Bytes, BitDepth, bits, bitCount);
     /// <inheritdoc/>
     public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => TPath.Create(_path.Bytes, BitDepth);
     /// <inheritdoc/>
     public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther> =>
-        IPbtNodePath<PbtStorageNodePath>.MatchesPrefix(this, other, bitCount);
+        PbtNodePathOperations.MatchesPrefix(this, other, bitCount);
 
     /// <inheritdoc/>
     public int EncodedLength => 4 + ((BitDepth + 7) >> 3);
     /// <inheritdoc/>
-    public void Encode(Span<byte> destination) => IPbtNodePath<PbtStorageNodePath>.Encode(_path.Bytes, BitDepth, destination);
-    public static PbtStorageNodePath Decode(ReadOnlySpan<byte> encoding) => IPbtNodePath<PbtStorageNodePath>.Decode<PbtStorageNodePath>(encoding);
+    public void Encode(Span<byte> destination) => PbtNodePathOperations.Encode(_path.Bytes, BitDepth, destination);
+    public static PbtStorageNodePath Decode(ReadOnlySpan<byte> encoding) => PbtNodePathOperations.Decode<PbtStorageNodePath>(encoding);
 
-    internal static PbtStorageNodePath FromKey(PbtStorageFullKey key, int bitDepth) => IPbtNodePath<PbtStorageNodePath>.FromKey<PbtStorageNodePath>(key.Bytes, bitDepth);
+    internal static PbtStorageNodePath FromKey(PbtStorageFullKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtStorageNodePath>(key.Bytes, bitDepth);
 
     /// <inheritdoc/>
     public PbtStorageNodePath Append(CompressedPrefix prefix, int direction) =>
-        IPbtNodePath<PbtStorageNodePath>.Append(this, prefix, direction);
+        PbtNodePathOperations.Append<PbtStorageNodePath>(_path.Bytes, BitDepth, prefix, direction);
 
     public int CompareTo(PbtStorageNodePath other)
     {
@@ -66,13 +66,13 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
         return depthComparison != 0 ? depthComparison : _path.Bytes.SequenceCompareTo(other._path.Bytes);
     }
     public bool Equals(PbtStorageNodePath other) => BitDepth == other.BitDepth && _path.Bytes.SequenceEqual(other._path.Bytes);
-    public int CompareTo<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther> => IPbtNodePath<PbtStorageNodePath>.Compare(this, other);
-    public bool Equals<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther> => IPbtNodePath<PbtStorageNodePath>.Equal(this, other);
+    public int CompareTo<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther> => PbtNodePathOperations.Compare(this, other);
+    public bool Equals<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther> => PbtNodePathOperations.Equal(this, other);
     public override bool Equals(object? obj) => obj switch
     {
         PbtNodePath path => Equals(path),
         PbtStorageNodePath path => Equals(path),
         _ => false
     };
-    public override int GetHashCode() => IPbtNodePath<PbtStorageNodePath>.Hash(_path.Bytes, BitDepth);
+    public override int GetHashCode() => PbtNodePathOperations.Hash(_path.Bytes, BitDepth);
 }

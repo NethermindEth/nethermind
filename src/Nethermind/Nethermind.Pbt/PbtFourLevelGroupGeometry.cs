@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
+
 namespace Nethermind.Pbt;
 
 /// <summary>Maps canonical node paths to the positions in their four-level node group.</summary>
@@ -51,7 +53,7 @@ public static class PbtFourLevelGroupGeometry
     }
 
     /// <summary>Returns the group key owning <paramref name="path"/>.</summary>
-    public static TPath GroupKeyOf<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => Locate(path).GroupKey;
+    public static TPath GroupKeyOf<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => path.Prefix(GroupDepthOf(path.BitDepth));
 
     /// <summary>Returns the position of <paramref name="path"/> in its owning group.</summary>
     public static int PositionOf<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => PositionOf(path, GroupDepthOf(path.BitDepth));
@@ -91,17 +93,11 @@ public static class PbtFourLevelGroupGeometry
     private static int PositionOf<TPath>(TPath path, int groupDepth) where TPath : struct, IPbtNodePath<TPath>
     {
         int relativeDepth = path.BitDepth - groupDepth;
-        int position = RootPosition;
-        int width = BoundarySlots;
-        for (int index = 0; index < relativeDepth; index++)
-        {
-            int bitIndex = groupDepth + index;
-            int direction = path.GetBit(bitIndex);
-            position = direction == 0 ? position - width : position - 1;
-            width /= 2;
-        }
-
-        return position;
+        if (relativeDepth == 0) return RootPosition;
+        int slot = (path.GetByte(groupDepth >> 3) >> (4 - (groupDepth & 4))) & 0xF;
+        int width = BoundarySlots >> relativeDepth;
+        slot &= ~(width - 1);
+        return 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
     }
 
     private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>

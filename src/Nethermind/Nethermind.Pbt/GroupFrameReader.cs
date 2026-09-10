@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -105,7 +106,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         ReadOnlyMemory<byte> encoding = GetEncoding(position);
         ValueHash256 hash = default;
         if (!encoding.IsEmpty)
-            hash = PbtNodeCodec.Hash(new PbtNodeReader(encoding.Span));
+            hash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding.Span));
         else if (PbtFourLevelGroupGeometry.WidthOf(position) is int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
         {
             ValueHash256 left = GetHash(position - width);
@@ -124,9 +125,8 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
 
     internal int Position(TPath path)
     {
-        if (PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) != BitDepth
-            || !path.MatchesPrefix(GroupKey, BitDepth))
-            throw new InvalidOperationException("The PBT node does not belong to the active group.");
+        Debug.Assert(PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) == BitDepth
+            && path.MatchesPrefix(GroupKey, BitDepth), "The PBT node does not belong to the active group.");
         return PbtFourLevelGroupGeometry.PositionOf(path);
     }
 
@@ -157,7 +157,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter<TPath> writer, TPath path, bool allowAbsent = false)
     {
         int position = Position(path);
-        if (position <= writer.LastPosition) throw new InvalidOperationException("Cannot take a PBT node after its output position has passed.");
+        Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         TrieUpdater<TKey, TPath>.Subtree node = (Taken & (1U << position)) == 0
             ? Acquire(position, path)
             : default;
