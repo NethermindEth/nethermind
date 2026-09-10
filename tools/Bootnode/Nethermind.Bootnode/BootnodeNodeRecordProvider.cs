@@ -8,6 +8,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace Nethermind.Bootnode;
@@ -17,6 +18,7 @@ internal sealed class BootnodeNodeRecordProvider(
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig,
     IIPResolver.NethermindIp resolvedIp,
+    NetworkListenerState listenerState,
     ILogManager logManager,
     string dataDir) : INodeRecordProvider
 {
@@ -25,7 +27,7 @@ internal sealed class BootnodeNodeRecordProvider(
     private readonly string _sequenceStatePath = Path.Combine(dataDir, "enr-state.json");
     private Task<NodeRecord>? _nodeRecordTask;
 
-    public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
     {
         Task<NodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
         if (task is null)
@@ -36,7 +38,15 @@ internal sealed class BootnodeNodeRecordProvider(
             }
         }
 
-        return new ValueTask<NodeRecord>(task.WaitAsync(cancellationToken));
+        try
+        {
+            return await task.WaitAsync(cancellationToken);
+        }
+        catch when (task.IsFaulted)
+        {
+            _ = Interlocked.CompareExchange(ref _nodeRecordTask, null, task);
+            throw;
+        }
     }
 
     private async Task<NodeRecord> PrepareNodeRecord(CancellationToken cancellationToken)
@@ -64,21 +74,25 @@ internal sealed class BootnodeNodeRecordProvider(
     {
         IPAddress? resolvedExternalIpV4 = resolvedIp.ExternalIpV4;
         IPAddress? resolvedExternalIpV6 = resolvedIp.ExternalIpV6;
-        (IPAddress? externalIpV4, IPAddress? externalIpV6) = DiscoveryAddressSupport.SelectAdvertised(
-            resolvedIp.LocalIp,
-            resolvedExternalIpV4,
-            resolvedExternalIpV6);
+        IPAddress discoveryAddress = listenerState.DiscoveryAddress ??
+            throw new InvalidOperationException("Cannot create the bootnode ENR before its discovery listener binds.");
+        IPAddress? externalIpV4 = DiscoveryAddressSupport.SupportsFamily(discoveryAddress, AddressFamily.InterNetwork)
+            ? resolvedExternalIpV4
+            : null;
+        IPAddress? externalIpV6 = DiscoveryAddressSupport.SupportsFamily(discoveryAddress, AddressFamily.InterNetworkV6)
+            ? resolvedExternalIpV6
+            : null;
 
         if (_logger.IsWarn)
         {
             if (resolvedExternalIpV4 is not null && externalIpV4 is null)
             {
-                _logger.Warn("External IPv4 address is available but not advertised because the bootnode does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+                _logger.Warn("External IPv4 address is available but not advertised because the bound bootnode listener does not support IPv4.");
             }
 
             if (resolvedExternalIpV6 is not null && externalIpV6 is null)
             {
-                _logger.Warn("External IPv6 address is available but not advertised because the bootnode does not listen on IPv6 (set LocalIp to an IPv6 address).");
+                _logger.Warn("External IPv6 address is available but not advertised because the bound bootnode listener does not support IPv6.");
             }
 
             if (externalIpV4 is null && externalIpV6 is null)
