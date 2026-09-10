@@ -24,6 +24,30 @@ public static class UInt256Extensions
 [TestFixture]
 public class MerkleTests
 {
+    [Test]
+    public void Merkleize_matches_padded_binary_tree([Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33)] int count)
+    {
+        UInt256[] chunks = new UInt256[count];
+        for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
+        int width = 1;
+        while (width < count) width *= 2;
+        UInt256[] tree = new UInt256[width];
+        chunks.CopyTo(tree, 0);
+        for (int length = width; length > 1; length /= 2)
+        {
+            for (int i = 0; i < length / 2; i++)
+            {
+                byte[] left = new byte[32];
+                byte[] right = new byte[32];
+                tree[i * 2].ToLittleEndian(left);
+                tree[i * 2 + 1].ToLittleEndian(right);
+                tree[i] = new UInt256(HashUtility.Hash(left, right));
+            }
+        }
+        Merkle.Merkleize(out UInt256 actual, chunks, (ulong)width);
+        Assert.That(actual, Is.EqualTo(tree[0]));
+    }
+
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
     [TestCase(2UL, 1UL)]

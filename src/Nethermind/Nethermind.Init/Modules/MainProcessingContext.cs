@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -52,10 +53,11 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>>((branchProcessor, processingStats, blockTracers) =>
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>, ISpecProvider>((branchProcessor, processingStats, blockTracers, specProvider) =>
                     new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
+                        specProvider,
                         blockPreprocessorSteps,
                         worldStateManager.GlobalStateReader,
                         logManager,

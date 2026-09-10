@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,11 +23,21 @@ namespace Nethermind.Test.Runner;
 /// Compatible with go-ethereum's block test tracing output format.
 /// Outputs consolidated traces across all blocks and transactions in a single stream.
 /// </summary>
-public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? output = null) : ITestBlockTracer, IDisposable
+/// <param name="options">Geth trace configuration.</param>
+/// <param name="specProvider">Provider used to select the active specification for each block.</param>
+/// <param name="output">Destination for the JSONL trace; standard error when omitted.</param>
+public class BlockchainTestStreamingTracer(
+    GethTraceOptions options,
+    ISpecProvider specProvider,
+    Stream? output = null) : ITestBlockTracer, IDisposable
 {
     private static readonly byte[] _newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
     private readonly Stream _output = output ?? Console.OpenStandardError();
     private readonly GethTraceOptions _options = options ?? throw new ArgumentNullException(nameof(options));
+    private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    private IReleaseSpec? _currentSpec;
+    private ulong _currentBlockGasLimit;
+    private long _currentDestroyRefund;
     private GethLikeTxFileTracer? _currentTxTracer;
 
     // Track metrics for test end marker
@@ -44,12 +54,15 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
 
     public void StartNewBlockTrace(Block block)
     {
-        // No-op: we write continuously to the same stream across all blocks
+        _currentSpec = _specProvider.GetSpec(block.Header);
+        _currentBlockGasLimit = block.Header.GasLimit;
+        _currentDestroyRefund = (long)_currentSpec.GasCosts.DestroyRefund;
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options);
+        ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _currentSpec, _currentBlockGasLimit);
+        _currentTxTracer = new GethLikeTxFileTracer(WriteTraceEntry, _options, _currentDestroyRefund, standardIntrinsicGas);
         return _currentTxTracer;
     }
 
