@@ -56,12 +56,25 @@ public static partial class ZkEvmBitOperations
         r = Swap(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, 24)), m8, m16);
     }
 
+    /// <summary>Loads the swap masks into locals, so a run of <see cref="Swap"/> calls shares them.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Swap(ulong x, ulong m8, ulong m16)
+    internal static void LoadSwapMasks(out ulong m8, out ulong m16)
     {
-        x = ((x & m8) << 8) | ((x >> 8) & m8);
-        x = ((x & m16) << 16) | ((x >> 16) & m16);
-        return (x << 32) | (x >> 32);
+        ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
+        m8 = masks;
+        m16 = Unsafe.Add(ref masks, 1);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong Swap(ulong x, ulong m8, ulong m16)
+    {
+        // Addition rather than disjunction: the prover charges `or` 60 units against `add`'s 15.5, and
+        // each pair below is disjoint by construction - the masked halves occupy alternating byte, then
+        // halfword, then word lanes - so the operators are equivalent here at a quarter of the price.
+        // Do not carry this over to a pair that can overlap; there the addition would carry.
+        x = ((x & m8) << 8) + ((x >> 8) & m8);
+        x = ((x & m16) << 16) + ((x >> 16) & m16);
+        return (x << 32) + (x >> 32);
     }
 
 }
