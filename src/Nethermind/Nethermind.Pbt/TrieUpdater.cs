@@ -326,6 +326,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                     continue;
                 }
                 int rangeMask = ((1 << frame.Path.Width) - 1) << frame.Path.Slot;
+                // Untouched slots do not guarantee a reusable source root at this position. If copying is
+                // unavailable, fall through to normal composition from the boundary subtrees.
                 if ((touchedMask & rangeMask) == 0 && TryCopyUnchangedSubtree(ref reader, writer, metrics, frame.Path, out result))
                 {
                     Dispose(boundaries.Slice(frame.Path.Slot, frame.Path.Width));
