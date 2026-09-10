@@ -119,6 +119,16 @@ public class PbtRebuilderTests
             incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, preparedChange);
         }
 
+        int physicalNodeCount = 0;
+        foreach (IPbtNodePath groupKey in reader.EnumerateNodeGroupKeys())
+        {
+            using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
+            PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
+            physicalNodeCount += group.Count;
+            if (groupKey.BitDepth != 0)
+                Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
+        }
+        Assert.That(physicalNodeCount, Is.LessThan(incrementalStore.EnumerateRecords().Count));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");

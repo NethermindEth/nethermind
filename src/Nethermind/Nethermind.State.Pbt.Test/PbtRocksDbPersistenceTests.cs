@@ -244,7 +244,7 @@ public class PbtRocksDbPersistenceTests
         PbtNodeGroupReader reader = new(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.Length, Is.EqualTo(node.Length + PbtNodeGroupCodec.TrailerLength));
+            Assert.That(payload.Length, Is.EqualTo(node.Length + PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.TrailerLength));
             Assert.That(reader.GetNode(PbtFourLevelGroupGeometry.Locate(path).Position).ToArray(), Is.EqualTo(node));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
@@ -333,6 +333,18 @@ public class PbtRocksDbPersistenceTests
         PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        using PbtTreeHarness tree = new();
+        EipReferenceTree oracle = new();
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        for (int index = 0; index < 32; index++)
+        {
+            byte[] key = [(byte)(index << 3)];
+            byte[] value = Value((byte)(index + 1));
+            changes.Add((key, value));
+            oracle.Insert(key, value);
+        }
+        tree.ApplyBatch(changes);
+        Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
         StateId last = StateId.PreGenesis;
         try
         {
@@ -347,7 +359,12 @@ public class PbtRocksDbPersistenceTests
                     StateId next = new(number, TestItem.KeccakA.ValueHash256);
                     PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
                     content.Accounts[addressHash] = new Account(number, number + 10);
-                    repository.TryAdd(new PbtSnapshot(last, next, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
+                    foreach (PbtPhysicalPayload physical in tree.PhysicalPayloads)
+                    {
+                        using RefCountingMemory payload = RefCountingMemory.Wrapping(physical.Payload.ToArray());
+                        content.SetNodeGroup(PbtPathOperations.Decode(physical.Key.Span), payload);
+                    }
+                    repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
                     compactor.DoCompactSnapshot(next);
                     last = next;
                 }
@@ -362,9 +379,30 @@ public class PbtRocksDbPersistenceTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(last));
-                Assert.That(reader.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+                Assert.That(reader.CurrentRoot, Is.EqualTo(tree.RootHash));
                 Assert.That(reader.GetAccount(addressHash), Is.EqualTo(new Account(5, 15)));
             }
+            List<PbtPhysicalPayload> persisted = [];
+            foreach (IPbtNodePath groupKey in reader.EnumerateNodeGroupKeys())
+            {
+                using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
+                PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
+                if (groupKey.BitDepth != 0)
+                    Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
+                persisted.Add(new PbtPhysicalPayload(groupKey.Encode(), payload.GetSpan()));
+            }
+            using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
+            Assert.That(reopened.EnumerateRecords().Count, Is.EqualTo(tree.Nodes.Count));
+            using PbtWriteBatchBuilder<PbtStorageFullKey> mutations = new(0);
+            byte[] deletedKey = Bytes.FromHexString("00");
+            byte[] replacedKey = Bytes.FromHexString("08");
+            mutations.Delete(new PbtStorageFullKey(deletedKey));
+            mutations.Set(new PbtStorageFullKey(replacedKey), new ValueHash256(Value(99)));
+            oracle.Delete(deletedKey);
+            oracle.Insert(replacedKey, Value(99));
+            ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(reopened, reader.CurrentRoot, mutations.Build());
+            Assert.That(updatedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+            Assert.That(reopened.EnumerateRecords(), Has.Exactly(31).Matches<PbtNodeRecord>(record => record.Encoding.Span[0] == 0));
         }
         finally
         {
@@ -604,7 +642,7 @@ public class PbtRocksDbPersistenceTests
     }
 
     private static byte[] BranchNode(byte marker) => PbtNodeCodec.EncodeBranch(
-        [], 0,
+        Bytes.FromHexString("80"), 1,
         new ValueHash256(Value(marker)),
         new ValueHash256(Value((byte)(marker + 1))));
 

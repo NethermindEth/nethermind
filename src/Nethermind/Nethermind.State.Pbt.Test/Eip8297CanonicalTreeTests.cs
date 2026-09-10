@@ -2143,10 +2143,12 @@ public class Eip8297CanonicalTreeTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(nodeProvider.Rented), Is.Zero);
     }
 
-    [TestCase(2, 3)]
-    [TestCase(16, 6)]
+    [TestCase(2, 2)]
+    [TestCase(16, 4)]
     public void Ordered_group_emission_rents_geometrically_instead_of_per_node(int leafCount, int expectedRentCount)
     {
+        const int leafEncodingLength = 3 + 1 + 32;
+        const int rootEncodingLength = 3 + 2 * 32;
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();
         EipReferenceTree oracle = new();
@@ -2172,11 +2174,13 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(reader.Count, Is.EqualTo(2 * leafCount - 1));
+            Assert.That(reader.Count, Is.EqualTo(leafCount + 1));
+            Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount * leafEncodingLength + rootEncodingLength + PbtNodeGroupCodec.TrailerLength));
             Assert.That(payloads[0].Payload.ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
+            int firstRentLength = PbtNodeGroupCodec.HeaderLength + leafEncodingLength + PbtNodeGroupCodec.TrailerLength;
             for (int rental = 0; rental < provider.RequestedLengths.Count; rental++)
-                Assert.That(provider.RequestedLengths[rental], Is.EqualTo(102 << rental));
+                Assert.That(provider.RequestedLengths[rental], Is.EqualTo(firstRentLength << rental));
             AssertOnlyPublishedRentalsRemain(store, provider);
         }
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);

@@ -793,11 +793,13 @@ internal static class TrieUpdater<TKey, TPath>
         return index;
     }
 
-    private readonly struct GroupFrameReader : IDisposable
+    private struct GroupFrameReader : IDisposable
     {
         private readonly RefCountingMemory? _lease;
         private readonly OffsetBuffer _offsets;
         private readonly LengthBuffer _lengths;
+        private HashBuffer _hashes;
+        private uint _hashed;
 
         internal GroupFrameReader(IPbtStore store, TPath groupKey, TrieUpdaterMetrics? metrics)
         {
@@ -846,7 +848,14 @@ internal static class TrieUpdater<TKey, TPath>
         internal Subtree Acquire(int position, TPath path)
         {
             ReadOnlyMemory<byte> encoding = GetEncoding(position);
-            if (encoding.IsEmpty) return default;
+            if (encoding.IsEmpty)
+            {
+                int width = PbtFourLevelGroupGeometry.WidthOf(position);
+                if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
+                ValueHash256 left = GetHash(position - width);
+                ValueHash256 right = GetHash(position - 1);
+                return left == default || right == default ? default : new(path, left, right);
+            }
             _lease!.AcquireLease();
             try { return new(_lease, encoding, path); }
             catch
@@ -854,6 +863,30 @@ internal static class TrieUpdater<TKey, TPath>
                 ((IDisposable)_lease).Dispose();
                 throw;
             }
+        }
+
+        private ValueHash256 GetHash(int position)
+        {
+            uint bit = 1u << position;
+            if ((_hashed & bit) != 0) return _hashes[position];
+            ReadOnlyMemory<byte> encoding = GetEncoding(position);
+            ValueHash256 hash = default;
+            if (!encoding.IsEmpty)
+                hash = PbtNodeCodec.Hash(new PbtNodeReader(encoding.Span));
+            else if (PbtFourLevelGroupGeometry.WidthOf(position) is int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
+            {
+                ValueHash256 left = GetHash(position - width);
+                ValueHash256 right = GetHash(position - 1);
+                if (left != default && right != default)
+                {
+                    Span<byte> branch = stackalloc byte[67];
+                    PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
+                    hash = Blake3Hash.Hash(branch);
+                }
+            }
+            _hashes[position] = hash;
+            _hashed |= bit;
+            return hash;
         }
 
         internal int Position(TPath path)
@@ -868,6 +901,12 @@ internal static class TrieUpdater<TKey, TPath>
         }
 
         public void Dispose() => ((IDisposable?)_lease)?.Dispose();
+
+        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        private struct HashBuffer
+        {
+            private ValueHash256 _element;
+        }
 
         [InlineArray(PbtNodeGroupCodec.PositionCount)]
         private struct OffsetBuffer
@@ -886,7 +925,7 @@ internal static class TrieUpdater<TKey, TPath>
     {
         private readonly IPbtStore _store;
         private readonly TrieUpdaterMetrics? _metrics;
-        private readonly GroupFrameReader _reader;
+        private GroupFrameReader _reader;
         private readonly PbtNodeGroupWriter _writer;
         private uint _taken;
         private int _nextPosition;
@@ -932,7 +971,8 @@ internal static class TrieUpdater<TKey, TPath>
             CopyUntouchedBefore(position);
             Span<byte> encoding = _writer.GetSpan(position, node.EncodedLength(depth));
             ValueHash256 hash = node.Encode(encoding, depth);
-            if (!_reader.GetEncoding(position).Span.SequenceEqual(encoding)) _changedNodes++;
+            ReadOnlySpan<byte> storedEncoding = PbtNodeGroupCodec.ShouldOmit(position, encoding) ? [] : encoding;
+            if (!_reader.GetEncoding(position).Span.SequenceEqual(storedEncoding)) _changedNodes++;
             _writer.Commit();
             _nextPosition = position + 1;
             node.Dispose();
@@ -944,14 +984,15 @@ internal static class TrieUpdater<TKey, TPath>
             int position = path.Position;
             root = default;
             // Only a consumed source root proves this range belongs to the subtree being recomposed.
-            if ((_taken & (1U << position)) == 0 || _reader.GetEncoding(position).IsEmpty) return false;
+            if ((_taken & (1U << position)) == 0) return false;
+            root = _reader.Acquire(position, BoundaryPath(GroupKey, path.Slot, path.Length));
+            if (root.IsEmpty) return false;
             int startPosition = position - 2 * path.Width + 2;
             CopyUntouchedBefore(startPosition);
+            // Placement may promote the root and extend its compressed prefix, so copy only its descendants.
             int copiedNodes = _reader.CopyRange(_writer, startPosition, position);
             if (copiedNodes != 0) _metrics?.AddBulkCopy(copiedNodes);
             _nextPosition = position;
-            // Placement may promote the root and extend its compressed prefix, so copy only its descendants.
-            root = _reader.Acquire(position, BoundaryPath(GroupKey, path.Slot, path.Length));
             return true;
         }
 

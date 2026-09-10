@@ -124,6 +124,15 @@ public static class PbtFourLevelGroupGeometry
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
     public static IPbtNodePath Reconstruct(IPbtNodePath groupKey, int position) => PathOf(groupKey, position);
 
+    internal static int WidthOf(int position) => position switch
+    {
+        2 or 5 or 9 or 12 or 17 or 20 or 24 or 27 => 2,
+        6 or 13 or 21 or 28 => 4,
+        14 or 29 => 8,
+        RootPosition => BoundarySlots,
+        _ => 1
+    };
+
     private static int PositionOf(IPbtNodePath path, int groupDepth)
     {
         int relativeDepth = path.BitDepth - groupDepth;
