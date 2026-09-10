@@ -100,7 +100,16 @@ public class ReceiptTrieTests
     {
         using TrackingCappedArrayPool pool = new();
         Hash256 expected = new ReceiptTrie(spec, receipts, decoder, pool, canBeParallel: false).RootHash;
-        Assert.That(ReceiptTrie.CalculateRoot(spec, receipts, decoder), Is.EqualTo(expected));
+        Hash256 actual = ReceiptTrie.CalculateRoot(spec, receipts, decoder);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            if (receipts.Length > 0)
+            {
+                byte[][] proof = ReceiptTrie.CalculateReceiptProofs(spec, receipts, receipts.Length / 2, decoder);
+                Assert.That(Keccak.Compute(proof[0]), Is.EqualTo(actual), "proof root must match the streamed root");
+            }
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
@@ -24,6 +25,8 @@ public sealed partial class ReceiptTrie
     {
         private const int LeafBatchSize = 16;
         private const int BranchPrefixLength = 3;
+        // Prefix-free keys leave the branch value empty; each child reference occupies at most 33 bytes.
+        private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
         private readonly ReadOnlySpan<TxReceipt> _receipts = receipts;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
@@ -78,7 +81,7 @@ public sealed partial class ReceiptTrie
             Key last = GetKey(end - 1);
             int commonDepth = CommonPrefix(first, last, depth);
 
-            Span<byte> encoded = stackalloc byte[BranchPrefixLength + 16 * Rlp.LengthOfKeccakRlp + 1];
+            Span<byte> encoded = stackalloc byte[BranchPrefixLength + MaxBranchContentLength];
             if (commonDepth != depth)
             {
                 Span<byte> path = stackalloc byte[6];
@@ -109,7 +112,9 @@ public sealed partial class ReceiptTrie
             }
             encoded[offset++] = Rlp.EmptyByteArrayByte;
             int branchLength = offset - BranchPrefixLength;
+            Debug.Assert(branchLength <= MaxBranchContentLength);
             int prefixLength = Rlp.StartSequence(encoded, 0, branchLength);
+            Debug.Assert(prefixLength <= BranchPrefixLength);
             encoded.Slice(BranchPrefixLength, branchLength).CopyTo(encoded[prefixLength..]);
             return NodeReference.FromRlp(encoded[..(prefixLength + branchLength)]);
         }
@@ -120,6 +125,7 @@ public sealed partial class ReceiptTrie
             Span<byte> path = stackalloc byte[6];
             int pathLength = EncodePath(key, depth, key.Length - depth, isLeaf: true, path);
             int valueLength = decoder.GetLength(receipt, behavior);
+            Debug.Assert(valueLength > 0, "Empty encodings require trie deletion semantics.");
             Span<byte> shortValue = stackalloc byte[1];
             if (valueLength == 1)
             {
