@@ -1208,6 +1208,16 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Disposing_the_metadata_twice_is_harmless()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        metadata.Dispose();
+
+        Assert.That(metadata.Dispose, Throws.Nothing,
+            "the container owns the singleton and disposes it through more than one scope; a second dispose must not take a turn on a semaphore the first one already disposed");
+    }
+
+    [Test]
     public void A_walk_start_waiting_behind_a_reclaim_pass_is_cancellable()
     {
         using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
