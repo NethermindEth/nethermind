@@ -2175,10 +2175,10 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(reader.Count, Is.EqualTo(leafCount + 1));
-            Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount * leafEncodingLength + rootEncodingLength + PbtNodeGroupCodec.TrailerLength));
+            Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount * leafEncodingLength + rootEncodingLength + 4 + 2 * (leafCount + 1)));
             Assert.That(payloads[0].Payload.ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
-            int firstRentLength = PbtNodeGroupCodec.HeaderLength + leafEncodingLength + PbtNodeGroupCodec.TrailerLength;
+            int firstRentLength = PbtNodeGroupCodec.HeaderLength + leafEncodingLength + PbtNodeGroupCodec.MaxTrailerLength;
             for (int rental = 0; rental < provider.RequestedLengths.Count; rental++)
                 Assert.That(provider.RequestedLengths[rental], Is.EqualTo(firstRentLength << rental));
             AssertOnlyPublishedRentalsRemain(store, provider);

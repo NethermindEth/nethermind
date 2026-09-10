@@ -224,7 +224,7 @@ public class PbtRocksDbPersistenceTests
     }
 
     [Test]
-    public void Grouped_writes_use_the_fixed_footer_and_release_rented_payloads()
+    public void Grouped_writes_use_the_compact_footer_and_release_rented_payloads()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         TrackingMemoryProvider memoryProvider = new();
@@ -244,7 +244,7 @@ public class PbtRocksDbPersistenceTests
         PbtNodeGroupReader reader = new(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.Length, Is.EqualTo(node.Length + PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.TrailerLength));
+            Assert.That(payload.Length, Is.EqualTo(node.Length + PbtNodeGroupCodec.HeaderLength + 6));
             Assert.That(reader.GetNode(PbtFourLevelGroupGeometry.Locate(path).Position).ToArray(), Is.EqualTo(node));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
@@ -311,7 +311,7 @@ public class PbtRocksDbPersistenceTests
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtNodePath groupKey = new([], 0);
         PbtNodePath invalidKey = new([0], 1);
-        using RefCountingMemory malformed = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.TrailerLength]);
+        using RefCountingMemory malformed = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.MaxTrailerLength]);
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
             StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None);
         using IPbtPersistence.IReader reader = persistence.CreateReader();
@@ -323,7 +323,7 @@ public class PbtRocksDbPersistenceTests
         }
         batch.Commit();
         Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
-        Assert.That(malformed.GetSpan().Length, Is.EqualTo(PbtNodeGroupCodec.TrailerLength));
+        Assert.That(malformed.GetSpan().Length, Is.EqualTo(PbtNodeGroupCodec.MaxTrailerLength));
     }
 
     [Test]

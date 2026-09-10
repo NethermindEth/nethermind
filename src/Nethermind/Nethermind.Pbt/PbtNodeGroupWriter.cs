@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 
@@ -47,7 +46,7 @@ internal sealed class PbtNodeGroupWriter : IDisposable
         if (encodingLength <= 0 || encodingLength > MaxEntriesLength - _written)
             throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit or have an invalid length.");
 
-        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + encodingLength + PbtNodeGroupCodec.TrailerLength);
+        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + encodingLength + PbtNodeGroupCodec.MaxTrailerLength);
         _pendingPosition = position;
         _pendingLength = encodingLength;
         return _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, encodingLength);
@@ -88,7 +87,7 @@ internal sealed class PbtNodeGroupWriter : IDisposable
         if (firstPosition <= _lastPosition) throw new InvalidDataException("PBT nodes must be written in increasing position order.");
         if (entries.Length > MaxEntriesLength - _written)
             throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
-        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length + PbtNodeGroupCodec.TrailerLength);
+        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length + PbtNodeGroupCodec.MaxTrailerLength);
         entries.CopyTo(_memory!.GetSpan()[(PbtNodeGroupCodec.HeaderLength + _written)..]);
         int offsetAdjustment = _written - offsets[firstPosition];
         int copiedNodes = 0;
@@ -116,12 +115,11 @@ internal sealed class PbtNodeGroupWriter : IDisposable
         }
 
         PbtNodeGroupCodec.Header.CopyTo(_memory!.GetSpan());
-        Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, PbtNodeGroupCodec.TrailerLength);
-        for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
-            BinaryPrimitives.WriteUInt16LittleEndian(footer[(position * sizeof(ushort))..], _offsets[position]);
-        BinaryPrimitives.WriteUInt32LittleEndian(footer[(PbtNodeGroupCodec.PositionCount * sizeof(ushort))..], _availability);
+        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability);
+        Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
+        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability);
         RefCountingMemory memory = _memory;
-        memory.Shrink(PbtNodeGroupCodec.HeaderLength + _written + PbtNodeGroupCodec.TrailerLength);
+        memory.Shrink(PbtNodeGroupCodec.HeaderLength + _written + trailerLength);
         _memory = null;
         _disposed = true;
         return memory;
@@ -139,7 +137,7 @@ internal sealed class PbtNodeGroupWriter : IDisposable
     {
         int capacity = _memory?.GetSpan().Length ?? 0;
         if (capacity >= required) return;
-        int nextCapacity = Math.Min(PbtNodeGroupCodec.HeaderLength + MaxEntriesLength + PbtNodeGroupCodec.TrailerLength, Math.Max(required, capacity * 2));
+        int nextCapacity = Math.Min(PbtNodeGroupCodec.HeaderLength + MaxEntriesLength + PbtNodeGroupCodec.MaxTrailerLength, Math.Max(required, capacity * 2));
         RefCountingMemory grown = _memoryProvider.Rent(nextCapacity);
         if (_memory is { } previous)
         {

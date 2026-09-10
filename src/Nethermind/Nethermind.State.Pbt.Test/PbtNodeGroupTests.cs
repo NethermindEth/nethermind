@@ -174,7 +174,7 @@ public class PbtNodeGroupTests
         Assert.That(ValidateLeafGroup(groupKey, 0, payload, streamingWriter), Is.EqualTo(1));
 
         byte[] shortEncoding = PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key.AsSpan(0, key.Length - 1)), Value(1));
-        byte[] shortPayload = new byte[PbtNodeGroupCodec.HeaderLength + shortEncoding.Length + PbtNodeGroupCodec.TrailerLength];
+        byte[] shortPayload = new byte[PbtNodeGroupCodec.HeaderLength + shortEncoding.Length + 6];
         PbtNodeGroupCodec.Header.CopyTo(shortPayload);
         shortEncoding.CopyTo(shortPayload, PbtNodeGroupCodec.HeaderLength);
         BinaryPrimitives.WriteUInt32LittleEndian(shortPayload.AsSpan(shortPayload.Length - sizeof(uint)), 1u);
@@ -185,7 +185,7 @@ public class PbtNodeGroupTests
     {
         if (!streamingWriter) return ReadGroupCount(groupKey, payload);
         using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
-        writer.Write(position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - PbtNodeGroupCodec.TrailerLength));
+        writer.Write(position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - 6));
         using RefCountingMemory writtenPayload = writer.Detach()!;
         Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
         return 1;
@@ -465,7 +465,7 @@ public class PbtNodeGroupTests
     [TestCase(1, -1, typeof(ArgumentException))]
     [TestCase(0, 0, typeof(InvalidDataException))]
     [TestCase(0, 1, typeof(InvalidDataException))]
-    [TestCase(0, PbtNodeGroupCodec.TrailerLength, typeof(InvalidDataException))]
+    [TestCase(0, PbtNodeGroupCodec.MaxTrailerLength, typeof(InvalidDataException))]
     public void Invalid_group_publication_preserves_prior_group_and_caller_reference(int keyDepth, int payloadLength, Type exceptionType)
     {
         TrackingMemoryProvider provider = new();
@@ -761,7 +761,7 @@ public class PbtNodeGroupTests
         ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
         bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
         using PbtNodeGroupWriter streamingWriter = new(groupKey, new TrackingMemoryProvider());
-        int fullLength = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.TrailerLength;
+        int fullLength = PbtNodeGroupCodec.HeaderLength + sizeof(uint);
         int omitted = 0;
         int positionCount = groupDepth == 0 ? 31 : 30;
         for (int position = 0; position < positionCount; position++)
@@ -776,7 +776,7 @@ public class PbtNodeGroupTests
             records.Add(new(path, encoding));
             encodings[position] = encoding;
             present[position] = true;
-            fullLength += encoding.Length;
+            fullLength += encoding.Length + sizeof(ushort);
             if (nodeKind == 0 && path.BitDepth - groupDepth is >= 1 and <= 3) omitted++;
             if ((position & 1) == 0) streamingWriter.Write(position, encoding);
             else
@@ -793,7 +793,7 @@ public class PbtNodeGroupTests
         PbtNodeGroupReader reader = new(groupKey, payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fullLength - payload.Length, Is.EqualTo(67 * omitted));
+            Assert.That(fullLength - payload.Length, Is.EqualTo(69 * omitted));
             Assert.That(omitted, Is.EqualTo(nodeKind == 0 ? 14 : 0));
             Assert.That(reader.Count, Is.EqualTo(positionCount - omitted));
             Assert.That(slotWriter.WrittenSpan.ToArray(), Is.EqualTo(payload));
@@ -813,7 +813,7 @@ public class PbtNodeGroupTests
                 Assert.That(found, Is.EqualTo(retained), $"position {position}");
                 Assert.That(reader.GetNode(position).ToArray(), Is.EqualTo(retained ? encodings[position].ToArray() : Array.Empty<byte>()));
                 if (found) Assert.That(encoding.ToArray(), Is.EqualTo(encodings[position].ToArray()));
-                else Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(payload.Length - PbtNodeGroupCodec.TrailerLength + position * sizeof(ushort))), Is.Zero);
+                else Assert.That(reader.Availability & (1u << position), Is.Zero);
             }
         }
     }
@@ -853,7 +853,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupWriter writer = new(groupKey, provider);
         for (int index = 0; index < count; index++)
         {
-            int position = count == 1 ? 30 : count == 3 ? index * 10 : index;
+            int position = count == 1 ? 30 : count == 3 ? 3 + index * 10 : index;
             byte[] encoding = PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 4,
                 new ValueHash256(Value(1)), new ValueHash256(Value(2)));
             records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, position), encoding));
@@ -888,8 +888,20 @@ public class PbtNodeGroupTests
             {
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(expected));
                 Assert.That(slotWriter.WrittenSpan.ToArray(), Is.EqualTo(expected));
-                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("5042544701")));
+                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("02")));
                 Assert.That(reader.Count, Is.EqualTo(count));
+                Assert.That(expected.Length, Is.EqualTo(count * 68 + 5 + 2 * count));
+                uint availability = 0;
+                for (int index = 0; index < count; index++)
+                {
+                    int position = PbtFourLevelGroupGeometry.PositionOf(records[index].Path);
+                    availability |= 1u << position;
+                    Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(expected.AsSpan(1 + count * 68 + index * 2)), Is.EqualTo(index * 68));
+                    Assert.That(reader.TryGetNodeRange(position, out int offset, out int length), Is.True);
+                    Assert.That(offset, Is.EqualTo(1 + index * 68));
+                    Assert.That(length, Is.EqualTo(68));
+                }
+                Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(expected.AsSpan(expected.Length - 4)), Is.EqualTo(availability));
                 Assert.That(payload, Is.SameAs(provider.Rented[^1]));
                 Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1));
                 Assert.That(provider.RentCount, count == 1 ? Is.EqualTo(1) : Is.GreaterThan(1));
@@ -967,23 +979,51 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Versioned_group_rejects_invalid_header_and_footer([Range(0, 11)] int scenario)
+    public void Versioned_group_rejects_invalid_header_and_footer([Range(0, 17)] int scenario)
     {
         PbtNodePath groupKey = new([], 0);
-        byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey, LeafEncoding(0x00, 1))]);
-        int footerOffset = payload.Length - PbtNodeGroupCodec.TrailerLength;
+        byte[] branch = PbtNodeCodec.EncodeBranch(Bytes.FromHexString("80"), 1,
+            new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+        byte[] payload = EncodeGroup(groupKey, [
+            new(PbtFourLevelGroupGeometry.PathOf(groupKey, 3), branch),
+            new(PbtFourLevelGroupGeometry.PathOf(groupKey, 10), branch),
+            new(groupKey, branch)]);
+        int footerOffset = payload.Length - 10;
         switch (scenario)
         {
-            case <= 4: payload = payload[..scenario]; break;
-            case 5: payload = payload[PbtNodeGroupCodec.HeaderLength..]; break;
-            case 6: payload[0] ^= 1; break;
-            case 7: payload[4] = 2; break;
-            case 8: payload = payload[..PbtNodeGroupCodec.HeaderLength]; break;
+            case 0: payload = []; break;
+            case 1: payload = payload[1..]; break;
+            case 2: payload[0] = 1; break;
+            case 3: payload[0] = 3; break;
+            case 4: payload = Bytes.FromHexString("02000000"); break;
+            case 5: payload = Bytes.FromHexString("0200040000"); break;
+            case 6: payload.AsSpan(payload.Length - 4).Clear(); break;
+            case 7: payload[^1] |= 0x80; break;
+            case 8: groupKey = new(Bytes.FromHexString("00"), 4); break;
             case 9: payload[footerOffset] = 1; break;
-            case 10: payload[footerOffset + PbtFourLevelGroupGeometry.RootPosition * sizeof(ushort)] = 1; break;
-            case 11: payload[^1] |= 0x80; break;
+            case 10: BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(footerOffset + 2), 0); break;
+            case 11: BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(footerOffset + 4), 67); break;
+            case 12: BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(footerOffset + 4), 204); break;
+            case 13: BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(footerOffset + 4), ushort.MaxValue); break;
+            case 14: payload[1] = 0xFF; break;
+            case 15: payload[4] = 0x81; break;
+            case 16: payload.AsSpan(5, 32).Clear(); break;
+            case 17:
+                payload = new byte[1 + ushort.MaxValue + 1 + 6];
+                payload[0] = 2;
+                payload[^1] = 0x40;
+                break;
         }
         Assert.Throws<InvalidDataException>(() => ReadGroupCount(groupKey, payload));
+    }
+
+    [Test]
+    public void Root_leaf_has_byte_exact_compact_encoding()
+    {
+        PbtNodePath groupKey = new([], 0);
+        byte[] expected = Bytes.FromHexString("02000001000000000000000000000000000000000000000000000000000000000000000001000000000040");
+        byte[] payload = EncodeGroup(groupKey, [new(groupKey, LeafEncoding(0x00, 1))]);
+        Assert.That(payload, Is.EqualTo(expected));
     }
 
     [Test]
@@ -1100,7 +1140,7 @@ public class PbtNodeGroupTests
 
     private static byte[] EncodeGroup(IPbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)
     {
-        int capacity = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.TrailerLength;
+        int capacity = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.MaxTrailerLength;
         foreach (PbtNodeRecord record in records) capacity += record.Encoding.Length;
         byte[] payload = new byte[capacity];
         BufferWriter writer = new(payload);

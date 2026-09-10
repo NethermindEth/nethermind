@@ -9,30 +9,27 @@ namespace Nethermind.Pbt;
 
 /// <summary>Encodes and reads a four-level node group's canonical node payload.</summary>
 /// <remarks>
-/// The physical payload starts with ASCII PBTG and version byte 1, followed by entries and a fixed-size footer. Entries are
-/// complete, self-delimiting node encodings in ascending post-order position order, with no padding
-/// or separators. The footer contains 31 little-endian unsigned 16-bit offsets, one for each
-/// position, relative to the beginning of the entries section, followed by a little-endian unsigned
-/// 32-bit availability bitmap. An absent position has offset zero. Consequently the first present
-/// node starts at offset zero, and every subsequent present offset is strictly greater than the
-/// preceding one; a node ends at the next present offset or at the beginning of the footer.
+/// The physical payload starts with version byte 2, followed by entries and a variable-size footer.
+/// Entries are complete node encodings in ascending post-order position order, with no padding or
+/// separators. The footer contains one little-endian unsigned 16-bit offset per physically stored
+/// node, in the same order, followed by a little-endian unsigned 32-bit availability bitmap.
+/// Offsets are relative to the beginning of the entries section. The first offset is zero, and
+/// subsequent offsets strictly increase; a node ends at the next offset or the footer's beginning.
 /// Position 30 is reserved for the root and may only be present in the depth-zero root group. The
 /// group key is deliberately kept outside this payload. Prefixless branches at relative depths 1–3
 /// are implicit: only their descendants are stored. Availability describes physical entries.
 /// </remarks>
 public static class PbtNodeGroupCodec
 {
-    internal const int HeaderLength = 5;
-    internal static ReadOnlySpan<byte> Header => "PBTG\x01"u8;
+    internal const int HeaderLength = 1;
+    internal static ReadOnlySpan<byte> Header => "\x02"u8;
 
     /// <summary>The number of positions represented by the offset table.</summary>
     public const int PositionCount = PbtFourLevelGroupGeometry.PositionCount;
 
-    /// <summary>The number of bytes in the fixed offset-and-availability footer.</summary>
-    public const int TrailerLength = PositionCount * sizeof(ushort) + sizeof(uint);
+    /// <summary>The maximum number of bytes in the packed offset-and-availability footer.</summary>
+    public const int MaxTrailerLength = PositionCount * sizeof(ushort) + sizeof(uint);
 
-    private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
-    private const uint AllowedPositionBits = (1u << PbtFourLevelGroupGeometry.PositionCount) - 1;
     private const int MaxOffset = ushort.MaxValue;
 
     /// <summary>
@@ -100,12 +97,9 @@ public static class PbtNodeGroupCodec
                 offset = checked(offset + encoding.Length);
             }
 
-            Span<byte> footer = stackalloc byte[TrailerLength];
-            for (int position = 0; position < PositionCount; position++)
-                BinaryPrimitives.WriteUInt16LittleEndian(footer[(position * sizeof(ushort))..], offsets[position]);
-            BinaryPrimitives.WriteUInt32LittleEndian(footer[(PositionCount * sizeof(ushort))..], availability);
-            footer.CopyTo(writer.GetSpan(TrailerLength));
-            writer.Advance(TrailerLength);
+            int trailerLength = GetTrailerLength(availability);
+            WriteFooter(writer.GetSpan(trailerLength), offsets, availability);
+            writer.Advance(trailerLength);
         }
         catch
         {
@@ -154,18 +148,29 @@ public static class PbtNodeGroupCodec
                 offset = checked(offset + encoding.Length);
             }
 
-            Span<byte> footer = stackalloc byte[TrailerLength];
-            for (int position = 0; position < PositionCount; position++)
-                BinaryPrimitives.WriteUInt16LittleEndian(footer[(position * sizeof(ushort))..], offsets[position]);
-            BinaryPrimitives.WriteUInt32LittleEndian(footer[(PositionCount * sizeof(ushort))..], availability);
-            footer.CopyTo(writer.GetSpan(TrailerLength));
-            writer.Advance(TrailerLength);
+            int trailerLength = GetTrailerLength(availability);
+            WriteFooter(writer.GetSpan(trailerLength), offsets, availability);
+            writer.Advance(trailerLength);
         }
         catch
         {
             writer.Reset(initialWrittenCount);
             throw;
         }
+    }
+
+    internal static int GetTrailerLength(uint availability) => BitOperations.PopCount(availability) * sizeof(ushort) + sizeof(uint);
+
+    internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability)
+    {
+        int offsetIndex = 0;
+        for (int position = 0; position < PositionCount; position++)
+        {
+            if ((availability & (1u << position)) == 0) continue;
+            BinaryPrimitives.WriteUInt16LittleEndian(footer[offsetIndex..], offsets[position]);
+            offsetIndex += sizeof(ushort);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(footer[offsetIndex..], availability);
     }
 
     internal static bool ShouldOmit(int position, ReadOnlySpan<byte> encoding) =>
@@ -216,26 +221,26 @@ public readonly ref struct PbtNodeGroupReader
         if (payload.Length < PbtNodeGroupCodec.HeaderLength || !payload[..PbtNodeGroupCodec.HeaderLength].SequenceEqual(PbtNodeGroupCodec.Header))
             throw new InvalidDataException("Unsupported or missing PBT node group format header.");
         payload = payload[PbtNodeGroupCodec.HeaderLength..];
-        if (payload.Length < PbtNodeGroupCodec.TrailerLength) throw new InvalidDataException("Truncated PBT node group footer.");
-        int entriesLength = payload.Length - PbtNodeGroupCodec.TrailerLength;
-        ReadOnlySpan<byte> footer = payload[entriesLength..];
-        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(footer[(PbtNodeGroupCodec.PositionCount * sizeof(ushort))..]);
+        if (payload.Length < sizeof(uint)) throw new InvalidDataException("Truncated PBT node group footer.");
+        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^sizeof(uint)..]);
         if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupKey.BitDepth != 0 && (availability & ReservedRootBit) != 0))
             throw new InvalidDataException("Invalid PBT node group availability bits.");
+        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability);
+        if (payload.Length < trailerLength) throw new InvalidDataException("Truncated PBT node group offset table.");
+        int entriesLength = payload.Length - trailerLength;
+        if (entriesLength > ushort.MaxValue) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
+        ReadOnlySpan<byte> footer = payload[entriesLength..];
 
         OffsetBuffer offsets = default;
         LengthBuffer lengths = default;
         int previousOffset = -1;
         bool foundPresent = false;
+        int offsetIndex = 0;
         for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
         {
-            ushort encodedOffset = BinaryPrimitives.ReadUInt16LittleEndian(footer[(position * sizeof(ushort))..]);
-            bool present = (availability & (1u << position)) != 0;
-            if (!present)
-            {
-                if (encodedOffset != 0) throw new InvalidDataException("Absent PBT node positions must have zero offsets.");
-                continue;
-            }
+            if ((availability & (1u << position)) == 0) continue;
+            ushort encodedOffset = BinaryPrimitives.ReadUInt16LittleEndian(footer[offsetIndex..]);
+            offsetIndex += sizeof(ushort);
             if (!foundPresent && encodedOffset != 0) throw new InvalidDataException("The first PBT node offset must be zero.");
             if (foundPresent && encodedOffset <= previousOffset) throw new InvalidDataException("PBT node offsets must strictly increase.");
             if (encodedOffset >= entriesLength) throw new InvalidDataException("PBT node offset is outside the entries section.");

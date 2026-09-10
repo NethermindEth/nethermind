@@ -236,7 +236,7 @@ public class PbtCachedReaderPersistenceTests
     {
         Context ctx = new();
         PbtNodePath groupKey = new([], 0);
-        using RefCountingMemory payload = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.TrailerLength]);
+        using RefCountingMemory payload = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.MaxTrailerLength]);
         ctx.Reader.GetNodeGroup(groupKey).Returns(_ =>
         {
             payload.AcquireLease();

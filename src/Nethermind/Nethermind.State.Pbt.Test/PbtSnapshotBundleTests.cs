@@ -468,7 +468,7 @@ public class PbtSnapshotBundleTests
     public void Malformed_persisted_group_is_rejected_by_updater_and_lease_is_released_without_mutating_snapshot(bool invalidFooter)
     {
         TrackingMemoryProvider memoryProvider = new();
-        byte[] malformed = invalidFooter ? new byte[PbtNodeGroupCodec.TrailerLength] : Bytes.FromHexString("01");
+        byte[] malformed = invalidFooter ? new byte[PbtNodeGroupCodec.MaxTrailerLength] : Bytes.FromHexString("01");
         if (invalidFooter) malformed[^1] = 0x80;
         Reader reader = new(new PbtStorageFullKey([0]), null)
         {
@@ -888,7 +888,7 @@ public class PbtSnapshotBundleTests
 
     private static byte[] EncodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)
     {
-        int length = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.TrailerLength;
+        int length = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.MaxTrailerLength;
         foreach (PbtNodeRecord record in records) length += record.Encoding.Length;
         byte[] payload = new byte[length];
         BufferWriter writer = new(payload);
