@@ -28,6 +28,20 @@ def validate_expb_log(text):
         raise ValueError("EXPB did not confirm graceful shutdown and cleanup")
 
 
+def isolate_scenario(config, output):
+    scenarios = config["scenarios"]
+    if len(scenarios) != 1:
+        raise ValueError("Expected exactly one Nethermind Fusaka scenario")
+    scenario = next(iter(scenarios.values()))
+    if scenario.get("client") != "nethermind":
+        raise ValueError("Expected a Nethermind scenario")
+    # EXPB derives named Docker volumes from the scenario name. Docker reuses an
+    # existing volume's old bind source even when a new work/JWT directory is supplied.
+    name = "pgo-" + hashlib.sha256(str(output.resolve()).encode()).hexdigest()[:16]
+    config["scenarios"] = {name: scenario}
+    return scenario
+
+
 def collect(args):
     import yaml
 
@@ -66,12 +80,7 @@ def collect(args):
         if args.expb_config is None:
             raise ValueError("--expb-config is required for Fusaka")
         config = yaml.safe_load(args.expb_config.read_text().replace("<<DOCKER_TAG>>", "unused").replace("<<DELAY>>", "0"))
-        scenarios = config["scenarios"]
-        if len(scenarios) != 1:
-            raise ValueError("Expected exactly one Nethermind Fusaka scenario")
-        scenario = next(iter(scenarios.values()))
-        if scenario.get("client") != "nethermind":
-            raise ValueError("Expected a Nethermind scenario")
+        scenario = isolate_scenario(config, output)
         scenario["image"] = image_id
         scenario["amount"] = args.amount
         scenario["repeat"] = 1

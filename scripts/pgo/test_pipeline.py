@@ -6,12 +6,26 @@ import tempfile
 import unittest
 
 from convert import check_profile, convert
-from collect import validate_expb_log
+from collect import isolate_scenario, validate_expb_log
 from check_guest import compare
 from expb_errors import summarize
 
 
 class ProfileValidationTests(unittest.TestCase):
+    def test_fusaka_runs_and_capture_modes_do_not_reuse_named_volumes(self):
+        original = {"scenarios": {"nethermind": {"client": "nethermind", "payloads": "blocks.jsonl"}}}
+        names = set()
+        with tempfile.TemporaryDirectory() as directory:
+            for run in ("run-1", "run-2"):
+                for mode in ("instrumentation", "sampling"):
+                    config = copy.deepcopy(original)
+                    scenario = isolate_scenario(config, Path(directory) / run / mode)
+                    self.assertEqual(scenario, original["scenarios"]["nethermind"])
+                    name = next(iter(config["scenarios"]))
+                    self.assertNotIn(name, names)
+                    self.assertRegex(name, r"^[a-z0-9-]+$")
+                    names.add(name)
+
     def test_expb_failure_summary_preserves_cause_and_redacts_jwt(self):
         log = "Routine progress\n\x1b[31mERROR: image was not found\x1b[0m\nFailed authorization: eyJabc.payload.signature\n"
         summary = summarize(log)
