@@ -167,6 +167,39 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void SimulationAndExecution_PayFrameTargetingTheBeneficiary_ReachTheSameVerdict()
+    {
+        // Budgeted between warm and cold access, so the frame succeeds only where the coinbase is pre-warmed:
+        // the two paths have to run against the same block beneficiary to agree.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
+        DeployContract(Beneficiary, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Beneficiary, gasLimit: 2_000, UInt256.Zero, default));
+
+        AssertPrefixVerdictParity(tx, expectedValid: true);
+    }
+
+    // The expiry verifier is a predeploy, not a precompile, so a leading expiry frame owes a cold account access
+    // before its code runs. The pool's native shortcut prices the frame at exactly this floor.
+    [TestCase(Eip8141Constants.ExpiryFrameExecutionGas - 1, false, TestName = "Parity_ExpiryFrameOneGasBelowItsCost_InvalidatesTheTransaction")]
+    [TestCase(Eip8141Constants.ExpiryFrameExecutionGas, true, TestName = "Parity_ExpiryFrameAtItsExactCost_IsValid")]
+    public void Execute_ExpiryFrameAtItsExactCost_IsTheBoundary(ulong expiryGasLimit, bool expectedValid)
+    {
+        FundAccount(Sender, 1.Ether);
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
+        byte[] deadline = new byte[Eip8141Constants.ExpiryDataLength];
+        BinaryPrimitives.WriteUInt64BigEndian(deadline, ulong.MaxValue);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, expiryGasLimit, UInt256.Zero, deadline),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess, UInt256.Zero, default));
+        FrameTxTestFrames.SignSecp256k1(tx, TestItem.PrivateKeyA, null);
+
+        AssertPrefixVerdictParity(tx, expectedValid);
+    }
+
+    [Test]
     public void Simulate_PrefixNeverSetsPayer_Rejected()
     {
         DeployContract(Sender, Prepare.EvmCode.Op(Instruction.STOP).Done, 1.Ether);
@@ -1005,8 +1038,11 @@ public class FrameTxValidationPrefixSimulationTests
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {
+        // The same beneficiary Execute uses, so the two paths pre-warm the same addresses and execution
+        // mode is the only difference a parity case can be measuring.
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
             .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;

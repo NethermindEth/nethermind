@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.TxPool;
 
@@ -38,10 +39,9 @@ internal static class FrameTxPayerResolver
         // Self relay: a self_verify frame approves both sender and payer, so the payer is the sender.
         if (FrameTxValidation.IsSelfVerifyFrame(verifyFrame, sender))
         {
-            // A deployed or EIP-7702-delegated sender runs its own account code and must be simulated. So
-            // does a codeless one behind a deploy frame: by the time the VERIFY frame runs, that frame has
-            // installed code at tx.sender, so the default-code inference below reads the wrong account.
-            if (senderHasCode || (index > 0 && FrameTxValidation.IsDeployFrame(frames[index - 1])))
+            // A deployed or EIP-7702-delegated sender runs its own account code and must be simulated, as does
+            // a prefix ahead of this frame that cannot be priced from the frame list alone.
+            if (senderHasCode || !LeadingFramesProvablyRun(frames, index))
             {
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
             }
@@ -91,19 +91,49 @@ internal static class FrameTxPayerResolver
         || (FrameTxValidation.IsOnlyVerifyFrame(frames[index], sender) && index + 1 >= frames.Length);
 
 
+    /// <summary>Whether every frame the prologue skipped ahead of <paramref name="index"/> provably runs to
+    /// completion, its failure being what would invalidate the transaction the approving frame is named payer of.</summary>
+    /// <remarks>
+    /// Only a leading expiry frame is priceable from the frame list, at <see cref="Eip8141Constants.ExpiryFrameExecutionGas"/>.
+    /// Whether its deadline has passed is <see cref="Filters.ExpiredFrameTxFilter"/>'s question.
+    /// A leading deploy frame defers whatever it budgets: by the time the VERIFY frame runs it has installed code
+    /// at tx.sender, so the default-code inference would read the wrong account.
+    /// </remarks>
+    private static bool LeadingFramesProvablyRun(TxFrame[] frames, int index) =>
+        index switch
+        {
+            0 => true,
+            1 => FrameTxValidation.IsExpiryVerifyFrame(frames[0])
+                 && frames[0].ExecutionGasLimit >= Eip8141Constants.ExpiryFrameExecutionGas,
+            _ => false,
+        };
+
     /// <summary>Whether a default-code <c>VERIFY</c> frame provably affords everything running it charges.</summary>
     /// <remarks>
     /// The frame pays its target's access before dispatch, warm because the transaction warms its sender, and
     /// the default code itself draws no further execution gas — the boundary <c>Execute_DefaultCodeFrame_PaysItsTargetAccess</c>
-    /// and <c>Execute_DefaultCodeFrameGasBelowItsTargetAccess_InvalidatesTheTransaction</c> pin. The state dimension
-    /// is left to simulation instead of priced here: an approval creating the sender or consuming EIP-8250 nonce
-    /// keys owes state gas that depends on chain state this resolver is not given. Both arms only ever defer, so a
-    /// charge growing past what this knows costs a simulation rather than admitting what execution rejects.
+    /// and <c>Execute_DefaultCodeFrameGasBelowItsTargetAccess_InvalidatesTheTransaction</c> pin. Both arms only
+    /// ever defer, so a charge growing past what this knows costs a simulation rather than admitting what
+    /// execution rejects.
     /// </remarks>
     private static bool DefaultCodeChargesAreCovered(TxFrame verifyFrame, Transaction tx, in AccountStruct senderAccount) =>
         verifyFrame.ExecutionGasLimit >= Eip8038Constants.WarmAccess
-        && tx.NonceKeys is null
-        && !senderAccount.IsNull;
+        && NonceStateGasIsCovered(verifyFrame, tx, in senderAccount);
+
+    /// <summary>Whether <paramref name="verifyFrame"/> budgets the state gas the approval's nonce consumption
+    /// can owe, mirroring <c>FrameTxContext.NonceStateGas</c> at its worst case.</summary>
+    /// <remarks>The branches are exclusive as they are there, and both bounds read no chain state: a keyed set
+    /// never creates the sender and writes at most one <c>NONCE_MANAGER</c> slot per key, while the account-nonce
+    /// set (<c>null</c> or <c>[0]</c>) writes no slot and owes a creation only for a sender that does not exist —
+    /// which an account reading back as empty may be.</remarks>
+    private static bool NonceStateGasIsCovered(TxFrame verifyFrame, Transaction tx, in AccountStruct senderAccount)
+    {
+        ulong worstCase = tx.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys)
+            ? (ulong)nonceKeys.Length * (ulong)GasCostOf.SSetState
+            : senderAccount.IsTotallyEmpty ? (ulong)GasCostOf.NewAccountState : 0;
+
+        return worstCase <= verifyFrame.StateGasLimit;
+    }
 
     /// <summary>Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature by the sender.</summary>
     /// <remarks>Cryptographic verification is a separate upstream gate.</remarks>
