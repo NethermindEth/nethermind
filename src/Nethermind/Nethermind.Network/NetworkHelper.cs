@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
@@ -20,23 +19,9 @@ public static class NetworkHelper
         {
             case SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied }:
                 return ports != null ? new(exception, ports) : new(exception, urls!);
-            case IOException { Source: "Grpc.Core" } when exception.Message.Contains("Failed to bind port"):
-                return ports != null ? new(exception, ports) : new(exception, urls!);
             default:
                 ExceptionDispatchInfo.Throw(exception);
                 throw exception; // Make compiler happy, should never execute
-        }
-    }
-
-    public static void HandlePortTakenError(Action action, params int[] ports)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception exception)
-        {
-            throw MapOrRethrow(exception, ports: ports);
         }
     }
 

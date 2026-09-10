@@ -1,0 +1,188 @@
+name: GCP Runner
+description: >-
+  Create or destroy an ephemeral GCP VM registered as a one-shot JIT self-hosted GitHub
+  Actions runner. Requires `permissions: id-token: write` on the calling job.
+
+inputs:
+  action:
+    description: '"create" to spawn a runner, "destroy" to remove it.'
+    required: true
+  runner_label:
+    description: Label the runner registers under, and the seed for the instance name.
+    required: true
+  github_token:
+    description: Token with `administration:write` on the repository. Required for create.
+    required: false
+    default: ""
+  machine_type:
+    description: GCE machine type.
+    required: false
+    default: c2-standard-8
+  local_ssd_count:
+    description: Number of 375 GB NVMe Local SSD partitions. More than one is RAID0'd.
+    required: false
+    default: "1"
+  provisioning_model:
+    description: SPOT or STANDARD.
+    required: false
+    default: SPOT
+  spot_fallback_to_standard:
+    description: Retry as STANDARD when no SPOT capacity exists in any zone.
+    required: false
+    default: "true"
+  boot_disk_size:
+    description: Boot disk size in GB. Chain data lives on Local SSD, not here.
+    required: false
+    default: "100"
+  boot_disk_type:
+    description: Boot disk type. N4/C4/C4D require hyperdisk-balanced.
+    required: false
+    default: pd-balanced
+  max_run_duration:
+    description: >-
+      Hard lifetime after which GCE deletes the VM, as a backstop against leaks. Measured
+      from the VM entering RUNNING, so allow for boot plus the job timeout.
+    required: false
+    default: 4h
+  runner_version:
+    description: Pinned actions/runner version.
+    required: false
+    default: 2.336.0
+  runner_group_id:
+    description: Runner group id to register into.
+    required: false
+    default: "1"
+  boot_timeout:
+    description: Seconds to wait for the runner to report online.
+    required: false
+    default: "600"
+  data_mount:
+    description: Mount point for the Local SSD array, holding the runner work dir and docker data-root.
+    required: false
+    default: /mnt/gh-runner
+  zones:
+    description: Comma-separated zones, tried in order on capacity errors.
+    required: true
+  project_id:
+    description: GCP project id.
+    required: true
+  workload_identity_provider:
+    description: Full resource name of the WIF provider.
+    required: true
+  spawner_service_account:
+    description: Service account the workflow impersonates to manage instances.
+    required: true
+  runner_service_account:
+    description: Service account attached to the runner VM.
+    required: true
+  network:
+    description: VPC network name.
+    required: false
+    default: gh-runner
+  subnet:
+    description: Subnetwork name.
+    required: false
+    default: gh-runner
+  network_tag:
+    description: Network tag the firewall rules target. Without it the VM gets no ingress.
+    required: false
+    default: gh-runner
+  image_family:
+    description: Boot image family.
+    required: false
+    default: ubuntu-2404-lts-amd64
+  image_project:
+    description: Boot image project.
+    required: false
+    default: ubuntu-os-cloud
+  expect_instance:
+    description: >-
+      Whether an instance should exist at destroy time. Pass false when creation failed, so
+      a missing instance is reported as expected rather than as a possible leak.
+    required: false
+    default: "true"
+  skip_auth:
+    description: Skip the built-in GCP authentication, for callers that already authenticated.
+    required: false
+    default: "false"
+
+outputs:
+  instance_name:
+    description: Name of the GCE instance.
+    value: ${{ steps.create.outputs.instance_name || steps.destroy.outputs.instance_name }}
+  zone:
+    description: Zone the instance was placed in.
+    value: ${{ steps.create.outputs.zone || steps.destroy.outputs.zone }}
+  instance_ip:
+    description: Ephemeral external IP.
+    value: ${{ steps.create.outputs.instance_ip }}
+  runner_id:
+    description: JIT runner id, to pass to the destroy step.
+    value: ${{ steps.create.outputs.runner_id }}
+  provisioning_model_used:
+    description: SPOT or STANDARD, which may differ from the request after fallback.
+    value: ${{ steps.create.outputs.provisioning_model_used }}
+  preempted:
+    description: Whether the VM was reclaimed by GCE rather than deleted by this action.
+    value: ${{ steps.destroy.outputs.preempted }}
+  terminated_by:
+    description: >-
+      One of deleted-by-action, already-deleted, deleted-concurrently, preempted,
+      creation-failed, terminated, delete-failed, lookup-failed or unknown.
+    value: ${{ steps.destroy.outputs.terminated_by }}
+
+runs:
+  using: composite
+  steps:
+    - name: Authenticate to GCP
+      if: inputs.skip_auth != 'true'
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ inputs.workload_identity_provider }}
+        service_account: ${{ inputs.spawner_service_account }}
+
+    - name: Set up gcloud
+      if: inputs.skip_auth != 'true'
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Create runner
+      id: create
+      if: inputs.action == 'create'
+      shell: bash
+      env:
+        CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+        GH_TOKEN: ${{ inputs.github_token }}
+        RUNNER_LABEL: ${{ inputs.runner_label }}
+        MACHINE_TYPE: ${{ inputs.machine_type }}
+        LOCAL_SSD_COUNT: ${{ inputs.local_ssd_count }}
+        PROVISIONING_MODEL: ${{ inputs.provisioning_model }}
+        SPOT_FALLBACK_TO_STANDARD: ${{ inputs.spot_fallback_to_standard }}
+        BOOT_DISK_SIZE: ${{ inputs.boot_disk_size }}
+        BOOT_DISK_TYPE: ${{ inputs.boot_disk_type }}
+        MAX_RUN_DURATION: ${{ inputs.max_run_duration }}
+        RUNNER_VERSION: ${{ inputs.runner_version }}
+        RUNNER_GROUP_ID: ${{ inputs.runner_group_id }}
+        BOOT_TIMEOUT: ${{ inputs.boot_timeout }}
+        DATA_MOUNT: ${{ inputs.data_mount }}
+        ZONES: ${{ inputs.zones }}
+        PROJECT_ID: ${{ inputs.project_id }}
+        RUNNER_SERVICE_ACCOUNT: ${{ inputs.runner_service_account }}
+        NETWORK: ${{ inputs.network }}
+        SUBNET: ${{ inputs.subnet }}
+        NETWORK_TAG: ${{ inputs.network_tag }}
+        IMAGE_FAMILY: ${{ inputs.image_family }}
+        IMAGE_PROJECT: ${{ inputs.image_project }}
+      run: bash "${GITHUB_ACTION_PATH}/create.sh"
+
+    - name: Destroy runner
+      id: destroy
+      if: inputs.action == 'destroy'
+      shell: bash
+      env:
+        CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+        GH_TOKEN: ${{ inputs.github_token }}
+        RUNNER_LABEL: ${{ inputs.runner_label }}
+        ZONES: ${{ inputs.zones }}
+        PROJECT_ID: ${{ inputs.project_id }}
+        EXPECT_INSTANCE: ${{ inputs.expect_instance }}
+      run: bash "${GITHUB_ACTION_PATH}/destroy.sh"

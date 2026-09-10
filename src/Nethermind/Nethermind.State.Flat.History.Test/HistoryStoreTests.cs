@@ -63,6 +63,7 @@ public class HistoryStoreTests
         Span<byte> buffer = stackalloc byte[64];
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(_store.TryGetAt(3, KeyA, buffer), Is.EqualTo(-1));    // seek runs past every KeyA row onto KeyB's
             Assert.That(_store.TryGetAt(10, KeyB, buffer), Is.EqualTo(-1));   // KeyB unchanged at/before 10
             Assert.That(_store.TryGetAt(25, KeyA, buffer), Is.EqualTo(1));    // KeyA keeps its own 1-byte value
             Assert.That(_store.TryGetAt(25, KeyB, buffer), Is.EqualTo(2));    // KeyB keeps its own 2-byte value

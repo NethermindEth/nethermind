@@ -84,10 +84,10 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
 
         if (!currentSpec.IsTipUpgradePenaltyEnabled)
         {
-            ulong comebackHeight = (currentSpec.LimitPenaltyEpochV2 + 1) * currentSpec.EpochLength + currentSpec.SwitchBlock;
+            ulong comebackHeight = XdcConstants.LimitPenaltyEpochV2 * currentSpec.EpochLength + currentSpec.SwitchBlock;
             if (number > comebackHeight)
             {
-                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, currentSpec.LimitPenaltyEpochV2);
+                Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, 0);
                 HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
                 HashSet<Hash256> blockHashes = [];

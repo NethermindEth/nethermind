@@ -13,11 +13,12 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -100,25 +101,36 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<ulong[]>.Success(epochSwitchNumbers);
     }
 
-    private static IDictionary<(ulong Round, Hash256 Hash), SignerTypes> CalculateSigners<T>(
+    /// <param name="poolKeySelector">
+    /// Renders a pool item as the JSON object name of its bucket. Must reproduce the reference client's
+    /// <c>PoolKey()</c> format, since the tuple key the pool is stored under is not part of the RPC contract.
+    /// </param>
+    private static IDictionary<string, SignerTypes> CalculateSigners<T>(
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pool,
-        Address[] masternodes)
+        Address[] masternodes,
+        Func<T, string> poolKeySelector)
     {
-        Dictionary<(ulong Round, Hash256 Hash), SignerTypes> message = [];
+        Dictionary<string, SignerTypes> message = new(pool.Count);
 
-        foreach (((ulong, Hash256) key, Dictionary<Address, T> objs) in pool)
+        foreach (Dictionary<Address, T> objs in pool.Values)
         {
             List<Address> currentSigners = [];
             HashSet<Address> missingSigners = [.. masternodes];
+            string? poolKey = null;
 
             int num = objs.Count;
-            foreach (Address signer in objs.Keys)
+            foreach ((Address signer, T obj) in objs)
             {
+                //Every item in a bucket shares the same pool key, so any of them names the bucket
+                poolKey ??= poolKeySelector(obj);
                 currentSigners.Add(signer);
                 missingSigners.Remove(signer);
             }
 
-            message[key] = new SignerTypes
+            if (poolKey is null)
+                continue;
+
+            message[poolKey] = new SignerTypes
             {
                 CurrentNumber = num,
                 CurrentSigners = [.. currentSigners],
@@ -151,13 +163,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> receivedVotes = voteManager.GetReceivedVotes();
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> receivedTimeouts = timeoutCertificateManager.GetReceivedTimeouts();
-        IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> receivedSyncInfo = syncInfoManager.GetReceivedSyncInfos();
 
         PoolStatus info = new();
 
-        info.Timeout = CalculateSigners(receivedTimeouts, masternodes);
-        info.Vote = CalculateSigners(receivedVotes, masternodes);
-        info.SyncInfo = receivedSyncInfo;
+        info.Timeout = CalculateSigners(receivedTimeouts, masternodes,
+            static timeout => $"{timeout.Round}:{timeout.GapNumber}");
+        info.Vote = CalculateSigners(receivedVotes, masternodes,
+            static vote => $"{vote.ProposedBlockInfo.Round}:{vote.GapNumber}:{vote.ProposedBlockInfo.BlockNumber}:{vote.ProposedBlockInfo.Hash}");
 
         return ResultWrapper<PoolStatus>.Success(info);
     }
@@ -171,15 +183,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         else if (blockNumber.Type == BlockParameterType.Finalized)
         {
-            BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
-            if (latestCommittedBlock != null)
-            {
-                header = tree.FindHeader(latestCommittedBlock.Hash);
-            }
-            else
+            if (tree.FinalizedHash is null)
             {
                 return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
             }
+
+            header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else if (blockNumber.BlockNumber is null)
         {
@@ -333,8 +342,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
             foreach ((string holder, UInt256 amount) in epochReward.DelegatedReward ?? [])
             {
-                totalDelegatedReward.TryGetValue(holder, out UInt256 existing);
-                totalDelegatedReward[holder] = existing + amount;
+                ref UInt256 total = ref CollectionsMarshal.GetValueRefOrAddDefault(totalDelegatedReward, holder, out _);
+                total += amount;
             }
         }
 
@@ -539,10 +548,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
         }
 
-        bool committed = false;
-        BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
-
-        if (latestCommittedBlock is null)
+        if (tree.FinalizedHash is null)
         {
             return ResultWrapper<V2BlockInfo>.Success(new V2BlockInfo
             {
@@ -551,10 +557,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             });
         }
 
-        if (header.Number <= latestCommittedBlock.BlockNumber)
-        {
-            committed = true;
-        }
+        bool committed = header.Number <= tree.LastFinalizedBlockLevel && tree.IsMainChain(header);
 
         // Get round number from extra consensus data
         ulong round = 0;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -12,7 +13,12 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainOptimism(
+    OptimismNethermindApi api,
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    ITxGossipPolicy txGossipPolicy,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy, specChangeTxValidator)
 {
     protected override async Task InitBlockchain()
     {

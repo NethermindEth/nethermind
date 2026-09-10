@@ -48,6 +48,10 @@ internal static class XdcConstants
     public static readonly UInt256 DifficultyDefault = UInt256.One;
     public const int MinimumMinerBlockPerEpoch = 1;
 
+    // Penalty window of the pre-TIPUpgradePenalty rules, in epochs. Unlike the post-upgrade LimitPenaltyEpoch it is
+    // not chainspec configurable.
+    public const ulong LimitPenaltyEpochV2 = 1;
+
     public static readonly byte[] SetSecret = Bytes.FromHexString("34d38600");
     public static readonly byte[] SetOpening = Bytes.FromHexString("e11f5ba2");
     public static readonly byte[] VoteMethod = Bytes.FromHexString("0x6dd7d8ea");
@@ -66,4 +70,16 @@ internal static class XdcConstants
     public const string RpcAccountStatusMasternode = "MasterNode";
     public const string RpcAccountStatusProtector = "ProtectorNode";
     public const string RpcAccountStatusObserver = "ObserverNode";
+
+    public const string RpcCandidateStatusMasternode = "MASTERNODE";
+    public const string RpcCandidateStatusProposed = "PROPOSED";
+    public const string RpcCandidateStatusSlashed = "SLASHED";
+
+    // Blocks after a signed block that are scanned for the sign transactions referencing it.
+    public const ulong LimitTimeFinality = 30;
+
+    // Epochs of checkpoint headers scanned for penalties when reporting candidate status.
+    public const ulong PenaltyEpochLookback = 4;
+
+    public const ulong SecondsPerYear = 365 * 86400;
 }

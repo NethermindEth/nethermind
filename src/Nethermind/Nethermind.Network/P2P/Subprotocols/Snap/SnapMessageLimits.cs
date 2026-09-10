@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -10,6 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap;
 
 internal static class SnapMessageLimits
 {
+    // The hash and account caps bound responses too: at most one entry per requested item.
     public const int MaxRequestHashes = 4_096;
     public const int MaxRequestAccounts = 4_096;
     public const int MaxRequestPathGroups = 4_096;
@@ -23,7 +25,12 @@ internal static class SnapMessageLimits
     // ~hundreds of thousands of minimum-size RLP entries inside one inbound frame).
     public const int MaxProofs = 256;
 
+    // A response holds one node per requested path. State sync requests at most
+    // TreeSync.MaxRequestSize of them, so the cap has ample headroom.
+    public const int MaxResponseTrieNodes = 4_096;
+
     public static readonly RlpLimit GetByteCodesHashesRlpLimit = RlpLimit.For<GetByteCodesMessage>(MaxRequestHashes, nameof(GetByteCodesMessage.Hashes));
+    public static readonly RlpLimit GetBlockAccessListsHashesRlpLimit = RlpLimit.For<GetBlockAccessListsMessage>(MaxRequestHashes, nameof(GetBlockAccessListsMessage.BlockHashes));
     public static readonly RlpLimit GetStorageRangeAccountsRlpLimit = RlpLimit.For<GetStorageRangeMessage>(MaxRequestAccounts, nameof(GetStorageRangeMessage.StorageRange));
     public static readonly RlpLimit GetTrieNodesPathGroupsRlpLimit = RlpLimit.For<GetTrieNodesMessage>(MaxRequestPathGroups, nameof(GetTrieNodesMessage.Paths));
     public static RlpLimit GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(MaxRequestPathsPerGroup, nameof(PathGroup.Group));
@@ -31,6 +38,9 @@ internal static class SnapMessageLimits
     public static readonly RlpLimit AccountRangeEntriesRlpLimit = RlpLimit.For<AccountRangeMessage>(MaxResponseAccounts, nameof(AccountRangeMessage.PathsWithAccounts));
     public static readonly RlpLimit StorageRangeAccountsRlpLimit = RlpLimit.For<StorageRangeMessage>(MaxRequestAccounts, nameof(StorageRangeMessage.Slots));
     public static readonly RlpLimit StorageRangeSlotsPerAccountRlpLimit = RlpLimit.For<PathWithStorageSlot>(MaxResponseSlotsPerAccount, nameof(StorageRangeMessage.Slots));
+
+    public static readonly RlpLimit ByteCodesRlpLimit = RlpLimit.For<ByteCodesMessage>(MaxRequestHashes, nameof(ByteCodesMessage.Codes));
+    public static readonly RlpLimit TrieNodesRlpLimit = RlpLimit.For<TrieNodesMessage>(MaxResponseTrieNodes, nameof(TrieNodesMessage.Nodes));
 
     public static readonly RlpLimit AccountRangeProofsRlpLimit = RlpLimit.For<AccountRangeMessage>(MaxProofs, nameof(AccountRangeMessage.Proofs));
     public static readonly RlpLimit StorageRangeProofsRlpLimit = RlpLimit.For<StorageRangeMessage>(MaxProofs, nameof(StorageRangeMessage.Proofs));

@@ -31,9 +31,8 @@ public class ShareableOverridableEnvSourceTests
         foreach (Scope<Marker> scope in rented) scope.Dispose();
     }
 
-    [TestCase(ReleasePath.Healthy)]
-    [TestCase(ReleasePath.Poisoned)]
-    public void Rent_AfterRelease_RestoresCapSlot(ReleasePath path)
+    [Test]
+    public void Rent_AfterRelease_RestoresCapSlot([Values(ReleasePath.Healthy, ReleasePath.Poisoned)] ReleasePath path)
     {
         FakeEnvFactory factory = new(throwOnBuild: path == ReleasePath.Poisoned);
         using ShareableOverridableEnvSource<Marker> source = new(factory.Create, maxConcurrent: 1);
@@ -53,9 +52,8 @@ public class ShareableOverridableEnvSourceTests
         Assert.That(retry, Throws.Nothing);
     }
 
-    [TestCase(ShutdownState.IdleOnly)]
-    [TestCase(ShutdownState.StillRented)]
-    public void Dispose_DisposesAllTrackedEnvs(ShutdownState state)
+    [Test]
+    public void Dispose_DisposesAllTrackedEnvs([Values(ShutdownState.IdleOnly, ShutdownState.StillRented)] ShutdownState state)
     {
         FakeEnvFactory factory = new();
         ShareableOverridableEnvSource<Marker> source = new(factory.Create, maxConcurrent: 2);

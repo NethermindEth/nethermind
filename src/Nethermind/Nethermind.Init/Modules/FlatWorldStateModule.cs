@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -83,6 +84,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             // Sync components
             .AddSingleton<FlatSnapTrieFactory>()
+            .AddSingleton<TrieReassembler>()
+            .AddSingleton<FlatBalHealing>()
             .AddSingleton<IFlatStateRootIndex>((ctx) => new FlatStateRootIndex(
                 ctx.Resolve<IBlockTree>(),
                 ctx.Resolve<ISyncConfig>().SnapServingMaxDepth))
@@ -141,9 +144,50 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is Rolling but FlatDb.HistoryRetentionBlocks is 0, so the window has no " +
+                "size. Set the window size, or set FlatDb.HistoryRetention=None to retain history unbounded.", -1);
+        }
+
+        // The number alone used to select the windowed shape. Refusing here rather than inferring the mode keeps a
+        // configuration written against that behaviour from silently becoming an unbounded archive.
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionBlocks is set to {flatDbConfig.HistoryRetentionBlocks} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}; the block count is the size of a " +
+                "rolling window only. Set FlatDb.HistoryRetention=Rolling to keep the window, or unset the block count.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention == HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock == 0)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention is SinceBlock but FlatDb.HistoryRetentionSinceBlock is 0, which is genesis and " +
+                "so the same as None. Set the first block to keep, or set FlatDb.HistoryRetention=None.", -1);
+        }
+
+        if (flatDbConfig.HistoryRetention != HistoryRetentionMode.SinceBlock && flatDbConfig.HistoryRetentionSinceBlock != 0)
+        {
+            throw new InvalidConfigurationException(
+                $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
+                $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
+                "to start history there, or unset the block.", -1);
+        }
+
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
+        }
+        else if (flatDbConfig.IsHistoryWindowed()
+            || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
+            || flatDbConfig.HistoryVerifyEveryBlock)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
+                "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
+                "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
 

@@ -34,6 +34,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Security;
 using System.Threading;
@@ -124,12 +125,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -195,12 +194,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -259,7 +256,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -282,6 +279,7 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
             preWarmer);
 
@@ -326,17 +324,8 @@ public class BlockProcessorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(20)]
-    [TestCase(63)]
-    [TestCase(64)]
-    [TestCase(65)]
-    [TestCase(127)]
-    [TestCase(128)]
-    [TestCase(129)]
-    [TestCase(130)]
-    [TestCase(1000)]
-    [TestCase(2000)]
-    public async Task Process_long_running_branch(int blocksAmount)
+    [Test]
+    public async Task Process_long_running_branch([Values(20, 63, 64, 65, 127, 128, 129, 130, 1000, 2000)] int blocksAmount)
     {
         Address address = TestItem.Addresses[0];
         TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
@@ -414,10 +403,9 @@ public class BlockProcessorTests
         Assert.That(exception!.InnerException, Is.SameAs(failure));
     }
 
-    [TestCase(2)]
-    [TestCase(3)]
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event(int transactionCount)
+    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
     {
         TokenCapturingPreWarmer preWarmer = new();
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
@@ -562,6 +550,56 @@ public class BlockProcessorTests
         processor.TransactionsExecuted -= handler;
     }
 
+    // Regression: a top-frame EIP-8037 state-gas OOG tx halts before EVM dispatch but is a valid,
+    // executed transaction — a block must include it between successful txs with a failed receipt.
+    [Test]
+    public async Task Block_with_top_frame_state_gas_oog_tx_processes_with_failed_receipt()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider));
+
+        IReleaseSpec spec = Amsterdam.Instance;
+        Address freshRecipient = Address.FromNumber(0x8037);
+
+        // Senders B and C only: A has code at genesis and Amsterdam enforces EIP-3607.
+        Transaction okTx1 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+        Transaction oogTx = Build.A.Transaction
+            .WithTo(freshRecipient)
+            .WithValue(1.Wei)
+            .WithNonce(0)
+            .SignedAndResolved(TestItem.PrivateKeyB, spec.IsEip155Enabled)
+            .TestObject;
+        oogTx.GasLimit = IntrinsicGasCalculator.Calculate(oogTx, spec).Standard + (ulong)GasCostOf.NewAccountState - 1;
+        Transaction okTx2 = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithValue(1.Wei)
+            .WithNonce(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyC, spec.IsEip155Enabled)
+            .TestObject;
+
+        Block block = await chain.AddBlock(okTx1, oogTx, okTx2);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        int failedIndex = Array.FindIndex(receipts, r => r.TxHash == oogTx.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(3), "all txs, including the halted one, must be included");
+            Assert.That(receipts, Has.Length.EqualTo(3));
+            Assert.That(failedIndex, Is.GreaterThanOrEqualTo(0));
+            Assert.That(receipts[failedIndex].StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipts[failedIndex].GasUsed, Is.EqualTo(oogTx.GasLimit), "the halted tx burns its full gas limit");
+            Assert.That(Array.FindAll(receipts, r => r.TxHash != oogTx.Hash && r.StatusCode == StatusCode.Success), Has.Length.EqualTo(2));
+        }
+    }
+
     [Test]
     public void BlockProductionTransactionPicker_validates_block_length_using_proper_tx_form()
     {
@@ -686,12 +724,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -731,12 +767,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -831,9 +865,8 @@ public class BlockProcessorTests
             .SetName("account presence mismatch (same count, different address)");
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks([Values(1, 2)] int txCount) =>
         WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
 
     [Test]
@@ -1042,9 +1075,8 @@ public class BlockProcessorTests
         Assert.That(thrown!.InnerException, Is.SameAs(workerException));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions(bool isBlockProcessingThread)
+    [Test]
+    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions([Values] bool isBlockProcessingThread)
     {
         Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
 
@@ -1184,12 +1216,8 @@ public class BlockProcessorTests
             .TestObject;
 
         ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
-            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
-            LimboLogs.Instance);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateBalRecordingParallelExecutor(stateProvider, balIndexes);
 
         TxReceipt[] receipts = executor.ProcessTransactions(
             block,
@@ -1278,12 +1306,10 @@ public class BlockProcessorTests
     private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
         new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
@@ -1358,6 +1384,65 @@ public class BlockProcessorTests
         }
         return slots;
     }
+
+    [Test]
+    public void Parallel_validation_releases_the_pooled_slots_a_shorter_block_leaves_unused()
+    {
+        const int wideTxCount = 8;
+        const int narrowTxCount = 2;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateBalRecordingParallelExecutor(stateProvider, balIndexes);
+
+        // The third block is what makes this bite: releasing only on the step down would leave the
+        // second block in the slots it did not use, and the third block's reset no longer reaches them.
+        ProcessParallelValidationBlock(executor, wideTxCount);
+        ProcessParallelValidationBlock(executor, narrowTxCount);
+        ProcessParallelValidationBlock(executor, narrowTxCount);
+
+        BlockReceiptsTracer[] pool = (BlockReceiptsTracer[])typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
+            .GetField("_receiptsTracerPool", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(executor)!;
+        FieldInfo tracedBlock = typeof(BlockReceiptsTracer)
+            .GetField("Block", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.That(pool, Has.Length.AtLeast(wideTxCount), "the pool must still hold the wide block's slots");
+        for (int i = narrowTxCount; i < wideTxCount; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool[i].TxReceipts.Length, Is.Zero, $"slot {i} still holds receipts");
+                Assert.That(tracedBlock.GetValue(pool[i]), Is.Null, $"slot {i} still references a block");
+            }
+        }
+    }
+
+    private static BlockProcessor.ParallelBlockValidationTransactionsExecutor CreateBalRecordingParallelExecutor(
+        IWorldState stateProvider,
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes) =>
+        new(Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
+            LimboLogs.Instance);
+
+    private static void ProcessParallelValidationBlock(
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor,
+        int txCount) =>
+        executor.ProcessTransactions(
+            BuildParallelValidationBlock(txCount), ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+
+    private static Block BuildParallelValidationBlock(int txCount) =>
+        Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit((ulong)txCount * 1_000_000ul)
+            .WithTransactions(CreateParallelValidationTransactions(txCount))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
 
     private static Transaction[] CreateParallelValidationTransactions(int txCount, ulong gasLimit = 21_000ul)
     {

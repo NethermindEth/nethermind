@@ -128,8 +128,8 @@ public class PreimageStorageKeyTests
         public byte[]? FirstKey => inner.FirstKey;
         public byte[]? LastKey => inner.LastKey;
 
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
-            new CountingSortedView(this, inner.GetViewBetween(firstKeyInclusive, lastKeyExclusive));
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+            new CountingSortedView(this, inner.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags));
 
         private sealed class CountingSortedView(CountingSortedStore owner, ISortedView inner) : ISortedView
         {

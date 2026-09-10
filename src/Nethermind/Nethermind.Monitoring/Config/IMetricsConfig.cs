@@ -35,7 +35,7 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(DefaultValue = "60", Description = "The frequency of updating db metrics, in seconds.")]
     int DbMetricIntervalSeconds { get; }
 
-    [ConfigItem(DefaultValue = "true", Description = "Pause db metric collection during block processing to prevent overhead.")]
+    [ConfigItem(DefaultValue = "true", Description = "Defer db metric collection while blocks are being processed to prevent overhead. A deferred update still runs once the data is older than 10 times DbMetricIntervalSeconds. Set EnableDbSizeMetrics to false to disable collection entirely.")]
     bool PauseDbMetricDuringBlockProcessing { get; }
 
     [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "Nethermind")]

@@ -100,7 +100,7 @@ namespace Nethermind.Wallet
                 try
                 {
                     (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(new Address(account), password);
-                    if (result == Result.Success)
+                    if (result == Result.Success && privateKey is not null)
                     {
                         return privateKey;
                     }

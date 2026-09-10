@@ -25,16 +25,18 @@ namespace Nethermind.Xdc.Discovery;
 /// </summary>
 public sealed class XdcKademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia,
+    IRoutingTable<Node, ValueHash256> routingTable,
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     INodeRecordProvider nodeRecordProvider,
+    IIPResolver ipResolver,
     INodeStatsManager nodeStatsManager,
     ITimestamper timestamper,
     IProcessExitSource processExitSource,
     IEcdsa ecdsa,
     ILogManager logManager)
-    : KademliaAdapter(kademlia, nodeHealthTracker, discoveryConfig, kademliaConfig, nodeRecordProvider, nodeStatsManager, timestamper, processExitSource, ecdsa, logManager)
+    : KademliaAdapter(kademlia, routingTable, nodeHealthTracker, discoveryConfig, kademliaConfig, nodeRecordProvider, ipResolver, nodeStatsManager, timestamper, processExitSource, ecdsa, logManager)
 {
     protected override Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
         => Task.CompletedTask;

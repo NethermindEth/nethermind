@@ -32,7 +32,9 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// Controls
     /// - <see cref="ReportSelfDestruct"/>
     /// - <see cref="ReportAction"/>
-    /// - <see cref="ReportActionEnd"/>
+    /// - <see cref="ReportActionEnd(ulong, ReadOnlyMemory{byte})"/>
+    /// - <see cref="ReportActionEnd(ulong, Address, ReadOnlyMemory{byte})"/>
+    /// - <see cref="ReportActionRevert"/>
     /// - <see cref="ReportActionError"/>
     /// </remarks>
     bool IsTracingActions { get; }

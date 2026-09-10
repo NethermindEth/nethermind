@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
@@ -407,6 +408,47 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 
+    [Test(Description = "A nested frame that catches a child's revert and keeps running must stay successful and keep the log it emits")]
+    public void Test_CallTrace_NestedCall_CatchesChildRevert_KeepsPostCatchLog()
+    {
+        Address revertAddress = TestItem.AddressC;
+        byte[] revertCode = Prepare.EvmCode.Revert(0, 0).Done;
+        TestState.CreateAccount(revertAddress, 0);
+        TestState.InsertCode(revertAddress, revertCode, Spec);
+
+        Address catchAddress = TestItem.AddressD;
+        byte[] catchAndLogCode = Prepare.EvmCode.Call(TestItem.AddressC, 30000).Log(0, 0).STOP().Done;
+        TestState.CreateAccount(catchAddress, 0);
+        TestState.InsertCode(catchAddress, catchAndLogCode, Spec);
+
+        byte[] txCode = Prepare.EvmCode.Call(catchAddress, 60000).STOP().Done;
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, txCode);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        using GethLikeTxTrace trace = Execute(tracer, txCode, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame catchFrame = topFrame.Calls.AssertSingle();
+        NativeCallTracerCallFrame revertFrame = catchFrame.Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Error, Is.Null);
+            Assert.That(topFrame.Logs, Is.Null);
+
+            Assert.That(catchFrame.To, Is.EqualTo(catchAddress));
+            Assert.That(catchFrame.Error, Is.Null, "a frame that swallows a child revert and returns must stay successful");
+            Assert.That(catchFrame.Logs, Is.Not.Null, "the post-catch log belongs to the catcher frame");
+
+            NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
+            Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
+            Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+
+            Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
+            Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));
+            Assert.That(revertFrame.Logs, Is.Null);
+        }
+    }
+
     [Test]
     public void Test_CallTrace_NestedCalls_RevertAllCalls()
     {
@@ -530,13 +572,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 
-    [TestCase(false, false, TestName = "TopLevelCreate_Success")]
-    [TestCase(true, false, TestName = "TopLevelCreate_Revert")]
-    [TestCase(false, true, TestName = "TopLevelCreate_AddressCollision")]
-    public void Test_CallTrace_TopLevelCreate(bool revert, bool addressCollision)
+    public enum CreateOutcome { Success, Revert, InvalidOpcode, AddressCollision }
+
+    [TestCase(CreateOutcome.Success, TestName = "TopLevelCreate_Success")]
+    [TestCase(CreateOutcome.Revert, TestName = "TopLevelCreate_Revert")]
+    [TestCase(CreateOutcome.InvalidOpcode, TestName = "TopLevelCreate_InvalidOpcode")]
+    [TestCase(CreateOutcome.AddressCollision, TestName = "TopLevelCreate_AddressCollision")]
+    public void Test_CallTrace_TopLevelCreate(CreateOutcome outcome)
     {
         byte[] initCode;
-        if (addressCollision)
+        if (outcome == CreateOutcome.AddressCollision)
         {
             initCode = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done;
             Address deploymentAddress = ContractAddress.From(Sender, TestState.GetNonce(Sender));
@@ -546,9 +591,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
         else
         {
-            initCode = revert
-                ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
-                : Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+            initCode = outcome switch
+            {
+                CreateOutcome.Revert => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+                CreateOutcome.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+                _ => Prepare.EvmCode.ForInitOf(new byte[3]).Done
+            };
         }
 
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
@@ -556,7 +604,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (addressCollision)
+        if (outcome == CreateOutcome.AddressCollision)
         {
             Assert.That(trace.CustomTracerResult, Is.Null,
                 "address-collision path never enters the EVM; no call frame should be produced");
@@ -566,12 +614,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (revert)
-            Assert.That(frame.Error, Is.Not.Null, "expected error description on reverted CREATE");
-        else
+        if (outcome == CreateOutcome.Success)
         {
             Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
             Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+        }
+        else
+        {
+            Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
+            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
         }
     }
 

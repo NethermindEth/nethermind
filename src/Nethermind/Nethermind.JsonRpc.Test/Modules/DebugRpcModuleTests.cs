@@ -14,6 +14,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -102,6 +105,55 @@ public partial class DebugRpcModuleTests
         );
 
         RpcTest.AssertSuccess(response);
+    }
+
+    [TestCase(false, false, false, TestName = "Debug_traceCall_without_gas_pricing_uses_zero_base_fee")]
+    [TestCase(false, false, true, TestName = "Debug_traceCall_without_gas_pricing_ignores_base_fee_override")]
+    [TestCase(true, true, false, TestName = "Debug_traceCall_with_max_fee_uses_live_base_fee")]
+    [TestCase(true, true, true, TestName = "Debug_traceCall_with_max_fee_uses_base_fee_override")]
+    public async Task Debug_traceCall_uses_expected_base_fee(bool includeMaxFeePerGas, bool includeMaxPriorityFeePerGas, bool overrideBaseFee)
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+
+        UInt256 baseFee = ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas;
+        Assert.That(baseFee, Is.Not.EqualTo(UInt256.Zero));
+
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new()
+        {
+            ["from"] = $"{sender}",
+            ["data"] = "0x4860005260206000f3"
+        };
+        if (includeMaxFeePerGas)
+            transaction["maxFeePerGas"] = "0x100000000";
+        if (includeMaxPriorityFeePerGas)
+            transaction["maxPriorityFeePerGas"] = "0x1";
+
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            "{\"" + sender + "\":{\"balance\":\"0x56BC75E2D63100000\"}}")!;
+        object? options = overrideBaseFee
+            ? new
+            {
+                stateOverrides = stateOverride,
+                blockOverrides = new { baseFeePerGas = "0x100" }
+            }
+            : new { stateOverrides = stateOverride };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            transaction, null, options);
+
+        JToken result = JToken.Parse(response)["result"]!;
+        UInt256 expectedBaseFee = !includeMaxFeePerGas && !includeMaxPriorityFeePerGas
+            ? UInt256.Zero
+            : overrideBaseFee
+                ? (UInt256)0x100
+                : baseFee;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.False);
+            Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
     }
 
     [TestCase(
@@ -318,5 +370,69 @@ public partial class DebugRpcModuleTests
                 $"call #{i} must complete and report the deployed runtime in post.code — " +
                 "the persisted-code hint must not survive overlay reset");
         }
+    }
+
+    private const string RevertingContractAddress = "0xc300000000000000000000000000000000000000";
+
+    // Error(string) revert payload for "user error", unpadded, as the execution-apis calltree contract emits it.
+    private const string RevertPayload =
+        "08c379a0" +
+        "0000000000000000000000000000000000000000000000000000000000000020" +
+        "000000000000000000000000000000000000000000000000000000000000000a" +
+        "75736572206572726f72";
+
+    // PUSH1 0x4e PUSH1 0x0c PUSH1 0 CODECOPY PUSH1 0x4e PUSH1 0 REVERT, then the payload as trailing data.
+    private const string RevertingContractCode = "0x604e600c600039604e6000fd" + RevertPayload;
+
+    [Test]
+    public async Task Debug_traceCall_with_callTracer_reports_revert_in_the_frame()
+    {
+        using Context ctx = await Context.Create();
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = RevertingContractAddress, gas = "0x100000" },
+            null,
+            new
+            {
+                tracer = "callTracer",
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [RevertingContractAddress] = new { code = RevertingContractCode }
+                }
+            });
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, "a revert is a traced result, not a JSON-RPC error");
+
+        JToken frame = parsed["result"]!;
+        Assert.Multiple(() =>
+        {
+            Assert.That((string?)frame["type"], Is.EqualTo("CALL"));
+            Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
+            Assert.That((string?)frame["revertReason"], Is.EqualTo("user error"));
+            Assert.That((string?)frame["output"], Is.EqualTo("0x" + RevertPayload));
+        });
+    }
+
+    [Test]
+    public async Task Debug_traceCall_with_callTracer_omits_to_on_failed_top_level_create()
+    {
+        using Context ctx = await Context.Create();
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), data = "0x60006000fd", gas = "0x100000" },
+            null,
+            new { tracer = "callTracer" });
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, "a failed deployment is a traced result, not a JSON-RPC error");
+
+        JToken frame = parsed["result"]!;
+        Assert.Multiple(() =>
+        {
+            Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
+            Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
+            Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+        });
     }
 }

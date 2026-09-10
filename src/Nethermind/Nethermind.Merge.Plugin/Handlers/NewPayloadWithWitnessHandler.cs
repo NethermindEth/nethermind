@@ -21,7 +21,8 @@ public sealed class NewPayloadWithWitnessHandler(
     WitnessRendezvous rendezvous,
     ILogManager? logManager = null) :
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>,
-    IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>
+    IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>,
+    IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
 
@@ -44,6 +45,23 @@ public sealed class NewPayloadWithWitnessHandler(
                 payload.BlobVersionedHashes!,
                 payload.ParentBeaconBlockRoot,
                 payload.ExecutionRequests));
+
+    /// <remarks>Inclusion-list compliance is not part of the witness contract, so the V5 response shape is
+    /// kept and callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c>.</remarks>
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(InclusionListExecutionPayloadParams request) =>
+        HandleAsync(
+            request,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6),
+            static async (module, payload) =>
+            {
+                ResultWrapper<PayloadStatusV2> result = await module.engine_newPayloadV6(
+                    payload.ExecutionPayload,
+                    payload.BlobVersionedHashes!,
+                    payload.ParentBeaconBlockRoot,
+                    payload.ExecutionRequests,
+                    payload.InclusionListTransactions);
+                return ResultWrapper<PayloadStatusV1>.From(result);
+            });
 
     private async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync<TExecutionPayload>(
         ExecutionPayloadParams<TExecutionPayload> request,

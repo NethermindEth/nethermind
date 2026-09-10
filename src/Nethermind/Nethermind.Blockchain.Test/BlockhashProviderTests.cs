@@ -262,11 +262,8 @@ public class BlockhashProviderTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(512ul)]
-    [TestCase(8192ul)]
-    [TestCase(8193ul)]
-    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(ulong chainLength)
+    [Test]
+    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash([Values(1ul, 512ul, 8192ul, 8193ul)] ulong chainLength)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
@@ -364,12 +361,10 @@ public class BlockhashProviderTests
         TestSingleReleaseSpecProvider specProvider = new(spec);
         BlockAccessListManager balManager = new(
             balWorldState,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));
         balManager.Setup(current);

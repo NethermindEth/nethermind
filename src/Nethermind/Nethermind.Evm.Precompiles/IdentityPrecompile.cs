@@ -17,7 +17,7 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(4);
 
-    public static string Name => "ID";
+    public string Name => "ID";
 
     // Caching disabled: the copy operation is O(n) and the cache key hash is also O(n),
     // making caching strictly worse than direct execution for this precompile.

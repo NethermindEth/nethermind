@@ -10,10 +10,10 @@ namespace Nethermind.Stateless.Execution.IO;
 [SszContainer]
 public partial struct ExecutionWitness
 {
-    [SszList(0x40_0000)]
+    [SszProgressiveList]
     public SszWitnessState[] State { get; set; }
 
-    [SszList(0x4_0000)]
+    [SszProgressiveList]
     public SszWitnessCodes[] Codes { get; set; }
 
     [SszList(0x100)]
@@ -47,19 +47,22 @@ public partial struct ExecutionWitness
     public readonly Witness ToWitness()
     {
         ArrayPoolList<byte[]> state = new(State.Length, State.Length);
+        Span<byte[]> stateSpan = state.AsSpan();
 
         for (int i = 0; i < State.Length; i++)
-            state[i] = State[i].Bytes;
+            stateSpan[i] = State[i].Bytes;
 
         ArrayPoolList<byte[]> codes = new(Codes.Length, Codes.Length);
+        Span<byte[]> codesSpan = codes.AsSpan();
 
         for (int i = 0; i < Codes.Length; i++)
-            codes[i] = Codes[i].Bytes;
+            codesSpan[i] = Codes[i].Bytes;
 
         ArrayPoolList<byte[]> headers = new(Headers.Length, Headers.Length);
+        Span<byte[]> headersSpan = headers.AsSpan();
 
         for (int i = 0; i < Headers.Length; i++)
-            headers[i] = Headers[i].Bytes;
+            headersSpan[i] = Headers[i].Bytes;
 
         return new()
         {

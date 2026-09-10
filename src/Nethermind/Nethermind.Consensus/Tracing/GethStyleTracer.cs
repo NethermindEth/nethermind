@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -59,8 +60,8 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        ITransactionProcessorAdapter currentAdapter = transactionProcessorAdapter.CurrentAdapter;
-        transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(transactionProcessorAdapter.TransactionProcessor);
+        TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
+        transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
 
         try
         {
@@ -68,7 +69,7 @@ public class GethStyleTracer(
         }
         finally
         {
-            transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+            transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
         }
     }
 
@@ -152,7 +153,8 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -169,7 +171,8 @@ public class GethStyleTracer(
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -184,17 +187,27 @@ public class GethStyleTracer(
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
         // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
+        if (options.BlockOverrides is not null || options.NoBaseFee)
+        {
+            block = block.WithReplacedBodyCloned(block.Body);
+        }
+
         BlockHeader baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
             ? FindParent(block)
             : block.Header;
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
+        if (options.NoBaseFee)
+        {
+            block.Header.BaseFeePerGas = UInt256.Zero;
+        }
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };
+        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider)
-            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken);
+            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {
@@ -213,7 +226,7 @@ public class GethStyleTracer(
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
-            _ => new GethLikeBlockMemoryTracer(options),
+            _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -223,9 +236,10 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
+        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider)
-            : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken);
+            : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {
@@ -260,7 +274,8 @@ public class GethStyleTracer(
 
     private static Block GetBlockToTrace(Rlp blockRlp)
     {
-        Block block = Rlp.Decode<Block>(blockRlp);
+        Block block = Rlp.Decode<Block>(blockRlp)
+            ?? throw new RlpException("Block decoded as null.");
         if (block.TotalDifficulty is null)
         {
             block.Header.TotalDifficulty = 1;

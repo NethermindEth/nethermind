@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -9,9 +12,11 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public abstract class KademliaAdapterBase(
     string protocolName,
+    IIPResolver ipResolver,
     ILogger logger)
 {
     protected ILogger Logger { get; } = logger;
+    protected IPAddress LocalIp { get; } = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
 
     protected abstract ValueTask<NodeRecord?> RequestRemoteRecord(
         Node node,
@@ -22,6 +27,12 @@ public abstract class KademliaAdapterBase(
 
     protected virtual bool IsEnrValidForNode(Node node, NodeRecord record) => true;
 
+    internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
+        => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
+
+    protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
+        => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode);
+
     protected async Task RefreshRemoteRecordIfNewer(Node node, ulong advertisedSequence, CancellationToken token)
     {
         if (advertisedSequence == 0)
@@ -29,7 +40,7 @@ public abstract class KademliaAdapterBase(
             return;
         }
 
-        if (node.Enr is { Signature: not null } currentRecord && currentRecord.EnrSequence >= advertisedSequence)
+        if (node.HighestObservedEnrSequence >= advertisedSequence)
         {
             return;
         }
@@ -49,10 +60,15 @@ public abstract class KademliaAdapterBase(
                     return;
                 }
 
-                if (node.Enr is { Signature: not null } signedRecord && signedRecord.EnrSequence >= requestedSequence)
+                ulong observedSequence = node.HighestObservedEnrSequence;
+                if (observedSequence >= requestedSequence)
                 {
-                    node.TryClearEnrRequest(signedRecord.EnrSequence);
-                    return;
+                    if (node.TryClearEnrRequest(observedSequence))
+                    {
+                        return;
+                    }
+
+                    continue;
                 }
 
                 NodeRecord? record = await RequestRemoteRecord(node, requestedSequence, token);
@@ -80,6 +96,8 @@ public abstract class KademliaAdapterBase(
 
                 if (!IsEnrValidForNode(node, record))
                 {
+                    // Do not observe a sequence from a record that is not authenticated for this node;
+                    // doing so could suppress a later valid refresh.
                     if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record is not valid for the node.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
@@ -89,10 +107,10 @@ public abstract class KademliaAdapterBase(
                     continue;
                 }
 
-                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
+                if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record has no usable discovery endpoint.");
-                    if (node.TryClearEnrRequest(requestedSequence))
+                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node}; the newer ENR has no usable discovery endpoint reachable from this listener.");
+                    if (node.ObserveEnrSequence(record.EnrSequence))
                     {
                         return;
                     }
@@ -100,13 +118,13 @@ public abstract class KademliaAdapterBase(
                     continue;
                 }
 
-                node.Enr = record;
-                ulong requestingSequence = node.RequestingEnrSequence;
-                if (requestingSequence > record.EnrSequence)
+                refreshedNode.MergeEnrStateFrom(node);
+                if (!refreshedNode.SetVerifiedEnr(record))
                 {
-                    refreshedNode.TryRequestEnrSequence(requestingSequence);
+                    continue;
                 }
 
+                ulong requestingSequence = refreshedNode.RequestingEnrSequence;
                 node = refreshedNode;
                 AddOrRefreshRemoteNode(refreshedNode);
                 if (requestingSequence == 0)

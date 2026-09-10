@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -24,7 +25,7 @@ public static class SszRestPaths
     /// engine-API version overrides and update the <c>latest</c> argument here.
     /// </remarks>
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
-        BuildForkSpecsByUrl(Forks.Amsterdam.Instance);
+        BuildForkSpecsByUrl(Forks.Bogota.Instance);
 
     private static Dictionary<string, Forks.NamedReleaseSpec> BuildForkSpecsByUrl(Forks.NamedReleaseSpec latest)
     {
@@ -54,6 +55,8 @@ public static class SszRestPaths
     public static readonly FrozenSet<string> SupportedForks =
         SupportedForksOrdered.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    public const string BasePath = "/engine/v1/";
+
     public const string Payloads = "payloads";
 
     public const string Forkchoice = "forkchoice";
@@ -69,6 +72,8 @@ public static class SszRestPaths
     public const string Blobs = "blobs";
 
     public const string PayloadWithWitness = "payloads/witness";
+
+    public const string InclusionList = "inclusion_list";
 
     /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
     public enum ResourceScoping
@@ -89,18 +94,19 @@ public static class SszRestPaths
         return ResourceScoping.ForkScoped;
     }
 
-    public const string PostPayloads = "POST /engine/v2/payloads";
-    public const string GetPayloads = "GET /engine/v2/payloads/{payload_id}";
-    public const string PostForkchoice = "POST /engine/v2/forkchoice";
-    public const string PostBodiesByHash = "POST /engine/v2/bodies/hash";
-    public const string GetBodiesByRange = "GET /engine/v2/bodies";
-    public const string GetCapabilities = "GET /engine/v2/capabilities";
-    public const string GetIdentity = "GET /engine/v2/identity";
-    public const string PostBlobsV1 = "POST /engine/v2/blobs/v1";
-    public const string PostBlobsV2 = "POST /engine/v2/blobs/v2";
-    public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
-    public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
-    public const string PostPayloadsWitness = "POST /engine/v2/payloads/witness";
+    public const string PostPayloads = $"POST {BasePath}payloads";
+    public const string GetPayloads = $"GET {BasePath}payloads/{{payload_id}}";
+    public const string PostForkchoice = $"POST {BasePath}forkchoice";
+    public const string PostBodiesByHash = $"POST {BasePath}bodies/hash";
+    public const string GetBodiesByRange = $"GET {BasePath}bodies";
+    public const string GetCapabilities = $"GET {BasePath}capabilities";
+    public const string GetIdentity = $"GET {BasePath}identity";
+    public const string PostBlobsV1 = $"POST {BasePath}blobs/v1";
+    public const string PostBlobsV2 = $"POST {BasePath}blobs/v2";
+    public const string PostBlobsV3 = $"POST {BasePath}blobs/v3";
+    public const string PostBlobsV4 = $"POST {BasePath}blobs/v4";
+    public const string PostPayloadsWitness = $"POST {BasePath}payloads/witness";
+    public const string GetInclusionList = $"GET {BasePath}inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
     // (one table per HTTP method). Presence in the table means the (method, resource) pair is a
@@ -120,7 +126,15 @@ public static class SszRestPaths
         {
             [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
             [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
+            [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Every recognized fork-scoped (HTTP method, resource) pair, derived from the tables above.</summary>
+    public static readonly IReadOnlyList<(string HttpMethod, string Resource)> ForkScopedEndpoints =
+    [
+        .. _postVersionByResource.Keys.Select(static resource => (HttpMethods.Post, resource)),
+        .. _getVersionByResource.Keys.Select(static resource => (HttpMethods.Get, resource)),
+    ];
 
     private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _postVersionLookup =
         _postVersionByResource.GetAlternateLookup<ReadOnlySpan<char>>();

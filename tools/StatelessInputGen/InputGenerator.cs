@@ -10,7 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
@@ -31,12 +30,11 @@ internal static class InputGenerator
         Witness? witness;
 
         (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host, cancellationToken);
+        if (block is null || witness is null || chainId is null)
+            return 1;
 
         using (witness)
         {
-            if (block is null || witness is null || chainId is null)
-                return 1;
-
             ISpecProvider specProvider = GetSpecProvider(chainId.Value);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
@@ -46,13 +44,16 @@ internal static class InputGenerator
                 return 1;
             }
 
-            byte[] encoded = fork == ProtocolFork.Amsterdam
-                ? EncodeInput<SszExecutionPayloadV4>(block, witness, chainId.Value, specProvider)
-                : EncodeInput<SszExecutionPayloadV3>(block, witness, chainId.Value, specProvider);
+            // Only Amsterdam has a schema of its own; earlier forks share the current-fork schema.
+            bool isAmsterdam = fork == ProtocolFork.Amsterdam;
+            byte[] encoded = isAmsterdam
+                ? EncodeInput(SszExecutionPayloadAmsterdam.From(block), block, witness, chainId.Value)
+                : EncodeInput(SszExecutionPayload.From(block), block, witness, chainId.Value);
 
             data = new byte[encoded.Length + sizeof(ushort)];
 
-            BinaryPrimitives.WriteUInt16BigEndian(data, fork.ToRevision1SchemaId());
+            BinaryPrimitives.WriteUInt16BigEndian(
+                data, (isAmsterdam ? ProtocolFork.Amsterdam : ProtocolFork.Current).ToRevision1SchemaId());
 
             Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
@@ -72,18 +73,15 @@ internal static class InputGenerator
         return 0;
     }
 
-    private static byte[] EncodeInput<TExecutionPayload>(Block block, Witness witness, ulong chainId, ISpecProvider specProvider)
-        where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
+    private static byte[] EncodeInput<TExecutionPayload>(
+        TExecutionPayload payload, Block block, Witness witness, ulong chainId)
+        where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         StatelessInput<TExecutionPayload> input = new()
         {
-            NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block),
+            NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block, payload),
             Witness = ExecutionWitness.From(witness),
-            ChainConfig = new()
-            {
-                ChainId = chainId,
-                ActiveFork = ForkConfig.From(block.Header, specProvider)
-            },
+            ChainId = chainId,
             PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
         };
 
@@ -118,12 +116,20 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
+                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoderOrThrow<Block>();
                 RlpReader blockContext = new(rlp);
-                block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+                Block? decodedBlock = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
 
-                string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
+                if (decodedBlock is null)
+                {
+                    AnsiConsole.MarkupLine("[red]Block decoded as null[/]");
+                    return;
+                }
+
+                block = decodedBlock;
+
+                string blockNumber = EnsureBlockParamIsNumber(blockParam, decodedBlock);
 
                 AnsiConsole.MarkupLine($"[green]✓[/] Fetched block {blockNumber}: {rlp.Length:N0} bytes");
 
@@ -131,7 +137,7 @@ internal static class InputGenerator
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                witness = await client.Post<Witness>("debug_executionWitness", $"0x{block.Number:x}");
+                witness = await client.Post<Witness>("debug_executionWitness", $"0x{decodedBlock.Number:x}");
 
                 if (witness is null)
                 {
@@ -211,10 +217,10 @@ internal static class InputGenerator
             ? specProvider
             : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
 
-    private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
+    private static SszPublicKey[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
     {
         EthereumEcdsa ecdsa = new(chainId);
-        SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
+        SszPublicKey[] publicKeys = new SszPublicKey[transactions.Length];
 
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -222,10 +228,7 @@ internal static class InputGenerator
             PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
                 ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
 
-            publicKeys[i] = new()
-            {
-                Bytes = publicKey.PrefixedBytes
-            };
+            publicKeys[i] = SszPublicKey.FromSpan(publicKey.PrefixedBytes);
         }
 
         return publicKeys;

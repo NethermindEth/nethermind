@@ -11,8 +11,12 @@ using System.Threading.Tasks.Dataflow;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Synchronization;
+using Nethermind.Db;
 using Nethermind.Db.LogIndex;
+using Nethermind.History;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 using static System.Threading.Tasks.TaskCreationOptions;
@@ -70,6 +74,16 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private ref DirectionState Direction(bool isForward) => ref _directions[isForward ? 1 : 0];
 
     private LogIndexUpdateStats _stats;
+    private readonly bool _indexRetainedSlices;
+    private readonly ISyncPointers? _syncPointers;
+    // Three pruning intervals, floored at two hours: the next pruning pass is what clears the
+    // receipts-reclaimed/body-not-yet transient this stall waits on, and the interval is operator-tunable.
+    internal int StallTicksBeforeGivingUp { get; init; }
+    private int _stalledBelowBoundary = -1;
+    private volatile int _backwardExitFloor = -1;
+    internal int BackwardExitFloor => _backwardExitFloor;
+    private int _stallTicks;
+    private bool _stallWarned;
 
     public string Description => "log index builder";
 
@@ -77,7 +91,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        ILogManager logManager)
+        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
+        ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null, IBlocksConfig? blocksConfig = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -92,6 +107,12 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _receiptStorage = receiptStorage;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
+        bool slicesConfigured = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
+        _indexRetainedSlices = slicesConfigured && syncPointers is not null;
+        _syncPointers = syncPointers;
+        if (slicesConfigured && syncPointers is null && _logger.IsWarn)
+            _logger.Warn("History slices are configured but sync pointers are unavailable - the below-boundary log index descent is disabled.");
+        StallTicksBeforeGivingUp = StallDeadlineTicks(historyConfig, blocksConfig);
         _pivotTask = _pivotSource.Task;
         _stats = new(_logIndexStorage);
 
@@ -99,11 +120,22 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         Direction(isForward: true) = new();
     }
 
+    private static int StallDeadlineTicks(IHistoryConfig? historyConfig, IBlocksConfig? blocksConfig)
+    {
+        const ulong FloorTicks = 1440;
+        const ulong SlotsPerEpoch = 32;
+        ulong secondsPerSlot = ulong.Max(blocksConfig?.SecondsPerSlot ?? 12, 1);
+        ulong overflowCeiling = ulong.MaxValue / (SlotsPerEpoch * secondsPerSlot * 3);
+        ulong intervalEpochs = ulong.Min(historyConfig?.PruningInterval ?? 0, overflowCeiling);
+        ulong deadline = intervalEpochs * SlotsPerEpoch * secondsPerSlot * 3 / (ulong)NewBlockWaitTimeout.TotalSeconds;
+        return (int)ulong.Min(ulong.Max(FloorTicks, deadline), int.MaxValue);
+    }
+
     private void StartProcessing(bool isForward)
     {
         // Skip backward sync if storage already reached the target. Null MinBlockNumber
         // means nothing indexed yet — must not skip.
-        if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= MinTargetBlockNumber)
+        if (!isForward && _logIndexStorage.MinBlockNumber is { } minStored && (ulong)minStored <= BackwardTargetBlockNumber)
         {
             MarkCompleted(false);
             return;
@@ -231,7 +263,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (number is 0)
             return false;
 
-        if (!TryGetBlockReceipts(number, out _))
+        if (!TryGetBlockReceipts(number, out _, fabricateReclaimed: false))
             return false;
 
         if (!_pivotSource.TrySetResult(number))
@@ -255,6 +287,27 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     public ulong MinTargetBlockNumber => _syncConfig.AncientReceiptsBarrierCalc <= 1
         ? 0UL
         : _syncConfig.AncientReceiptsBarrierCalc;
+
+    // Nothing below the lowest body the node ever downloaded can be a retained island, so the sliced
+    // descent stops there instead of fabricating down to the barrier. Clamped by the published boundary:
+    // while the ancient feeds are still descending the pointer is a moving frontier, and the pruner holds
+    // the boundary at its initial barrier until the backfill is done, so the floor is inert until then.
+    private ulong BackwardTargetBlockNumber => _indexRetainedSlices
+        ? ulong.Max(MinTargetBlockNumber, ulong.Min(LowestDownloadedBody, _blockTree.GetLowestBlock()))
+        : MinTargetBlockNumber;
+
+    // An absent pointer means no ancient body was ever inserted: on a fast-synced node the pivot is the floor,
+    // on a full-sync node everything was downloaded and the floor is genesis. The tree pivot rises to the
+    // finalized head on a running node - the boundary clamp above is what turns that into stop-at-the-boundary.
+    // A pointer at the barrier means everything above genesis was downloaded, and block 0 is always present.
+    private ulong LowestDownloadedBody
+    {
+        get
+        {
+            ulong lowest = _syncPointers?.LowestInsertedBodyNumber ?? (_syncConfig.FastSync ? _blockTree.SyncPivot.BlockNumber : 0UL);
+            return lowest <= 1 ? 0UL : lowest;
+        }
+    }
 
     public bool IsRunning { get; private set; }
     public DateTimeOffset? LastUpdate { get; private set; }
@@ -328,7 +381,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
         UpdateProgress();
 
-        if (_logIndexStorage.MinBlockNumber <= (int)MinTargetBlockNumber)
+        if (_logIndexStorage.MinBlockNumber <= Math.Max((int)BackwardTargetBlockNumber, _backwardExitFloor))
             MarkCompleted(false);
     }
 
@@ -345,17 +398,28 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (!isForward && start < (int)MinTargetBlockNumber)
+                // One read per iteration: the exit decision, the recorded floor and the completion test must
+                // all see the same value, or a drop between two reads of the moving property re-opens the hang.
+                int backwardFloor = isForward ? 0 : (int)BackwardTargetBlockNumber;
+                if (!isForward && start < backwardFloor)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace($"{GetLogPrefix(isForward)}: queued last block");
 
+                    // The floor can rise when the pruner publishes; a batch checked against the old floor never
+                    // fires the completion, so the exit marks it too - but only once storage has caught up, so a
+                    // still-queued final batch fires it from AddReceiptsAsync instead of completing early. On a
+                    // latched-boundary database the floor can also DROP after this exit, so the floor it left
+                    // against is recorded for the still-queued batches - without it the completion never fires.
+                    _backwardExitFloor = backwardFloor;
+                    if (_logIndexStorage.MinBlockNumber <= backwardFloor)
+                        MarkCompleted(isForward: false);
                     return;
                 }
 
                 int batchSize = _config.MaxBatchSize;
                 int end = isForward ? start + batchSize - 1 : start - batchSize + 1;
-                end = Math.Max(end, (int)MinTargetBlockNumber);
+                end = Math.Max(end, (int)(isForward ? MinTargetBlockNumber : BackwardTargetBlockNumber));
                 end = Math.Min(end, (int)MaxTargetBlockNumber);
 
                 // from - inclusive, to - exclusive
@@ -369,12 +433,55 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
+                    ulong lowestStored = _blockTree.GetLowestBlock();
+                    if (!isForward && (ulong)start < lowestStored)
+                    {
+                        if (!_indexRetainedSlices)
+                        {
+                            if (_logger.IsDebug) _logger.Debug(
+                                $"{GetLogPrefix(isForward)}: stopping at block {start} - everything below the oldest stored block {lowestStored} is pruned, so its receipts are not late, they are gone.");
+                            MarkCompleted(isForward: false);
+                            return;
+                        }
+
+                        if (start != _stalledBelowBoundary)
+                        {
+                            _stalledBelowBoundary = start;
+                            _stallTicks = 0;
+                        }
+                        else if (++_stallTicks >= StallTicksBeforeGivingUp)
+                        {
+                            // Fails only this direction: the live forward index keeps running.
+                            InvalidOperationException stall = new(
+                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} kept a body with no readable receipts for {StallTicksBeforeGivingUp} polls - a retained height lost its receipts, history pruning passes run less often than this deadline, or an ancient receipts backfill is still descending below a latched boundary.");
+                            if (_logger.IsError) _logger.Error($"{GetLogPrefix(isForward)}: giving up.", stall);
+                            LastError = stall;
+                            Direction(isForward: false).Completion.TrySetException(stall);
+                            Direction(isForward: false).Progress?.MarkEnd();
+                            return;
+                        }
+                        else if (!_stallWarned)
+                        {
+                            _stallWarned = true;
+                            if (_logger.IsWarn) _logger.Warn(
+                                $"{GetLogPrefix(isForward)}: block {start} below the oldest stored block {lowestStored} still has a body but no readable receipts - the descent is stalled until it is reclaimed.");
+                        }
+                    }
+
                     // TODO: stop waiting immediately when receipts become available
                     await Task.Delay(NewBlockWaitTimeout, CancellationToken);
                     continue;
                 }
 
                 _stats.LoadingReceipts.Include(Stopwatch.GetElapsedTime(timestamp));
+
+                if (!isForward && _stallWarned)
+                {
+                    _stallWarned = false;
+                    if (_logger.IsInfo) _logger.Info(
+                        $"{GetLogPrefix(isForward)}: the descent moved past block {_stalledBelowBoundary}.");
+                    _stalledBelowBoundary = -1;
+                }
 
                 start = GetNextBlockNumber(batch[^1].BlockNumber, isForward);
                 await queue.WriteAsync(batch.ToArray(), CancellationToken);
@@ -410,8 +517,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         ref DirectionState backward = ref Direction(isForward: false);
         if (backward.Progress is { HasEnded: false } backwardProgress)
         {
-            backwardProgress.TargetValue = pivotNumber >= MinTargetBlockNumber
-                ? pivotNumber - MinTargetBlockNumber
+            backwardProgress.TargetValue = pivotNumber >= BackwardTargetBlockNumber
+                ? pivotNumber - BackwardTargetBlockNumber
                 : 0UL;
             backwardProgress.Update(_logIndexStorage.MinBlockNumber is { } min && pivotNumber >= (ulong)min
                 ? pivotNumber - (ulong)min
@@ -466,12 +573,22 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     }
 
     // TODO: move to IReceiptStorage?
-    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts)
+    private bool TryGetBlockReceipts(ulong blockNumber, out BlockReceipts blockReceipts, bool fabricateReclaimed = true)
     {
         blockReceipts = default;
 
         if (_blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.ExcludeTxHashes) is not { Hash: not null } block)
         {
+            // A height absent below the published boundary and above the lowest downloaded body was reclaimed -
+            // not late, not undownloaded - so an empty entry is the truth. A boundary persisted by an older
+            // release can over-report; healing it must invalidate the below-boundary index range first.
+            if (fabricateReclaimed && _indexRetainedSlices
+                && blockNumber < _blockTree.GetLowestBlock() && blockNumber >= BackwardTargetBlockNumber)
+            {
+                blockReceipts = new((int)blockNumber, []);
+                return true;
+            }
+
             return false;
         }
 

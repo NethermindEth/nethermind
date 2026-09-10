@@ -20,14 +20,20 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
     static bool Equals(UInt256 integer, UInt256 bigInteger) => integer.Equals(bigInteger);
 
-    [TestCase(NumberConversion.Hex)]
-    [TestCase(NumberConversion.Decimal)]
-    [TestCase(NumberConversion.Raw)]
-    public void Test_roundtrip(NumberConversion numberConversion)
+    [Test]
+    public void Test_roundtrip([Values(NumberConversion.Hex, NumberConversion.Decimal, NumberConversion.Raw)] NumberConversion numberConversion)
     {
-        TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        ForcedNumberConversion.Value = numberConversion;
+        try
+        {
+            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [Test]
@@ -135,10 +141,8 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<UInt256>("null", options));
 
-    [TestCase("\"0x0b\"")]
-    [TestCase("\"0x00\"")]
-    [TestCase("\"0x0ff\"")]
-    public void StrictQuantity_rejects_leading_zero(string json)
+    [Test]
+    public void StrictQuantity_rejects_leading_zero([Values("\"0x0b\"", "\"0x00\"", "\"0x0ff\"")] string json)
     {
         JsonSerializerOptions strictOpts = new() { Converters = { new UInt256Converter(strictQuantity: true) } };
         Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, strictOpts), Throws.InstanceOf<FormatException>());
@@ -160,9 +164,8 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         Assert.That(result, Is.EqualTo((UInt256)expected));
     }
 
-    [TestCase("\"0x0000\"")]
-    [TestCase("\"0x0b\"")]
-    public void Lenient_accepts_leading_zero(string json) =>
+    [Test]
+    public void Lenient_accepts_leading_zero([Values("\"0x0000\"", "\"0x0b\"")] string json) =>
         Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, options), Throws.Nothing);
 
     // "0x" with no hex digits is not a valid QUANTITY in any mode
