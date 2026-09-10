@@ -115,6 +115,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static Subtree FoldMutations(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter ownerWriter, IRefCountingMemoryProvider memoryProvider,
         ref Subtree input, Span<PbtWriteOperation<TKey>> operations, int bitDepth, BucketPlan plan)
     {
+        // Normally the subtree in a boundary slot of the parent group, whose reader/writer are passed here.
+        // The initial call supplies the tree root; prefix jumps carry the same subtree to a deeper bitDepth.
         // A using local cannot be passed by ref. Keep current mutable so Resolve can replace it and Move can
         // clear it when transferring ownership; finally disposes only the subtree still owned by this frame.
         Subtree current = Subtree.Move(ref input);
