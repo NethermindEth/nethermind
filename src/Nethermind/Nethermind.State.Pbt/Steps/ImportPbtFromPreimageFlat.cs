@@ -420,6 +420,44 @@ public class ImportPbtFromPreimageFlat(
         {
             int partitionCount = (int)Math.Min((long)workerCount * PartitionsPerWorker, PartitionPrefixSpace);
             int nextPartition = -1;
+            ScanProgress scanProgress = new(partitionCount);
+            string[] partitionNames = ["accounts/code", "header storage", "overflow storage"];
+            ProgressLogger[] progressLoggers = new ProgressLogger[partitionNames.Length];
+            for (int zone = 0; zone < progressLoggers.Length; zone++)
+            {
+                string partitionName = partitionNames[zone];
+                ProgressLogger progress = new($"PBT import phase 2 {partitionName}", logManager);
+                progress.SetFormat(logger =>
+                    $"PBT import phase 2 {partitionName}: {(logger.CurrentValue / (double)ScanProgress.Keyspace).ToString("P2", CultureInfo.InvariantCulture)} of address keyspace scanned");
+                progress.Reset(0, ScanProgress.Keyspace);
+                progressLoggers[zone] = progress;
+            }
+
+            void LogScanProgress()
+            {
+                for (int zone = 0; zone < progressLoggers.Length; zone++)
+                {
+                    progressLoggers[zone].Update(scanProgress.GetScanned(zone));
+                    progressLoggers[zone].LogProgress();
+                }
+            }
+
+            using CancellationTokenSource loggingCts = new();
+            Task logging = LogScanProgressPeriodically();
+            async Task LogScanProgressPeriodically()
+            {
+                LogScanProgress();
+                using PeriodicTimer timer = new(CopyLogInterval);
+                try
+                {
+                    while (await timer.WaitForNextTickAsync(loggingCts.Token)) LogScanProgress();
+                }
+                catch (OperationCanceledException) when (loggingCts.IsCancellationRequested)
+                {
+                    // The producer has stopped; its final counters are logged after the ticker exits.
+                }
+            }
+
             Task[] workers = new Task[workerCount];
             for (int worker = 0; worker < workers.Length; worker++)
             {
@@ -431,10 +469,12 @@ public class ImportPbtFromPreimageFlat(
                         int partition;
                         while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount * 3)
                         {
+                            cts.Token.ThrowIfCancellationRequested();
                             int zone = partition / partitionCount;
                             (byte[] start, byte[] end) = ScanBounds(partition % partitionCount, partitionCount, zone);
-                            if (zone == 0) await EmitAccounts(start, end, sink, cts.Token);
-                            else await EmitStorage(start, end, sink, cts.Token);
+                            if (zone == 0) await EmitAccounts(start, end, sink, scanProgress, partition, cts.Token);
+                            else await EmitStorage(start, end, sink, scanProgress, partition, cts.Token);
+                            scanProgress.Complete(partition);
                         }
                         await sink.Complete();
                     }
@@ -449,8 +489,44 @@ public class ImportPbtFromPreimageFlat(
                     }
                 }, CancellationToken.None);
             }
-            await Task.WhenAll(workers);
-            entries.Writer.TryComplete(producerFailure?.SourceException);
+            try
+            {
+                await Task.WhenAll(workers);
+            }
+            finally
+            {
+                entries.Writer.TryComplete(producerFailure?.SourceException);
+                await loggingCts.CancelAsync();
+                await logging;
+                LogScanProgress();
+            }
+        }
+    }
+
+    private sealed class ScanProgress(int partitionCount)
+    {
+        // A 48-bit address prefix retains sub-partition precision, with an exact exclusive 2^256 endpoint.
+        public const ulong Keyspace = 1UL << 48;
+        private readonly long[] _scanned = new long[partitionCount * 3];
+
+        private long Boundary(int partition) => (long)partition * PartitionPrefixSpace / partitionCount << 32;
+
+        public void Publish(int partition, ReadOnlySpan<byte> key)
+        {
+            int offset = partition < partitionCount ? 0 : 1;
+            long position = (long)(BinaryPrimitives.ReadUInt64BigEndian(key[offset..]) >> 16);
+            Volatile.Write(ref _scanned[partition], position - Boundary(partition % partitionCount));
+        }
+
+        public void Complete(int partition) => Volatile.Write(ref _scanned[partition],
+            Boundary(partition % partitionCount + 1) - Boundary(partition % partitionCount));
+
+        public ulong GetScanned(int zone)
+        {
+            ulong scanned = 0;
+            for (int partition = zone * partitionCount; partition < (zone + 1) * partitionCount; partition++)
+                scanned += (ulong)Volatile.Read(ref _scanned[partition]);
+            return scanned;
         }
     }
 
@@ -468,7 +544,7 @@ public class ImportPbtFromPreimageFlat(
         return (start, end);
     }
 
-    private async Task EmitAccounts(byte[] cursor, byte[] end, EntrySink sink, CancellationToken cancellationToken)
+    private async Task EmitAccounts(byte[] cursor, byte[] end, EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
     {
         ISortedKeyValueStore accounts = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Accounts);
         IDb codes = pbtDb.GetColumnDb(PbtColumns.Codes);
@@ -489,6 +565,8 @@ public class ImportPbtFromPreimageFlat(
                 if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+            if (resumeFrom is not null) progress.Publish(partition, resumeFrom);
             for (int index = 0; index < buffered.Count; index++)
             {
                 (ValueHash256 addressHash, Account account) = buffered[index];
@@ -512,7 +590,7 @@ public class ImportPbtFromPreimageFlat(
         }
     }
 
-    private async Task EmitStorage(byte[] cursor, byte[] end, EntrySink sink, CancellationToken cancellationToken)
+    private async Task EmitStorage(byte[] cursor, byte[] end, EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
     {
         ISortedKeyValueStore storage = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Storages);
         using ArrayPoolList<RebuildEntry> buffered = new(EntryChunkSize);
@@ -530,6 +608,8 @@ public class ImportPbtFromPreimageFlat(
                 }
                 if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (resumeFrom is not null) progress.Publish(partition, resumeFrom);
             for (int index = 0; index < buffered.Count; index++) await sink.Add(buffered[index]);
             buffered.Clear();
             if (resumeFrom is null) return;
