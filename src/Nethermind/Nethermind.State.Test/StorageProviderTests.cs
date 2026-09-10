@@ -118,7 +118,6 @@ public class StorageProviderTests(bool useFlat)
             GetPrivateField(provider._stateProvider, "_committedThisRound"),
             GetPrivateField(provider._stateProvider, "_nullAccountReads"),
             GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
-            GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"),
             GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
         ];
         int[] capacitiesBeforeReset = new int[collections.Length];
@@ -1079,6 +1078,51 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Commit_reports_latest_surviving_write_once([Values] bool clearStorage, [Values] bool restore)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 100);
+        StorageCell second = new(ctx.Address1, 101);
+        StorageCell untouched = new(ctx.Address1, 102);
+        provider.Set(first, _values[1]);
+        provider.Set(second, _values[2]);
+        provider.Set(untouched, _values[3]);
+        provider.Commit(Frontier.Instance);
+        provider.Get(first);
+        provider.Get(second);
+        provider.Get(untouched);
+        provider.Set(first, _values[4]);
+        provider.Set(second, _values[5]);
+        Snapshot snapshot = provider.TakeSnapshot();
+        if (clearStorage) provider.ClearStorage(ctx.Address1);
+        provider.Set(first, _values[6]);
+        provider.Set(second, _values[7]);
+        provider.Set(first, _values[8]);
+        if (restore) provider.Restore(snapshot);
+        ReadCollectingStorageTracer tracer = new();
+
+        provider.Commit(Frontier.Instance, tracer);
+
+        byte[] firstValue = _values[restore ? 4 : 8];
+        byte[] secondValue = _values[restore ? 5 : 7];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Get(first).ToArray(), Is.EqualTo(firstValue));
+            Assert.That(provider.Get(second).ToArray(), Is.EqualTo(secondValue));
+            Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(_values[clearStorage && !restore ? 0 : 3]));
+            Assert.That(tracer.Changes, Has.Count.EqualTo(clearStorage && !restore ? 3 : 2));
+            Assert.That(tracer.Changes[0].Cell, Is.EqualTo(first), "storage changes follow surviving-head insertion order");
+            Assert.That(tracer.Changes[1].Cell, Is.EqualTo(second));
+            Assert.That(tracer.Changes.FindAll(change => change.Cell.Equals(first)), Has.Count.EqualTo(1));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(first)).Before, Is.EqualTo(_values[1]));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(first)).After, Is.EqualTo(firstValue));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(second)).Before, Is.EqualTo(_values[2]));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(second)).After, Is.EqualTo(secondValue));
+        }
+    }
+
+    [Test]
     public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer()
     {
         using Context ctx = new(useFlat);
@@ -1478,6 +1522,7 @@ public class StorageProviderTests(bool useFlat)
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer
     {
         public System.Collections.Generic.List<StorageCell> Reads { get; } = [];
+        public System.Collections.Generic.List<(StorageCell Cell, byte[] Before, byte[] After)> Changes { get; } = [];
 
         public bool IsTracingState => false;
         public bool IsTracingStorage => true;
@@ -1487,7 +1532,7 @@ public class StorageProviderTests(bool useFlat)
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
         public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
     }
 }

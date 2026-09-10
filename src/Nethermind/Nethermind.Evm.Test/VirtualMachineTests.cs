@@ -818,9 +818,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Implicit_stop_is_only_traced_by_opted_in_tracers()
+    public void Implicit_stop_is_only_traced_by_opted_in_tracers([Values(1, 0x01020304)] int value)
     {
-        byte[] code = Prepare.EvmCode.PushData(1).Done;
+        byte[] code = Prepare.EvmCode.PushData(value).Done;
         (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
         GethLikeTxMemoryTracer gethTracer = new(transaction, GethTraceOptions.Default);
         ParityLikeTxTracer parityTracer = new(block, transaction, ParityTraceTypes.VmTrace);
@@ -834,7 +834,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(gethTrace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
-            Assert.That(gethTrace.Entries[^1].ProgramCounter, Is.EqualTo(2));
+            Assert.That(gethTrace.Entries[^1].ProgramCounter, Is.EqualTo(code.Length));
+            Assert.That(gethTrace.Entries[^1].GetStackWord(0), Is.EqualTo((UInt256)value));
             Assert.That(parityTrace.VmTrace.Operations, Has.Count.EqualTo(1));
             Assert.That(countingTracer.StartedOperations, Is.EqualTo(2));
             Assert.That(countingTracer.CompletedOperations, Is.EqualTo(2));

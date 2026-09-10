@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -14,7 +15,7 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="TxReceipt"/>.
 /// </summary>
-public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
+public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
     private readonly IRlpDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
@@ -55,14 +56,28 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
     {
         bool canBeParallel = receipts.Length > MinItemsForParallelRootHash;
         using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4, canBeParallel: canBeParallel);
-        return new ReceiptTrie(spec, receipts, decoder, cappedArrayPool, canBuildProof: true, canBeParallel: canBeParallel).BuildProof(index);
+        ReceiptTrie trie = new(spec, receipts, decoder, cappedArrayPool, canBuildProof: true, canBeParallel: canBeParallel);
+        Debug.Assert(trie.RootHash == CalculateRoot(spec, receipts, decoder), "Receipt proofs and streamed roots must agree.");
+        return trie.BuildProof(index);
     }
 
     public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpDecoder<TxReceipt> decoder)
     {
-        bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
-        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);
-        Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool, canBeParallel: canBeParallel).RootHash;
-        return receiptsRoot;
+        ArgumentNullException.ThrowIfNull(receiptSpec);
+        ArgumentNullException.ThrowIfNull(decoder);
+        if (txReceipts.IsEmpty) return Keccak.EmptyTreeHash;
+
+        // Custom codecs may encode an empty value, which the mutable trie treats as deletion.
+        // The streamed builder requires ReceiptMessageDecoder's nonempty encodings, including null receipts.
+        if (decoder is not ReceiptMessageDecoder receiptDecoder)
+        {
+            bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
+            using TrackingCappedArrayPool pool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);
+            return new ReceiptTrie(receiptSpec, txReceipts, decoder, pool, canBeParallel: canBeParallel).RootHash;
+        }
+
+        RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
+            | RlpBehaviors.SkipTypedWrapping;
+        return new RootCalculator(txReceipts, receiptDecoder, behavior).Calculate();
     }
 }
