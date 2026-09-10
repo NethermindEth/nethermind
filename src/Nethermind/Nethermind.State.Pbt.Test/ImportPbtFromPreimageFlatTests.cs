@@ -101,6 +101,79 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
     }
 
+    [TestCase(1, 101)]
+    [TestCase(3, 37)]
+    [TestCase(17, 0)]
+    public async Task Phase_one_bounds_batches_and_preserves_state(int accountCount, int slotsPerAccount)
+    {
+        const int batchSize = 7;
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        using MemDb codes = new();
+        byte[] code = Bytes.FromHexString("0x6001600055");
+        Hash256 codeHash = Keccak.Compute(code);
+        codes[codeHash.Bytes] = code;
+        Dictionary<string, byte[]> model = [];
+        List<Address> addresses = [];
+        using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        {
+            for (int accountIndex = 0; accountIndex < accountCount; accountIndex++)
+            {
+                byte[] addressBytes = new byte[20];
+                addressBytes[^1] = (byte)accountIndex;
+                Address address = new(addressBytes);
+                addresses.Add(address);
+                Account account = new Account(1, 100).WithChangedCodeHash(codeHash);
+                if (slotsPerAccount > 0) account = account.WithChangedStorageRoot(TestItem.KeccakA);
+                batch.SetAccount(address, account);
+                PbtReferenceModel.SetAccount(model, address, 1, 100, code);
+                for (uint slot = 0; slot < slotsPerAccount; slot++)
+                {
+                    batch.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x01")));
+                    PbtReferenceModel.SetSlot(model, address, slot, 1);
+                }
+            }
+        }
+
+        using RecordingColumnsDb db = new();
+        PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
+        PbtRocksDbPersistence target = new(db, config);
+        RecordingExitSource exit = new();
+        List<int> copyBatchWrites = [];
+        db.AfterCopyBatch = copyBatchWrites.Add;
+        db.AfterCopy = () =>
+        {
+            using IPbtPersistence.IReader staged = target.CreateReader();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(staged.CurrentState, Is.EqualTo(StateId.PreGenesis));
+                Assert.That(target.IsValid, Is.False);
+            }
+        };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { CopyBatchSize = batchSize };
+
+        await step.Execute(CancellationToken.None);
+
+        using IPbtPersistence.IReader reader = target.CreateReader();
+        int expectedWrites = accountCount * (slotsPerAccount + 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exit.ExitCode, Is.Zero);
+            Assert.That(copyBatchWrites.Count, Is.EqualTo((expectedWrites + batchSize - 1) / batchSize));
+            Assert.That(copyBatchWrites, Has.All.InRange(1, batchSize));
+            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
+            Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(reader.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
+            Assert.That(reader.GetCodeReference(codeHash.ValueHash256), Is.EqualTo(accountCount));
+            foreach (Address address in addresses)
+            {
+                Assert.That(PbtTestLeaves.ReadAccount(reader, address)!.Balance, Is.EqualTo((UInt256)100));
+                for (uint slot = 0; slot < slotsPerAccount; slot++)
+                    Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, address, slot)).ToArray(), Is.EqualTo(UInt256.One.ToBigEndian()));
+            }
+        }
+    }
+
     /// <summary>Verifies merge-joining header-only storage and accounts without storage or code.</summary>
     [Test]
     public async Task Imports_accounts_with_only_header_storage_and_with_none()
@@ -852,6 +925,7 @@ public class ImportPbtFromPreimageFlatTests
         private readonly Dictionary<PbtColumns, IDb> _columns = [];
         public readonly ConcurrentDictionary<string, int> Rows = new();
         public Action? AfterCopy;
+        public Action<int>? AfterCopyBatch;
         public Action? AfterGroupCommit;
         public Action<PbtColumns, byte[], byte[]>? ViewOpened;
         public Action<PbtColumns, int>? ViewClosed;
@@ -886,13 +960,28 @@ public class ImportPbtFromPreimageFlatTests
         private sealed class RecordingBatch(RecordingColumnsDb owner, IColumnsWriteBatch<PbtColumns> batch) : IColumnsWriteBatch<PbtColumns>
         {
             private bool _groups;
+            private int _copyWrites;
             public IWriteBatch GetColumnBatch(PbtColumns key)
             {
                 IWriteBatch columnBatch = batch.GetColumnBatch(key);
+                if (!owner.Recording && key is PbtColumns.Accounts or PbtColumns.Storages or PbtColumns.Codes)
+                    return new RecordingCopyBatch(this, columnBatch);
                 if (key == PbtColumns.Metadata) return new RecordingMetadataBatch(owner, this, columnBatch);
                 if (key is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups && owner.Recording) _groups = true;
                 return columnBatch;
             }
+            private sealed class RecordingCopyBatch(RecordingBatch ownerBatch, IWriteBatch batch) : IWriteBatch
+            {
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    if (flags.HasFlag(WriteFlags.DisableWAL)) ownerBatch._copyWrites++;
+                    batch.Set(key, value, flags);
+                }
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Merge(key, value, flags);
+                public void Clear() => batch.Clear();
+                public void Dispose() => batch.Dispose();
+            }
+
             private sealed class RecordingMetadataBatch(RecordingColumnsDb owner, RecordingBatch ownerBatch, IWriteBatch metadata) : IWriteBatch
             {
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -908,11 +997,13 @@ public class ImportPbtFromPreimageFlatTests
             public void Clear()
             {
                 _groups = false;
+                _copyWrites = 0;
                 batch.Clear();
             }
             public void Dispose()
             {
                 batch.Dispose();
+                if (_copyWrites > 0) owner.AfterCopyBatch?.Invoke(_copyWrites);
                 if (_groups)
                 {
                     Interlocked.Increment(ref owner.GroupCommits);
