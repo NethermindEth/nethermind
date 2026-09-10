@@ -442,6 +442,51 @@ public class ReceiptsSyncFeedTests
     }
 
     [Test]
+    public async Task Inserts_receipts_when_the_block_number_index_has_no_entry()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        // Given no block number, the block tree resolves one from the block number index first, so a body whose
+        // index entry is missing is only reachable when the number the feed already knows is passed along.
+        _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<ulong?>(2) is null
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        int requested = batch!.Infos.Length;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
+    public async Task If_header_is_missing_locally_then_does_not_report_breach_of_protocol_or_drop_the_rest_of_the_batch()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        Hash256 missingHeaderHash = batch!.Infos[0]!.BlockHash;
+        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<Hash256>(0) == missingHeaderHash
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
+
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        batch.ResponseSourcePeer = peerInfo;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+        _receiptStorage.Received(batch.Infos.Length - 1).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
     public async Task Can_sync_final_batch()
     {
         LoadScenario(_64BodiesWithOneTxEach);

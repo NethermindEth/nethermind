@@ -56,6 +56,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IKademliaAdapter _adapter = null!;
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
+        private IRoutingTable<Node, ValueHash256> _routingTable = null!;
         private INodeHealthTracker<Node> _nodeHealthTracker = null!;
         private INetworkConfig _networkConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
@@ -72,7 +73,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private IMessageSerializationService _receiverSerializationManager;
         private Node _receiver;
 
-        private void ConfigureBondCallback(IPEndPoint? pongFarAddress = null, ulong? pongEnrSequence = null) =>
+        private void ConfigureBondCallback(
+            IPEndPoint? pongFarAddress = null,
+            ulong? pongEnrSequence = null,
+            Action<PingMsg>? onWirePing = null) =>
             _msgSender
                 .SendMsg(Arg.Any<PingMsg>())
                 .Returns(ci =>
@@ -80,6 +84,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     PingMsg sent = (PingMsg)ci[0]!;
                     using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    onWirePing?.Invoke(msg);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
                         _timestamper.UnixTime.SecondsLong + 1,
@@ -105,6 +110,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _testNode = new(_testPublicKey, "192.168.1.1", 30303);
 
             _kademliaMessageReceiver = Substitute.For<IKademlia<PublicKey, Node>>();
+            _routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
             _nodeHealthTracker = Substitute.For<INodeHealthTracker<Node>>();
             _networkConfig = Substitute.For<INetworkConfig>();
             _networkConfig.MaxActivePeers.Returns(25);
@@ -140,27 +146,39 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs) => new(
-            new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
-            new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
-            new DiscoveryConfig
-            {
-                EnrTimeout = requestTimeoutMs,
-                PingTimeout = requestTimeoutMs,
-                SendNodeTimeout = requestTimeoutMs,
-                BondWaitTime = 1,
-            },
-            _kademliaConfig,
-            _nodeRecordProvider,
-            _ipResolver,
-            _nodeStatsManager,
-            _timestamper,
-            Substitute.For<IProcessExitSource>(),
-            new Ecdsa(),
-            _logManager)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null)
         {
-            MsgSender = _msgSender,
-        };
+            if (listenerState is null)
+            {
+                listenerState = new NetworkListenerState(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+                listenerState.SetRlpxAddress(IPAddress.Any);
+                listenerState.SetDiscoveryAddress(IPAddress.Any);
+            }
+
+            return new KademliaAdapter(
+                new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
+                _routingTable,
+                new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
+                new DiscoveryConfig
+                {
+                    EnrTimeout = requestTimeoutMs,
+                    PingTimeout = requestTimeoutMs,
+                    SendNodeTimeout = requestTimeoutMs,
+                    BondWaitTime = 1,
+                },
+                _kademliaConfig,
+                _nodeRecordProvider,
+                _ipResolver,
+                _nodeStatsManager,
+                _timestamper,
+                Substitute.For<IProcessExitSource>(),
+                new Ecdsa(),
+                _logManager,
+                listenerState)
+            {
+                MsgSender = _msgSender,
+            };
+        }
 
         private async Task UseExpiringRequestTimeouts()
         {
@@ -177,6 +195,37 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(sessions.All(session => ReferenceEquals(session, sessions[0])), Is.True);
             _nodeStatsManager.Received(1).GetOrAdd(Arg.Is<Node>(node => node.Id == _receiver.Id));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Pong_preserves_already_known_enr_state_on_routing_replacement(CancellationToken token)
+        {
+            NodeRecord knownRecord = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyB,
+                _receiver.Address.Address,
+                tcpPort: _receiver.Port,
+                udpPort: _receiver.DiscoveryPort,
+                enrSequence: 2);
+            Node knownNode = new(TestItem.PublicKeyB, _receiver.Address);
+            knownNode.SetVerifiedEnr(knownRecord);
+            _routingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == knownNode.Id.Hash), out _).Returns(callInfo =>
+            {
+                callInfo[1] = knownNode;
+                return true;
+            });
+            ConfigureBondCallback(pongEnrSequence: knownRecord.EnrSequence);
+
+            bool result = await _adapter.Ping(knownNode, token);
+
+            Assert.That(result, Is.True);
+            _nodeHealthTracker.Received(1).OnIncomingMessageFrom(Arg.Is<Node>(added =>
+                ReferenceEquals(added.Enr, knownRecord) &&
+                added.IsVerifiedEnr(knownRecord) &&
+                added.HighestObservedEnrSequence == knownRecord.EnrSequence));
+            _routingTable.Received().TryGet(Arg.Is<ValueHash256>(hash => hash == knownNode.Id.Hash), out _);
+            _kademliaMessageReceiver.DidNotReceive().GetAllAtDistance(Arg.Any<int>());
+            await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrRequestMsg>());
         }
 
         [TearDown]
@@ -280,6 +329,20 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             return remoteRecord;
         }
 
+        private static NodeRecord CreateForgedRemoteEnr()
+        {
+            NodeRecord forgedRecord = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyB,
+                IPAddress.Parse("192.168.1.2"),
+                tcpPort: 30304,
+                udpPort: 30303,
+                enrSequence: 1);
+            Signature validSignature = forgedRecord.Signature!;
+            forgedRecord.SetEntry(new TcpEntry(30305));
+            forgedRecord.Signature = validSignature;
+            return forgedRecord;
+        }
+
         [Test]
         [CancelAfter(10000)]
         public async Task Ping_should_send_ping_and_receive_pong(CancellationToken token)
@@ -291,6 +354,48 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(result, Is.True);
             await _msgSender.Received(1).SendMsg(Arg.Is<PingMsg>(m =>
                 m.FarAddress!.Equals(_receiver.Address)));
+        }
+
+        [TestCase("192.168.1.2", "0.0.0.0", 30303, "192.0.2.10", "2001:db8::10", "0.0.0.0", "192.0.2.10")]
+        [TestCase("192.168.1.2", "::1", 0, "192.0.2.10", "2001:db8::10", "0.0.0.0", "192.0.2.10")]
+        [TestCase("192.168.1.2", "0.0.0.0", 30303, null, "2001:db8::10", "0.0.0.0", "0.0.0.0")]
+        [TestCase("192.168.1.2", "0.0.0.0", 30303, null, "2001:db8::10", "192.0.2.20", "192.0.2.20")]
+        [TestCase("2001:db8::20", "::", 30303, "192.0.2.10", null, "::", "::")]
+        [TestCase("2001:db8::20", "0.0.0.0", 0, "192.0.2.10", "2001:db8::10", "0.0.0.0", null)]
+        [CancelAfter(10000)]
+        public async Task Ping_UsesOnlyBoundAndAdvertisedSourceFamily(
+            string receiverAddress,
+            string rlpxAddress,
+            int expectedTcpPort,
+            string? externalIpv4Text,
+            string? externalIpv6Text,
+            string discoveryAddress,
+            string? expectedSourceText,
+            CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            IPAddress? externalIpv4 = externalIpv4Text is null ? null : IPAddress.Parse(externalIpv4Text);
+            IPAddress? externalIpv6 = externalIpv6Text is null ? null : IPAddress.Parse(externalIpv6Text);
+            IPAddress primaryExternalIp = IPAddress.Parse(externalIpv4Text is null ? "2001:db8::30" : "192.0.2.30");
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+                new IIPResolver.NethermindIp(IPAddress.IPv6Any, primaryExternalIp, externalIpv4, externalIpv6)));
+            _kademliaConfig.CurrentNodeId = new Node(TestItem.PublicKeyA, primaryExternalIp.ToString(), 30303, 30304);
+            _receiver = new Node(TestItem.PublicKeyB, receiverAddress, 30303);
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetDiscoveryAddress(IPAddress.Parse(discoveryAddress));
+            listenerState.SetRlpxAddress(IPAddress.Parse(rlpxAddress));
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            PingMsg? wirePing = null;
+            ConfigureBondCallback(onWirePing: ping => wirePing = ping);
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedSourceText is not null));
+                Assert.That(wirePing?.SourceAddress, Is.EqualTo(expectedSourceText is null ? null : new IPEndPoint(IPAddress.Parse(expectedSourceText), 30304)));
+                Assert.That(wirePing?.SourceTcpPort, Is.EqualTo(expectedSourceText is null ? null : expectedTcpPort));
+            }
         }
 
         [Test]
@@ -315,12 +420,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(result, Is.True);
             Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr
+                ?? throw new InvalidOperationException("Verified peer candidate is missing its ENR.");
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerNode.Id, Is.EqualTo(_receiver.Id));
                 Assert.That(peerNode.Port, Is.EqualTo(30304));
                 Assert.That(peerNode.DiscoveryPort, Is.EqualTo(30303));
-                Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
                 Assert.That(peerNode, Is.Not.SameAs(_receiver));
             }
         }
@@ -334,7 +441,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.DisposeAsync();
             _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
                 new IIPResolver.NethermindIp(ipv6, IPAddress.IPv6Loopback)));
-            _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
             _receiver = new Node(TestItem.PublicKeyB, ipv6.ToString(), 30303);
             NodeRecord remoteRecord = ConfigureRemoteEnrRefresh(
                 2,
@@ -352,13 +462,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(result, Is.True);
             Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr ?? throw new AssertionException("Expected the peer candidate to contain the refreshed ENR.");
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerNode.Id, Is.EqualTo(_receiver.Id));
                 Assert.That(peerNode.Host, Is.EqualTo(ipv6.ToString()));
                 Assert.That(peerNode.Port, Is.EqualTo(30305));
                 Assert.That(peerNode.DiscoveryPort, Is.EqualTo(30303));
-                Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(remoteRecord.GetHex()));
             }
         }
 
@@ -366,22 +477,38 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task Ping_should_not_publish_tcp_endpoint_from_forged_enr(CancellationToken token)
         {
-            NodeRecord forgedRecord = TestEnrBuilder.BuildSigned(
-                TestItem.PrivateKeyB,
-                IPAddress.Parse("192.168.1.2"),
-                tcpPort: 30304,
-                udpPort: 30303,
-                enrSequence: 1);
-            Signature validSignature = forgedRecord.Signature!;
-            forgedRecord.SetEntry(new TcpEntry(30305));
-            forgedRecord.Signature = validSignature;
-            _receiver.Enr = forgedRecord;
+            _receiver.Enr = CreateForgedRemoteEnr();
             ConfigureBondCallback();
 
             bool result = await _adapter.Ping(_receiver, token);
 
             Assert.That(result, Is.True);
             await AssertNoPeerCandidate(token);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_should_refresh_valid_enr_after_forged_cached_record_with_same_sequence(CancellationToken token)
+        {
+            NodeRecord forgedRecord = CreateForgedRemoteEnr();
+            _receiver.Enr = forgedRecord;
+            NodeRecord validRecord = ConfigureRemoteEnrRefresh(
+                forgedRecord.EnrSequence,
+                forgedRecord.EnrSequence,
+                tcpPort: 30304);
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
+            await _msgSender.Received(1).SendMsg(Arg.Any<EnrRequestMsg>());
+            Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr ?? throw new AssertionException("Expected the peer candidate to contain the refreshed ENR.");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerNode.Port, Is.EqualTo(30304));
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(validRecord.GetHex()));
+                Assert.That(peerNode.HighestObservedEnrSequence, Is.EqualTo(validRecord.EnrSequence));
+            }
         }
 
         [Test]
@@ -400,13 +527,50 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(result, Is.True);
             Node peerNode = await ReadPeerCandidate(token);
+            NodeRecord peerEnr = peerNode.Enr
+                ?? throw new InvalidOperationException("Verified peer candidate is missing its refreshed ENR.");
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerNode.Port, Is.EqualTo(30304));
-                Assert.That(peerNode.Enr.EnrSequence, Is.EqualTo(2));
-                Assert.That(peerNode.Enr.GetHex(), Is.EqualTo(refreshedRecord.GetHex()));
+                Assert.That(peerEnr.EnrSequence, Is.EqualTo(2));
+                Assert.That(peerEnr.GetHex(), Is.EqualTo(refreshedRecord.GetHex()));
             }
 
+            await AssertNoPeerCandidate(token);
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_should_not_publish_retained_enr_after_observing_newer_unreachable_record(CancellationToken token)
+        {
+            NodeRecord reachableRecord = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyB,
+                IPAddress.Parse("192.168.1.2"),
+                tcpPort: 30303,
+                udpPort: 30303,
+                enrSequence: 1);
+            _receiver.Enr = reachableRecord;
+            _ = ConfigureRemoteEnrRefresh(
+                2,
+                2,
+                tcpPort: 30304,
+                ipAddress: IPAddress.Parse("2001:db8::2"));
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_receiver.Enr, Is.SameAs(reachableRecord));
+                Assert.That(_receiver.HighestObservedEnrSequence, Is.EqualTo(2));
+            }
+
+            await AssertNoPeerCandidate(token);
+
+            ConfigureBondCallback();
+            result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
             await AssertNoPeerCandidate(token);
         }
 
@@ -670,11 +834,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id.Equals(_receiver.Id)));
         }
 
-        [TestCase(MsgType.Pong)]
-        [TestCase(MsgType.Neighbors)]
-        [TestCase(MsgType.EnrResponse)]
+        [Test]
         [CancelAfter(10000)]
-        public async Task OnIncomingMsg_unsolicited_response_should_not_create_session_stats(MsgType msgType)
+        public async Task OnIncomingMsg_unsolicited_response_should_not_create_session_stats([Values(MsgType.Pong, MsgType.Neighbors, MsgType.EnrResponse)] MsgType msgType)
         {
             DiscoveryMsg response = CreateUnsolicitedResponse(msgType);
 
@@ -682,22 +844,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             _nodeStatsManager.DidNotReceive().GetOrAdd(Arg.Any<Node>());
             _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
-        }
-
-        [Test]
-        public async Task OnIncomingMsg_drops_messages_with_unverifiable_sender_without_error()
-        {
-            TestErrorLogManager logManager = new();
-            await _adapter.DisposeAsync();
-            _logManager = logManager;
-            _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
-
-            // A null FarPublicKey means the signature check failed during deserialization.
-            PongMsg pong = new(farPublicKey: null!, _timestamper.UnixTime.SecondsLong + 20, new ValueHash256(new byte[32]));
-
-            await _adapter.OnIncomingMsg(pong);
-
-            Assert.That(logManager.Errors, Is.Empty);
         }
 
         [TestCase(NoResponseRequest.Ping)]
@@ -837,6 +983,40 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             else
             {
                 await AssertNoPeerCandidate(token);
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_should_preserve_high_water_on_signed_ping_candidate(CancellationToken token)
+        {
+            const ulong advertisedSequence = 2;
+            IPEndPoint discoveryEndpoint = new(_receiver.Address.Address, 30304);
+            _ = ConfigureRemoteEnrRefresh(
+                advertisedSequence,
+                advertisedSequence,
+                tcpPort: 30303,
+                ipAddress: IPAddress.Parse("2001:db8::2"));
+            PingMsg pingMsg = new(
+                discoveryEndpoint,
+                _timestamper.UnixTime.SecondsLong + 20,
+                discoveryEndpoint,
+                30303,
+                0)
+            {
+                FarAddress = discoveryEndpoint,
+                EnrSequence = advertisedSequence
+            };
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            Node peerNode = await ReadPeerCandidate(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerNode.Id, Is.EqualTo(_receiver.Id));
+                Assert.That(peerNode.Enr, Is.Null);
+                Assert.That(peerNode.HighestObservedEnrSequence, Is.EqualTo(advertisedSequence));
             }
         }
 

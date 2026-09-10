@@ -19,21 +19,21 @@ namespace Nethermind.Blockchain.Data
     {
         // Volatile publication for any T: the volatile _data write orders the readonly Value store,
         // which a `volatile T` field cannot do once T may be a value type.
-        private sealed class DataSnapshot(T value)
+        private sealed class DataSnapshot(T? value)
         {
-            public T Value { get; } = value;
+            public T? Value { get; } = value;
         }
 
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private volatile DataSnapshot _data = null!;
-        private Timer _timer;
+        private volatile DataSnapshot _data = new(default);
+        private Timer? _timer;
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
         private bool _hasLoadedFile;
         private int _isLoading;
-        public string FilePath { get; private set; }
+        public string? FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
         {
@@ -46,18 +46,18 @@ namespace Nethermind.Blockchain.Data
             StartWatching();
         }
 
-        protected virtual T DefaultValue => default;
+        protected virtual T? DefaultValue => default;
 
-        public T Data => _data.Value;
+        public T? Data => _data.Value;
 
-        public event EventHandler Changed;
+        public event EventHandler? Changed;
 
         public void Dispose() => _timer?.Dispose();
 
         private void SetupWatcher(string filePath)
         {
             _data = new DataSnapshot(DefaultValue);
-            IFileInfo fileInfo = null;
+            IFileInfo? fileInfo = null;
             try
             {
                 fileInfo = _fileSystem.FileInfo.New(filePath);

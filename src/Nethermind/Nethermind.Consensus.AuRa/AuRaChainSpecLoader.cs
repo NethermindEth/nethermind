@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Core;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -21,7 +22,8 @@ public static class AuRaChainSpecLoader
 
     public static void ProcessChainSpec(ChainSpec chainSpec)
     {
-        if (chainSpec.Genesis is null
+        Block? genesis = chainSpec.Genesis;
+        if (genesis is null
             || IsPostMergeGenesis(chainSpec)
             || chainSpec.CustomSeal?.TryGetValue("authorityRound", out JsonElement sealJson) is not true)
         {
@@ -31,18 +33,19 @@ public static class AuRaChainSpecLoader
         AuRaGenesisSealJson? seal = _jsonSerializer.Deserialize<AuRaGenesisSealJson>(sealJson.GetRawText());
         if (seal?.Signature is null) return;
 
-        AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(chainSpec.Genesis.Header);
+        AuRaBlockHeader upgraded = AuRaBlockHeader.UpgradeFrom(genesis.Header);
         upgraded.AuRaStep = seal.Step;
         upgraded.AuRaSignature = seal.Signature;
 
-        chainSpec.Genesis = chainSpec.Genesis.WithReplacedHeader(upgraded);
+        chainSpec.Genesis = genesis.WithReplacedHeader(upgraded);
     }
 
     private static bool IsPostMergeGenesis(ChainSpec chainSpec)
     {
-        if (chainSpec.Genesis is null || chainSpec.Parameters?.TerminalTotalDifficulty?.IsZero != true) return false;
+        Block? genesis = chainSpec.Genesis;
+        if (genesis is null || chainSpec.Parameters.TerminalTotalDifficulty?.IsZero != true) return false;
 
-        chainSpec.Genesis.Header.IsPostMerge = true;
+        genesis.Header.IsPostMerge = true;
         return true;
     }
 

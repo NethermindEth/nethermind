@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -29,10 +28,14 @@ namespace Nethermind.State;
 internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
-    private IWorldStateScopeProvider.IScope _currentScope;
+    private IWorldStateScopeProvider.IScope? _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
-    private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
+    private const int StoragesInitialCapacity = 4_096;
+
+    private Dictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    // Handed back by a detached write-back once it is done with the map it took.
+    private Dictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
     /// <summary>
@@ -78,17 +81,26 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope) => _currentScope = scope;
+
+    private IWorldStateScopeProvider.IScope CurrentScope =>
+        _currentScope ?? throw new InvalidOperationException("Persistent storage can only be used within a world-state scope.");
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
+        IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         _metrics.IncrementStorageWrites();
         // Pair with HasStorageToClear: cached writes can bypass LoadFromTree, so register before journaling.
-        _ = GetOrCreateStorage(storageCell.Address);
+        PerContractState state = GetOrCreateStorage(storageCell.Address);
         base.Set(in storageCell, newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
-        _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
+        ValueAddress address = new(storageCell.Address.Bytes);
+        currentScope.HintWarmSlot(in address, storageCell.Index);
+        // The storage root lives in the account, so anything that moves it rewrites the account's leaf as well,
+        // and the account write path never sees a contract the block only stores to. The same holds for
+        // ResetContractState and ClearStorage, which move the root without writing a slot.
+        if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(in address);
     }
 
     /// <summary>
@@ -97,7 +109,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes : LoadFromTree(storageCell);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -106,7 +118,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
+        if (!_originalValues.TryGetValue(storageCell, out byte[]? value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -246,7 +258,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 continue;
             }
 
-            if (!_committedThisRound.Add(change!.StorageCell))
+            if (!_committedThisRound.Add(change.StorageCell))
             {
                 continue;
             }
@@ -263,7 +275,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 {
                     if (TStorageTracing.IsActive)
                     {
-                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
+                        RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
                     }
 
                     continue;
@@ -274,7 +286,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     TraceUpdate(change);
                 }
 
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                if (_originalValues.TryGetValue(change.StorageCell, out byte[]? initialValue) &&
                     initialValue.AsSpan().SequenceEqual(change.Value))
                 {
                     // no need to update the tree if the value is the same
@@ -289,7 +301,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (TStorageTracing.IsActive)
                 {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value);
+                    RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(change.Value);
                 }
             }
         }
@@ -298,6 +310,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceUpdate(in Change change)
         => _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Dictionary<StorageCell, StorageChangeTrace> RequireTrace(Dictionary<StorageCell, StorageChangeTrace>? trace)
+        => trace ?? throw new InvalidOperationException("Storage tracing is active without a trace accumulator.");
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
@@ -318,7 +334,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (!kvp.Value) continue;
 
-            if (!_storages.TryGetValue(kvp.Key, out PerContractState contractState))
+            if (!_storages.TryGetValue(kvp.Key, out PerContractState? contractState))
             {
                 Debug.Fail($"Storage root marked changed for {kvp.Key} but no contract state is present");
                 continue;
@@ -342,11 +358,125 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
+    /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
+    /// <remarks>
+    /// Only a block that took no snapshot has states to return here, and it pays for them on its own thread. One that
+    /// detached its changes left an empty map behind, and its states belong to the snapshot, which returns them once
+    /// written; that is also what keeps a state from being returned twice.
+    /// </remarks>
     public void ClearStorageMap()
     {
-        _storages.Clear();
+        _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
+
+    /// <summary>
+    /// Hands over the block's storage changes, leaving an empty map in their place, with each contract's block-end
+    /// fate already resolved so the snapshot needs nothing from the state provider afterwards.
+    /// </summary>
+    /// <remarks>
+    /// A handover rather than a copy: <see cref="ClearStorageMap"/> drops the map at the end of every commit anyway.
+    /// The two references that outlive the map are dealt with: the last-contract memo is invalidated here, and the
+    /// storage clear journal is emptied by the commit before this runs.
+    /// </remarks>
+    /// <returns>The changes; the caller owns the snapshot and must dispose it.</returns>
+    internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
+    {
+        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+        {
+            storage.Value.BlockEndFate = FateOf(storage);
+        }
+
+        Dictionary<AddressAsKey, PerContractState> storages = _storages;
+        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new Dictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        InvalidateStorageMemo();
+        return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
+    }
+
+    /// <summary>
+    /// The storage half of a committed block's changes, detached from the provider that produced it.
+    /// </summary>
+    /// <remarks>
+    /// Owns the contract states until disposed, when it returns them to their pool. The provider gives them up once
+    /// the block is committed, so nothing else reads or mutates them and the snapshot may be written on another
+    /// thread, after the scope that produced it has been disposed. Nothing it touches may reach that scope.
+    /// </remarks>
+    private sealed class StorageChangeSnapshot(
+        PersistentStorageProvider provider,
+        Dictionary<AddressAsKey, PerContractState> storages,
+        List<AddressAsKey> removedWithStorage) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        /// <summary>
+        /// Writes the block's final value of every slot touched into <paramref name="writeBatch"/>, after a clear for
+        /// every contract whose pre-block storage the block wiped or whose account it removed.
+        /// </summary>
+        /// <remarks>
+        /// Clears come first, so none may follow a slot write of the same write-back. An account removed with storage
+        /// the block never touched has no contract state, so the removals the state provider recorded are checked as
+        /// well. A batch that drops what it held on a clear ends the write there: it has nothing left to complete, and
+        /// the block's own slots are all that would go back in.
+        /// </remarks>
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+        {
+            if (!writeBatch.AcceptsStorageWrites) return;
+
+            foreach (AddressAsKey removed in removedWithStorage)
+            {
+                // Only a block that saw the storage empty before touching it can prove the cache holds none of its slots.
+                if (!storages.TryGetValue(removed, out PerContractState? state) || state.HadStorageBeforeBlock != false)
+                {
+                    ClearCachedStorage(writeBatch, removed.Value);
+                    if (!writeBatch.AcceptsStorageWrites) return;
+                }
+            }
+
+            foreach (KeyValuePair<AddressAsKey, PerContractState> storage in storages)
+            {
+                PerContractState state = storage.Value;
+                if (state.BlockEndFate == AccountFate.Unknown || state.ClearsPreBlockStorage(state.BlockEndFate == AccountFate.Present))
+                {
+                    ClearCachedStorage(writeBatch, storage.Key.Value);
+                    if (!writeBatch.AcceptsStorageWrites) return;
+                }
+            }
+
+            if (!writeBatch.AcceptsStorageWrites) return;
+
+            foreach (KeyValuePair<AddressAsKey, PerContractState> storage in storages)
+            {
+                if (storage.Value.BlockEndFate == AccountFate.Present) storage.Value.WriteSlots(writeBatch);
+            }
+        }
+
+        public void Dispose()
+        {
+            // The write-back thread, so recycling costs the block nothing on the path that gets here; the blocks
+            // that take no snapshot pay for it in ClearStorageMap instead. Each state was rented by the block that
+            // filled it and is released once, which is what keeps the pool sound.
+            storages.ResetAndClear();
+            Volatile.Write(ref provider._spareStorages, storages);
+            provider._stateProvider.ReturnRemovedAccounts(removedWithStorage);
+        }
+    }
+
+    private enum AccountFate { Present, Removed, Unknown }
+
+    private static void ClearCachedStorage(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, Address address)
+    {
+        using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(address, 0);
+        storageWriteBatch.Clear();
+    }
+
+    // An address with storage touched but no account record was read directly, so it exists unchanged, unless it was
+    // also written: execution always loads an account before writing its storage, so such a contract has no state the
+    // caches can vouch for, and its cached pre-block slots must go rather than be trusted.
+    private AccountFate FateOf(KeyValuePair<AddressAsKey, PerContractState> storage) =>
+        _stateProvider.HasAccountAtBlockEnd(storage.Key.Value) switch
+        {
+            true => AccountFate.Present,
+            false => AccountFate.Removed,
+            null => storage.Value.WasWritten ? AccountFate.Unknown : AccountFate.Present,
+        };
 
     private Address? _lastStorageAddress;
     private PerContractState? _lastStorage;
@@ -359,17 +489,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private PerContractState GetOrCreateStorage(Address address)
     {
-        if (_lastStorageAddress == address)
+        if (_lastStorageAddress == address && _lastStorage is not null)
         {
-            return _lastStorage!;
+            return _lastStorage;
         }
 
         ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
+        PerContractState storage = value ?? ThrowNoStorageState(address);
         _lastStorageAddress = address;
-        _lastStorage = value;
-        return value;
+        _lastStorage = storage;
+        return storage;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static PerContractState ThrowNoStorageState(Address address) =>
+        throw new InvalidOperationException($"No storage state is available for {address}.");
 
     public void WarmUp(in StorageCell storageCell, bool isEmpty)
     {
@@ -448,12 +583,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void ResetContractState(Address address)
     {
+        IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         _toUpdateRoots.TryAdd(address, true);
-        GetOrCreateStorage(address).Clear();
+        PerContractState state = GetOrCreateStorage(address);
+        state.Clear();
+        if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
     }
 
     public override void ClearStorage(Address address)
     {
+        IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         if (!HasStorageToClear(address))
         {
             return;
@@ -482,8 +621,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
-        DefaultableDictionary.ClearSnapshot blockChange = GetOrCreateStorage(address).ClearRevertibly();
+        PerContractState contractState = GetOrCreateStorage(address);
+        DefaultableDictionary.ClearSnapshot blockChange = contractState.ClearRevertibly();
         _toUpdateRoots[address] = true;
+        if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
         int journalIndex = _storageClearJournal.Count;
         _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
         PushStorageClear(journalIndex);
@@ -511,7 +652,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return true;
         }
 
-        return _currentScope.Get(address)?.HasStorage == true;
+        return CurrentScope.Get(address)?.HasStorage == true;
     }
 
     protected override void RestoreStorageClear(int journalIndex)
@@ -558,9 +699,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
-        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
+        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
+        public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
 
         public void Reset(int capacity)
@@ -572,7 +714,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _spare = null;
-            _dictionary.ClearAndTrim(capacity, capacity);
+            if (_dictionary.Count > capacity)
+            {
+                // These arrays will be discarded; clearing their entries first only adds writes.
+                _dictionary = new Dictionary<UInt256, StorageChangeTrace>(capacity, UInt256Comparer.Instance);
+            }
+            else
+            {
+                _dictionary.ClearAndTrim(capacity, capacity);
+            }
         }
         public void ClearAndSetMissingAsDefault()
         {
@@ -586,7 +736,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count != 0)
             {
                 previousEntries = _dictionary;
-                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(Comparer.Instance);
+                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(UInt256Comparer.Instance);
                 _spare = null;
             }
 
@@ -639,19 +789,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
-        private sealed class Comparer : IEqualityComparer<UInt256>
-        {
-            public static Comparer Instance { get; } = new();
-
-            private Comparer() { }
-
-            public bool Equals(UInt256 x, UInt256 y)
-                => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
-
-            public int GetHashCode([DisallowNull] UInt256 obj)
-                => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
-        }
-
         public void UnmarkClear() => _missingAreDefault = false;
 
         public readonly record struct ClearSnapshot(
@@ -665,8 +802,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
-        private PersistentStorageProvider _provider;
-        private Address _address;
+        // Whether the contract held storage before the block and whether the block cleared it: together they say if a
+        // cache of pre-block slots must drop them. Captured at the first tree creation, before any flush moves the root.
+        private bool _hadStorageBeforeBlock;
+        private bool _storageRootSeen;
+        private bool _wasCleared;
+        private bool _accountHinted;
+        private PersistentStorageProvider? _provider;
+        private Address? _address;
 
         private PerContractState(Address address, PersistentStorageProvider provider) => Initialize(address, provider);
 
@@ -678,6 +821,38 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
 
+        private PersistentStorageProvider Provider =>
+            _provider ?? throw new InvalidOperationException("A returned storage state cannot be used.");
+
+        private Address Address =>
+            _address ?? throw new InvalidOperationException("A returned storage state cannot be used.");
+
+        public bool WasWritten => _wasWritten;
+
+        /// <summary>
+        /// Claims the one account trie warm hint this contract needs for the block.
+        /// </summary>
+        /// <remarks>
+        /// Spent whether or not the scope keeps the hint. A scope that drops this one drops the block's slot hints as
+        /// well, because both are gated on the same disposed and paused flags, so the contract is never left with its
+        /// slots warmed and its account path cold.
+        /// </remarks>
+        /// <returns><see langword="true"/> for the first caller, <see langword="false"/> for every later one.</returns>
+        public bool TakeAccountWarmHint()
+        {
+            if (_accountHinted) return false;
+            _accountHinted = true;
+            return true;
+        }
+
+        /// <summary>The account's fate at block end.</summary>
+        /// <remarks>
+        /// Resolved by <see cref="DetachBlockChanges"/> on the block thread, while the state provider still holds the
+        /// block's account record. The detached snapshot is written after the scope is gone, so it must not reach back
+        /// into the provider to work this out for itself.
+        /// </remarks>
+        public AccountFate BlockEndFate { get; set; }
+
         public Hash256 StorageRoot
         {
             get
@@ -688,6 +863,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MemberNotNull(nameof(_backend))]
         internal void EnsureStorageTree()
         {
             if (_backend is not null) return;
@@ -695,11 +871,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
+        [MemberNotNull(nameof(_backend))]
         private void CreateStorageTree()
         {
-            _backend = _provider._currentScope.CreateStorageTree(_address);
+            _backend = Provider.CurrentScope.CreateStorageTree(Address);
 
             bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            if (!_storageRootSeen)
+            {
+                _storageRootSeen = true;
+                _hadStorageBeforeBlock = !isEmpty;
+            }
+
             if (isEmpty && !_wasWritten)
             {
                 // Slight optimization that skips the tree
@@ -710,12 +893,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Clear()
         {
             EnsureStorageTree();
+            _wasCleared = true;
             BlockChange.ClearAndSetMissingAsDefault();
         }
 
         public DefaultableDictionary.ClearSnapshot ClearRevertibly()
         {
             EnsureStorageTree();
+            // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
+            _wasCleared = true;
             return BlockChange.ClearRevertibly();
         }
 
@@ -727,6 +913,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
+            _hadStorageBeforeBlock = false;
+            _storageRootSeen = false;
+            _wasCleared = false;
+            _accountHinted = false;
+            // A later block may never detach its changes, and would then read whatever this one left behind.
+            BlockEndFate = AccountFate.Present;
             Pool.Return(this);
         }
 
@@ -758,13 +950,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                _provider._metrics.IncrementStorageTreeCache();
+                Provider._metrics.IncrementStorageTreeCache();
             }
 
-            uint round = _provider._originalsRound;
+            PersistentStorageProvider provider = Provider;
+            uint round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
-                _provider.CaptureOriginalValue(storageCell, valueChange.After);
+                provider.CaptureOriginalValue(storageCell, valueChange.After);
                 valueChange = valueChange.WithCapturedRound(round);
             }
 
@@ -773,7 +966,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
-            _provider._metrics.IncrementStorageTreeReads();
+            Provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
             return _backend.Get(storageCell.Index);
@@ -838,6 +1031,32 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return (writes, skipped);
         }
 
+        /// <summary>Whether the contract held storage before the block, or <see langword="null"/> when the block never resolved its tree.</summary>
+        public bool? HadStorageBeforeBlock => _storageRootSeen ? _hadStorageBeforeBlock : null;
+
+        /// <summary>
+        /// Whether a cache of the contract's pre-block slots must drop them: the block cleared storage the contract held
+        /// before it, or removed the account. A contract without storage had no slots to cache.
+        /// </summary>
+        public bool ClearsPreBlockStorage(bool accountExists) => _hadStorageBeforeBlock && (_wasCleared || !accountExists);
+
+        /// <summary>Writes the block's final value of every slot touched, reads included, into <paramref name="writeBatch"/>.</summary>
+        /// <remarks>
+        /// Reads only this contract's address and recorded changes. It must never resolve the storage tree, as
+        /// <see cref="ProcessStorageChanges"/> does: the scope that owns the tree may already have been disposed by
+        /// the time a detached snapshot is written.
+        /// </remarks>
+        public void WriteSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+        {
+            if (BlockChange.Count == 0) return;
+
+            using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(Address, BlockChange.Count);
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            {
+                storageWriteBatch.Set(kvp.Key, kvp.Value.After);
+            }
+        }
+
         public void RemoveStorageTree() => _backend = null;
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
@@ -850,7 +1069,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)
             {
-                if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState item))
+                if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState? item))
                 {
                     Interlocked.Decrement(ref _poolCount);
                     item.Initialize(address, provider);

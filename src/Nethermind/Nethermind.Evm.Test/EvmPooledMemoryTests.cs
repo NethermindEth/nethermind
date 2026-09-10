@@ -174,13 +174,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(0UL));
     }
 
-    [TestCase(1024)]
-    [TestCase(4096)]
-    [TestCase(32 * 1024)]
-    [TestCase(70 * 1024)]
-    [TestCase(2 * 1024 * 1024)]
-    [TestCase(4 * 1024 * 1024)]
-    public void Pooled_buffer_is_zeroed_on_reuse(int size)
+    [Test]
+    public void Pooled_buffer_is_zeroed_on_reuse([Values(1024, 4096, 32 * 1024, 70 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024)] int size)
     {
         EvmPooledMemory dirty = new();
         UInt256 zero = UInt256.Zero;
@@ -523,9 +518,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(1)]
-    [TestCase(16)]
-    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail(int wordCount)
+    [Test]
+    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail([Values(1, 16)] int wordCount)
     {
         using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         const int reservationSize = 4 * 1024;
@@ -578,13 +572,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(false, 512)]
-    [TestCase(false, 4 * 1024)]
-    [TestCase(true, 512)]
-    [TestCase(true, 4 * 1024)]
+    [Test]
     public void Read_within_initialized_prefix_does_not_materialize_larger_logical_expansion(
-        bool afterGas,
-        int reservationSize)
+        [Values] bool afterGas,
+        [Values(512, 4 * 1024)] int reservationSize)
     {
         VmState<EthereumGasPolicy> owner = new();
         ref EvmPooledMemory memory = ref owner.Memory;
@@ -826,11 +817,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }
 
-    [TestCase(32)]
-    [TestCase(64)]
-    [TestCase(1024)]
-    [TestCase(4096)]
-    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions(int step)
+    [Test]
+    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions([Values(32, 64, 1024, 4096)] int step)
     {
         EvmPooledMemory memory = new();
         byte[] word = TestItem.KeccakA.BytesToArray();
@@ -923,9 +911,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void CopyAfterGas_sizes_storage_for_destination_not_logically_zero_source(bool allocateDestinationFirst)
+    [Test]
+    public void CopyAfterGas_sizes_storage_for_destination_not_logically_zero_source([Values] bool allocateDestinationFirst)
     {
         using ThreadCacheReservation _ = new();
         byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
@@ -1222,6 +1209,58 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [Test]
+    public void Load32BytesAfterGas_OnDirtyReusedMemory_PreservesPrefixAndZeroesTail(
+        [Values(false, true)] bool inline,
+        [Values(0, 16, 1000, 32760)] int offset)
+    {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
+        using EvmFrameMemory owner = new();
+        owner.GetSpan().Fill(0xa7);
+        EvmPooledMemory memory = inline ? new(owner) : default;
+        byte[] prefix = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+        byte[] expected = new byte[AlignToWord(offset + EvmPooledMemory.WordSize)];
+        prefix.CopyTo(expected, 0);
+
+        try
+        {
+            UInt256 start = UInt256.Zero;
+            memory.CalculateMemoryCost(in start, EvmPooledMemory.WordSize, out _);
+            memory.SaveAfterGas(in start, prefix);
+            Assert.That(GetInitializedSize(ref memory), Is.EqualTo((ulong)prefix.Length),
+                "precondition: only the written prefix is initialized");
+            if (!inline)
+            {
+                AssertDirtyTailWasReused(ref memory);
+            }
+
+            UInt256 location = (UInt256)offset;
+            memory.CalculateMemoryCost(in location, EvmPooledMemory.WordSize, out bool outOfGas);
+            Assert.That(outOfGas, Is.False, "the requested read fits the EVM memory limit");
+
+            byte[] actual = MemoryMarshal.CreateReadOnlySpan(
+                ref memory.Load32BytesAfterGas(in location), EvmPooledMemory.WordSize).ToArray();
+            byte[] repeated = MemoryMarshal.CreateReadOnlySpan(
+                ref memory.Load32BytesAfterGas(in location), EvmPooledMemory.WordSize).ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected.AsSpan(offset, EvmPooledMemory.WordSize).ToArray()),
+                    "unwritten bytes must be zero even across a spill or buffer growth");
+                Assert.That(repeated, Is.EqualTo(actual), "the initialized fast path must return identical bytes");
+                Assert.That(GetInitializedSize(ref memory),
+                    Is.LessThanOrEqualTo((ulong)(memory.BackingArray?.Length ?? EvmPooledMemory.InlineCapacity)),
+                    "the initialized prefix must fit its backing storage");
+                Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected),
+                    "materializing a read must preserve the written prefix and logical memory size");
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     private static ThreadCacheReservation PrimeDirtyBuffer()
     {
         ThreadCacheReservation cacheReservation = new();
@@ -1500,7 +1539,7 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new NotSupportedException();
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after) => throw new NotSupportedException();
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 

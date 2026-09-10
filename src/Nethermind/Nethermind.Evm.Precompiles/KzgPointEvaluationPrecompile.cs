@@ -21,7 +21,7 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
 
     public static Address Address { get; } = Address.FromNumber(0x0a);
 
-    public static string Name => "KZG_POINT_EVALUATION";
+    public string Name => "KZG_POINT_EVALUATION";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 50_000UL;
 

@@ -42,13 +42,15 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         chain.Api.AdvanceSlot(20);
 
         // no events loaded initially
-        List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        BlockHeader parent = chain.BlockTree!.Head!.Header;
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(0));
 
         // after timeout they should be loaded
         using CancellationTokenSource cts = new();
         await chain.Api.TxSource.WaitForTransactions(BuildingSlot, cts.Token);
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        parent = chain.BlockTree.Head!.Header;
+        txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(20));
 
         // late block arrives, then next block should contain loaded transactions
@@ -76,7 +78,8 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[^1];
 
         // no events loaded initially
-        List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(0));
 
         chain.Api.AdvanceSlot(20);
@@ -84,7 +87,8 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        parent = chain.BlockTree.Head!.Header;
+        txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(20));
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);

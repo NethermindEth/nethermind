@@ -207,8 +207,12 @@ namespace Nethermind.Blockchain
 
         public ulong GetLowestBlock() => _wrapped.GetLowestBlock();
 
+        public ulong LowestServedBlock => _wrapped.LowestServedBlock;
+
         public void NewOldestBlock(ulong oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
 
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlockRange)} calls");
+
+        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
     }
 }

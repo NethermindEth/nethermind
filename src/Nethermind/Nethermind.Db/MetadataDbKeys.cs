@@ -25,5 +25,9 @@ namespace Nethermind.Db
         public const int FlatDbCompactionOffset = 18;
         public const int HistoryPruningReclaimCursor = 19;
         public const int HistoryPruningTxIndexSweepCursor = 20;
+        public const int HistoryPruningSliceCleanupCursor = 21;
+        public const int RetiredHistorySliceLogsRetainedFrom = 22;
+        public const int RetiredHistorySliceLogsSliceSet = 23;
+        public const int AncientBodiesDownloadComplete = 24;
     }
 }

@@ -17,9 +17,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
@@ -86,6 +88,44 @@ public class ProtocolsManagerTests
         Assert.That(session.AddedDisconnectedHandler, Is.Null);
         Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
         Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+    }
+
+    [TestCase(DisconnectReason.TooManyPeers, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.ConnectionClosed, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.ConnectionReset, DisconnectType.Local)]
+    [TestCase(DisconnectReason.OutgoingConnectionFailed, DisconnectType.Local)]
+    [TestCase(DisconnectReason.Exception, DisconnectType.Local)]
+    [TestCase(DisconnectReason.ClientQuitting, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.Other, DisconnectType.Remote)]
+    [TestCase(DisconnectReason.BreachOfProtocol, DisconnectType.Remote)]
+    public void Initialized_session_disconnects_are_not_logged_at_debug(
+        DisconnectReason reason,
+        DisconnectType type)
+    {
+        TestLogger logger = new() { IsTrace = false };
+        IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+        ISession session = Substitute.For<ISession>();
+        session.BestStateReached.Returns(SessionState.Initialized);
+        session.Node.Returns(new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303));
+        _ = new ProtocolsManager(
+            Substitute.For<ISyncPeerPool>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IDiscoveryApp>(),
+            rlpxHost,
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IProtocolValidator>(),
+            Substitute.For<IPeerManager>(),
+            Substitute.For<INetworkStorage>(),
+            [],
+            [],
+            new OneLoggerLogManager(new ILogger(logger)));
+
+        rlpxHost.SessionDisconnected += Raise.Event<SessionDisconnectedEventHandler>(
+            new object(),
+            session,
+            new DisconnectEventArgs(reason, type, "test"));
+
+        Assert.That(logger.LogList, Is.Empty);
     }
 
     [Test]
@@ -265,9 +305,12 @@ public class ProtocolsManagerTests
         }
 
         public Context CreateOutgoingSession()
+            => CreateOutgoingSession(new Node(TestItem.PublicKeyB, _remoteHost, _remotePort));
+
+        public Context CreateOutgoingSession(Node node)
         {
             IChannel channel = Substitute.For<IChannel>();
-            _currentSession = new Session(_localPort, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort), channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            _currentSession = new Session(_localPort, node, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
             _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
             return this;
@@ -372,6 +415,13 @@ public class ProtocolsManagerTests
             Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
             Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
             Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            return this;
+        }
+
+        public Context VerifyPersistedEnr(NodeRecord expected)
+        {
+            _peerStorage.Received(1).UpdateNode(Arg.Is<NetworkNode>(node =>
+                node.IsEnr && node.Enr.ToString() == expected.ToString()));
             return this;
         }
 
@@ -512,6 +562,30 @@ public class ProtocolsManagerTests
             .VerifyEthInitialized();
 
     [Test]
+    public void Persists_verified_enr_after_protocol_initialization()
+    {
+        NodeRecord record = new() { EnrSequence = 7 };
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyB.CompressedPublicKey));
+        record.SetEntry(new IpEntry(IPAddress.Parse("35.0.0.1")));
+        record.SetEntry(new TcpEntry(30000));
+        record.SetEntry(new UdpEntry(30001));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2606:4700:4700::1111")));
+        record.SetEntry(new Tcp6Entry(30002));
+        record.SetEntry(new Udp6Entry(30003));
+        new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyB).Sign(record);
+        Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+        Assert.That(node!.SetVerifiedEnr(record), Is.True);
+
+        When.CreateOutgoingSession(node)
+            .Handshake()
+            .Init()
+            .ReceiveHello()
+            .ReceiveStatus()
+            .VerifyEthInitialized()
+            .VerifyPersistedEnr(record);
+    }
+
+    [Test]
     public void Removes_sync_peers_on_disconnect() => When
             .CreateIncomingSession()
             .ActivateChannel()
@@ -544,9 +618,8 @@ public class ProtocolsManagerTests
             .ReceiveHelloWrongEth()
             .VerifyDisconnected();
 
-    [TestCase(TestBlockchainIds.NetworkId + 1)]
-    [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(ulong networkId) => When
+    [Test]
+    public void Disconnects_on_wrong_network_id([Values(TestBlockchainIds.NetworkId + 1, TestBlockchainIds.ChainId)] ulong networkId) => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()

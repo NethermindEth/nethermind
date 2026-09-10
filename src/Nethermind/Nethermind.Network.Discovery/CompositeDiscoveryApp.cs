@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
@@ -26,31 +25,54 @@ namespace Nethermind.Network.Discovery;
 public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
-    private readonly IIPResolver _ipResolver;
-    private readonly IConnectionsPool _connections;
+    private readonly DiscoveryConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
     private readonly ILogger _logger;
+    private IEventLoopGroup? _eventLoopGroup;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        IIPResolver ipResolver,
         ILogManager logManager,
         Func<DiscoveryV5App> discoveryV5Factory, // These two are factory because they are optional.
         Func<DiscoveryApp> discoveryV4Factory,
+        NetworkListenerState listenerState,
         IChannelFactory? channelFactory = null
     )
+        : this(
+            networkConfig,
+            discoveryConfig,
+            logManager,
+            listenerState,
+            CreateDiscoveryApps(discoveryConfig, discoveryV4Factory, discoveryV5Factory),
+            channelFactory)
+    {
+    }
+
+    internal CompositeDiscoveryApp(
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager,
+        NetworkListenerState listenerState,
+        IDiscoveryApp[] discoveryApps,
+        IChannelFactory? channelFactory = null)
     {
         _networkConfig = networkConfig;
-        _ipResolver = ipResolver;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
+        _discoveryApps = discoveryApps;
+        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
+    }
 
+    private static IDiscoveryApp[] CreateDiscoveryApps(
+        IDiscoveryConfig discoveryConfig,
+        Func<DiscoveryApp> discoveryV4Factory,
+        Func<DiscoveryV5App> discoveryV5Factory)
+    {
         List<IDiscoveryApp> discoveryApps = new(2);
-
         if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
         {
             discoveryApps.Add(discoveryV4Factory());
@@ -61,35 +83,68 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
             discoveryApps.Add(discoveryV5Factory());
         }
 
-        _discoveryApps = [.. discoveryApps];
-        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
+        return [.. discoveryApps];
     }
 
     public void InitializeChannel(IChannel channel)
-        => ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
+    {
+        channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
+        ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
+    }
 
     public async Task StartAsync()
     {
         if (_discoveryApps.Length == 0) return;
 
-        IPAddress localIp = (await _ipResolver.Resolve()).LocalIp;
+        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
+        _eventLoopGroup = eventLoopGroup;
+        try
+        {
+            IChannel channel = await _connections.BindAsync(
+                () => CreateBootstrap(eventLoopGroup),
+                CreateDatagramChannel,
+                _networkConfig.DiscoveryPort);
+            // A failed bind closes stateful discovery handlers, so attach them only to the successful channel.
+            // Datagrams can be discarded until this event-loop work completes, before the protocol apps start.
+            await channel.EventLoop.SubmitAsync(() =>
+            {
+                InitializeChannel(channel);
+                return true;
+            });
+
+            await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
+        }
+        catch
+        {
+            try
+            {
+                await StopAsync();
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error stopping discovery after startup failed. {e}");
+            }
+
+            throw;
+        }
+    }
+
+    internal bool HasEventLoopGroup => Volatile.Read(ref _eventLoopGroup) is not null;
+
+    private Bootstrap CreateBootstrap(IEventLoopGroup eventLoopGroup)
+    {
         Bootstrap bootstrap = new Bootstrap()
-            .Group(new MultithreadEventLoopGroup(1))
+            .Group(eventLoopGroup)
             .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
             .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2))
             ;
-
-        if (_channelFactory is not null)
-            bootstrap.ChannelFactory(() => _channelFactory!.CreateDatagramChannel());
-        else
-            bootstrap.ChannelFactory(() => new SocketDatagramChannel(CreateDatagramSocket(localIp)));
-
-        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
-
-        await _connections.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
-
-        await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
+        // Bootstrap validation requires an initializer even though the stateful handlers attach after binding.
+        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(static _ => { }));
+        return bootstrap;
     }
+
+    private IChannel CreateDatagramChannel(IPAddress address)
+        => _channelFactory?.CreateDatagramChannel() ?? new SocketDatagramChannel(CreateDatagramSocket(address));
 
     /// <summary>
     /// Creates the UDP socket whose address family and dual-mode behavior match a configured listener address.
@@ -100,78 +155,22 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     internal static Socket CreateDatagramSocket(IPAddress localIp)
     {
         Socket socket = new(localIp.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
-        if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
+        try
         {
-            socket.DualMode = localIp.Equals(IPAddress.IPv6Any) || localIp.IsIPv4MappedToIPv6;
+            // UDP has no TIME_WAIT state; exclusive ownership keeps collision and fallback behavior deterministic.
+            socket.ExclusiveAddressUse = true;
+            if (localIp.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                socket.DualMode = DiscoveryAddressSupport.SupportsFamily(localIp, AddressFamily.InterNetwork);
+            }
+
+            return socket;
         }
-
-        return socket;
-    }
-
-    /// <summary>
-    /// Returns whether a socket bound to <paramref name="localIp"/> can send to and receive from <paramref name="remoteIp"/>.
-    /// </summary>
-    /// <remarks>
-    /// A native IPv4 socket cannot use an endpoint that remains in IPv4-mapped IPv6 form; callers must unmap it first.
-    /// </remarks>
-    internal static bool SupportsAddress(IPAddress localIp, IPAddress remoteIp)
-        => !(localIp.AddressFamily == AddressFamily.InterNetwork && remoteIp.IsIPv4MappedToIPv6) &&
-           SupportsAddressFamily(localIp, GetAddressFamily(remoteIp));
-
-    /// <summary>
-    /// Returns the effective address family, treating IPv4-mapped IPv6 addresses as IPv4.
-    /// </summary>
-    internal static AddressFamily GetAddressFamily(IPAddress address)
-        => address.IsIPv4MappedToIPv6 ? AddressFamily.InterNetwork : address.AddressFamily;
-
-    /// <summary>
-    /// Returns whether a socket bound to <paramref name="localIp"/> supports <paramref name="addressFamily"/>.
-    /// </summary>
-    internal static bool SupportsAddressFamily(IPAddress localIp, AddressFamily addressFamily)
-        => addressFamily switch
+        catch
         {
-            AddressFamily.InterNetwork =>
-                localIp.AddressFamily == AddressFamily.InterNetwork ||
-                localIp.IsIPv4MappedToIPv6 ||
-                localIp.Equals(IPAddress.IPv6Any),
-            AddressFamily.InterNetworkV6 =>
-                localIp.AddressFamily == AddressFamily.InterNetworkV6 &&
-                !localIp.IsIPv4MappedToIPv6,
-            _ => false
-        };
-
-    /// <summary>
-    /// Writes listener-supported address families in preferred, IPv4, then IPv6 order without duplicates.
-    /// </summary>
-    internal static int GetSupportedAddressFamilies(
-        IPAddress localIp,
-        IPEndPoint? preferredEndpoint,
-        Span<AddressFamily> addressFamilies)
-    {
-        Debug.Assert(addressFamilies.Length >= 2);
-
-        int count = 0;
-        AddressFamily? preferredFamily = preferredEndpoint is null
-            ? null
-            : GetAddressFamily(preferredEndpoint.Address);
-        if (preferredFamily is { } family && SupportsAddressFamily(localIp, family))
-        {
-            addressFamilies[count++] = family;
+            socket.Dispose();
+            throw;
         }
-
-        if (preferredFamily != AddressFamily.InterNetwork &&
-            SupportsAddressFamily(localIp, AddressFamily.InterNetwork))
-        {
-            addressFamilies[count++] = AddressFamily.InterNetwork;
-        }
-
-        if (preferredFamily != AddressFamily.InterNetworkV6 &&
-            SupportsAddressFamily(localIp, AddressFamily.InterNetworkV6))
-        {
-            addressFamilies[count++] = AddressFamily.InterNetworkV6;
-        }
-
-        return count;
     }
 
     /// <summary>
@@ -184,7 +183,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         [NotNullWhen(true)] out Node? node)
     {
         Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
-        int count = GetSupportedAddressFamilies(localIp, preferredEndpoint, addressFamilies);
+        int count = DiscoveryAddressSupport.GetSupportedFamilies(localIp, preferredEndpoint, addressFamilies);
         for (int i = 0; i < count; i++)
         {
             if (Node.TryFromDiscoveryEnr(record, addressFamilies[i], out node))
@@ -205,10 +204,21 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
         finally
         {
-            _compositeNodeSource.Dispose();
-            await DisposeDiscoveryApps();
+            try
+            {
+                await ShutdownEventLoopGroup();
+            }
+            finally
+            {
+                _compositeNodeSource.Dispose();
+                await DisposeDiscoveryApps();
+            }
         }
     }
+
+    // Channels and discovery tasks are stopped first, so their event loop needs no additional quiet period.
+    private Task ShutdownEventLoopGroup()
+        => Interlocked.Exchange(ref _eventLoopGroup, null)?.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero) ?? Task.CompletedTask;
 
     string IStoppableService.Description => "discovery connection";
 
@@ -267,5 +277,14 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     {
         add => _compositeNodeSource.NodeRemoved += value;
         remove => _compositeNodeSource.NodeRemoved -= value;
+    }
+}
+
+internal sealed class DiscoveryTrafficHandler : SimpleChannelInboundHandler<DatagramPacket>
+{
+    protected override void ChannelRead0(IChannelHandlerContext context, DatagramPacket packet)
+    {
+        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, packet.Content.ReadableBytes);
+        context.FireChannelRead(packet.Retain());
     }
 }

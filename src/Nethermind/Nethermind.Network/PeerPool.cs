@@ -33,6 +33,7 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
+        private readonly TimeProvider _timeProvider;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -52,7 +53,18 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager)
+            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System)
+        {
+        }
 
+        internal PeerPool(
+            INodeSource nodeSource,
+            INodeStatsManager nodeStatsManager,
+            INetworkStorage peerStorage,
+            INetworkConfig networkConfig,
+            ILogManager logManager,
+            ITrustedNodesManager trustedNodesManager,
+            TimeProvider timeProvider)
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -61,6 +73,7 @@ namespace Nethermind.Network
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger<PeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
+            _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
@@ -93,7 +106,7 @@ namespace Nethermind.Network
         {
             if (Peers.TryGetValue(node.Id, out Peer? existing))
             {
-                PromoteFlags(node, existing.Node);
+                MergeNodeState(node, existing.Node);
                 return existing;
             }
 
@@ -103,19 +116,25 @@ namespace Nethermind.Network
             Peer peer = Peers.GetOrAdd(node.Id, created);
             if (ReferenceEquals(peer, created))
             {
-                if ((node.IsBootnode || node.IsStatic) && _logger.IsDebug) DebugAddingCandidatePeer(node);
+                if ((node.IsBootnode || node.IsStatic) && _logger.IsTrace) TraceAddingCandidatePeer(node);
                 PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
             else
             {
-                PromoteFlags(node, peer.Node);
+                MergeNodeState(node, peer.Node);
             }
 
             return peer;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugAddingCandidatePeer(Node n)
-                => _logger.Debug($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
+            void TraceAddingCandidatePeer(Node n)
+                => _logger.Trace($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
+        }
+
+        private void MergeNodeState(Node incoming, Node pooled)
+        {
+            PromoteFlags(incoming, pooled);
+            incoming.MergeEnrStateFrom(pooled);
         }
 
         // A node id can reach the pool through several sources (the persisted peers db, discovery, the
@@ -141,8 +160,6 @@ namespace Nethermind.Network
                 pooled.IsBootnode = true;
                 if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
             }
-
-            pooled.TryMergeAlternate(incoming);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -151,25 +168,11 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(NetworkNode networkNode)
         {
-            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing))
+            Node node = new(networkNode)
             {
-                if (!existing.Node.IsTrusted && networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode))
-                {
-                    existing.Node.IsTrusted = true;
-                    if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");
-                }
-
-                return existing;
-            }
-
-            Node node = new(networkNode) { IsTrusted = _trustedNodesManager.IsTrusted(networkNode.Enode) };
-            Peer created = new(node, _stats.GetOrAdd(node));
-            Peer peer = Peers.GetOrAdd(node.Id, created);
-            if (ReferenceEquals(peer, created))
-            {
-                PeerAdded?.Invoke(this, new PeerEventArgs(peer));
-            }
-            return peer;
+                IsTrusted = networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode)
+            };
+            return GetOrAdd(node);
         }
 
         public bool TryGet(PublicKey id, out Peer peer) => Peers.TryGetValue(id, out peer);
@@ -332,10 +335,15 @@ namespace Nethermind.Network
             {
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
+                bool throttlingLogged = false;
                 while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
-                    if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
-                    await Task.Delay(1000, token);
+                    if (!throttlingLogged)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                        throttlingLogged = true;
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(1), _timeProvider, token);
                 }
 
                 GetOrAdd(node);

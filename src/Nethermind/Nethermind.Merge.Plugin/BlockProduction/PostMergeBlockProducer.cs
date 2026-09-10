@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
             if (inclusionListTxSource is not null && (flags & IBlockProducer.Flags.EmptyBlock) != 0)
             {
-                blockToProduce.Transactions = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header.GasLimit, payloadAttributes);
+                blockToProduce.Transactions = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
             }
             return blockToProduce;
         }

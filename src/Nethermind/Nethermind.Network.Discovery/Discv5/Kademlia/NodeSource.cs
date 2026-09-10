@@ -27,7 +27,7 @@ public sealed class NodeSource(
 
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
-    private readonly int _recentNodeLimit = RecentNodeFilter.GetLimit(kademliaConfig.KSize, Hash256KademliaDistance.Instance.MaxDistance, ChannelCapacity);
+    private readonly int _recentNodeLimit = RecentNodeFilter.GetLimit(kademliaConfig.KSize, ValueHash256KademliaDistance.Instance.MaxDistance, ChannelCapacity);
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -115,7 +115,7 @@ public sealed class NodeSource(
 
             if (channel.Writer.TryWrite(peerCandidate))
             {
-                if (_logger.IsDebug) _logger.Debug($"Discv5 node source queued discovered node {peerCandidate:s}.");
+                if (_logger.IsTrace) TraceQueuedDiscoveredNode(peerCandidate);
                 return;
             }
 
@@ -124,6 +124,10 @@ public sealed class NodeSource(
             {
                 _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceQueuedDiscoveredNode(Node candidate) =>
+                _logger.Trace($"Discv5 node source queued discovered node {candidate:s}.");
         }
 
         bool TryReservePeerCandidate(Node node, [NotNullWhen(true)] out Node? peerCandidate)
@@ -153,6 +157,12 @@ public sealed class NodeSource(
 
         try
         {
+            if (record.EnrSequence < discoveryNode.HighestObservedEnrSequence)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping stale discv5 ENR peer candidate for {discoveryNode:s}.");
+                return false;
+            }
+
             if (recordFilter.Excludes(record))
             {
                 return false;
@@ -164,11 +174,22 @@ public sealed class NodeSource(
                 return false;
             }
 
-            AddressFamily addressFamily = CompositeDiscoveryApp.GetAddressFamily(discoveryNode.DiscoveryAddress.Address);
+            AddressFamily addressFamily = DiscoveryAddressSupport.GetFamily(discoveryNode.DiscoveryAddress.Address);
             // EIP-778 endpoints are independent: prefer the proven discovery family without
             // discarding a record whose only usable RLPx endpoint belongs to the other family.
-            return Node.TryFromEnr(record, addressFamily, out peerCandidate) ||
-                   Node.TryFromEnr(record, out peerCandidate);
+            if (!Node.TryFromEnr(record, addressFamily, out peerCandidate) &&
+                !Node.TryFromEnr(record, out peerCandidate))
+            {
+                return false;
+            }
+
+            if (discoveryNode.IsVerifiedEnr(record))
+            {
+                peerCandidate.SetVerifiedEnr(record);
+            }
+
+            peerCandidate.ObserveEnrSequence(discoveryNode.HighestObservedEnrSequence);
+            return true;
         }
         catch (Exception e)
         {

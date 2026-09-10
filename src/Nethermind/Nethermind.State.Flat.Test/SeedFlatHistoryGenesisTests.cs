@@ -34,8 +34,11 @@ public class SeedFlatHistoryGenesisTests
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
+        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
 
     [TearDown]

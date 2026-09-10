@@ -30,12 +30,11 @@ internal static class InputGenerator
         Witness? witness;
 
         (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host, cancellationToken);
+        if (block is null || witness is null || chainId is null)
+            return 1;
 
         using (witness)
         {
-            if (block is null || witness is null || chainId is null)
-                return 1;
-
             ISpecProvider specProvider = GetSpecProvider(chainId.Value);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
@@ -117,12 +116,20 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
+                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoderOrThrow<Block>();
                 RlpReader blockContext = new(rlp);
-                block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+                Block? decodedBlock = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
 
-                string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
+                if (decodedBlock is null)
+                {
+                    AnsiConsole.MarkupLine("[red]Block decoded as null[/]");
+                    return;
+                }
+
+                block = decodedBlock;
+
+                string blockNumber = EnsureBlockParamIsNumber(blockParam, decodedBlock);
 
                 AnsiConsole.MarkupLine($"[green]✓[/] Fetched block {blockNumber}: {rlp.Length:N0} bytes");
 
@@ -130,7 +137,7 @@ internal static class InputGenerator
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                witness = await client.Post<Witness>("debug_executionWitness", $"0x{block.Number:x}");
+                witness = await client.Post<Witness>("debug_executionWitness", $"0x{decodedBlock.Number:x}");
 
                 if (witness is null)
                 {
@@ -210,10 +217,10 @@ internal static class InputGenerator
             ? specProvider
             : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
 
-    private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
+    private static SszPublicKey[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
     {
         EthereumEcdsa ecdsa = new(chainId);
-        SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
+        SszPublicKey[] publicKeys = new SszPublicKey[transactions.Length];
 
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -221,10 +228,7 @@ internal static class InputGenerator
             PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
                 ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
 
-            publicKeys[i] = new()
-            {
-                Bytes = publicKey.PrefixedBytes
-            };
+            publicKeys[i] = SszPublicKey.FromSpan(publicKey.PrefixedBytes);
         }
 
         return publicKeys;

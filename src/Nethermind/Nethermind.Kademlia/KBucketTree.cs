@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Collections.Pooled;
@@ -28,9 +29,11 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     private readonly int _k;
     private readonly TKadKey _currentNodeHash;
     private readonly IKademliaDistance<TKadKey> _distance;
+    private readonly Func<TNode, TNode, TNode>? _mergeOnRefresh;
     private readonly ILogger _logger;
 
     private readonly Lock _lock = new();
+    private bool _isMergingRefresh;
 
     public KBucketTree(
         KademliaConfig<TNode> config,
@@ -50,6 +53,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         _b = config.Beta;
         _distance = distance;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+        _mergeOnRefresh = config.MergeOnRefresh;
         _root = new TreeNode(config.KSize, distance.Zero);
         _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
         if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
@@ -59,55 +63,80 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     {
         BucketAddResult resp;
         bool fireAdded;
+        TNode nodeToStore = node;
         lock (_lock)
         {
-            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
-
-            TreeNode current = _root;
-            // As in, what would be the depth of the node assuming all branch on the traversal is populated.
-            int logDistance = _distance.MaxDistance - _distance.CalculateLogDistance(_currentNodeHash, nodeHash);
-            int depth = 0;
-            while (true)
+            ThrowIfMergeReentered();
+            KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
+            if (_mergeOnRefresh is not null && bucket.TryGetStored(nodeHash, out TNode? previous))
             {
-                if (current.IsLeaf)
+                _isMergingRefresh = true;
+                try
                 {
-                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Reached leaf node at depth {depth}");
-                    resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
-                    fireAdded = resp == BucketAddResult.Added;
-                    if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
-                    {
-                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Successfully added/refreshed node {node} in bucket at depth {depth}");
-                        break;
-                    }
-
-                    if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
-                    {
-                        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Splitting bucket at depth {depth}");
-                        SplitBucket(depth, current);
-                        continue;
-                    }
-
-                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.Count}");
-                    break;
+                    nodeToStore = _mergeOnRefresh(nodeToStore, previous);
                 }
-
-                bool goRight = _distance.GetBit(nodeHash, depth);
-                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
-
-                current = goRight ? current.Right! : current.Left!;
-                depth++;
+                finally
+                {
+                    _isMergingRefresh = false;
+                }
             }
+
+            resp = TryAddOrRefreshLocked(nodeHash, nodeToStore, out toRefresh, out fireAdded);
         }
 
-        if (fireAdded) OnNodeAdded?.Invoke(this, node);
+        if (fireAdded) OnNodeAdded?.Invoke(this, nodeToStore);
         return resp;
     }
 
-    public TNode? GetByHash(TKadKey hash)
+    private BucketAddResult TryAddOrRefreshLocked(
+        in TKadKey nodeHash,
+        TNode node,
+        out TNode? toRefresh,
+        out bool fireAdded)
+    {
+        if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Adding node {node} with XOR distance {_distance.CalculateLogDistance(_currentNodeHash, nodeHash)}");
+
+        TreeNode current = _root;
+        // As in, what would be the depth of the node assuming all branch on the traversal is populated.
+        int logDistance = _distance.MaxDistance - _distance.CalculateLogDistance(_currentNodeHash, nodeHash);
+        int depth = 0;
+        while (true)
+        {
+            if (current.IsLeaf)
+            {
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Reached leaf node at depth {depth}");
+                BucketAddResult resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
+                fireAdded = resp == BucketAddResult.Added;
+                if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
+                {
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Successfully added/refreshed node {node} in bucket at depth {depth}");
+                    return resp;
+                }
+
+                if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
+                {
+                    if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Splitting bucket at depth {depth}");
+                    SplitBucket(depth, current);
+                    continue;
+                }
+
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.Count}");
+                return resp;
+            }
+
+            bool goRight = _distance.GetBit(nodeHash, depth);
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+
+            current = goRight ? current.Right! : current.Left!;
+            depth++;
+        }
+    }
+
+    public bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node)
     {
         lock (_lock)
         {
-            return GetBucketForHash(hash).GetByHash(hash);
+            return GetBucketForHash(hash).TryGetStored(hash, out node);
         }
     }
 
@@ -165,6 +194,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         TNode? removedNode;
         lock (_lock)
         {
+            ThrowIfMergeReentered();
             if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Attempting to remove node {nodeHash}");
 
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
@@ -174,6 +204,14 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
         if (removed && removedNode is not null) OnNodeRemoved?.Invoke(this, removedNode);
         return removed;
+    }
+
+    private void ThrowIfMergeReentered()
+    {
+        if (_isMergingRefresh)
+        {
+            throw new InvalidOperationException("MergeOnRefresh must not mutate the routing table that invoked it.");
+        }
     }
 
     public TNode[] GetAllAtDistance(int distance)

@@ -1,10 +1,12 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -19,13 +21,17 @@ namespace Nethermind.Network.Test.Stats
     public class NodeTests
     {
         [Test]
-        public void Can_parse_ipv6_prefixed_ip()
+        public void Canonicalizes_mapped_ipv4()
         {
             Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
-            Assert.That(node.Port, Is.EqualTo(65535));
-            Assert.That(node.DiscoveryPort, Is.EqualTo(65535));
-            Assert.That(node.Address.Address.MapToIPv4().ToString(), Is.EqualTo("73.224.122.50"));
-            Assert.That(node.Host, Is.EqualTo("73.224.122.50"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Port, Is.EqualTo(65535));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(65535));
+                Assert.That(node.Address.Address, Is.EqualTo(IPAddress.Parse("73.224.122.50")));
+                Assert.That(node.DiscoveryAddress.Address, Is.EqualTo(IPAddress.Parse("73.224.122.50")));
+                Assert.That(node.Host, Is.EqualTo("73.224.122.50"));
+            }
         }
 
         [Test]
@@ -44,9 +50,8 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.Equals(1), Is.False);
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_keeps_tcp_and_discovery_ports(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_keeps_tcp_and_discovery_ports([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
 
@@ -110,9 +115,8 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: false);
 
@@ -126,92 +130,11 @@ namespace Nethermind.Network.Test.Stats
                 Assert.That(node.Port, Is.EqualTo(30303));
                 Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
                 Assert.That(node.HasDiscoveryEndpoint, Is.True);
-                Assert.That(node.V6Address, Is.Null);
             }
         }
 
         [Test]
-        public void TryFromEnr_keeps_both_family_endpoints()
-        {
-            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
-
-            bool result = Node.TryFromEnr(enr, out Node? node);
-
-            Assert.That(result, Is.True);
-            Assert.That(node, Is.Not.Null);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
-                Assert.That(node.Port, Is.EqualTo(30303));
-                Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
-                Assert.That(node.Enr, Is.SameAs(enr));
-            }
-        }
-
-        [Test]
-        public void Node_from_enr_backed_NetworkNode_keeps_both_family_endpoints()
-        {
-            NetworkNode networkNode = new(CreateDualStackEnr(TestItem.PrivateKeyA).ToString());
-
-            Node node = new(networkNode);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(node.Host, Is.EqualTo("192.0.2.1"));
-                Assert.That(node.Port, Is.EqualTo(30303));
-                Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
-            }
-        }
-
-        [Test]
-        public void PromoteAlternateEndpoint_swaps_primary_and_updates_discovery()
-        {
-            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
-            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
-            IPEndPoint v4 = node!.Address;
-            IPEndPoint v6 = node.V6Address!;
-
-            node.PromoteAlternateEndpoint(v6);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(node.Address, Is.EqualTo(v6));
-                Assert.That(node.V6Address, Is.EqualTo(v4));
-                Assert.That(node.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30306)));
-            }
-        }
-
-        [Test]
-        public void PromoteAlternateEndpoint_is_noop_when_endpoint_equals_primary()
-        {
-            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            IPEndPoint original = node.Address;
-
-            node.PromoteAlternateEndpoint(original);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(node.Address, Is.EqualTo(original));
-                Assert.That(node.V6Address, Is.Null);
-            }
-        }
-
-        [Test]
-        public void PromoteAlternateEndpoint_alternate_survives_enr_refresh()
-        {
-            NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA);
-            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
-            node!.PromoteAlternateEndpoint(node.V6Address!);
-
-            // Simulate discovery refresh with same ENR
-            node.Enr = enr;
-
-            Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
-        }
-
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_accepts_dual_stack_endpoint_entries(NodeFromEnrMode mode)
+        public void TryFromEnr_accepts_dual_stack_endpoint_entries([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: true);
 
@@ -228,9 +151,8 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate)]
-        [TestCase(NodeFromEnrMode.Discovery)]
-        public void TryFromEnr_selects_requested_address_family(NodeFromEnrMode mode)
+        [Test]
+        public void TryFromEnr_selects_requested_address_family([Values(NodeFromEnrMode.PeerCandidate, NodeFromEnrMode.Discovery)] NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateDualStackEnr(TestItem.PrivateKeyA, includeIpv4Ports: true);
 
@@ -312,8 +234,27 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
+        [Test]
+        public void Enr_assignment_does_not_mark_record_as_verified()
+        {
+            const ulong sequence = 5;
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
+            enr.EnrSequence = sequence;
+            Assert.That(node.TryRequestEnrSequence(sequence), Is.True);
+
+            node.Enr = enr;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.IsVerifiedEnr(enr), Is.False);
+                Assert.That(node.HighestObservedEnrSequence, Is.Zero);
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(sequence));
+            }
+        }
+
         [TestCaseSource(nameof(EnrRequestClearOnRecordUpdateCases))]
-        public void Enr_request_sequence_clears_when_enr_sequence_satisfies_request(
+        public void Verified_enr_clears_request_when_sequence_satisfies_request(
             ulong requestedSequence,
             ulong recordSequence,
             ulong expectedRequestingSequence)
@@ -324,9 +265,293 @@ namespace Nethermind.Network.Test.Stats
 
             Assert.That(node.TryRequestEnrSequence(requestedSequence), Is.True);
 
-            node.Enr = enr;
+            node.SetVerifiedEnr(enr);
 
-            Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedRequestingSequence));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.IsVerifiedEnr(enr), Is.True);
+                Assert.That(node.RequestingEnrSequence, Is.EqualTo(expectedRequestingSequence));
+            }
+        }
+
+        [Test]
+        public void Verification_provenance_is_specific_to_the_record_instance()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            NodeRecord unverified = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
+            NodeRecord verified = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), tcpPort: 30303, udpPort: 30304);
+            node.Enr = unverified;
+
+            node.SetVerifiedEnr(verified);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.IsVerifiedEnr(unverified), Is.False);
+                Assert.That(node.IsVerifiedEnr(verified), Is.True);
+            }
+        }
+
+        [Test]
+        public void SetVerifiedEnr_rejects_record_below_authenticated_high_water()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            NodeRecord retained = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304, enrSequence: 10);
+            NodeRecord stale = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30304, enrSequence: 11);
+            node.SetVerifiedEnr(retained);
+            node.ObserveEnrSequence(12);
+
+            bool stored = node.SetVerifiedEnr(stale);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stored, Is.False);
+                Assert.That(node.Enr, Is.SameAs(retained));
+                Assert.That(node.IsVerifiedEnr(retained), Is.True);
+                Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(12));
+            }
+        }
+
+        [Test]
+        public void Shared_enr_state_prevents_stale_replacement_publication()
+        {
+            NodeRecord firstRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30304, enrSequence: 11);
+            NodeRecord newerRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("1.1.1.1"), 30303, 30304, enrSequence: 12);
+            Node known = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            Node firstReplacement = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
+            Node newerReplacement = new(TestItem.PublicKeyA, "127.0.0.3", 30303);
+            firstReplacement.MergeEnrStateFrom(known);
+            newerReplacement.MergeEnrStateFrom(known);
+
+            Parallel.Invoke(
+                () => firstReplacement.SetVerifiedEnr(firstRecord),
+                () => newerReplacement.SetVerifiedEnr(newerRecord));
+            Assert.That(firstReplacement.SetVerifiedEnr(firstRecord), Is.False);
+
+            foreach (Node node in new[] { known, firstReplacement, newerReplacement })
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(node.Enr, Is.SameAs(newerRecord));
+                    Assert.That(node.IsVerifiedEnr(newerRecord), Is.True);
+                    Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(newerRecord.EnrSequence));
+                }
+            }
+        }
+
+        [Test]
+        public void MergeEnrState_unifies_existing_alias_groups()
+        {
+            Node candidate = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            Node candidateAlias = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
+            candidateAlias.MergeEnrStateFrom(candidate);
+            Node existing = new(TestItem.PublicKeyA, "127.0.0.3", 30303);
+            Node existingAlias = new(TestItem.PublicKeyA, "127.0.0.4", 30303);
+            existingAlias.MergeEnrStateFrom(existing);
+            NodeRecord record = CreateEnr(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("8.8.8.8"),
+                30303,
+                30304,
+                enrSequence: 3);
+
+            candidate.MergeEnrStateFrom(existing);
+            candidateAlias.SetVerifiedEnr(record);
+
+            foreach (Node node in new[] { candidate, candidateAlias, existing, existingAlias })
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(node.Enr, Is.SameAs(record));
+                    Assert.That(node.IsVerifiedEnr(record), Is.True);
+                    Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence));
+                }
+            }
+        }
+
+        [Test]
+        public void Concurrent_enr_state_merge_forwards_racing_alias_update()
+        {
+            NodeRecord record = CreateEnr(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("8.8.8.8"),
+                30303,
+                30304,
+                enrSequence: 3);
+
+            for (int i = 0; i < 64; i++)
+            {
+                Node candidate = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+                Node candidateAlias = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
+                candidateAlias.MergeEnrStateFrom(candidate);
+                Node existing = new(TestItem.PublicKeyA, "127.0.0.3", 30303);
+                existing.ObserveEnrSequence(1);
+                using Barrier start = new(2);
+
+                Parallel.Invoke(
+                    () =>
+                    {
+                        start.SignalAndWait();
+                        candidate.MergeEnrStateFrom(existing);
+                    },
+                    () =>
+                    {
+                        start.SignalAndWait();
+                        candidateAlias.SetVerifiedEnr(record);
+                    });
+
+                Assert.That(existing.Enr, Is.SameAs(record));
+                Assert.That(existing.HighestObservedEnrSequence, Is.EqualTo(record.EnrSequence));
+            }
+        }
+
+        [Test]
+        public void MergeEnrState_retains_verified_record_below_merged_high_water()
+        {
+            NodeRecord retainedRecord = CreateEnr(
+                TestItem.PrivateKeyA,
+                IPAddress.Parse("8.8.8.8"),
+                30303,
+                30304,
+                enrSequence: 1);
+            Node candidate = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            candidate.SetVerifiedEnr(retainedRecord);
+            candidate.ObserveEnrSequence(2);
+            Node existing = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
+            existing.ObserveEnrSequence(2);
+
+            candidate.MergeEnrStateFrom(existing);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(existing.Enr, Is.SameAs(retainedRecord));
+                Assert.That(existing.IsVerifiedEnr(retainedRecord), Is.True);
+                Assert.That(existing.HighestObservedEnrSequence, Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public void MergeEnrState_preserves_unverified_candidate_only_without_verified_record([Values] bool existingRecordIsVerified)
+        {
+            NodeRecord existingRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304, enrSequence: 1);
+            NodeRecord candidateRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30304, enrSequence: 2);
+            Node existing = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            if (existingRecordIsVerified)
+            {
+                existing.SetVerifiedEnr(existingRecord);
+            }
+
+            Node candidate = new(TestItem.PublicKeyA, "127.0.0.2", 30303)
+            {
+                Enr = candidateRecord
+            };
+
+            candidate.MergeEnrStateFrom(existing);
+
+            NodeRecord expectedRecord = existingRecordIsVerified ? existingRecord : candidateRecord;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(candidate.Enr, Is.SameAs(expectedRecord));
+                Assert.That(existing.Enr, Is.SameAs(expectedRecord));
+                Assert.That(candidate.IsVerifiedEnr(expectedRecord), Is.EqualTo(existingRecordIsVerified));
+                Assert.That(candidate.HighestObservedEnrSequence, Is.EqualTo(existingRecordIsVerified ? 1 : 0));
+            }
+        }
+
+        [TestCase(1UL, false)]
+        [TestCase(2UL, false)]
+        [TestCase(3UL, true)]
+        public void MergeEnrState_keeps_highest_sequence_unverified_record(
+            ulong candidateSequence,
+            bool expectsCandidate)
+        {
+            NodeRecord existingRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304, enrSequence: 2);
+            NodeRecord candidateRecord = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30304, enrSequence: candidateSequence);
+            Node existing = new(TestItem.PublicKeyA, "127.0.0.1", 30303) { Enr = existingRecord };
+            Node candidate = new(TestItem.PublicKeyA, "127.0.0.2", 30303) { Enr = candidateRecord };
+
+            candidate.MergeEnrStateFrom(existing);
+
+            NodeRecord expected = expectsCandidate ? candidateRecord : existingRecord;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(candidate.Enr, Is.SameAs(expected));
+                Assert.That(existing.Enr, Is.SameAs(expected));
+                Assert.That(candidate.IsVerifiedEnr(expected), Is.False);
+                Assert.That(candidate.HighestObservedEnrSequence, Is.Zero);
+            }
+        }
+
+        [TestCase(2UL, 0UL)]
+        [TestCase(3UL, 3UL)]
+        public void MergeEnrState_keeps_only_candidate_requests_above_merged_high_water(
+            ulong candidateRequest,
+            ulong expectedRequest)
+        {
+            Node existing = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            existing.ObserveEnrSequence(2);
+            Node candidate = new(TestItem.PublicKeyA, "127.0.0.2", 30303);
+            candidate.TryRequestEnrSequence(candidateRequest);
+
+            candidate.MergeEnrStateFrom(existing);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(candidate.HighestObservedEnrSequence, Is.EqualTo(2));
+                Assert.That(candidate.RequestingEnrSequence, Is.EqualTo(expectedRequest));
+                Assert.That(existing.RequestingEnrSequence, Is.EqualTo(expectedRequest));
+            }
+        }
+
+        [Test]
+        public void Concurrent_verified_enr_updates_keep_highest_sequence()
+        {
+            const int recordCount = 16;
+            NodeRecord[] records = new NodeRecord[recordCount];
+            for (int i = 0; i < records.Length; i++)
+            {
+                records[i] = CreateEnr(
+                    TestItem.PrivateKeyA,
+                    IPAddress.Parse($"8.8.8.{i + 1}"),
+                    30303,
+                    30304,
+                    enrSequence: (ulong)i + 1);
+            }
+
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+
+            Parallel.For(0, records.Length, i => node.SetVerifiedEnr(records[i]));
+
+            NodeRecord expected = records[^1];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Enr, Is.SameAs(expected));
+                Assert.That(node.IsVerifiedEnr(expected), Is.True);
+                Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(expected.EnrSequence));
+            }
+        }
+
+        [Test]
+        public void NetworkNode_constructor_uses_discovery_endpoint_matching_selected_tcp_family()
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+            enr.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+            enr.SetEntry(new UdpEntry(30304));
+            enr.SetEntry(new Tcp6Entry(30303));
+            enr.SetEntry(new Udp6Entry(30305));
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyA).Sign(enr);
+
+            Node node = new(new NetworkNode(enr.ToString()));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Address, Is.EqualTo(IPEndPoint.Parse("[2001:db8::1]:30303")));
+                Assert.That(node.DiscoveryAddress, Is.EqualTo(IPEndPoint.Parse("[2001:db8::1]:30305")));
+                Assert.That(node.HasDiscoveryEndpoint, Is.True);
+            }
         }
 
         [TestCase("s", "127.0.0.1:303")]
@@ -374,7 +599,12 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.ToString(Node.Format.AlignedShort), Is.EqualTo("      127.0.0.1:30303"));
         }
 
-        private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, int? tcpPort, int? udpPort)
+        private static NodeRecord CreateEnr(
+            PrivateKey privateKey,
+            IPAddress ipAddress,
+            int? tcpPort,
+            int? udpPort,
+            ulong enrSequence = 1)
         {
             NodeRecord enr = new();
             enr.SetEntry(IdEntry.Instance);
@@ -388,7 +618,7 @@ namespace Nethermind.Network.Test.Stats
             {
                 enr.SetEntry(new UdpEntry(udpPort.Value));
             }
-            enr.EnrSequence = 1;
+            enr.EnrSequence = enrSequence;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
             return enr;
         }
@@ -421,8 +651,8 @@ namespace Nethermind.Network.Test.Stats
             enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
             enr.SetEntry(new TcpEntry(30303));
             enr.SetEntry(new UdpEntry(30304));
-            enr.SetEntry(new Tcp6Entry(30305));
-            enr.SetEntry(new Udp6Entry(30306));
+            enr.SetEntry(new Tcp6Entry(30303));
+            enr.SetEntry(new Udp6Entry(30304));
             enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
             return enr;

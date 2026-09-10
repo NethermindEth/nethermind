@@ -35,7 +35,7 @@ public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskComplet
             {
                 Node node = neighborsMsg.Nodes[i];
                 if (node.HasDiscoveryEndpoint &&
-                    CompositeDiscoveryApp.SupportsAddress(localIp, node.DiscoveryAddress.Address))
+                    DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
                 {
                     _nodes[_count++] = node;
                 }

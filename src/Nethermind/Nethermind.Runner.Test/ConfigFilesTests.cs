@@ -126,6 +126,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<INetworkConfig, int>(configWildcard, static c => c.DiscoveryPort, 30303);
         Test<INetworkConfig, int>(configWildcard, static c => c.P2PPort, 30303);
         Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIp, (string)null);
+        Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIpV4, (string)null);
         Test<INetworkConfig, string>(configWildcard, static c => c.ExternalIpV6, (string)null);
         Test<INetworkConfig, string>(configWildcard, static c => c.LocalIp, (string)null);
         Test<INetworkConfig, int>(configWildcard, static c => c.MaxActivePeers, activePeers);

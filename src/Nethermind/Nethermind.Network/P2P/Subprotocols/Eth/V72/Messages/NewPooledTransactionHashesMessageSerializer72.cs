@@ -32,8 +32,8 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         try
         {
             types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
-            sizes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionSize(ref c), limit: SizesRlpLimit);
-            hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
+            sizes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionSize(ref c), limit: SizesRlpLimit);
+            hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
             if (ctx.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 2) != 1)
             {
                 throw new RlpException($"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Expected exactly one cell mask field.");
@@ -78,8 +78,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         return size;
     }
 
-    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) =>
-        ctx.DecodeKeccak() ?? throw new RlpException($"Null transaction hash in {nameof(NewPooledTransactionHashesMessage72)}.");
+    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeKeccak();
 
     public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
     {

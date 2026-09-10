@@ -148,6 +148,40 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Child_slot_reuses_nodes_except_unresolved_warmer_nodes(
+        [Values] bool warmerOwned, [Values] bool resolved, [Values] bool iterator)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode child = new(NodeType.Unknown, hash, rlp);
+        if (warmerOwned) child.MarkWarmerOwned();
+        TreePath path = TreePath.Empty;
+        if (resolved) child.ResolveNode(NullTrieNodeResolver.Instance, path);
+
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, child);
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        parent.ResolveNode(NullTrieNodeResolver.Instance, path);
+        parent.AppendChildPath(ref path, 0);
+
+        ITrieNodeResolver firstResolver = Substitute.For<ITrieNodeResolver>();
+        firstResolver.FindCachedOrUnknown(path, hash).Returns(child);
+        TrieNode? first = iterator
+            ? parent.CreateChildIterator().GetChildWithChildPath(firstResolver, ref path, 0)
+            : parent.GetChildWithChildPath(firstResolver, ref path, 0);
+        Assert.That(first, Is.SameAs(child));
+
+        TrieNode replacement = new(NodeType.Unknown, hash, rlp);
+        ITrieNodeResolver secondResolver = Substitute.For<ITrieNodeResolver>();
+        secondResolver.FindCachedOrUnknown(path, hash).Returns(replacement);
+        TrieNode? second = iterator
+            ? parent.CreateChildIterator().GetChildWithChildPath(secondResolver, ref path, 0)
+            : parent.GetChildWithChildPath(secondResolver, ref path, 0);
+
+        Assert.That(second, Is.SameAs(warmerOwned && !resolved ? replacement : child));
+    }
+
+    [Test]
     public void Concurrent_warmer_owned_try_resolve_loads_once()
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
@@ -326,12 +360,8 @@ public class TrieNodeTests
         Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
     }
 
-    [TestCase(0x0001)]
-    [TestCase(0x0003)]
-    [TestCase(0x0007)]
-    [TestCase(0x5555)]
-    [TestCase(0xffff)]
-    public void Resolves_full_branch_children_to_their_individual_hashes(int branchMask)
+    [Test]
+    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
     {
         if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
         {
@@ -486,6 +516,33 @@ public class TrieNodeTests
 
         Hash256 getResult = decoded.GetChildHash(0);
         Assert.That(getResult, Is.Not.Null);
+    }
+
+    /// <remarks>
+    /// A 33-byte sequence in a child slot claims the 32 content bytes only a hash can carry - the trie embeds a
+    /// child only below 32 bytes. Reading it as "not a hash" would send the caller on to <c>GetInlineNodeRlp</c>,
+    /// which accepts a sequence and hands back a 33-byte "inline node", so corruption has to be rejected here.
+    /// </remarks>
+    [Test]
+    public void Get_child_hash_rejects_a_33_byte_sequence_in_place_of_a_hash()
+    {
+        Context ctx = new();
+        TrieNode trieNode = new(NodeType.Extension);
+        trieNode[0] = ctx.HeavyLeaf;
+        trieNode.Key = new byte[] { 5 };
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        byte[] corrupted = rlp.AsSpan().ToArray();
+        // The hash prefix ends the node; 0xe0 keeps the length and the content but says "short list of 32 bytes".
+        corrupted[^(Hash256.Size + 1)] = 0xe0;
+        TrieNode decoded = new(NodeType.Extension, corrupted);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => decoded.GetChildHash(0), Throws.InstanceOf<RlpException>());
+            Assert.That(() => decoded.GetChildHashAsValueKeccak(0, out _), Throws.InstanceOf<RlpException>());
+        }
     }
 
     [Test]
@@ -717,6 +774,32 @@ public class TrieNodeTests
         TrieNode restoredNode = new(NodeType.Branch, rlp);
 
         restoredNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+    }
+
+    [Test]
+    public void Can_encode_branch_with_every_child_a_hash()
+    {
+        TrieNode node = new(NodeType.Branch);
+        for (int i = 0; i < TrieNode.BranchesCount; i++)
+        {
+            node.SetChild(i, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)i])));
+        }
+
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        TrieNode restoredNode = new(NodeType.Unknown, rlp);
+        restoredNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The widest a branch encodes to: sixteen 33-byte hash items plus the value and the header.
+            Assert.That(rlp.Length, Is.EqualTo(532), "RLP length");
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                Assert.That(restoredNode.GetChildHash(i), Is.EqualTo(Keccak.Compute([(byte)i])), $"child {i}");
+            }
+        }
     }
 
     [Test]
@@ -956,9 +1039,8 @@ public class TrieNodeTests
         Assert.That(trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild), Is.EqualTo(false));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
+    [Test]
+    public void Extension_child_as_keccak_call_recursively([Values] bool skipPersisted)
     {
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
         TrieNode trieNode = new(NodeType.Extension);

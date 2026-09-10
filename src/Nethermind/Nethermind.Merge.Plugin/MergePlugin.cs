@@ -167,8 +167,6 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
 
-            .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
-
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
@@ -201,7 +199,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<InclusionListTxSource>()
                 .Bind<IInclusionListTxSource, InclusionListTxSource>()
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
-                .AddSingleton<IHandler<InclusionListBytes>, GetInclusionListTransactionsHandler>()
+                .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

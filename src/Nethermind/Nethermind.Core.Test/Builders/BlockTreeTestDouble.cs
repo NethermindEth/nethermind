@@ -97,8 +97,10 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual Hash256? SafeHash => Inner?.SafeHash;
     public virtual ulong LastFinalizedBlockLevel => Inner?.LastFinalizedBlockLevel ?? 0UL;
 
+    // A wrapped tree answers null until it has a best suggested block, so only the absence of a tree is
+    // "not implemented"; coalescing on the result instead would turn that legitimate null into a throw.
     public virtual BlockHeader FindBestSuggestedHeader() =>
-        Inner?.FindBestSuggestedHeader() ?? throw new NotImplementedException();
+        Inner is not null ? Inner.FindBestSuggestedHeader() : throw new NotImplementedException();
 
     public virtual Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         Inner?.FindBlock(blockHash, options, blockNumber);
@@ -196,6 +198,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
     public virtual void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => Inner?.DeleteOldBlockRange(fromInclusive, toExclusive);
+    public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);
     public virtual void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         Inner?.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
     public virtual int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false) =>

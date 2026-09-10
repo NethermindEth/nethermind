@@ -28,6 +28,10 @@ public static class Metrics
     [Description("The number of transaction index entries dropped because the block they name is no longer retained (since restart).")]
     public static long TransactionIndexEntriesPruned { get; set; }
 
+    [CounterMetric]
+    [Description("The number of historical heights kept past the pruning cutoff, with both their receipts and their body, because a configured slice address appeared in them (since restart). Counted from the bloom candidates, so a false positive is included.")]
+    public static long SlicedReceiptsRetained { get; set; }
+
     [GaugeMetric]
     [Description("The cutoff block number from which historical blocks will be pruned.")]
     public static ulong? PruningCutoffBlocknumber { get; set; }

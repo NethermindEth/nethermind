@@ -91,7 +91,7 @@ public class RlpDecoderTests
         byte[] bytes = Bytes.FromHexString(hexBytes);
         RlpReader context = new(bytes);
 
-        Transaction transaction = _decoder.Decode(ref context);
+        Transaction transaction = _decoder.Decode(ref context)!;
 
         // The expected values come from an independent pyrlp decode of hexBytes.
         using (Assert.EnterMultipleScope())

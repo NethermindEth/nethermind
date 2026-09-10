@@ -3,7 +3,9 @@
 
 using System.Net;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -29,12 +31,11 @@ public class EnrDiscoveryCreateNodeTests
 
         bool result = EnrDiscovery.TryCreateNode(nodeRecord, out Node? node);
 
-        Assert.That(result, Is.EqualTo(expectedResult));
-        Assert.That(node is not null, Is.EqualTo(expectedResult));
-        if (expectedResult)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(node, Is.Not.Null);
-            using (Assert.EnterMultipleScope())
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(node is not null, Is.EqualTo(expectedResult));
+            if (expectedResult)
             {
                 Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
                 Assert.That(node.Port, Is.EqualTo(expectedPort));
@@ -46,29 +47,34 @@ public class EnrDiscoveryCreateNodeTests
     }
 
     [Test]
-    public void TryCreateNode_exposes_both_families_of_a_dual_stack_record()
+    public void Parsed_record_becomes_a_verified_peer_candidate()
     {
-        NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
-        nodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
-        nodeRecord.SetEntry(new TcpEntry(30303));
-        nodeRecord.SetEntry(new UdpEntry(30304));
-        nodeRecord.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
-        nodeRecord.SetEntry(new Tcp6Entry(30305));
-        nodeRecord.SetEntry(new Udp6Entry(30306));
+        NodeRecordSigner signer = new(new EthereumEcdsa(0), TestItem.PrivateKeyA);
+        NodeRecord record = CreateNodeRecord(30303, 30303);
+        signer.Sign(record);
+        EnrRecordParser parser = new(signer);
 
-        bool result = EnrDiscovery.TryCreateNode(nodeRecord, out Node? node);
+        NodeRecord parsed = parser.ParseRecord(record.ToString());
+        bool created = EnrDiscovery.TryCreateVerifiedNode(parsed, out Node? node);
 
-        Assert.That(result, Is.True);
-        Assert.That(node, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
-            Assert.That(node.Port, Is.EqualTo(30303));
-            Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
-            Assert.That(node.V6Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:db8::1"), 30305)));
-            Assert.That(node.Enr, Is.SameAs(nodeRecord));
+            Assert.That(created, Is.True);
+            Assert.That(node!.IsVerifiedEnr(parsed), Is.True);
+            Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(parsed.EnrSequence));
         }
+    }
+
+    [Test]
+    public void Parser_rejects_signature_from_different_identity()
+    {
+        NodeRecordSigner signer = new(new EthereumEcdsa(0), TestItem.PrivateKeyB);
+        NodeRecord record = CreateNodeRecord(30303, 30303);
+        signer.Sign(record);
+
+        Assert.That(
+            () => new EnrRecordParser(signer).ParseRecord(record.ToString()),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid ENR signature."));
     }
 
     private static NodeRecord CreateNodeRecord(int? tcpPort, int? udpPort)

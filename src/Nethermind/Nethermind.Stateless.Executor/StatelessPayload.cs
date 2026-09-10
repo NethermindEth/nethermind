@@ -18,7 +18,7 @@ internal readonly record struct StatelessPayload
     ExecutionWitness Witness,
     ulong ChainId,
     ushort SchemaId,
-    ReadOnlyMemory<SszPublicKeys> PublicKeys,
+    ReadOnlyMemory<SszPublicKey> PublicKeys,
     ReadOnlyMemory<Hash256> VersionedHashes,
     Hash256 NewPayloadRequestRoot,
     ISpecProvider SpecProvider

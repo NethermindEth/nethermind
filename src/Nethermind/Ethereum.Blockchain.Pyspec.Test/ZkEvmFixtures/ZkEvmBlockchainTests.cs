@@ -38,6 +38,10 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
     [TestCaseSource(nameof(LoadWitnessTests))]
     public async Task WitnessMatchesFixture(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
+    // Execute publishes the process-wide StatelessExecutor.FailureOutput, and this fixture inherits
+    // ParallelScope.All, so concurrent cases would otherwise overwrite each other's sentinel. (The
+    // hash seed the decode installs is a no-op here: this assembly builds without EnableZkEvm.)
+    [NonParallelizable]
     [TestCaseSource(nameof(LoadStatelessTests))]
     public void StatelessExecutorOutputMatchesFixture(string inputBytes, string expectedOutputBytes)
     {
@@ -89,9 +93,8 @@ public class StatelessSchemaTests
     private const ulong BlockNumber = 30_000_000;
     private const ulong Timestamp = 2_000_000_000;
 
-    [TestCase(InputDecoder.CurrentForkSchemaId)]
-    [TestCase(InputDecoder.AmsterdamSchemaId)]
-    public void Revision_1_schema_roundtrips(ushort schemaId)
+    [Test]
+    public void Revision_1_schema_roundtrips([Values(InputDecoder.CurrentForkSchemaId, InputDecoder.AmsterdamSchemaId)] ushort schemaId)
     {
         byte[] encoded = schemaId == InputDecoder.AmsterdamSchemaId
             ? EncodeInput(new SszExecutionPayloadAmsterdam(), schemaId)
@@ -105,6 +108,75 @@ public class StatelessSchemaTests
             Assert.That(payload.ChainId, Is.EqualTo(ChainId));
             Assert.That(payload.GetBlock().Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash));
         }
+    }
+
+    /// <summary>
+    /// Pins the wire bytes a non-empty public-key list produces, and that they decode back unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The write-side assertion is the guard that matters: a round-trip alone passes when
+    /// <see cref="SszPublicKeyVectorTypeConverter"/>'s write and read sides are perturbed together.
+    /// It is expressed against the region under test rather than a hash of the whole input, so
+    /// unrelated schema churn cannot send a reader off to re-derive a baseline.
+    /// </remarks>
+    [Test]
+    public void Public_key_vector_encoding_is_pinned()
+    {
+        SszPublicKey[] publicKeys = DeterministicPublicKeys(5);
+
+        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, publicKeys: publicKeys);
+        ReadOnlySpan<SszPublicKey> decoded = InputDecoder.Decode(encoded).PublicKeys.Span;
+
+        // PublicKeys is the container's last variable-size field and a list of fixed-size items is a
+        // bare concatenation, so the keys occupy exactly the trailing count * 65 bytes.
+        byte[] expectedTail = new byte[publicKeys.Length * SszPublicKey.PublicKeyLength];
+        for (int i = 0; i < publicKeys.Length; i++)
+            publicKeys[i].AsSpan().CopyTo(expectedTail.AsSpan(i * SszPublicKey.PublicKeyLength));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded[^expectedTail.Length..], Is.EqualTo(expectedTail));
+            Assert.That(decoded.Length, Is.EqualTo(publicKeys.Length));
+        }
+
+        for (int i = 0; i < publicKeys.Length; i++)
+            Assert.That(decoded[i].AsSpan().ToArray(), Is.EqualTo(publicKeys[i].AsSpan().ToArray()));
+    }
+
+    /// <remarks>
+    /// The inherited <see cref="ValueType"/> members throw on <c>[InlineArray]</c>-backed structs,
+    /// so equality has to be declared for <see cref="SszPublicKey"/> to be usable as a value.
+    /// </remarks>
+    [Test]
+    public void Public_keys_compare_by_value()
+    {
+        SszPublicKey[] publicKeys = DeterministicPublicKeys(2);
+        SszPublicKey copy = SszPublicKey.FromSpan(publicKeys[0].AsSpan());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.EqualTo(publicKeys[0]));
+            Assert.That(copy.GetHashCode(), Is.EqualTo(publicKeys[0].GetHashCode()));
+            Assert.That(publicKeys[1], Is.Not.EqualTo(publicKeys[0]));
+        }
+    }
+
+    private static SszPublicKey[] DeterministicPublicKeys(int count)
+    {
+        SszPublicKey[] publicKeys = new SszPublicKey[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[SszPublicKey.PublicKeyLength];
+            bytes[0] = 0x04;
+
+            for (int j = 1; j < bytes.Length; j++)
+                bytes[j] = (byte)(i * 31 + j);
+
+            publicKeys[i] = SszPublicKey.FromSpan(bytes);
+        }
+
+        return publicKeys;
     }
 
     /// <summary>
@@ -183,22 +255,16 @@ public class StatelessSchemaTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void Schema_prefix_must_be_two_bytes(int length)
+    [Test]
+    public void Schema_prefix_must_be_two_bytes([Values(0, 1)] int length)
     {
         byte[] encoded = new byte[length];
 
         Assert.That(() => InputDecoder.Decode(encoded), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    [TestCase(0x0000)]
-    [TestCase(0x0002)]
-    [TestCase(0x1001)]
-    [TestCase(0x1401)]
-    [TestCase(0x1502)]
-    [TestCase(0x1601)]
-    public void Unsupported_schema_id_is_rejected(int schemaId)
+    [Test]
+    public void Unsupported_schema_id_is_rejected([Values(0x0000, 0x0002, 0x1001, 0x1401, 0x1502, 0x1601)] int schemaId)
     {
         byte[] encoded = new byte[sizeof(ushort)];
         BinaryPrimitives.WriteUInt16BigEndian(encoded, (ushort)schemaId);
@@ -225,10 +291,8 @@ public class StatelessSchemaTests
         }
     }
 
-    [TestCase(BlockchainIds.Mainnet)]
-    [TestCase(BlockchainIds.Sepolia)]
-    [TestCase(BlockchainIds.Gnosis)]
-    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule(ulong chainId)
+    [Test]
+    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule([Values(BlockchainIds.Mainnet, BlockchainIds.Sepolia, BlockchainIds.Gnosis)] ulong chainId)
     {
         IForkAwareSpecProvider baseProvider = chainId switch
         {
@@ -300,7 +364,8 @@ public class StatelessSchemaTests
     private static SszProgressiveBytes[] MalformedTransaction => [new() { Bytes = [0xff, 0xff] }];
 
     private static byte[] EncodeInput<TExecutionPayload>(
-        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null)
+        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null,
+        SszPublicKey[] publicKeys = null)
         where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         executionPayload.BlockNumber = BlockNumber;
@@ -332,7 +397,7 @@ public class StatelessSchemaTests
                 Headers = []
             },
             ChainId = ChainId,
-            PublicKeys = []
+            PublicKeys = publicKeys ?? []
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];

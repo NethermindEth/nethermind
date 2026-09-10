@@ -34,6 +34,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Collections.Generic;
 using System.Security;
 using System.Threading;
@@ -323,17 +324,8 @@ public class BlockProcessorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(20)]
-    [TestCase(63)]
-    [TestCase(64)]
-    [TestCase(65)]
-    [TestCase(127)]
-    [TestCase(128)]
-    [TestCase(129)]
-    [TestCase(130)]
-    [TestCase(1000)]
-    [TestCase(2000)]
-    public async Task Process_long_running_branch(int blocksAmount)
+    [Test]
+    public async Task Process_long_running_branch([Values(20, 63, 64, 65, 127, 128, 129, 130, 1000, 2000)] int blocksAmount)
     {
         Address address = TestItem.Addresses[0];
         TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
@@ -411,10 +403,9 @@ public class BlockProcessorTests
         Assert.That(exception!.InnerException, Is.SameAs(failure));
     }
 
-    [TestCase(2)]
-    [TestCase(3)]
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event(int transactionCount)
+    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
     {
         TokenCapturingPreWarmer preWarmer = new();
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
@@ -874,9 +865,8 @@ public class BlockProcessorTests
             .SetName("account presence mismatch (same count, different address)");
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks([Values(1, 2)] int txCount) =>
         WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
 
     [Test]
@@ -1085,9 +1075,8 @@ public class BlockProcessorTests
         Assert.That(thrown!.InnerException, Is.SameAs(workerException));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions(bool isBlockProcessingThread)
+    [Test]
+    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions([Values] bool isBlockProcessingThread)
     {
         Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
 
@@ -1227,12 +1216,8 @@ public class BlockProcessorTests
             .TestObject;
 
         ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
-            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
-            LimboLogs.Instance);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateBalRecordingParallelExecutor(stateProvider, balIndexes);
 
         TxReceipt[] receipts = executor.ProcessTransactions(
             block,
@@ -1399,6 +1384,65 @@ public class BlockProcessorTests
         }
         return slots;
     }
+
+    [Test]
+    public void Parallel_validation_releases_the_pooled_slots_a_shorter_block_leaves_unused()
+    {
+        const int wideTxCount = 8;
+        const int narrowTxCount = 2;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
+            CreateBalRecordingParallelExecutor(stateProvider, balIndexes);
+
+        // The third block is what makes this bite: releasing only on the step down would leave the
+        // second block in the slots it did not use, and the third block's reset no longer reaches them.
+        ProcessParallelValidationBlock(executor, wideTxCount);
+        ProcessParallelValidationBlock(executor, narrowTxCount);
+        ProcessParallelValidationBlock(executor, narrowTxCount);
+
+        BlockReceiptsTracer[] pool = (BlockReceiptsTracer[])typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
+            .GetField("_receiptsTracerPool", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(executor)!;
+        FieldInfo tracedBlock = typeof(BlockReceiptsTracer)
+            .GetField("Block", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.That(pool, Has.Length.AtLeast(wideTxCount), "the pool must still hold the wide block's slots");
+        for (int i = narrowTxCount; i < wideTxCount; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool[i].TxReceipts.Length, Is.Zero, $"slot {i} still holds receipts");
+                Assert.That(tracedBlock.GetValue(pool[i]), Is.Null, $"slot {i} still references a block");
+            }
+        }
+    }
+
+    private static BlockProcessor.ParallelBlockValidationTransactionsExecutor CreateBalRecordingParallelExecutor(
+        IWorldState stateProvider,
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes) =>
+        new(Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes)),
+            LimboLogs.Instance);
+
+    private static void ProcessParallelValidationBlock(
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor,
+        int txCount) =>
+        executor.ProcessTransactions(
+            BuildParallelValidationBlock(txCount), ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+
+    private static Block BuildParallelValidationBlock(int txCount) =>
+        Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit((ulong)txCount * 1_000_000ul)
+            .WithTransactions(CreateParallelValidationTransactions(txCount))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
 
     private static Transaction[] CreateParallelValidationTransactions(int txCount, ulong gasLimit = 21_000ul)
     {
