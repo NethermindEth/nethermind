@@ -119,7 +119,6 @@ public class StorageProviderTests(bool useFlat)
             GetPrivateField(provider._stateProvider, "_committedThisRound"),
             GetPrivateField(provider._stateProvider, "_nullAccountReads"),
             GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
-            GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"),
             GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
         ];
         int[] capacitiesBeforeReset = new int[collections.Length];
@@ -236,6 +235,53 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(cell, _values[7]);
         provider.Restore(Snapshot.EmptyPosition, mid, Snapshot.EmptyPosition);
         Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    [Test]
+    public void Nested_restore_reuses_slots_after_journal_growth(
+        [Values] bool transient, [Values(1, 257, 4096)] int slotCount)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell anchor = new(ctx.Address1, UInt256.MaxValue);
+        Write(anchor, _values[1]);
+        Snapshot outer = provider.TakeSnapshot();
+        for (int i = 0; i < slotCount; i++) Write(new StorageCell(ctx.Address1, (UInt256)i), _values[2]);
+        Snapshot inner = provider.TakeSnapshot();
+        for (int i = slotCount - 1; i >= 0; i--) Write(new StorageCell(ctx.Address1, (UInt256)i), _values[3]);
+        Write(anchor, _values[4]);
+
+        provider.Restore(inner);
+        Assert.That(Read(anchor), Is.EqualTo(_values[1]));
+        for (int i = 0; i < slotCount; i++)
+            Assert.That(Read(new StorageCell(ctx.Address1, (UInt256)i)), Is.EqualTo(_values[2]));
+
+        provider.Restore(outer);
+        for (int i = 0; i < slotCount; i++)
+            Assert.That(Read(new StorageCell(ctx.Address1, (UInt256)i)), Is.EqualTo(_values[0]));
+
+        StorageCell reused = new(ctx.Address1, (UInt256)(slotCount / 2));
+        Write(reused, _values[5]);
+        Write(anchor, _values[6]);
+        provider.Restore(outer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Read(anchor), Is.EqualTo(_values[1]));
+            Assert.That(Read(reused), Is.EqualTo(_values[0]));
+        }
+
+        Write(reused, _values[7]);
+        provider.Commit(Frontier.Instance);
+        Assert.That(Read(reused), Is.EqualTo(transient ? _values[0] : _values[7]));
+
+        void Write(StorageCell cell, byte[] value)
+        {
+            if (transient) provider.SetTransientState(cell, value);
+            else provider.Set(cell, value);
+        }
+
+        byte[] Read(StorageCell cell) =>
+            (transient ? provider.GetTransientState(cell) : provider.Get(cell)).ToArray();
     }
 
     [Test]

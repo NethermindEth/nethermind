@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -19,7 +18,9 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
-        protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
+        protected readonly Dictionary<StorageCell, int> _intraBlockCache = [];
+        protected readonly List<StorageCell> _cells = [];
+        protected readonly List<HeadChange> _heads = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
 
@@ -89,11 +90,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
-                if (Unsafe.IsNullRef(ref head))
-                {
-                    throw new InvalidOperationException($"Missing head entry for {change.StorageCell} at position {position}");
-                }
+                ref HeadChange head = ref CollectionsMarshal.AsSpan(_heads)[change.SlotIndex];
 
                 if (head.CurrentIdx != position)
                 {
@@ -107,7 +104,12 @@ namespace Nethermind.State
                 }
                 else
                 {
-                    _intraBlockCache.Remove(change.StorageCell);
+                    _intraBlockCache.Remove(_cells[change.SlotIndex]);
+                    // First writes create slots in journal order, so rollback retires them from the end.
+                    if (change.SlotIndex != _cells.Count - 1)
+                        throw new InvalidOperationException("Storage slots must be restored in reverse creation order");
+                    _cells.RemoveAt(change.SlotIndex);
+                    _heads.RemoveAt(change.SlotIndex);
                 }
             }
 
@@ -154,6 +156,8 @@ namespace Nethermind.State
 
             _changes.Clear();
             _intraBlockCache.ClearAndTrim();
+            _cells.Clear();
+            _heads.Clear();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -167,9 +171,9 @@ namespace Nethermind.State
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.
-            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out HeadChange head))
+            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out int slotIndex))
             {
-                bytes = head.Value;
+                bytes = CollectionsMarshal.AsSpan(_heads)[slotIndex].Value;
                 return true;
             }
 
@@ -193,7 +197,14 @@ namespace Nethermind.State
         {
             // Overwrites the head in place, never removes+re-adds — ClearStorage relies on this
             // to legally call Set while enumerating _intraBlockCache.
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref int slotIndex = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            if (!exists)
+            {
+                slotIndex = _cells.Count;
+                _cells.Add(cell);
+                _heads.Add(default);
+            }
+            ref HeadChange head = ref CollectionsMarshal.AsSpan(_heads)[slotIndex];
             int prevIdx = exists ? head.CurrentIdx : -1;
 
             // The first write to a cell in a tx (head at or before the tx boundary) captures the
@@ -203,14 +214,11 @@ namespace Nethermind.State
             int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
 
             head = new HeadChange(value, _changes.Count, originalIdx);
-            _changes.Add(new Change(in cell, value, StorageChangeType.Update, prevIdx, originalIdx));
+            _changes.Add(new Change(slotIndex, value, StorageChangeType.Update, prevIdx, originalIdx));
         }
 
         protected void PushStorageClear(int journalIndex)
-        {
-            StorageCell marker = default;
-            _changes.Add(new Change(in marker, StorageTree.ZeroBytes, StorageChangeType.StorageClear, journalIndex, -1));
-        }
+            => _changes.Add(new Change(-1, StorageTree.ZeroBytes, StorageChangeType.StorageClear, journalIndex, -1));
 
         protected virtual void RestoreStorageClear(int journalIndex) =>
             throw new InvalidOperationException($"{GetType().Name} cannot restore storage clear journal entry {journalIndex}");
@@ -224,7 +232,7 @@ namespace Nethermind.State
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block.
             // Set never adds or removes keys here, so enumerating while mutating is legal.
-            foreach (KeyValuePair<StorageCell, HeadChange> cellByAddress in _intraBlockCache)
+            foreach (KeyValuePair<StorageCell, int> cellByAddress in _intraBlockCache)
             {
                 if (cellByAddress.Key.Address == address)
                 {
@@ -236,9 +244,9 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
+        protected readonly struct Change(int slotIndex, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
         {
-            public readonly StorageCell StorageCell = storageCell;
+            public readonly int SlotIndex = slotIndex;
             public readonly byte[] Value = value;
             public readonly StorageChangeType ChangeType = changeType;
 
@@ -266,8 +274,7 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Head of a cell's change chain, with the newest value and original-index inlined so reads
-        /// and <see cref="PersistentStorageProvider.GetOriginal"/> resolve with a single lookup.
+        /// Head of a cell's change chain, with the newest value and original-index for cached reads.
         /// </summary>
         protected readonly struct HeadChange(byte[] value, int currentIdx, int originalIdx)
         {
@@ -275,5 +282,6 @@ namespace Nethermind.State
             public readonly int CurrentIdx = currentIdx;
             public readonly int OriginalIdx = originalIdx;
         }
+
     }
 }
