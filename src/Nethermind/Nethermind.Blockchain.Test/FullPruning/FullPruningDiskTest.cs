@@ -176,9 +176,6 @@ public class FullPruningDiskTest
         Assert.That(args.Status, Is.EqualTo(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace));
     }
 
-    // A prune completes only once processed blocks pass the pruning boundary, so the wait below keeps
-    // feeding blocks; on a loaded runner both production and processing take longer. Bound the wait by
-    // wall clock rather than by a poll count, well inside the MaxTime the pruning tests run under.
     private static readonly TimeSpan PruningWaitBudget = TimeSpan.FromMilliseconds(Timeout.LongTestTime / 4);
 
     private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
