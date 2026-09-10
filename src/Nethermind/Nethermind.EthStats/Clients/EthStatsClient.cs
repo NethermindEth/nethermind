@@ -142,8 +142,13 @@ namespace Nethermind.EthStats.Clients
 
         internal static bool TryParseServerTime(string message, out long serverTime)
         {
-            string serverTimeString = message.Split("::")[^1].Replace("\"", string.Empty);
-            return long.TryParse(serverTimeString, out serverTime);
+            ReadOnlySpan<char> span = message;
+            int separatorIndex = span.LastIndexOf("::");
+            // Wire frames quote only the outer message, so a well-formed timestamp segment
+            // never contains a quote; an interior quote here is malformed input and is left
+            // in place to fail parsing rather than stripped into a different number.
+            ReadOnlySpan<char> serverTimeSpan = separatorIndex < 0 ? span : span[(separatorIndex + 2)..];
+            return long.TryParse(serverTimeSpan.Trim('"'), out serverTime);
         }
 
         public void Dispose() => _client?.Dispose();
