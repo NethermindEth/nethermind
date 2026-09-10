@@ -64,7 +64,7 @@ public class ParallelUpdateRootTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root, Is.EqualTo(results[0].Root));
-                Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(metrics.GroupFrameResolutions));
+                Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1), "only the root group is read when building an empty tree");
                 Assert.That(metrics.GroupFrameResolutions, Is.LessThan(256), "frame resolutions follow group crossings, not logical nodes");
                 Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
             }

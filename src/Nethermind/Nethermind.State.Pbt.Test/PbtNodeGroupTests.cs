@@ -238,6 +238,111 @@ public class PbtNodeGroupTests
     }
 
     [Test]
+    public void Group_frames_load_once_on_first_access([Values] bool present, [Values(0, 1, 2)] int firstAccess)
+    {
+        TrackingMemoryProvider memory = new();
+        using PbtNodeGroupStore store = new(memory);
+        PbtStorageNodePath rootPath = new([], 0);
+        byte[] encoding = LeafEncoding(0, 1);
+        if (present) store.SetNode(rootPath, encoding, memory);
+        WarmReadStore persistence = new(store);
+        TrieUpdaterMetrics metrics = new();
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, rootPath, metrics);
+        using PbtNodeGroupWriter writer = new(rootPath, memory);
+        try
+        {
+            reader.Position(rootPath);
+            Assert.That(reader.CopyRange(writer, 0, 0), Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistence.Reads, Is.Empty);
+                Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(1));
+                Assert.That(metrics.PhysicalGroupFetches, Is.Zero);
+                Assert.That(metrics.GroupParses, Is.Zero);
+            }
+            switch (firstAccess)
+            {
+                case 0: reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition); break;
+                case 1: reader.CopyRange(writer, 0, PbtNodeGroupCodec.PositionCount); break;
+                case 2:
+                    using (reader.Acquire(PbtFourLevelGroupGeometry.RootPosition, rootPath)) { }
+                    break;
+            }
+            Assert.That(reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition).ToArray(), Is.EqualTo(present ? encoding : Array.Empty<byte>()));
+            using (TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition, rootPath))
+                Assert.That(node.IsEmpty, Is.EqualTo(!present));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistence.Reads.Count, Is.EqualTo(1));
+                Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1));
+                Assert.That(metrics.GroupParses, Is.EqualTo(present ? 1 : 0));
+            }
+        }
+        finally { reader.Dispose(); }
+        writer.Dispose();
+        store.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Group_frames_release_lazy_payloads_on_parse_failure_or_unused_disposal([Values] bool access)
+    {
+        TrackingMemoryProvider memory = new();
+        using PbtNodeGroupStore store = new();
+        RefCountingMemory payload = memory.Rent(1);
+        payload.GetSpan()[0] = 0xff;
+        WarmReadStore persistence = new(store) { Payload = payload };
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, new([], 0), null);
+        try
+        {
+            if (access) Assert.Throws<InvalidDataException>(() => reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition));
+        }
+        finally { reader.Dispose(); }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "the caller still owns its payload lease");
+        ((IDisposable)payload).Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistence.Reads.Count, Is.EqualTo(access ? 1 : 0));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Inserts_and_leaf_splits_do_not_fetch_new_group_frames([Values] bool split, [Values] bool partitioned)
+    {
+        using PbtNodeGroupStore store = new();
+        using PbtTreeHarness expected = new();
+        (byte[] Key, byte[]? Value)[] initial = [(Bytes.FromHexString("000000"), Value(1))];
+        (byte[] Key, byte[]? Value)[] changes = [(Bytes.FromHexString("000001"), Value(2)), (Bytes.FromHexString("000002"), Value(3))];
+        ValueHash256 root = default;
+        if (split)
+        {
+            using PbtPartitionBatches initialBatch = PbtStoreTestExtensions.PreparePartitions(initial);
+            root = TrieUpdater.UpdateRoot(store, default, initialBatch);
+            expected.ApplyBatch(initial);
+        }
+        TrieUpdaterMetrics metrics = new();
+        if (partitioned)
+        {
+            using PbtPartitionBatches batch = PbtStoreTestExtensions.PreparePartitions(changes);
+            root = TrieUpdater.UpdateRoot(store, root, batch, metrics);
+        }
+        else
+        {
+            using PbtWriteBatchBuilder<PbtStorageFullKey> builder = new(0);
+            foreach ((byte[] key, byte[]? value) in changes) builder.Set(new(key), new ValueHash256(value!));
+            root = TrieUpdater.UpdateRoot(store, root, builder.Build(), metrics);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(expected.ApplyBatch(changes)));
+            Assert.That(metrics.GroupFrameResolutions, Is.GreaterThan(1));
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1), "only the root group needs reading");
+            Assert.That(metrics.GroupParses, Is.EqualTo(split ? 1 : 0));
+        }
+    }
+
+    [Test]
     public void Decomposition_entries_transfer_or_release_owned_nodes(
         [Values(0, 1, 2, 3)] int scenario, [Values] bool consume)
     {

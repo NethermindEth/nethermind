@@ -966,14 +966,11 @@ public class PbtSnapshotBundleTests
     {
         public int ApplyCount { get; private set; }
         public int? FailedZone { get; init; }
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
-        {
-            if (groupKey.BitDepth == 8 && groupKey.Path[0] == FailedZone)
-                throw new InvalidDataException("Configured partition read failure.");
-            return bundle.GetNodeGroup(groupKey);
-        }
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
         public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
         {
+            if (groupKey.BitDepth == 8 && groupKey.Path[0] == FailedZone)
+                throw new InvalidDataException("Configured partition write failure.");
             ApplyCount++;
             bundle.SetNodeGroup(groupKey, payload);
         }

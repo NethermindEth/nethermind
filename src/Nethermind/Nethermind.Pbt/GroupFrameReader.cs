@@ -11,9 +11,12 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     where TKey : struct, IPbtKey<TKey>
     where TPath : class, IPbtNodePath<TPath>
 {
-    private readonly RefCountingMemory? _lease;
-    private readonly OffsetBuffer _offsets;
-    private readonly LengthBuffer _lengths;
+    private readonly IPbtStore _store;
+    private readonly TrieUpdaterMetrics? _metrics;
+    private RefCountingMemory? _lease;
+    private bool _loaded;
+    private OffsetBuffer _offsets;
+    private LengthBuffer _lengths;
     private HashBuffer _hashes;
     private uint _hashed;
     internal uint Taken;
@@ -21,17 +24,25 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     internal GroupFrameReader(IPbtStore store, TPath groupKey, TrieUpdaterMetrics? metrics)
     {
         GroupKey = groupKey;
+        _store = store;
+        _metrics = metrics;
         metrics?.IncrementGroupFrameResolutions();
-        metrics?.IncrementPhysicalGroupFetches();
-        _lease = store.GetNodeGroup(groupKey);
+    }
+
+    private void EnsureLoaded()
+    {
+        if (_loaded) return;
+        _metrics?.IncrementPhysicalGroupFetches();
+        _lease = _store.GetNodeGroup(GroupKey);
+        _loaded = true;
         if (_lease is null) return;
         try
         {
-            metrics?.IncrementGroupParses();
-            PbtNodeGroupReader reader = new(groupKey, _lease.GetSpan());
+            _metrics?.IncrementGroupParses();
+            PbtNodeGroupReader reader = new(GroupKey, _lease.GetSpan());
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
-                if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;
                 if (!reader.TryGetNodeRange(position, out int offset, out int length)) continue;
                 _offsets[position] = offset;
                 _lengths[position] = length;
@@ -47,12 +58,16 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     internal TPath GroupKey { get; }
     internal int BitDepth => GroupKey.BitDepth;
 
-    internal ReadOnlyMemory<byte> GetEncoding(int position) => _lengths[position] == 0
-        ? default
-        : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+    internal ReadOnlyMemory<byte> GetEncoding(int position)
+    {
+        EnsureLoaded();
+        return _lengths[position] == 0 ? default : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+    }
 
     internal int CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition)
     {
+        if (startPosition == endPosition) return 0;
+        EnsureLoaded();
         while (startPosition < endPosition && _lengths[startPosition] == 0) startPosition++;
         if (startPosition == endPosition) return 0;
         int lastPosition = endPosition - 1;
@@ -118,7 +133,11 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return PbtFourLevelGroupGeometry.PositionOf(path);
     }
 
-    public void Dispose() => ((IDisposable?)_lease)?.Dispose();
+    public void Dispose()
+    {
+        ((IDisposable?)_lease)?.Dispose();
+        _lease = null;
+    }
 
     [InlineArray(PbtNodeGroupCodec.PositionCount)]
     private struct HashBuffer
