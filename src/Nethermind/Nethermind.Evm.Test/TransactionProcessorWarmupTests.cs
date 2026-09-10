@@ -3,7 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,6 +21,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -142,6 +148,57 @@ public class TransactionProcessorWarmupTests
         Assert.That(tracer.LastWord, Is.EqualTo(new byte[32]));
     }
 
+    [Test]
+    public void Tracing_collects_only_observed_logs(
+        [Values("call", "callLogs", "memory", "prestate", "parity", "parityVm")] string tracerName,
+        [Values] bool cancelable)
+    {
+        byte[] code = Prepare.EvmCode.Log(128, 1024, [TestItem.KeccakA])
+            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        (Transaction tx, _) = PrepareLogTransaction(code, 500_000);
+
+        (string baseline, ulong baselineGas, int baselineLogs) = TraceWithLogCollection(tx, tracerName, true, cancelable);
+        (string optimized, ulong optimizedGas, int optimizedLogs) = TraceWithLogCollection(tx, tracerName, false, cancelable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized, Is.EqualTo(baseline));
+            Assert.That(optimizedGas, Is.EqualTo(baselineGas));
+            Assert.That(baselineLogs, Is.EqualTo(1));
+            Assert.That(optimizedLogs, Is.EqualTo(tracerName == "callLogs" ? 1 : 0));
+        }
+    }
+
+    private (string, ulong, int) TraceWithLogCollection(Transaction tx, string tracerName, bool receiptLogs, bool cancelable)
+    {
+        using TxTracer tracer = tracerName switch
+        {
+            "call" or "callLogs" => new NativeCallTracer(tx, _specProvider.GenesisSpec, GethTraceOptions.Default with
+            {
+                TracerConfig = JsonSerializer.SerializeToElement(new { withLog = tracerName == "callLogs" })
+            }),
+            "memory" => new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default with { EnableMemory = true }),
+            "prestate" => new NativePrestateTracer(_stateProvider, GethTraceOptions.Default, tx.Hash, tx.SenderAddress, tx.To),
+            _ => new ParityLikeTxTracer(Build.A.Block.WithTransactions(tx).TestObject, tx,
+                ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | (tracerName == "parityVm" ? ParityTraceTypes.VmTrace : 0))
+        };
+        using LogCaptureTracer observer = new(receiptTracer: true, receiptLogs);
+        ITxTracer composite = new CompositeTxTracer(tracer, observer);
+        if (cancelable) composite = composite.WithCancellation(default);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, composite);
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(observer.Failed, Is.False);
+
+        if (tracer is GethLikeTxTracer gethTracer)
+        {
+            using GethLikeTxTrace trace = gethTracer.BuildResult();
+            return (JsonSerializer.Serialize(trace, EthereumJsonSerializer.JsonOptions), observer.GasSpent, observer.Logs.Count);
+        }
+
+        return (JsonSerializer.Serialize(((ParityLikeTxTracer)tracer).BuildResult(), EthereumJsonSerializer.JsonOptions), observer.GasSpent, observer.Logs.Count);
+    }
+
     private sealed class MemoryWordTracer : TxTracer
     {
         public byte[]? LastWord { get; private set; }
@@ -163,17 +220,23 @@ public class TransactionProcessorWarmupTests
     {
         public List<LogEntry> Logs { get; } = [];
         public bool Failed { get; private set; }
+        public ulong GasSpent { get; private set; }
+        public override bool IsTracingReceiptLogs { get; }
 
-        public LogCaptureTracer(bool receiptTracer)
+        public LogCaptureTracer(bool receiptTracer, bool? receiptLogs = null)
         {
             IsTracingReceipt = receiptTracer;
+            IsTracingReceiptLogs = receiptLogs ?? receiptTracer;
             IsTracingLogs = !receiptTracer;
         }
 
         public override void ReportLog(LogEntry log) => Logs.Add(log);
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
-            => Logs.AddRange(logs);
+        {
+            GasSpent = gasSpent.SpentGas;
+            Logs.AddRange(logs);
+        }
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
             => Failed = true;

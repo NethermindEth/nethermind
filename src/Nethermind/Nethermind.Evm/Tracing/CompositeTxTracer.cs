@@ -27,6 +27,7 @@ public class CompositeTxTracer : ITxTracer
             IsCancelable |= t.IsCancelable;
             IsTracingState |= t.IsTracingState;
             IsTracingReceipt |= t.IsTracingReceipt;
+            IsTracingReceiptLogs |= t.IsTracingReceiptLogs;
             IsTracingActions |= t.IsTracingActions;
             IsTracingOpLevelStorage |= t.IsTracingOpLevelStorage;
             IsTracingMemory |= t.IsTracingMemory;
@@ -61,6 +62,7 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingState { get; }
     public bool IsTracingStorage { get; }
     public bool IsTracingReceipt { get; }
+    public bool IsTracingReceiptLogs { get; }
     public bool IsTracingActions { get; }
     public bool IsTracingOpLevelStorage { get; }
     public bool IsTracingMemory { get; }

@@ -82,7 +82,6 @@ public partial class EthRpcModuleTests
             : [transaction, "latest"];
 
         TestRpcBlockchain test = ctx.Test;
-        observer.AllCallsRequestSuppression = true;
         observer.LogCount = 0;
         string baseline = await test.TestEthRpc(method, parameters);
         int baselineLogs = observer.LogCount;
@@ -95,7 +94,6 @@ public partial class EthRpcModuleTests
         {
             Assert.That(optimized, Is.EqualTo(baseline));
             Assert.That(observer.ExecutionCount, Is.GreaterThan(0));
-            Assert.That(observer.AllCallsRequestSuppression, Is.True);
             Assert.That(observer.LogCount, Is.Zero);
             if (expectLogs)
             {
@@ -109,8 +107,8 @@ public partial class EthRpcModuleTests
     private sealed class RpcLogObserver : TxTracer
     {
         public override bool IsTracingReceipt => true;
+        public override bool IsTracingReceiptLogs => !SuppressLogs;
         public bool SuppressLogs { get; set; }
-        public bool AllCallsRequestSuppression { get; set; } = true;
         public int LogCount { get; set; }
         public int ExecutionCount { get; set; }
 
@@ -123,8 +121,6 @@ public partial class EthRpcModuleTests
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
         {
             observer.ExecutionCount++;
-            observer.AllCallsRequestSuppression &= options.HasFlag(ExecutionOptions.SuppressLogs);
-            if (!observer.SuppressLogs) options &= ~ExecutionOptions.SuppressLogs;
             return inner.Process(transaction, new CompositeTxTracer(txTracer, observer), options);
         }
 

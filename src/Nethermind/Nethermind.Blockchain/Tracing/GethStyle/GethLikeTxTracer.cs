@@ -35,6 +35,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
 
     protected void ResetTrace() => _trace = null;
     public override bool IsTracingReceipt => true;
+    public override bool IsTracingReceiptLogs => false;
     public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }
     public override bool IsTracingInstructions => true;

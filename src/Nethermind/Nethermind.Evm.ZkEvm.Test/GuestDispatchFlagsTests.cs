@@ -30,7 +30,11 @@ public class GuestDispatchFlagsTests
     {
         using CapabilityTracer tracer = new(capability);
 
-        Assert.DoesNotThrow(() => DispatchFlags.Validate(tracer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => DispatchFlags.Validate(tracer));
+            Assert.That(tracer.IsTracingReceiptLogs, Is.EqualTo(capability == nameof(ITxTracer.IsTracingReceipt)));
+        }
     }
 
     /// <remarks>Re-lists ITxTracer so Validate observes this IsCancelable implementation instead of the default interface value.</remarks>

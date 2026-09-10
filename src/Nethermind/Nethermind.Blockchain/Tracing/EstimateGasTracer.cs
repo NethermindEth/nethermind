@@ -19,6 +19,7 @@ public class EstimateGasTracer : TxTracer
     public EstimateGasTracer() => _currentGasAndNesting.Push(new GasAndNesting(0, -1));
 
     public override bool IsTracingReceipt => true;
+    public override bool IsTracingReceiptLogs => false;
     public override bool IsTracingActions => true;
     public override bool IsTracingRefunds => true;
 
