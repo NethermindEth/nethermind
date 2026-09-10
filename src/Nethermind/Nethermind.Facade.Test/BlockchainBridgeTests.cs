@@ -166,9 +166,9 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(static blkCtx =>
             blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA));
-        _transactionProcessor.Received().CallAndRestore(
+        _transactionProcessor.Received().Process(
             tx,
-            Arg.Any<ITxTracer>());
+            Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs);
     }
 
     [Test]
@@ -182,9 +182,9 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Number == 10));
-        _transactionProcessor.Received().CallAndRestore(
+        _transactionProcessor.Received().Process(
             tx,
-            Arg.Any<ITxTracer>());
+            Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs);
     }
 
     [Test]
@@ -198,9 +198,9 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA));
-        _transactionProcessor.Received().CallAndRestore(
+        _transactionProcessor.Received().Process(
             tx,
-            Arg.Any<ITxTracer>());
+            Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs);
     }
 
     [Test]
@@ -214,9 +214,9 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB));
-        _transactionProcessor.Received().CallAndRestore(
+        _transactionProcessor.Received().Process(
             tx,
-            Arg.Any<ITxTracer>());
+            Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs);
     }
 
     [Test]
@@ -302,9 +302,9 @@ public class BlockchainBridgeTests
         _blockchainBridge.Call(header, tx);
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB));
-        _transactionProcessor.Received().CallAndRestore(
+        _transactionProcessor.Received().Process(
             Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
-            Arg.Any<ITxTracer>());
+            Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs);
     }
 
     private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
@@ -373,7 +373,7 @@ public class BlockchainBridgeTests
             .WithTo(TestItem.AddressB)
             .TestObject;
 
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(callInfo =>
             {
                 ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
@@ -403,7 +403,7 @@ public class BlockchainBridgeTests
             .WithTo(TestItem.AddressB)
             .TestObject;
 
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(callInfo =>
             {
                 ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
@@ -421,7 +421,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 100 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.InsufficientSenderBalance);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -435,7 +435,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 100 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.InsufficientSenderBalance);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -449,7 +449,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 123 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.SenderNotSpecified);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -463,7 +463,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 123 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.SenderNotSpecified);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -477,7 +477,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.MalformedTransaction);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -491,7 +491,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.MalformedTransaction);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -505,7 +505,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.TransactionNonceTooHigh);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -519,7 +519,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.TransactionNonceTooLow);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -533,7 +533,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.TransactionNonceTooHigh);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -547,7 +547,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.TransactionNonceTooLow);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -561,7 +561,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 0 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.NonceOverflow);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -575,7 +575,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 0 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.NonceOverflow);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -611,7 +611,7 @@ public class BlockchainBridgeTests
     [TestCaseSource(nameof(MinerPremiumNegativeCases))]
     public void Call_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
     {
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(result);
 
         CallOutput callOutput = _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
@@ -622,7 +622,7 @@ public class BlockchainBridgeTests
     [TestCaseSource(nameof(MinerPremiumNegativeCases))]
     public void EstimateGas_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
     {
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(result);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(Build.A.BlockHeader.TestObject, tx, 1);
@@ -636,7 +636,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 1 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.BlockGasLimitExceeded);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -650,7 +650,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 1 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.BlockGasLimitExceeded);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -665,7 +665,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 1 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.SenderHasDeployedCode);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -679,7 +679,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 1 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.SenderHasDeployedCode);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -693,7 +693,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.TransactionSizeOverMaxInitCodeSize);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -707,7 +707,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.TransactionSizeOverMaxInitCodeSize);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -721,7 +721,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.GasLimitBelowIntrinsicGas);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -735,7 +735,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.GasLimitBelowIntrinsicGas);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -749,7 +749,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Transaction tx = new() { GasLimit = 1, SenderAddress = TestItem.AddressA };
 
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(callInfo =>
             {
                 Transaction currentTx = callInfo.ArgAt<Transaction>(0);
@@ -783,7 +783,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Transaction tx = new() { GasLimit = 1, SenderAddress = TestItem.AddressA, To = TestItem.AddressB };
 
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(callInfo =>
             {
                 Transaction currentTx = callInfo.ArgAt<Transaction>(0);
@@ -830,7 +830,7 @@ public class BlockchainBridgeTests
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -845,7 +845,7 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new();
 
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.Ok);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
@@ -860,7 +860,7 @@ public class BlockchainBridgeTests
             .TestObject;
         Transaction tx = new();
 
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+        _transactionProcessor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs)
             .Returns(TransactionResult.Ok);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);

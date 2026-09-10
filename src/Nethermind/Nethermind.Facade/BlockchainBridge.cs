@@ -496,7 +496,8 @@ namespace Nethermind.Facade
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
-            return txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            txProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            return txProcessor.Process(transaction, tracer, ExecutionOptions.CommitAndRestore | ExecutionOptions.SuppressLogs);
         }
 
         public ulong GetChainId() => blockTree.ChainId;

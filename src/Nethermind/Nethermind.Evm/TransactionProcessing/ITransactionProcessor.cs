@@ -57,7 +57,11 @@ public static class ITransactionProcessorExtensions
         /// Call transaction with real fee and nonce semantics, no validations, don't commit state.
         /// </summary>
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
-            => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
+        {
+            ExecutionOptions options = ExecutionOptions.Warmup | ExecutionOptions.SkipValidation;
+            if (ReferenceEquals(txTracer, NullTxTracer.Instance)) options |= ExecutionOptions.SuppressLogs;
+            return transactionProcessor.Process(transaction, txTracer, options);
+        }
 
         public TransactionResult Execute(Transaction transaction, BlockHeader header, ITxTracer txTracer)
         {

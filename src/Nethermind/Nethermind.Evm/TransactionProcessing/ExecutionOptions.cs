@@ -39,6 +39,15 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
+    /// Skip event log materialization while preserving LOG gas and execution checks.
+    /// </summary>
+    /// <remarks>
+    /// Only for callers that discard logs and do not expose instruction or memory traces.
+    /// Receipt callbacks still run, but receive no opcode logs.
+    /// </remarks>
+    SuppressLogs = 32,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,
