@@ -19,6 +19,73 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotBundleTests
 {
+    [Test]
+    public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 16)] int groupCount, [Values] bool tombstone)
+    {
+        using PbtSnapshotContent content = new();
+        TrackingMemoryProvider memoryProvider = new();
+        for (int round = 0; round < 2; round++)
+        {
+            RefCountingMemory?[] retained = new RefCountingMemory?[groupCount];
+            byte[][] originalEncodings = new byte[groupCount][];
+            long[] expectedNodeBytes = new long[groupCount];
+            try
+            {
+                System.Threading.Tasks.Parallel.For(0, groupCount, index =>
+                {
+                    PbtNodePath groupPath = new([(byte)(index << 4)], 4);
+                    PbtStorageNodePath storagePath = groupPath.ToPath<PbtStorageNodePath>();
+                    Assert.That(content.TryGetNodeGroup(groupPath, out RefCountingMemory? missing), Is.False);
+                    using (missing) Assert.That(missing, Is.Null);
+
+                    byte[] original = EncodeGroup(groupPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 1)))]);
+                    originalEncodings[index] = original;
+                    using (RefCountingMemory payload = Memory(original, memoryProvider)) content.SetNodeGroup(groupPath, payload);
+                    Assert.That(content.TryGetNodeGroup(groupPath, out retained[index]), Is.True);
+                    Assert.That(retained[index], Is.Not.Null);
+
+                    byte[] replacement = EncodeGroup(groupPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 3)))]);
+                    using (RefCountingMemory? payload = tombstone ? null : Memory(replacement, memoryProvider))
+                        content.SetNodeGroup(groupPath, payload);
+                    bool found = content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
+                    using (current)
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(found, Is.True);
+                        Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstone ? null : replacement));
+                        Assert.That(retained[index]!.GetSpan().ToArray(), Is.EqualTo(original));
+                    }
+                    expectedNodeBytes[index] = storagePath.EncodedLength + (tombstone ? 0 : replacement.Length);
+                });
+
+                long nodeBytes = 0;
+                foreach (long size in expectedNodeBytes) nodeBytes += size;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(content.NodeGroups, Has.Count.EqualTo(groupCount));
+                    Assert.That(content.GetPayloadSize(), Is.EqualTo(new PbtSnapshotPayloadSize(0, nodeBytes, 0)));
+                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount * (tombstone ? 1 : 2)));
+                }
+
+                content.Reset();
+                content.Reset();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(content.NodeGroups, Is.Empty);
+                    Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
+                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount));
+                    for (int index = 0; index < groupCount; index++)
+                        Assert.That(retained[index]!.GetSpan().ToArray(), Is.EqualTo(originalEncodings[index]));
+                }
+            }
+            finally
+            {
+                foreach (RefCountingMemory? payload in retained) ((IDisposable?)payload)?.Dispose();
+            }
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        }
+    }
+
     [TestCase(null)]
     [TestCase(0)]
     [TestCase(1)]
@@ -1065,9 +1132,9 @@ public class PbtSnapshotBundleTests
         return content;
     }
 
-    private static RefCountingMemory Memory(byte[] encoding)
+    private static RefCountingMemory Memory(byte[] encoding, IRefCountingMemoryProvider? memoryProvider = null)
     {
-        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(encoding.Length);
+        RefCountingMemory payload = (memoryProvider ?? PooledRefCountingMemoryProvider.Instance).Rent(encoding.Length);
         encoding.CopyTo(payload.GetSpan());
         return payload;
     }

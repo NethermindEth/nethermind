@@ -13,10 +13,12 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Pbt;
 
 /// <summary>One immutable-at-seal diff layer of flat values, canonical node groups, and code references.</summary>
+/// <remarks>
+/// Concurrent mutable node-group operations must own disjoint paths; same-path reads and replacements require caller serialization.
+/// Sealed content supports concurrent readers while its snapshot is leased. Reset requires exclusive ownership.
+/// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
-    private readonly Lock _treeLock = new();
-
     internal readonly ConcurrentDictionary<ValueHash256, Account?> Accounts = new();
     internal readonly ConcurrentDictionary<PbtStorageFullKey, EvmWord> Storages = new();
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
@@ -38,21 +40,18 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         if (payload is not null) _ = new PbtNodeGroupReader<TPath>(groupKey, payload.GetSpan());
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        lock (_treeLock)
+        NodeGroups.TryGetValue(storagePath, out RefCountingMemory? previous);
+        payload?.AcquireLease();
+        try
         {
-            NodeGroups.TryGetValue(storagePath, out RefCountingMemory? previous);
-            payload?.AcquireLease();
-            try
-            {
-                NodeGroups[storagePath] = payload;
-            }
-            catch
-            {
-                ((IDisposable?)payload)?.Dispose();
-                throw;
-            }
-            ((IDisposable?)previous)?.Dispose();
+            NodeGroups[storagePath] = payload;
         }
+        catch
+        {
+            ((IDisposable?)payload)?.Dispose();
+            throw;
+        }
+        ((IDisposable?)previous)?.Dispose();
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
@@ -60,12 +59,9 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        lock (_treeLock)
-        {
-            bool found = NodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload);
-            payload?.AcquireLease();
-            return found;
-        }
+        bool found = NodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload);
+        payload?.AcquireLease();
+        return found;
     }
 
     internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => CodeReferences[codeHash] = referenceCount;
@@ -75,15 +71,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     public void Reset()
     {
-        lock (_treeLock)
-        {
-            Accounts.NoLockClear();
-            Storages.NoLockClear();
-            Codes.NoLockClear();
-            SelfDestructedStorageAddresses.NoLockClear();
-            foreach ((_, RefCountingMemory? payload) in NodeGroups) ((IDisposable?)payload)?.Dispose();
-            NodeGroups.NoLockClear();
-        }
+        Accounts.NoLockClear();
+        Storages.NoLockClear();
+        Codes.NoLockClear();
+        SelfDestructedStorageAddresses.NoLockClear();
+        foreach ((_, RefCountingMemory? payload) in NodeGroups) ((IDisposable?)payload)?.Dispose();
+        NodeGroups.NoLockClear();
         CodeReferences.NoLockClear();
     }
 
@@ -95,11 +88,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         foreach ((PbtStorageFullKey key, _) in Storages) leafBytes += key.Length + ValueHash256.MemorySize;
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
-        lock (_treeLock)
-        {
-            foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)
-                nodeBytes += path.EncodedLength + (payload?.Memory.Length ?? 0);
-        }
+        foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)
+            nodeBytes += path.EncodedLength + (payload?.Memory.Length ?? 0);
 
         long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));
         return new PbtSnapshotPayloadSize(leafBytes, nodeBytes, codeReferenceBytes);
