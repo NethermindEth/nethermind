@@ -17,26 +17,26 @@ namespace Nethermind.Serialization.Rlp
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int logEntryLength);
-            Rlp.GuardLimit(logEntryLength, rlp.Length - position, RlpLimit);
+            rlp.ReadSequenceLength(ref position, out int logEntryLength);
+            Rlp.GuardLimit(logEntryLength, rlp.Data.Length - position, RlpLimit);
             int logEntryCheck = position + logEntryLength;
 
-            position = RlpHelpers.DecodeAddress(rlp, position, out Address address);
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int topicsLength);
+            rlp.DecodeAddress(ref position, out Address address);
+            rlp.ReadSequenceLength(ref position, out int topicsLength);
             int topicsCheck = position + topicsLength;
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
-            Rlp.GuardLimit(topicCount, rlp.Length - position, RlpLimit.L4);
+            Rlp.GuardLimit(topicCount, rlp.Data.Length - position, RlpLimit.L4);
 
             Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
-                position = RlpHelpers.DecodeKeccak(rlp, position, out topics[i]);
+                rlp.DecodeKeccak(ref position, out topics[i]);
             }
 
             RlpHelpers.Check(position, topicsCheck);
-            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] data);
+            rlp.DecodeByteArray(ref position, out byte[] data);
             RlpHelpers.Check(position, logEntryCheck);
             decoderContext.Position = position;
 

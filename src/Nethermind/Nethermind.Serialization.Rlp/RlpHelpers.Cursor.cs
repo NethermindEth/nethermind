@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Rlp;
 /// The buffer and the cursor stay two separate values rather than one cursor type because a struct
 /// pairing a <see cref="ReadOnlySpan{T}"/> with an <see cref="int"/> is past the size the ABI returns
 /// in registers, so handing one back would put the cursor into memory again — the cost this file
-/// exists to remove. A decoder therefore picks the pair up once through <see cref="TryConsumeNull"/>
+/// exists to remove. A decoder therefore picks the pair up once through <see cref="RlpReader.TryConsumeNull"/>
 /// and stores the cursor back once on the way out. The reader's cursor is only meaningful on that
 /// success path: a decode that throws mid-record leaves it wherever the last store put it, so callers
 /// that retry (see <c>ReceiptArrayStorageDecoder</c>) must reset it themselves.
@@ -91,33 +91,6 @@ internal static partial class RlpHelpers
     /// <summary>Tells whether the item at <paramref name="position"/> is a sequence rather than a byte string.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsSequenceNext(ReadOnlySpan<byte> data, int position) => data[position] >= ListOffset;
-
-    /// <summary>Tells whether the item at <paramref name="position"/> is the empty sequence.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsEmptySequenceNext(ReadOnlySpan<byte> data, int position) => data[position] == Rlp.EmptyListByte;
-
-    /// <summary>Picks up a reader's buffer and cursor, consuming the empty sequence that encodes a null item.</summary>
-    /// <remarks>
-    /// The opening step of every cursor-threaded decoder: the reader is picked up here once, and a decoder
-    /// that does not re-enter a <c>ref RlpReader</c> API mid-run touches <see cref="RlpReader.Position"/>
-    /// only again on the way out. The reader is <see langword="scoped"/> <see langword="ref"/> so that
-    /// <paramref name="data"/> may escape to the caller: a plain <see langword="ref"/> parameter is
-    /// return-only, which would stop callers passing slices of the buffer onward.
-    /// </remarks>
-    /// <returns>
-    /// <see langword="true"/> when an encoded null was consumed and the reader advanced past it; otherwise
-    /// <see langword="false"/>, with the cursor to thread in <paramref name="data"/> and <paramref name="position"/>.
-    /// </returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryConsumeNull(scoped ref RlpReader reader, out ReadOnlySpan<byte> data, out int position)
-    {
-        data = reader.Data;
-        position = reader.Position;
-        if (!IsEmptySequenceNext(data, position)) return false;
-
-        reader.Position = position + 1;
-        return true;
-    }
 
     /// <summary>Asserts that a decode finished exactly at <paramref name="expected"/>.</summary>
     /// <remarks>
