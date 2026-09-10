@@ -1928,14 +1928,32 @@ public class PbtNodeGroupTests
         Assert.That(provider.RentCount, Is.Zero);
     }
 
-    [TestCase("00", "80", "00")]
-    [TestCase("00", "80", "40")]
-    [TestCase("0000", "0080", "0000")]
-    [TestCase("0000", "0080", "8000")]
-    [TestCase("00000000", "00000001", "00000000")]
-    public void Path_warming_reads_only_matching_groups_without_writes(string first, string second, string query) =>
-        AssertPathWarming(new PbtStorageFullKey(Bytes.FromHexString(first)),
-            new PbtStorageFullKey(Bytes.FromHexString(second)), new PbtStorageFullKey(Bytes.FromHexString(query)));
+    private static IEnumerable<TestCaseData> PathWarmingCases()
+    {
+        foreach (Type keyType in new[] { typeof(PbtFullKey), typeof(PbtStorageFullKey) })
+        {
+            string fullLengthKey = new('A', 2 * (keyType == typeof(PbtFullKey) ? PbtFullKey.MaxLength : PbtStorageFullKey.MaxLength));
+            foreach ((string first, string second, string query) in new[]
+            {
+                ("00", "80", "00"),
+                ("00", "80", "40"),
+                ("0000", "0080", "0000"),
+                ("0000", "0080", "8000"),
+                ("00000000", "00000001", "00000000"),
+                ("00000000", "00000001", "00000002"),
+                ("00000000", "00000001", "00"),
+                ("80000000", "80000001", "80000000"),
+                (fullLengthKey, fullLengthKey[..^1] + "B", fullLengthKey),
+            })
+                yield return new TestCaseData(first, second, query) { TypeArgs = [keyType] };
+        }
+    }
+
+    [TestCaseSource(nameof(PathWarmingCases))]
+    public void Path_warming_reads_only_matching_groups_without_writes<TKey>(string first, string second, string query)
+        where TKey : struct, IPbtKey<TKey> =>
+        AssertPathWarming(TKey.Create(Bytes.FromHexString(first)),
+            TKey.Create(Bytes.FromHexString(second)), TKey.Create(Bytes.FromHexString(query)));
 
     [Test]
     public void Path_warming_handles_canonical_account_and_both_storage_zones([Values(0, 1, 256)] int slot)
@@ -1947,14 +1965,15 @@ public class PbtNodeGroupTests
         AssertPathWarming(accountKey, storageKey, storageKey);
     }
 
-    private static void AssertPathWarming(PbtStorageFullKey first, PbtStorageFullKey second, PbtStorageFullKey query)
+    private static void AssertPathWarming<TKey>(TKey first, TKey second, TKey query)
+        where TKey : struct, IPbtKey<TKey>
     {
         TrackingMemoryProvider memory = new();
         using PbtNodeGroupStore store = new(memory);
-        using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
+        using PbtWriteBatchBuilder<TKey> batch = new(0);
         batch.Set(first, new ValueHash256(Value(1)));
         batch.Set(second, new ValueHash256(Value(2)));
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build());
+        ValueHash256 root = TrieUpdater<TKey, PbtStorageNodePath>.UpdateRoot(store, default, batch.Build());
         IReadOnlyList<PbtPhysicalPayload> before = store.ExportPhysicalPayloads();
         HashSet<PbtStorageNodePath> expectedGroups = [];
         foreach (PbtPhysicalPayload physical in before)
@@ -1984,20 +2003,24 @@ public class PbtNodeGroupTests
                 using RefCountingMemory payload = store.GetNodeGroup(PbtStorageNodePath.Decode(physical.Key.Span))!;
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(physical.Payload.ToArray()));
             }
-            using PbtWriteBatchBuilder<PbtStorageFullKey> unchanged = new(0);
-            Assert.That(TrieUpdater.UpdateRoot(store, root, unchanged.Build()), Is.EqualTo(root));
+            using PbtWriteBatchBuilder<TKey> unchanged = new(0);
+            Assert.That(TrieUpdater<TKey, PbtStorageNodePath>.UpdateRoot(store, root, unchanged.Build()), Is.EqualTo(root));
         }
         store.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
 
-    [Test]
-    public void Path_warming_releases_payloads_on_missing_nodes_and_invalid_payloads([Values] bool invalidPayload)
+    [TestCase(false, TypeArgs = [typeof(PbtFullKey)])]
+    [TestCase(true, TypeArgs = [typeof(PbtFullKey)])]
+    [TestCase(false, TypeArgs = [typeof(PbtStorageFullKey)])]
+    [TestCase(true, TypeArgs = [typeof(PbtStorageFullKey)])]
+    public void Path_warming_releases_payloads_on_missing_nodes_and_invalid_payloads<TKey>(bool invalidPayload)
+        where TKey : struct, IPbtKey<TKey>
     {
         TrackingMemoryProvider memory = new();
         using PbtNodeGroupStore store = new();
         WarmReadStore reader = new(store);
-        PbtStorageFullKey key = new(Bytes.FromHexString("00"));
+        TKey key = TKey.Create(Bytes.FromHexString("00"));
         PbtTrieWarmer.WarmUpPath(reader, key);
         Assert.That(reader.Reads.Count, Is.EqualTo(1), "empty tree");
 

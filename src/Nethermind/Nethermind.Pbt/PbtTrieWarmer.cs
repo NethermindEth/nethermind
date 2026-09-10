@@ -9,7 +9,7 @@ internal static class PbtTrieWarmer
 {
     /// <summary>Reads the groups on a complete key's path without changing the tree.</summary>
     /// <remarks>The store must represent one immutable state for the entire traversal.</remarks>
-    internal static void WarmUpPath(IPbtStore store, in PbtStorageFullKey key)
+    internal static void WarmUpPath<TKey>(IPbtStore store, in TKey key) where TKey : struct, IPbtKey<TKey>
     {
         ArgumentNullException.ThrowIfNull(store);
         if (key.Length == 0) throw new ArgumentException("A complete key is required.", nameof(key));
@@ -30,11 +30,9 @@ internal static class PbtTrieWarmer
 
                 int branchDepth = path.BitDepth + node.Prefix.BitCount;
                 if (branchDepth >= key.BitLength) return;
-                for (int bit = 0; bit < node.Prefix.BitCount; bit++)
-                    if (TrieUpdater.GetBit(key.Bytes, path.BitDepth + bit) != TrieUpdater.GetBit(node.Prefix.Bytes, bit)) return;
-
-                int direction = TrieUpdater.GetBit(key.Bytes, branchDepth);
+                int direction = key.GetBit(branchDepth);
                 path = path.Append(node.Prefix, direction);
+                if (!path.MatchesPrefix(key.Bytes, branchDepth)) return;
                 location = PbtFourLevelGroupGeometry.Locate(path);
             } while (location.GroupKey.Equals(group.GroupKey));
         }
