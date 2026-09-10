@@ -63,8 +63,8 @@ namespace Nethermind.TxPool.Test
                 : AcceptTxResult.NotSupportedTxType));
         }
 
-        // A type-3 declaring no blobs is the only shape on which Transaction.SupportsBlobs (type-3) and
-        // Transaction.CarriesBlobs (blob present) disagree, so pin that no pool path can hold one.
+        // A type-3 declaring no blobs is the SupportsBlobs-true/CarriesBlobs-false shape; the inverse, a
+        // blob-carrying frame tx, is pinned by Frame_tx_pool_routing_follows_the_blob_count. New here: the pool counts.
         [Test]
         public void should_reject_blob_tx_with_empty_blob_hashes()
         {
@@ -85,14 +85,15 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // The absent-hash-list variant never reaches the pool at all: it cannot be encoded, so it cannot be
-        // signed, hashed, gossiped or stored. Decoding always yields a list, so only the empty one arrives.
+        // The absent-hash-list variant cannot be encoded, so it cannot be signed, hashed, gossiped or stored, and
+        // decoding always yields a list. In-process producers normalise it to the empty list covered above.
         [Test]
         public void blob_tx_with_absent_blob_hashes_cannot_be_encoded()
         {
             Transaction tx = BuildBlobTxDeclaringNoBlobs(null).TestObject;
 
-            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>());
+            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>()
+                .With.Message.Contains($"{nameof(Transaction.BlobVersionedHashes)} is required"));
         }
 
         private static TransactionBuilder<Transaction> BuildBlobTxDeclaringNoBlobs(byte[][] blobVersionedHashes) =>
