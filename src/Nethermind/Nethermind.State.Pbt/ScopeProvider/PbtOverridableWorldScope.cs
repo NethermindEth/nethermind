@@ -30,6 +30,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly PbtTrieNodeCache? _trieNodeCache;
     private readonly bool _recordDetailedMetrics;
     private bool _isDisposed;
 
@@ -38,11 +39,13 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         IPbtDbManager manager,
         IPbtResourcePool resourcePool,
         IMetricsConfig metricsConfig,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        PbtTrieNodeCache? trieNodeCache = null)
     {
         _logManager = logManager ?? NullLogManager.Instance;
         _manager = manager;
         _resourcePool = resourcePool;
+        _trieNodeCache = trieNodeCache;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
@@ -102,7 +105,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         try
         {
             readOnlyBundle = _manager.GatherReadOnlyBundle(current);
-            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _trieNodeCache);
         }
         catch
         {

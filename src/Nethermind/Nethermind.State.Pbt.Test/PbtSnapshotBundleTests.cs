@@ -13,6 +13,8 @@ using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -315,8 +317,11 @@ public class PbtSnapshotBundleTests
         PbtNodePath path = new([], 0);
         byte[] encoding = EncodeGroup(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
         using PbtTrieNodeCache cache = new(new PbtConfig { AccountTrieNodeCacheSizeBudget = budget });
-        Reader reader = new(default, null) { GroupPayload = encoding, MemoryProvider = memory };
-        using PbtReadOnlySnapshotBundle bundle = new(new(0), reader, trieNodeCache: cache);
+        Reader reader = new(default, null) { GroupPayload = encoding, MemoryProvider = memory, CurrentRoot = new ValueHash256(Value(1)) };
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
+        using PbtSnapshotBundle bundle = new(Snapshots(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         for (int read = 0; read < 2; read++)
         {
             using RefCountingMemory? payload = bundle.GetNodeGroup(path);
@@ -328,8 +333,15 @@ public class PbtSnapshotBundleTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "cache must not retain oversized source allocations");
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
+        int readsBeforeDirectRead = reader.GroupReadCount;
+        for (int read = 0; read < 2; read++)
+        {
+            using RefCountingMemory? payload = readOnly.GetNodeGroup(path);
+            Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
+        }
+        Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeDirectRead + 2), "direct read-only reads bypass the populated trie cache");
         Reader forkReader = new(default, null) { GroupPayload = encoding, CurrentRoot = new ValueHash256(Value(2)) };
-        using PbtReadOnlySnapshotBundle fork = new(new(0), forkReader, trieNodeCache: cache);
+        using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         using RefCountingMemory? forkPayload = fork.GetNodeGroup(path);
         Assert.That(forkReader.GroupReadCount, Is.EqualTo(1));
         Assert.That(cache.TryGet(default, new PbtNodePath([0], 4), out _), Is.False);
@@ -338,6 +350,16 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(Metrics.PbtTrieCacheHits["account"] - initialHits, Is.EqualTo(2 - expectedReads));
             Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(expectedReads + 3));
+        }
+        using (RefCountingMemory? payload = bundle.GetNodeGroup(path))
+            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(encoding));
+        int readsBeforeWarming = reader.GroupReadCount;
+        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
+        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(path);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmed!.Memory.ToArray(), Is.EqualTo(encoding));
+            Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeWarming + expectedReads - 1), "warming must use the immutable base root, not its local view root");
         }
     }
 
@@ -628,7 +650,12 @@ public class PbtSnapshotBundleTests
             ? Snapshots(pool, Content(groupKey, shared), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local))
             : new(0);
         using PbtTrieNodeCache cache = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, trieNodeCache: cache), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        if (newestTier >= 2)
+        {
+            using RefCountingMemory cached = Memory(shared);
+            cache.Add(default, groupKey, cached);
+        }
+        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         if (newestTier == 3)
         {
             using RefCountingMemory? payload = tombstone ? null : Memory(write);
@@ -640,6 +667,13 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
+            Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
+        }
+        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
+        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmed?.Memory.ToArray(), Is.EqualTo(newestTier == 3 ? local : expected), "warming uses frozen layers, not live writes or stale cached base groups");
             Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
         }
     }

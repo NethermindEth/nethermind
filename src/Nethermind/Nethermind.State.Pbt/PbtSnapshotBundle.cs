@@ -18,7 +18,8 @@ public sealed class PbtSnapshotBundle(
     PbtSnapshotPooledList snapshots,
     PbtReadOnlySnapshotBundle readOnlyBundle,
     IPbtResourcePool resourcePool,
-    PbtResourcePool.Usage usage) : IDisposable
+    PbtResourcePool.Usage usage,
+    PbtTrieNodeCache? trieNodeCache = null) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private readonly PbtWriteBatchBuilder<PbtFullKey> _accountBatch = resourcePool.GetWriteBatch(usage);
@@ -103,7 +104,11 @@ public sealed class PbtSnapshotBundle(
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
-        return readOnlyBundle.GetNodeGroup(groupKey);
+        ValueHash256 root = readOnlyBundle.TreeRoot;
+        if (trieNodeCache?.TryGet(root, groupKey, out payload) == true) return payload;
+        payload = readOnlyBundle.GetNodeGroup(groupKey);
+        if (payload is not null) trieNodeCache?.Add(root, groupKey, payload);
+        return payload;
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)
@@ -359,7 +364,7 @@ public sealed class PbtSnapshotBundle(
             if (!readOnlyLeased) throw new ObjectDisposedException(nameof(PbtReadOnlySnapshotBundle));
             transientLeased = _transientResource.TryAcquireLease();
             if (!transientLeased) throw new ObjectDisposedException(nameof(PbtTransientResource));
-            return new PbtTrieWarmupSession(initialSnapshots, readOnlyBundle, _transientResource, trieWarmer, sequenceId);
+            return new PbtTrieWarmupSession(initialSnapshots, readOnlyBundle, _transientResource, trieWarmer, sequenceId, trieNodeCache);
         }
         catch
         {
