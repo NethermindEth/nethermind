@@ -49,10 +49,9 @@ internal class XdcTransactionProcessor(
     {
         IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
 
-        // The gas a special transaction spends is burned rather than paid out: XDPoSChain guards its
-        // whole fee payment with `!types.IsSpecialTx(msg.To)` (core/state_transition.go). Crediting it
-        // here forks the chain against the reference client whenever such a transaction carries a
-        // non-zero gas price, even though the sender is still charged for the gas in BuyGas.
+        // Randomize gas is charged in BuyGas but burned, not paid out: XDPoSChain guards its whole fee
+        // payment with !types.IsSpecialTx(msg.To) (core/state_transition.go). Sign transactions never
+        // reach here — Execute routes them to ExecuteSpecialTransaction, which charges no gas at all.
         if (tx.IsSpecialTransaction(xdcSpec)) return;
 
         if (!xdcSpec.IsTipTrc21FeeEnabled)
@@ -75,16 +74,9 @@ internal class XdcTransactionProcessor(
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Transactions to the block-signer and randomize contracts are exempt from the EIP-1559 fee
-    /// floor, mirroring the <c>!types.IsSpecialTx(msg.To)</c> guard in XDPoSChain's
-    /// <c>core/state_transition.go</c> <c>preCheck</c>. The exemption covers the floor only: gas is
-    /// still bought and refunded for them, so skipping the charge forks the chain against the
-    /// reference client. What they never do is pay the fee out — see <see cref="PayFees"/>. The
-    /// premium itself is left to the base calculation, which already clamps it to zero for the
-    /// zero-gas-price transactions the consensus engine generates.
-    /// </remarks>
+    // A randomize transaction carries a zero gas price yet must execute, so XDPoSChain waives the
+    // EIP-1559 floor for it (!types.IsSpecialTx(msg.To) in preCheck) — the floor only: gas is still
+    // bought and refunded. The premium is left to the base calculation, which clamps it to zero.
     protected override bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
         base.TryCalculatePremiumPerGas(tx, in baseFee, out premiumPerGas)
         || tx.IsSpecialTransaction((IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec);
