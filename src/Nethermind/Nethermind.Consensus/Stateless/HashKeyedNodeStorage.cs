@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Stateless;
 /// The alternative is a <c>MemDb</c> behind <see cref="NodeStorage"/>, which keys a dictionary by
 /// <c>byte[]</c>: every witness node pays a key-array allocation on load, and every read builds a
 /// key span, hashes its bytes and compares them against the stored array. Here the keccak is the key,
-/// so a read is one word-wise probe.
+/// so reads compare the keccak word-wise.
 /// <para>
 /// Only the zkEVM guest uses this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
 /// the host commits storage tries in parallel — <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>
@@ -143,6 +143,10 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// <see cref="ValueHash256.Equals(ValueHash256)"/>, which compares
     /// <see cref="System.Runtime.Intrinsics.Vector256{T}"/>s and so expands to a byte-at-a-time loop on
     /// the guest's target.
+    /// <para>
+    /// The overflow and write dictionaries use the hash code below; ordinary witness buckets compare
+    /// full keys directly, with their scan length bounded by <see cref="MaxBucketLength"/>.
+    /// </para>
     /// <para>
     /// The hash code goes through the run-seeded mixer rather than the keccak's own leading bytes: those
     /// are uniformly distributed, which answers accidental collisions but not a chosen witness. Unseeded,
