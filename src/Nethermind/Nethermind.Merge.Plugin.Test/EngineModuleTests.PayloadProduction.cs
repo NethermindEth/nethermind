@@ -606,8 +606,6 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         Assert.That(getPayloadResult.TryGetTransactions().Data, Has.Length.EqualTo(3));
-        // The retrieval cancels the round, but the context may be published just after that:
-        // ImproveBlock then disposes it right after publishing, which can land after getPayload returns.
         Assert.That(() => cancelledContext.Disposed, Is.True.After(5000, 10));
     }
 
