@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 
-from expb_errors import summarize
+from expb_errors import strip_ansi, summarize
 
 
 def run(*args, **kwargs):
@@ -22,6 +22,7 @@ def sha256(path):
 
 
 def validate_expb_log(text):
+    text = strip_ansi(text)
     if re.search(r"exception|invalid[\s_-]*block|unhandled|fatal", text, re.IGNORECASE):
         raise ValueError("EXPB log contains a runtime failure")
     if "Nethermind is shut down" not in text or "Cleanup completed" not in text:

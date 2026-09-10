@@ -68,6 +68,7 @@ class ProfileValidationTests(unittest.TestCase):
     def test_expb_rejects_invalid_blocks_even_after_graceful_shutdown(self):
         clean = "Nethermind is shut down\nCleanup completed\n"
         validate_expb_log(clean)
+        validate_expb_log("Nethermind is shut down\nevent=\"\x1b[1mCleanup\x1b[0m completed\"\n")
         for text in ("", "Nethermind is shut down", "Cleanup completed", *(
                 clean + error for error in ("Invalid block", "invalid_block", "INVALID-BLOCK", "InvalidBlock",
                                            "System.InvalidOperationException", "Unhandled", "FATAL"))):
