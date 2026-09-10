@@ -43,14 +43,16 @@ public partial class EthRpcModuleTests
     public async Task Rpc_discards_unobserved_logs(
         [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
         [Range(0, 4)] int topicCount,
+        [Values(0, 128)] int logSize,
         [Values] bool stateOverride)
     {
         Hash256[] topics = new Hash256[topicCount];
         Array.Fill(topics, TestItem.KeccakA);
         byte[] code = Prepare.EvmCode.PushData(7).Op(Instruction.SLOAD).Op(Instruction.POP)
-            .Log(128, 1024, topics)
+            .PushData(0x42).Log(logSize, 1024, topics)
             .Op(Instruction.MSIZE).PushData(0).Op(Instruction.MSTORE)
-            .PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+            .PushData(32).Op(Instruction.MSTORE)
+            .PushData(64).PushData(0).Op(Instruction.RETURN).Done;
         await AssertRpcLogSuppression(method, code, stateOverride, expectLogs: true);
     }
 

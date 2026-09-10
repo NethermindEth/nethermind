@@ -33,6 +33,7 @@ public class TransactionProcessorWarmupTests
     private ISpecProvider _specProvider = null!;
     private IEthereumEcdsa _ethereumEcdsa = null!;
     private ITransactionProcessor _transactionProcessor = null!;
+    private EthereumVirtualMachine _virtualMachine = null!;
     private IWorldState _stateProvider = null!;
     private IDisposable _worldStateCloser = null!;
 
@@ -43,8 +44,8 @@ public class TransactionProcessorWarmupTests
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -52,16 +53,19 @@ public class TransactionProcessorWarmupTests
     public void TearDown() => _worldStateCloser?.Dispose();
 
     [Test]
-    public void Unobserved_logs_preserve_warmup_gas_and_memory([Range(0, 4)] int topicCount, [Values] bool receiptTracer)
+    public void Unobserved_logs_preserve_warmup_gas_and_memory(
+        [Range(0, 4)] int topicCount, [Values(0, 128)] int logSize, [Values] bool receiptTracer)
     {
         Hash256[] topics = new Hash256[topicCount];
         Array.Fill(topics, TestItem.KeccakA);
-        byte[] code = Prepare.EvmCode.Log(128, 1024, topics)
-            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.SSTORE).Done;
+        byte[] code = Prepare.EvmCode.PushData(0x42).Log(logSize, 1024, topics)
+            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.SSTORE)
+            .PushData(1).Op(Instruction.SSTORE).Done;
         (Transaction tx, Snapshot snapshot) = PrepareLogTransaction(code, 500_000);
         using LogCaptureTracer tracer = new(receiptTracer);
 
         _transactionProcessor.Warmup(tx, tracer);
+        Assert.That(_virtualMachine.TxExecutionContext.SuppressLogs, Is.False);
         UInt256 expectedBalance = _stateProvider.GetBalance(TestItem.AddressA);
         _stateProvider.Restore(snapshot);
         TransactionResult result = _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
@@ -70,11 +74,13 @@ public class TransactionProcessorWarmupTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_virtualMachine.TxExecutionContext.SuppressLogs, Is.True);
             Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(expectedBalance));
             Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
-            Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 0)), isBigEndian: true), Is.EqualTo(new UInt256(1152)));
+            Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 0)), isBigEndian: true), Is.EqualTo(new UInt256(logSize == 0 ? 0UL : 1152UL)));
+            Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 1)), isBigEndian: true), Is.EqualTo(new UInt256(0x42)));
             Assert.That(tracer.Logs[0].Topics, Is.EqualTo(topics));
-            Assert.That(tracer.Logs[0].Data, Is.EqualTo(new byte[128]));
+            Assert.That(tracer.Logs[0].Data, Is.EqualTo(new byte[logSize]));
         }
     }
 
