@@ -18,12 +18,20 @@ public class PbtMetricsTests
     private RecordingObserver _rootHashTime = null!;
     private IMetricObserver _originalWriteBatchTime = null!;
     private IMetricObserver _originalRootHashTime = null!;
+    private RecordingObserver _prepareLeafChangesTime = null!;
+    private RecordingObserver _trieUpdaterTime = null!;
+    private IMetricObserver _originalPrepareLeafChangesTime = null!;
+    private IMetricObserver _originalTrieUpdaterTime = null!;
 
     [SetUp]
     public void Setup()
     {
         _originalWriteBatchTime = Metrics.PbtWriteBatchTime;
         _originalRootHashTime = Metrics.PbtRootHashTime;
+        _originalPrepareLeafChangesTime = Metrics.PbtPrepareLeafChangesTime;
+        _originalTrieUpdaterTime = Metrics.PbtTrieUpdaterTime;
+        Metrics.PbtPrepareLeafChangesTime = _prepareLeafChangesTime = new RecordingObserver();
+        Metrics.PbtTrieUpdaterTime = _trieUpdaterTime = new RecordingObserver();
         Metrics.PbtWriteBatchTime = _writeBatchTime = new RecordingObserver();
         Metrics.PbtRootHashTime = _rootHashTime = new RecordingObserver();
     }
@@ -33,6 +41,8 @@ public class PbtMetricsTests
     {
         Metrics.PbtWriteBatchTime = _originalWriteBatchTime;
         Metrics.PbtRootHashTime = _originalRootHashTime;
+        Metrics.PbtPrepareLeafChangesTime = _originalPrepareLeafChangesTime;
+        Metrics.PbtTrieUpdaterTime = _originalTrieUpdaterTime;
     }
 
     /// <summary>Verifies commit timers, including skipping root timing when no fold occurs.</summary>
@@ -49,14 +59,27 @@ public class PbtMetricsTests
             batch.Set(TestItem.AddressA, new Account(1, 100));
         }
 
-        Assert.That(_writeBatchTime.Observations, Has.Count.EqualTo(1), "the batch is timed when it closes");
-        Assert.That(_rootHashTime.Observations, Is.Empty, "nothing is folded until the root is asked for");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_writeBatchTime.Observations, Has.Count.EqualTo(1), "the batch is timed when it closes");
+            Assert.That(_rootHashTime.Observations, Is.Empty, "nothing is folded until the root is asked for");
+            Assert.That(_prepareLeafChangesTime.Observations, Is.Empty);
+            Assert.That(_trieUpdaterTime.Observations, Is.Empty);
+        }
 
         scope.UpdateRootHash();
         scope.UpdateRootHash();
 
-        Assert.That(_rootHashTime.Observations, Has.Count.EqualTo(1), "a clean re-fold is not an observation");
-        Assert.That(_rootHashTime.Observations[0], Is.GreaterThan(0), "elapsed ticks, not a constant");
+        foreach (RecordingObserver observer in new[] { _rootHashTime, _prepareLeafChangesTime, _trieUpdaterTime })
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(observer.Observations, Has.Count.EqualTo(1), "a clean re-fold is not an observation");
+                Assert.That(observer.Observations, Is.All.GreaterThan(0), "elapsed ticks, not a constant");
+            }
+        }
+        Assert.That(_prepareLeafChangesTime.Observations[0] + _trieUpdaterTime.Observations[0],
+            Is.LessThanOrEqualTo(_rootHashTime.Observations[0]), "phase timings are contained in the total");
     }
 
     private sealed class RecordingObserver : IMetricObserver

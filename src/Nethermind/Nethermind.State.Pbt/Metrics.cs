@@ -29,6 +29,16 @@ public static class Metrics
     public static IMetricObserver PbtRootHashTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
+    [Description("Time preparing pbt leaf changes in the world state scope (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtPrepareLeafChangesTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time updating the pbt trie root in the world state scope (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtTrieUpdaterTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
     [Description("Pbt pooled resources currently rented, by category and type")]
     [KeyIsLabel("category", "resource_type")]
     public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtActivePooledResource { get; } = new();
