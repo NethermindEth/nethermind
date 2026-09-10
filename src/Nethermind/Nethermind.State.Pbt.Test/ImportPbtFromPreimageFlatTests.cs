@@ -507,16 +507,16 @@ public class ImportPbtFromPreimageFlatTests
             Array.Fill(pathBytes, byte.MaxValue);
             if (pathBytes.Length != 0) pathBytes[0] = prefix;
             if (depth % 8 != 0) pathBytes[^1] &= 0xF0;
-            IPbtNodePath group = PbtPathOperations.Create(pathBytes, depth);
-            IPbtNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
+            PbtStorageNodePath group = PbtStorageNodePath.Create(pathBytes, depth);
+            PbtStorageNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
             byte[] keyBytes = new byte[PbtStorageFullKey.MaxLength];
-            node.Path.CopyTo(keyBytes);
+            node.CopyBitsTo(0, keyBytes, 0, node.BitDepth);
             byte[] encoding = depth == 0
                 ? PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256)
                 : PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(keyBytes), TestItem.KeccakA.Bytes);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) });
-            Add(column, depth == 0 ? "rootNodeGroup"u8.ToArray() : group.Encode(), writer.WrittenSpan.ToArray());
+            Add(column, depth == 0 ? "rootNodeGroup"u8.ToArray() : group.ToEncodedArray(), writer.WrittenSpan.ToArray());
             expectedGroups[depth]++;
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;
@@ -648,7 +648,7 @@ public class ImportPbtFromPreimageFlatTests
                 _ => PbtColumns.StorageNodeGroups,
             };
             byte prefix = column == PbtColumns.CodeNodeGroups ? (byte)1 : column == PbtColumns.StorageNodeGroups ? (byte)0xFF : (byte)0;
-            byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath([prefix], 8).Encode();
+            byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath([prefix], 8).ToEncodedArray();
             db.GetColumnDb(column).Set(key, Bytes.FromHexString("0x7f"));
         }
         db.Recording = true;

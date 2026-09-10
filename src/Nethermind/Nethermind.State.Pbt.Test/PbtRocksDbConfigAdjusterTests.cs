@@ -93,19 +93,19 @@ public class PbtRocksDbConfigAdjusterTests
         PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
         byte[] widePath = new byte[35];
         widePath[0] = Eip8297KeyDerivation.StorageZone;
-        (IPbtNodePath Path, PbtColumns Column)[] groups =
+        (PbtStorageNodePath Path, PbtColumns Column)[] groups =
         [
-            (new PbtNodePath([], 0), PbtColumns.Metadata),
-            (new PbtNodePath(Bytes.FromHexString("00"), 4), PbtColumns.AccountNodeGroups),
-            (new PbtNodePath(Bytes.FromHexString("80"), 4), PbtColumns.AccountNodeGroups),
-            (new PbtNodePath(Bytes.FromHexString("f0"), 4), PbtColumns.StorageNodeGroups),
-            (new PbtNodePath(Bytes.FromHexString("00"), 8), PbtColumns.AccountNodeGroups),
-            (new PbtNodePath(Bytes.FromHexString("01"), 8), PbtColumns.CodeNodeGroups),
-            (new PbtNodePath(Bytes.FromHexString("80"), 8), PbtColumns.AccountNodeGroups),
-            (new PbtNodePath(Bytes.FromHexString("ff"), 8), PbtColumns.StorageNodeGroups),
+            (new PbtStorageNodePath([], 0), PbtColumns.Metadata),
+            (new PbtStorageNodePath(Bytes.FromHexString("00"), 4), PbtColumns.AccountNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("80"), 4), PbtColumns.AccountNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("f0"), 4), PbtColumns.StorageNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("00"), 8), PbtColumns.AccountNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("01"), 8), PbtColumns.CodeNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("80"), 8), PbtColumns.AccountNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("ff"), 8), PbtColumns.StorageNodeGroups),
             (new PbtStorageNodePath(widePath, 280), PbtColumns.StorageNodeGroups),
         ];
-        IPbtNodePath[] expectedPaths = new IPbtNodePath[groups.Length];
+        PbtStorageNodePath[] expectedPaths = new PbtStorageNodePath[groups.Length];
         for (int index = 0; index < groups.Length; index++) expectedPaths[index] = groups[index].Path;
         byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
@@ -126,9 +126,9 @@ public class PbtRocksDbConfigAdjusterTests
             BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
             try
             {
-                foreach ((IPbtNodePath path, PbtColumns _) in groups)
+                foreach ((PbtStorageNodePath path, PbtColumns _) in groups)
                 {
-                    IPbtNodePath nodePath = PbtFourLevelGroupGeometry.PathOf(path, NodePosition(path));
+                    PbtStorageNodePath nodePath = PbtFourLevelGroupGeometry.PathOf(path, NodePosition(path));
                     PbtNodeGroupCodec.Encode(ref writer, path, [new PbtNodeRecord(nodePath, encoding)]);
                     using RefCountingMemory payload = writer.Detach()!;
                     batch.SetNodeGroup(path, payload);
@@ -145,7 +145,7 @@ public class PbtRocksDbConfigAdjusterTests
         {
             PbtRocksDbPersistence persistence = new(db, new PbtConfig());
             using IPbtPersistence.IReader reader = persistence.CreateReader();
-            using IEnumerator<IPbtNodePath> enumerator = reader.EnumerateNodeGroupKeys().GetEnumerator();
+            using IEnumerator<PbtStorageNodePath> enumerator = reader.EnumerateNodeGroupKeys().GetEnumerator();
             Assert.That(enumerator.MoveNext(), Is.True);
             Assert.That(enumerator.Current, Is.EqualTo(expectedPaths[0]));
             Assert.That(enumerator.MoveNext(), Is.True);
@@ -166,20 +166,20 @@ public class PbtRocksDbConfigAdjusterTests
                 Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
                 Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(expectedPaths));
             }
-            foreach ((IPbtNodePath path, PbtColumns column) in groups)
+            foreach ((PbtStorageNodePath path, PbtColumns column) in groups)
             {
                 using RefCountingMemory? payload = reader.GetNodeGroup(path);
-                Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.Path)}");
-                byte[] storageKeyBytes = path.BitDepth == 0 ? "rootNodeGroup"u8.ToArray() : path.Encode();
+                Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToEncodedArray().AsSpan(4))}");
+                byte[] storageKeyBytes = path.BitDepth == 0 ? "rootNodeGroup"u8.ToArray() : path.ToEncodedArray();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));
-                    Assert.That(new PbtNodeGroupReader(path, payload!.GetSpan()).GetNode(NodePosition(path)).ToArray(), Is.EqualTo(encoding));
+                    Assert.That(new PbtNodeGroupReader<PbtStorageNodePath>(path, payload!.GetSpan()).GetNode(NodePosition(path)).ToArray(), Is.EqualTo(encoding));
                 }
             }
         }
 
-        static int NodePosition(IPbtNodePath path) => path.BitDepth == 0 ? PbtFourLevelGroupGeometry.RootPosition : 0;
+        static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtFourLevelGroupGeometry.RootPosition : 0;
 
         ColumnsDb<PbtColumns> NewDb() => new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());

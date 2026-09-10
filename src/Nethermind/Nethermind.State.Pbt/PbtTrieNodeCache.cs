@@ -30,12 +30,12 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         return shards;
     }
 
-    private static int ShardIndex(IPbtNodePath path) => path.BitDepth > 8
-        ? (path.Path[0] + path.Path[1]) & (ShardCount - 1)
-        : path.Path.IsEmpty ? 0 : path.Path[0];
-    private static int BucketIndex(IPbtNodePath path) => path.GetHashCode() & (BucketCount - 1);
+    private static int ShardIndex<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => path.BitDepth > 8
+        ? (path.GetByte(0) + path.GetByte(1)) & (ShardCount - 1)
+        : path.BitDepth == 0 ? 0 : path.GetByte(0);
+    private static int BucketIndex<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => path.GetHashCode() & (BucketCount - 1);
 
-    internal bool TryGet(in ValueHash256 root, IPbtNodePath path, [NotNullWhen(true)] out RefCountingMemory? payload)
+    internal bool TryGet<TPath>(in ValueHash256 root, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
         Shard shard = _shards[ShardIndex(path)];
         lock (shard.Sync)
@@ -53,7 +53,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         return false;
     }
 
-    internal void Add(in ValueHash256 root, IPbtNodePath path, RefCountingMemory payload)
+    internal void Add<TPath>(in ValueHash256 root, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
         long size = payload.GetSpan().Length + EntryOverhead;
         if ((ulong)(size + TableSize) > _shardBudget) return;
@@ -76,7 +76,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             }
             // Copy only on admission: a shrunk pooled payload may retain far more memory than its visible length.
             RefCountingMemory cachedPayload = RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
-            shard.Entries[bucket] = new Entry(root, path, cachedPayload, size);
+            shard.Entries[bucket] = new Entry(root, path.ToPath<PbtStorageNodePath>(), cachedPayload, size);
             ChangeSize(shard, size);
             if (previous is not null)
             {
@@ -122,5 +122,5 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         internal long MemorySize;
     }
 
-    private sealed record Entry(ValueHash256 Root, IPbtNodePath Path, RefCountingMemory Payload, long Size);
+    private sealed record Entry(ValueHash256 Root, PbtStorageNodePath Path, RefCountingMemory Payload, long Size);
 }

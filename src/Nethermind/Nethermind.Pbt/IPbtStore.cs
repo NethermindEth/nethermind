@@ -15,7 +15,7 @@ public interface IPbtStore
     /// The reference keeps the payload valid until released, independently of the store. A missing group
     /// returns <see langword="null"/>. Implementations validate four-level boundary keys even on misses.
     /// </remarks>
-    RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey);
+    RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
 
     /// <summary>Replaces or deletes the complete group identified by <paramref name="groupKey"/>.</summary>
     /// <remarks>
@@ -23,5 +23,5 @@ public interface IPbtStore
     /// its reference and must release it. Implementations retaining the immutable payload acquire their
     /// own reference before replacing the previous payload. Invalid keys or payloads leave the group unchanged.
     /// </remarks>
-    void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload);
+    void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>;
 }

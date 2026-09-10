@@ -9,7 +9,7 @@ namespace Nethermind.Pbt;
 
 internal struct GroupFrameReader<TKey, TPath> : IDisposable
     where TKey : struct, IPbtKey<TKey>
-    where TPath : class, IPbtNodePath<TPath>
+    where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly IPbtStore _store;
     private readonly TrieUpdaterMetrics? _metrics;
@@ -39,7 +39,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         try
         {
             _metrics?.IncrementGroupParses();
-            PbtNodeGroupReader reader = new(GroupKey, _lease.GetSpan());
+            PbtNodeGroupReader<TPath> reader = new(GroupKey, _lease.GetSpan());
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
                 if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;
@@ -124,11 +124,8 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
 
     internal int Position(TPath path)
     {
-        int completeBytes = BitDepth >> 3;
-        int remainingBits = BitDepth & 7;
         if (PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) != BitDepth
-            || !path.Path[..completeBytes].SequenceEqual(GroupKey.Path[..completeBytes])
-            || (remainingBits != 0 && ((path.Path[completeBytes] ^ GroupKey.Path[completeBytes]) & 0xF0) != 0))
+            || !path.MatchesPrefix(GroupKey, BitDepth))
             throw new InvalidOperationException("The PBT node does not belong to the active group.");
         return PbtFourLevelGroupGeometry.PositionOf(path);
     }

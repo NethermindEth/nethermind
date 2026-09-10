@@ -136,19 +136,23 @@ public class PbtRocksDbPersistence(
         }
     }
 
-    private static PbtColumns NodeGroupColumn(IPbtNodePath groupKey)
+    private static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
-        if (groupKey.BitDepth == 4 && groupKey.Path[0] == 0xF0
-            || groupKey.BitDepth >= 8 && groupKey.Path[0] == Eip8297KeyDerivation.StorageZone)
+        if (groupKey.BitDepth == 4 && groupKey.GetByte(0) == 0xF0
+            || groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return PbtColumns.StorageNodeGroups;
-        if (groupKey.BitDepth >= 8 && groupKey.Path[0] == Eip8297KeyDerivation.CodeZone)
+        if (groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.CodeZone)
             return PbtColumns.CodeNodeGroups;
         return PbtColumns.AccountNodeGroups;
     }
 
-    private static ReadOnlySpan<byte> NodeGroupStorageKey(IPbtNodePath groupKey) =>
-        groupKey.BitDepth == 0 ? RootNodeGroupKey : groupKey.Encode();
+    private static ReadOnlySpan<byte> NodeGroupStorageKey<TPath>(TPath groupKey, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath>
+    {
+        if (groupKey.BitDepth == 0) return RootNodeGroupKey;
+        groupKey.Encode(destination);
+        return destination[..groupKey.EncodedLength];
+    }
 
     private static byte[] PrefixUpperBound(ReadOnlySpan<byte> prefix)
     {
@@ -218,20 +222,20 @@ public class PbtRocksDbPersistence(
             return EvmWordSlot.FromStripped(value);
         }
 
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
-            ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
-            MemoryManager<byte>? owned = snapshot.GetColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey));
+            Span<byte> key = stackalloc byte[groupKey.EncodedLength];
+            MemoryManager<byte>? owned = snapshot.GetColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey, key));
             return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
-        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys()
+        public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys()
         {
             if (snapshot.GetColumn(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null)
-                yield return PbtPathOperations.Create([], 0);
+                yield return PbtStorageNodePath.Create([], 0);
 
             using ISortedView accounts = OpenGroups(PbtColumns.AccountNodeGroups);
             using ISortedView codes = OpenGroups(PbtColumns.CodeNodeGroups);
@@ -257,9 +261,9 @@ public class PbtRocksDbPersistence(
             return groups.GetViewBetween([], [0xFF, 0xFF]);
         }
 
-        private static IPbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
+        private static PbtStorageNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
         {
-            IPbtNodePath groupKey = PbtPathOperations.Decode(encoding);
+            PbtStorageNodePath groupKey = PbtStorageNodePath.Decode(encoding);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
             return groupKey;
@@ -335,16 +339,17 @@ public class PbtRocksDbPersistence(
             key.Length == 34 && key[0] == Eip8297KeyDerivation.AccountZone && key[^1] is >= 64 and < 128
             || key.Length == 66 && key[0] == Eip8297KeyDerivation.StorageZone;
 
-        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
+        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
-            ArgumentNullException.ThrowIfNull(groupKey);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
-            if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
+            if (payload is not null) _ = new PbtNodeGroupReader<TPath>(groupKey, payload.GetSpan());
             IWriteBatch groups = _batch.GetColumnBatch(NodeGroupColumn(groupKey));
-            if (payload is null) groups.Set(NodeGroupStorageKey(groupKey), null, flags);
-            else groups.PutSpan(NodeGroupStorageKey(groupKey), payload.GetSpan(), flags);
+            Span<byte> key = stackalloc byte[groupKey.EncodedLength];
+            ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(groupKey, key);
+            if (payload is null) groups.Set(storageKey, null, flags);
+            else groups.PutSpan(storageKey, payload.GetSpan(), flags);
         }
 
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount)

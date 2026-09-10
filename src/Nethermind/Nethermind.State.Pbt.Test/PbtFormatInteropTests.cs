@@ -149,7 +149,9 @@ public class PbtFormatInteropTests
         {
             Assert.That(Unsafe.SizeOf<PbtFullKey>(), Is.LessThan(Unsafe.SizeOf<PbtStorageFullKey>()));
             Assert.That(Unsafe.SizeOf<PbtWriteOperation<PbtFullKey>>(), Is.LessThan(Unsafe.SizeOf<PbtWriteOperation<PbtStorageFullKey>>()));
-            Assert.That(smallPath, Is.LessThan(widePath));
+            Assert.That(Unsafe.SizeOf<PbtNodePath>(), Is.LessThan(Unsafe.SizeOf<PbtStorageNodePath>()));
+            Assert.That(smallPath, Is.Zero);
+            Assert.That(widePath, Is.Zero);
             Assert.That(smallBuilder, Is.LessThan(wideBuilder));
         }
         TestContext.Out.WriteLine($"MEMORY small key={Unsafe.SizeOf<PbtFullKey>()} operation={Unsafe.SizeOf<PbtWriteOperation<PbtFullKey>>()} path={smallPath} cold-builder={smallBuilder} warm-build={smallBuild}");
@@ -158,14 +160,21 @@ public class PbtFormatInteropTests
 
     private static (long Path, long Builder, long Build) MeasureMemory<TKey, TPath>()
         where TKey : struct, IPbtKey<TKey>
-        where TPath : class, IPbtNodePath<TPath>
+        where TPath : struct, IPbtNodePath<TPath>
     {
         byte[] bytes = new byte[34];
         const int iterations = 1000;
-        GC.KeepAlive(TPath.Create(bytes, 272));
+        TPath[] paths = new TPath[iterations];
+        paths[0] = TPath.Create(bytes, 272);
+        ExercisePathOperations(paths[0], bytes);
         long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < iterations; index++) GC.KeepAlive(TPath.Create(bytes, 272));
+        for (int index = 0; index < iterations; index++)
+        {
+            paths[index] = TPath.Create(bytes, 272);
+            ExercisePathOperations(paths[index], bytes);
+        }
         long pathBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        GC.KeepAlive(paths);
         start = GC.GetAllocatedBytesForCurrentThread();
         using PbtWriteBatchBuilder<TKey> builder = new(0);
         for (int index = 0; index < iterations; index++)
@@ -186,6 +195,20 @@ public class PbtFormatInteropTests
         return (pathBytes / iterations, builderBytes, buildBytes / 10);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ExercisePathOperations<TPath>(TPath path, ReadOnlySpan<byte> bytes)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        Span<byte> copied = stackalloc byte[bytes.Length];
+        copied.Clear();
+        path.CopyBitsTo(0, copied, 0, path.BitDepth);
+        TPath converted = path.ToPath<TPath>();
+        TPath appended = path.AppendBits(0, 0);
+        if (path.GetBit(0) != 0 || path.GetByte(0) != 0 || !path.MatchesPrefix(bytes, path.BitDepth)
+            || !converted.MatchesPrefix(appended, path.BitDepth))
+            throw new InvalidOperationException("Path operations changed the zero key.");
+    }
+
     private static string[] CanonicalRecords(PbtNodeGroupStore store)
     {
         IReadOnlyList<PbtNodeRecord> records = store.EnumerateRecords();
@@ -193,7 +216,7 @@ public class PbtFormatInteropTests
         for (int index = 0; index < result.Length; index++)
         {
             PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span);
+            result[index] = Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span);
         }
         return result;
     }

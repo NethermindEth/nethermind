@@ -22,8 +22,14 @@ internal readonly ref struct PbtNodeReader
     internal bool IsLeaf => Encoding[0] == 0;
     internal ReadOnlySpan<byte> Key { get { EnsureKind(true); return _encoding.Slice(3, Length); } }
     internal ReadOnlySpan<byte> Value { get { EnsureKind(true); return _encoding[^32..]; } }
-    internal int PrefixBitCount { get { EnsureKind(false); return Length; } }
-    internal ReadOnlySpan<byte> Prefix => _encoding.Slice(3, PbtBitPrefix.ByteCount(PrefixBitCount));
+    internal CompressedPrefix Prefix
+    {
+        get
+        {
+            EnsureKind(false);
+            return CompressedPrefix.FromValidated(_encoding.Slice(1, 2 + PbtBitPrefix.ByteCount(Length)));
+        }
+    }
     internal ValueHash256 LeftHash { get { EnsureKind(false); return new(_encoding.Slice(_encoding.Length - 64, 32)); } }
     internal ValueHash256 RightHash { get { EnsureKind(false); return new(_encoding[^32..]); } }
 

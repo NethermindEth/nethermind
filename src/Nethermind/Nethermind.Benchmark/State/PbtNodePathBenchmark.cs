@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Pbt;
 
@@ -24,7 +25,9 @@ public class PbtNodePathBenchmark
         new Random(8297).NextBytes(keyBytes);
         _key = new PbtStorageFullKey(keyBytes);
         _path = PbtStorageNodePath.FromKey(_key, BitDepth);
-        _bytes = _path.Path.ToArray();
+        Span<byte> encoding = stackalloc byte[_path.EncodedLength];
+        _path.Encode(encoding);
+        _bytes = encoding[4..].ToArray();
     }
 
     [Benchmark]
@@ -34,12 +37,16 @@ public class PbtNodePathBenchmark
     public PbtStorageNodePath FromKey() => PbtStorageNodePath.FromKey(_key, BitDepth);
 
     [Benchmark]
-    public byte[] Encode() => _path.Encode();
+    public void Encode()
+    {
+        Span<byte> destination = stackalloc byte[_path.EncodedLength];
+        _path.Encode(destination);
+    }
 
     [Benchmark]
-    public IPbtNodePath LocateAndReconstruct()
+    public PbtStorageNodePath LocateAndReconstruct()
     {
-        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(_path);
+        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(_path);
         return PbtFourLevelGroupGeometry.Reconstruct(location.GroupKey, location.Position);
     }
 }
@@ -48,7 +55,7 @@ public class PbtNodePathBenchmark
 public class PbtNodePathAppendBenchmark
 {
     private PbtStorageNodePath _path;
-    private PbtBitPrefix _prefix;
+    private byte[] _prefix;
 
     [Params(1, 8, 272, 528)]
     public int ResultBitDepth { get; set; }
@@ -61,17 +68,20 @@ public class PbtNodePathAppendBenchmark
         PbtStorageFullKey key = new(keyBytes);
         int pathDepth = Math.Min(7, ResultBitDepth - 1);
         _path = PbtStorageNodePath.FromKey(key, pathDepth);
-        _prefix = PbtBitPrefix.FromKey(key, pathDepth, ResultBitDepth - pathDepth - 1);
+        PbtBitPrefix prefix = PbtBitPrefix.FromKey(key, pathDepth, ResultBitDepth - pathDepth - 1);
+        _prefix = new byte[2 + prefix.Bytes.Length];
+        BinaryPrimitives.WriteUInt16BigEndian(_prefix, (ushort)prefix.BitCount);
+        prefix.Bytes.CopyTo(_prefix.AsSpan(2));
     }
 
     [Benchmark]
-    public PbtStorageNodePath Append() => _path.Append(_prefix, 1);
+    public PbtStorageNodePath Append() => _path.Append(new CompressedPrefix(_prefix), 1);
 }
 
 [MemoryDiagnoser]
 [GenericTypeArguments(typeof(PbtNodePath))]
 [GenericTypeArguments(typeof(PbtStorageNodePath))]
-public class PbtNodePathMemoryBenchmark<TPath> where TPath : class, IPbtNodePath<TPath>
+public class PbtNodePathMemoryBenchmark<TPath> where TPath : struct, IPbtNodePath<TPath>
 {
     private byte[] _bytes;
 
