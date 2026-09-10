@@ -175,7 +175,7 @@ public ref partial struct EvmStack
     /// limb before writing any is what lets the swap run over the slot in place.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SwapSlot(ref byte slot)
+    internal static void SwapSlot(ref byte slot)
     {
         if (Vector256.IsHardwareAccelerated)
         {

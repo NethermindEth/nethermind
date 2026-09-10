@@ -32,20 +32,24 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         Byte,
         BigEndianWord,
-        NativeWord
+        NativeWord,
+        StackWord
     }
 
     private static byte[]? GetBackingMemory(ref EvmPooledMemory memory) => memory.BackingArray;
 
-    private static void StoreWord(ref EvmPooledMemory memory, in UInt256 location, byte[] word, bool nativeWord)
+    private static void StoreWord(ref EvmPooledMemory memory, in UInt256 location, byte[] word, StoreKind storeKind)
     {
-        if (nativeWord)
+        if (storeKind is StoreKind.NativeWord or StoreKind.StackWord)
         {
             Span<byte> source = stackalloc byte[EvmPooledMemory.WordSize + 3];
             Span<byte> slot = source[3..];
             word.CopyTo(slot);
             slot.Reverse();
-            memory.StoreNativeWordAfterGas(in location, slot);
+            if (storeKind == StoreKind.StackWord)
+                memory.StoreStackWordAfterGas(in location, slot);
+            else
+                memory.StoreNativeWordAfterGas(in location, slot);
         }
         else
         {
@@ -55,6 +59,45 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_initializedSize")]
     private static extern ref ulong GetInitializedSize(ref EvmPooledMemory memory);
+
+    [Test]
+    public void StoreStackWordAfterGas_InitializedArray_PreservesSourceAndSurroundingBytes(
+        [Values(0, 1, 7, 31, 32)] int offset)
+    {
+        EvmPooledMemory memory = new();
+        byte[] expected = CreatePattern(96, 0xa7);
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+        byte[] source = new byte[EvmPooledMemory.WordSize + 3];
+        word.CopyTo(source, 3);
+        source.AsSpan(3).Reverse();
+        byte[] originalSource = (byte[])source.Clone();
+        UInt256 start = 0;
+        UInt256 location = (UInt256)offset;
+        try
+        {
+            memory.CalculateMemoryCost(in start, (ulong)expected.Length, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.SaveAfterGas(in start, expected);
+            byte[]? backing = memory.BackingArray;
+            ulong initializedSize = GetInitializedSize(ref memory);
+            Assert.That(backing, Is.Not.Null);
+            word.CopyTo(expected, offset);
+
+            memory.StoreStackWordAfterGas(in location, source.AsSpan(3));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+                Assert.That(source, Is.EqualTo(originalSource));
+                Assert.That(memory.BackingArray, Is.SameAs(backing));
+                Assert.That(GetInitializedSize(ref memory), Is.EqualTo(initializedSize));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
 
     private static IEnumerable<TestCaseData> ZeroExtendedCopyCases()
     {
@@ -506,7 +549,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
-    public void VmState_inline_storage_clears_only_the_required_gap_after_reuse([Values] bool nativeWord)
+    public void VmState_inline_storage_clears_only_the_required_gap_after_reuse(
+        [Values(StoreKind.BigEndianWord, StoreKind.NativeWord, StoreKind.StackWord)] StoreKind storeKind)
     {
         VmState<EthereumGasPolicy> owner = new();
         ref EvmPooledMemory memory = ref owner.Memory;
@@ -524,7 +568,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             UInt256 destination = 64;
             memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out outOfGas);
             Assert.That(outOfGas, Is.False);
-            StoreWord(ref memory, in destination, word, nativeWord);
+            StoreWord(ref memory, in destination, word, storeKind);
 
             using (Assert.EnterMultipleScope())
             {
@@ -542,7 +586,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
-    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail([Values(1, 16)] int wordCount, [Values] bool nativeWord)
+    public void Reserved_contiguous_MSTORE_does_not_materialize_unwritten_tail(
+        [Values(1, 16)] int wordCount,
+        [Values(StoreKind.BigEndianWord, StoreKind.NativeWord, StoreKind.StackWord)] StoreKind storeKind)
     {
         using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         const int reservationSize = 4 * 1024;
@@ -571,7 +617,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             for (int i = 0; i < wordCount; i++)
             {
                 UInt256 destination = (UInt256)((i + 1) * EvmPooledMemory.WordSize);
-                StoreWord(ref memory, in destination, word, nativeWord);
+                StoreWord(ref memory, in destination, word, storeKind);
             }
 
             using (Assert.EnterMultipleScope())
@@ -1012,7 +1058,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             }
             else
             {
-                StoreWord(ref memory, in location, word, storeKind == StoreKind.NativeWord);
+                StoreWord(ref memory, in location, word, storeKind);
             }
 
             AssertDirtyTailWasReused(ref memory);

@@ -144,7 +144,7 @@ public static partial class EvmInstructions
         UInt256 result;
         Span<byte> bytes;
         // Keep the established intrinsic path: fusion regresses AVX2 memory growth.
-        if (Vector128.IsHardwareAccelerated)
+        if (Vector128.IsHardwareAccelerated && TTracingInst.IsActive)
         {
             if (!stack.PopMemoryPositionAndWord256(out result, out bytes)) goto StackUnderflow;
         }
@@ -166,7 +166,10 @@ public static partial class EvmInstructions
 
         if (Vector128.IsHardwareAccelerated)
         {
-            vmState.Memory.StoreWordAfterGas(in result, bytes);
+            if (TTracingInst.IsActive)
+                vmState.Memory.StoreWordAfterGas(in result, bytes);
+            else
+                vmState.Memory.StoreStackWordAfterGas(in result, bytes);
         }
         else
         {

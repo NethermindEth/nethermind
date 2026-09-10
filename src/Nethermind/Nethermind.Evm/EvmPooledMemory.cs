@@ -424,6 +424,23 @@ public struct EvmPooledMemory
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void StoreStackWordAfterGas(in UInt256 location, Span<byte> word)
+    {
+        Debug.Assert(location.IsUint64);
+        byte[]? memory = _memory;
+        if (memory is not null && location.u0 + WordSize <= _initializedSize)
+        {
+            EvmWord value = Unsafe.ReadUnaligned<EvmWord>(ref MemoryMarshal.GetReference(word)).ByteSwap();
+            ref byte destination = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(memory), TruncateToInt32(location.u0));
+            Unsafe.WriteUnaligned(ref destination, value);
+            return;
+        }
+
+        EvmStack.SwapSlot(ref MemoryMarshal.GetReference(word));
+        StoreWordAfterGas(in location, word);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void StoreByteAfterGas(in UInt256 location, byte value)
     {
         Debug.Assert(location.IsUint64);
