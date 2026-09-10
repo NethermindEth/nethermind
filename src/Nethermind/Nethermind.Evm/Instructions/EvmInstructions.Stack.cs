@@ -1150,6 +1150,13 @@ public static partial class EvmInstructions
         ulong dataSize = (ulong)length;
         if (!TGasPolicy.TryConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
+        if (vm.TxExecutionContext.SuppressLogs)
+        {
+            for (int i = 0; i < TOpCount.Count; i++)
+                if (!stack.PopLimbo()) goto StackUnderflow;
+            return EvmExceptionType.None;
+        }
+
         // Load the log data from memory.
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
             goto OutOfGas;
