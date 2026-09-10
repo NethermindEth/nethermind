@@ -763,7 +763,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            LiteRlpReader nodeRlp = new(rlp.AsSpan());
+            LiteRlpReader nodeRlp = new(rlp);
             int position = SeekChildPosition(nodeRlp, i);
             if (!IsChildHashNext(nodeRlp, position))
             {
@@ -794,7 +794,7 @@ namespace Nethermind.Trie
                 return null;
             }
 
-            LiteRlpReader nodeRlp = new(rlp.AsSpan());
+            LiteRlpReader nodeRlp = new(rlp);
             int position = SeekChildPosition(nodeRlp, i);
 
             if (!nodeRlp.IsSequenceNext(position))
@@ -814,7 +814,7 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            LiteRlpReader nodeRlp = new(rlp.AsSpan());
+            LiteRlpReader nodeRlp = new(rlp);
             int position = SeekChildPosition(nodeRlp, i);
             if (!IsChildHashNext(nodeRlp, position))
             {
@@ -838,7 +838,7 @@ namespace Nethermind.Trie
                 CappedArray<byte> rlp = ReadRlp();
                 if (rlp.IsNotNull)
                 {
-                    LiteRlpReader nodeRlp = new(rlp.AsSpan());
+                    LiteRlpReader nodeRlp = new(rlp);
                     return nodeRlp.PeekNextRlpLength(SeekChildPosition(nodeRlp, i)) == 1;
                 }
             }
@@ -1440,7 +1440,7 @@ namespace Nethermind.Trie
                 if (rlp.IsNotNull)
                 {
                     // Allows to load children in parallel
-                    LiteRlpReader nodeRlp = new(rlp.AsSpan());
+                    LiteRlpReader nodeRlp = new(rlp);
                     int position = SeekChildPosition(nodeRlp, i);
 
                     switch (nodeRlp.Data[position])
@@ -1501,7 +1501,7 @@ namespace Nethermind.Trie
                 return chCount;
             }
 
-            LiteRlpReader nodeRlp = new(rlp.AsSpan());
+            LiteRlpReader nodeRlp = new(rlp);
             int position = 0;
             nodeRlp.SkipLength(ref position);
 
