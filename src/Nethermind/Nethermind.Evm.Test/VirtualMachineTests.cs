@@ -103,6 +103,35 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Original_opcode_factories_are_removed()
+    {
+        Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
+        foreach (MethodInfo method in vmType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
+            Assert.That(method.Name, Is.Not.AnyOf("OpcodeHandler", "TerminatingOpcodeHandler", "JumpIfOpcodeHandler", "GetCallHandler", "GetCreateHandler"));
+    }
+
+    [Test]
+    public void Named_opcode_handlers_are_emitted([Values] Instruction opcode)
+    {
+        Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
+        MethodInfo template = vmType.GetMethod(opcode == Instruction.JUMPI ? "ExecuteJumpIfOpcode" : "ExecuteOpcode",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        MethodInfo handler = Array.Find(vmType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic), method =>
+            method.Name.Equals("Op" + opcode, StringComparison.OrdinalIgnoreCase)
+            && method.GetGenericArguments().Length == template.GetGenericArguments().Length
+            && method.GetParameters().Length == template.GetParameters().Length);
+        Assert.That(handler, Is.Not.Null, "the opcode naming weaver must run after InlineIL");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handler.GetMethodBody()!.GetILAsByteArray()!.Length, Is.EqualTo(template.GetMethodBody()!.GetILAsByteArray()!.Length),
+                "the named entry point must contain the dispatch body rather than a forwarding wrapper");
+            Assert.That(handler.GetMethodImplementationFlags(), Is.EqualTo(template.GetMethodImplementationFlags()));
+            Assert.That(handler.GetCustomAttributesData().Select(a => a.AttributeType), Is.EquivalentTo(template.GetCustomAttributesData().Select(a => a.AttributeType)));
+        }
+    }
+
+    [Test]
     public void Frame_handlers_are_reused_across_blocks_and_reselected_across_forks()
     {
         Execute((0UL, 0UL), (byte)Instruction.STOP);
