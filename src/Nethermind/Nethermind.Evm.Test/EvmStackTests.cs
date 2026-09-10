@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -264,6 +266,53 @@ public class EvmStackTests
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(tracer.StackItem, Is.EqualTo(input.ToArray()));
         }
+    }
+
+    [Test]
+    public void Shifts_preserve_unaligned_native_slots(
+        [Values(Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction instruction,
+        [Values(0, 1, 7)] int offset,
+        [ValueSource(nameof(ShiftAmounts))] UInt256 shift)
+    {
+        byte[] buffer = new byte[96 + offset];
+        EvmStack stack = new(0, ref buffer[offset], ReadOnlySpan<byte>.Empty, null);
+        UInt256 value = new(0x0123456789abcdef, 0xfedcba9876543210, 0x1122334455667788, 0x8877665544332211);
+        stack.PushUInt256<OffFlag>(in value);
+        stack.PushUInt256<OffFlag>(in shift);
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(100);
+        int count = shift.IsUint64 && shift.u0 < 256 ? (int)shift.u0 : 256;
+        BigInteger unsigned = (BigInteger)value;
+        BigInteger mask = (BigInteger.One << 256) - 1;
+        BigInteger expected = instruction switch
+        {
+            Instruction.SHL => (unsigned << count) & mask,
+            Instruction.SHR => unsigned >> count,
+            _ => ((unsigned - (BigInteger.One << 256)) >> count) & mask
+        };
+
+        EvmExceptionType status = instruction switch
+        {
+            Instruction.SHL => EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShl, OffFlag>(ref stack, ref gas),
+            Instruction.SHR => EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShr, OffFlag>(ref stack, ref gas),
+            _ => EvmInstructions.InstructionSar<EthereumGasPolicy, OffFlag>(ref stack, ref gas)
+        };
+        bool popped = stack.PopUInt256(out UInt256 actual);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(popped, Is.True);
+            Assert.That(actual, Is.EqualTo((UInt256)expected));
+            Assert.That(stack.Head, Is.EqualTo((nint)0));
+        }
+    }
+
+    private static IEnumerable<UInt256> ShiftAmounts()
+    {
+        int[] counts = [0, 1, 63, 64, 65, 127, 128, 129, 191, 192, 193, 255, 256, 257];
+        foreach (int count in counts) yield return new UInt256((ulong)count);
+        for (int bit = 64; bit <= 192; bit += 64) yield return UInt256.One << bit;
+        yield return new UInt256(1_000_000_000_000_000_000);
+        yield return UInt256.MaxValue;
     }
 
     [Test]

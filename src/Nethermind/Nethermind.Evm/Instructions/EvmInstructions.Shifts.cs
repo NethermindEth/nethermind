@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -20,7 +17,7 @@ public static partial class EvmInstructions
     /// Implementers define a shift operation that uses a shift amount (provided as a UInt256)
     /// to shift a second UInt256 value, returning the shifted result.
     /// </summary>
-    public interface IOpShift : IGasCost
+    internal interface IOpShift : IGasCost
     {
         /// <summary>
         /// The gas cost for executing a shift operation.
@@ -31,6 +28,7 @@ public static partial class EvmInstructions
         /// Performs the shift operation.
         /// The lower 8 bits of <paramref name="a"/> (accessed as a.u0) are used as the shift amount.
         /// </summary>
+        /// <remarks>The value operand and result may alias. A zero shift must preserve the value.</remarks>
         /// <param name="a">The shift amount.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The resulting shifted value.</param>
@@ -52,7 +50,7 @@ public static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
+    internal static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
@@ -71,35 +69,9 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        // On x86 without a 256-bit register the JIT lowers the paired pop/push better than in-place
-        // conversion. ARM64 is the other way round for every shift: it reverses a word in vector
-        // registers, so the paired path buys nothing and costs the push its overflow check.
-        if (Vector128.IsHardwareAccelerated &&
-            !Vector256.IsHardwareAccelerated &&
-            X86Base.IsSupported)
-        {
-            if (!stack.PopUInt256(out UInt256 shift, out UInt256 value)) goto StackUnderflow;
-
-            if (!shift.IsUint64 || shift.u0 >= 256)
-            {
-                if (TTracingInst.IsActive)
-                    return stack.PushUInt256<TTracingInst>(in UInt256.Zero);
-
-                return stack.PushZero<TTracingInst, OnFlag>();
-            }
-
-            TOpShift.Operation(in shift, in value, out UInt256 shifted);
-            return stack.PushUInt256<TTracingInst>(in shifted);
-        }
-
-        if ((!Vector128.IsHardwareAccelerated || !X86Base.IsSupported) &&
-            (typeof(TOpShift) == typeof(OpShl) || typeof(TOpShift) == typeof(OpShr)))
-        {
-            return ShiftScalar<TOpShift, TTracingInst, TCheckDepth>(ref stack);
-        }
-
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
-        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
+        ref UInt256 a = ref As<byte, UInt256>(ref Add(ref topRef, EvmStack.WordSize));
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
@@ -110,72 +82,16 @@ public static partial class EvmInstructions
         }
 
         // Perform the shift operation using the specific implementation.
-        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpShift.Operation(in a, in b, out UInt256 result);
-        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
+        if (a.u0 != 0)
+        {
+            ref UInt256 value = ref As<byte, UInt256>(ref topRef);
+            TOpShift.Operation(in a, in value, out value);
+        }
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType ShiftScalar<TOpShift, TTracingInst, TCheckDepth>(ref EvmStack stack)
-        where TOpShift : struct, IOpShift
-        where TTracingInst : struct, IFlag
-        where TCheckDepth : struct, IFlag
-    {
-        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
-        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
-
-        ref ulong value = ref As<byte, ulong>(ref topRef);
-        ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = shift;
-        if ((Add(ref shift, 1) | Add(ref shift, 2) | Add(ref shift, 3)) != 0 || amount >= 256)
-        {
-            value = 0;
-            Add(ref value, 1) = 0;
-            Add(ref value, 2) = 0;
-            Add(ref value, 3) = 0;
-        }
-        else if (amount != 0)
-        {
-            int wordShift = (int)(amount >> 6);
-            int bitShift = (int)(amount & 63);
-
-            if (typeof(TOpShift) == typeof(OpShl))
-            {
-                // Limb layout: a left shift moves bits toward limb 3, so fill from the top down.
-                for (int destination = 3; destination >= 0; destination--)
-                {
-                    int source = destination - wordShift;
-                    ulong shifted = source >= 0 ? Add(ref value, source) << bitShift : 0;
-                    if (bitShift != 0 && source > 0)
-                    {
-                        shifted |= Add(ref value, source - 1) >> (64 - bitShift);
-                    }
-                    Add(ref value, destination) = shifted;
-                }
-            }
-            else
-            {
-                // Limb layout: a right shift moves bits toward limb 0, so fill from the bottom up.
-                for (int destination = 0; destination < 4; destination++)
-                {
-                    int source = destination + wordShift;
-                    ulong shifted = source < 4 ? Add(ref value, source) >> bitShift : 0;
-                    if (bitShift != 0 && source + 1 < 4)
-                    {
-                        shifted |= Add(ref value, source + 1) << (64 - bitShift);
-                    }
-                    Add(ref value, destination) = shifted;
-                }
-            }
-        }
-
-        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
-        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -207,78 +123,17 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        if (X86Base.IsSupported)
-        {
-            UInt256 shift, value;
-            scoped ref byte slot = ref NullRef<byte>();
-            if (TCheckDepth.IsActive)
-            {
-                if (!stack.PopUInt256(out shift, out value)) goto StackUnderflow;
-            }
-            else
-            {
-                slot = ref stack.Pop1Peek32BytesUnchecked(out shift);
-                EvmStack.ReadUInt256FromSlot(ref slot, out value);
-            }
-
-            UInt256 result;
-            if (!shift.IsUint64 || shift.u0 >= 256)
-                result = As<UInt256, Int256>(ref value).Sign < 0 ? UInt256.MaxValue : UInt256.Zero;
-            else
-            {
-                As<UInt256, Int256>(ref value).RightShift((int)shift, out Int256 shifted);
-                result = As<Int256, UInt256>(ref shifted);
-            }
-
-            if (TCheckDepth.IsActive) return stack.PushUInt256<TTracingInst>(in result);
-            Debug.Assert(!IsNullRef(ref slot), "The unchecked path peeked the destination slot.");
-            EvmStack.WriteUInt256ToSlot(ref slot, in result);
-            if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
-            return EvmExceptionType.None;
-        }
-
-        return SarScalar<TTracingInst, TCheckDepth>(ref stack);
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType SarScalar<TTracingInst, TCheckDepth>(ref EvmStack stack)
-        where TTracingInst : struct, IFlag
-        where TCheckDepth : struct, IFlag
-    {
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
-        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
-
-        ref ulong value = ref As<byte, ulong>(ref topRef);
-        ref ulong shift = ref Add(ref value, EvmStack.WordSize / sizeof(ulong));
-        ulong amount = shift;
-        ulong fill = (long)Add(ref value, 3) < 0 ? ulong.MaxValue : 0;
-        if ((Add(ref shift, 1) | Add(ref shift, 2) | Add(ref shift, 3)) != 0 || amount >= 256)
+        ref byte slot = ref stack.Pop1Peek32BytesUnchecked(out UInt256 shift);
+        ref UInt256 value = ref As<byte, UInt256>(ref slot);
+        if (!shift.IsUint64 || shift.u0 >= 256)
+            value = (long)value.u3 < 0 ? UInt256.MaxValue : UInt256.Zero;
+        else if (shift.u0 != 0)
         {
-            value = fill;
-            Add(ref value, 1) = fill;
-            Add(ref value, 2) = fill;
-            Add(ref value, 3) = fill;
+            ref Int256 signed = ref As<UInt256, Int256>(ref value);
+            signed.RightShift((int)shift.u0, out signed);
         }
-        else if (amount != 0)
-        {
-            int wordShift = (int)(amount >> 6);
-            int bitShift = (int)(amount & 63);
-            // Limb layout: an arithmetic right shift moves bits toward limb 0 and fills from the sign.
-            for (int destination = 0; destination < 4; destination++)
-            {
-                int source = destination + wordShift;
-                ulong shifted = source < 4 ? Add(ref value, source) >> bitShift : fill;
-                if (bitShift != 0)
-                {
-                    ulong upper = source + 1 < 4 ? Add(ref value, source + 1) : fill;
-                    shifted |= upper << (64 - bitShift);
-                }
-                Add(ref value, destination) = shifted;
-            }
-        }
-        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
         return EvmExceptionType.None;
     }
 
@@ -286,7 +141,7 @@ public static partial class EvmInstructions
     /// Implements a left shift operation.
     /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
     /// </summary>
-    public struct OpShl : IOpShift
+    internal struct OpShl : IOpShift
     {
         /// <summary>
         /// Performs a left shift: shifts <paramref name="b"/> left by the number of bits specified in <paramref name="a"/>.
@@ -295,14 +150,14 @@ public static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the left shift operation.</param>
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = b << (int)a.u0; // Use only the lowest limb (u0) as the shift count.
+            => b.LeftShift((int)a.u0, out result);
     }
 
     /// <summary>
     /// Implements a right shift operation.
     /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
     /// </summary>
-    public struct OpShr : IOpShift
+    internal struct OpShr : IOpShift
     {
         /// <summary>
         /// Performs a logical right shift: shifts <paramref name="b"/> right by the number of bits specified in <paramref name="a"/>.
@@ -311,6 +166,6 @@ public static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the right shift operation.</param>
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = b >> (int)a.u0; // Use only the lowest limb (u0) as the shift count.
+            => b.RightShift((int)a.u0, out result);
     }
 }
