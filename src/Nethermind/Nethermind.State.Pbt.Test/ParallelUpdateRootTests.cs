@@ -322,7 +322,7 @@ public class ParallelUpdateRootTests
                     if (!_barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
                         throw new TimeoutException("The independent zone folds did not overlap.");
                 }
-                if (FailWorker && groupKey.BitDepth > 12 && groupKey.Path[0] == 0x01 && groupKey.Path[1] >= 0x10)
+                if (FailWorker && groupKey.BitDepth > 12 && groupKey.GetByte(0) == 0x01 && groupKey.GetByte(1) >= 0x10)
                     throw new InvalidDataException("Injected worker failure after folding the first nibble.");
                 return Inner.GetNodeGroup(groupKey);
             }

@@ -99,7 +99,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         lock (_treeLock)
         {
             foreach ((IPbtNodePath path, RefCountingMemory? payload) in NodeGroups)
-                nodeBytes += path.Encode().Length + (payload?.Memory.Length ?? 0);
+                nodeBytes += path.EncodedLength + (payload?.Memory.Length ?? 0);
         }
 
         long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));

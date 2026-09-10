@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
-
 namespace Nethermind.Pbt;
 
 /// <summary>Identifies a canonical tree node by its consumed MSB-first key path.</summary>
@@ -24,10 +22,35 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     }
 
     public int BitDepth { get; }
-    [UnscopedRef]
-    public ReadOnlySpan<byte> Path => _path.Bytes;
+    /// <inheritdoc/>
+    public int GetBit(int bitIndex) => PbtPathOperations.GetBit(_path.Bytes, BitDepth, bitIndex);
+    /// <inheritdoc/>
+    public byte GetByte(int byteIndex) => _path.Bytes[byteIndex];
+    /// <inheritdoc/>
+    public void CopyBitsTo(int sourceBitOffset, Span<byte> destination, int destinationBitOffset, int bitCount) =>
+        PbtPathOperations.CopyBitsTo(_path.Bytes, BitDepth, sourceBitOffset, destination, destinationBitOffset, bitCount);
+    /// <inheritdoc/>
+    public bool MatchesPrefix(ReadOnlySpan<byte> key, int bitCount) =>
+        PbtPathOperations.MatchesPrefix(_path.Bytes, BitDepth, key, bitCount);
 
-    public byte[] Encode() => PbtPathOperations.Encode(this);
+    /// <inheritdoc/>
+    public IPbtNodePath AppendNib(int nibble) => AppendBits(nibble, 4);
+
+    /// <inheritdoc/>
+    public IPbtNodePath AppendBits(int bits, int bitCount) => PbtPathOperations.AppendBits(_path.Bytes, BitDepth, bits, bitCount);
+    /// <inheritdoc/>
+    public TPath AppendBits<TPath>(int bits, int bitCount) where TPath : struct, IPbtNodePath<TPath> =>
+        PbtPathOperations.AppendBits<TPath>(_path.Bytes, BitDepth, bits, bitCount);
+    /// <inheritdoc/>
+    public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => TPath.Create(_path.Bytes, BitDepth);
+    /// <inheritdoc/>
+    public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : IPbtNodePath =>
+        PbtPathOperations.MatchesPrefix(this, other, bitCount);
+
+    /// <inheritdoc/>
+    public int EncodedLength => 4 + ((BitDepth + 7) >> 3);
+    /// <inheritdoc/>
+    public void Write(Span<byte> destination) => PbtPathOperations.Write(_path.Bytes, BitDepth, destination);
     public static PbtStorageNodePath Decode(ReadOnlySpan<byte> encoding) => PbtPathOperations.Decode<PbtStorageNodePath>(encoding);
 
     internal static PbtStorageNodePath FromKey(PbtStorageFullKey key, int bitDepth) => PbtPathOperations.FromKey<PbtStorageNodePath>(key.Bytes, bitDepth);
@@ -36,10 +59,14 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     internal PbtStorageNodePath Append(ReadOnlySpan<byte> prefix, int bitCount, int direction) =>
         PbtPathOperations.Append<PbtStorageNodePath>(this, prefix, bitCount, direction);
 
-    public int CompareTo(PbtStorageNodePath other) => PbtPathOperations.Compare(this, other);
-    public bool Equals(PbtStorageNodePath other) => PbtPathOperations.Equal(this, other);
+    public int CompareTo(PbtStorageNodePath other)
+    {
+        int depthComparison = BitDepth.CompareTo(other.BitDepth);
+        return depthComparison != 0 ? depthComparison : _path.Bytes.SequenceCompareTo(other._path.Bytes);
+    }
+    public bool Equals(PbtStorageNodePath other) => BitDepth == other.BitDepth && _path.Bytes.SequenceEqual(other._path.Bytes);
     public int CompareTo(IPbtNodePath? other) => PbtPathOperations.Compare(this, other);
     public bool Equals(IPbtNodePath? other) => PbtPathOperations.Equal(this, other);
     public override bool Equals(object? obj) => obj is IPbtNodePath other && Equals(other);
-    public override int GetHashCode() => PbtPathOperations.Hash(this);
+    public override int GetHashCode() => PbtPathOperations.Hash(_path.Bytes, BitDepth);
 }

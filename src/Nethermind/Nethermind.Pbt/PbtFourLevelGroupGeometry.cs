@@ -73,7 +73,7 @@ public static class PbtFourLevelGroupGeometry
 
         int currentPosition = RootPosition;
         int width = BoundarySlots;
-        Span<byte> directions = stackalloc byte[LevelsPerGroup];
+        int nibble = 0;
         int relativeDepth = 0;
         while (relativeDepth < LevelsPerGroup)
         {
@@ -86,13 +86,15 @@ public static class PbtFourLevelGroupGeometry
             int rightFirst = rightPosition - 2 * halfWidth + 2;
             if (position >= leftFirst && position <= leftPosition)
             {
-                directions[relativeDepth++] = 0;
+                nibble <<= 1;
+                relativeDepth++;
                 currentPosition = leftPosition;
                 width = halfWidth;
             }
             else if (position >= rightFirst && position <= rightPosition)
             {
-                directions[relativeDepth++] = 1;
+                nibble = (nibble << 1) | 1;
+                relativeDepth++;
                 currentPosition = rightPosition;
                 width = halfWidth;
             }
@@ -107,18 +109,9 @@ public static class PbtFourLevelGroupGeometry
             throw new ArgumentOutOfRangeException(nameof(position), "Position is not in the four-level post-order tree.");
         }
 
-        int depth = checked(groupKey.BitDepth + relativeDepth);
-        Span<byte> path = stackalloc byte[(depth + 7) >> 3];
-        path.Clear();
-        groupKey.Path.CopyTo(path);
-        for (int index = 0; index < relativeDepth; index++)
-        {
-            if (directions[index] == 0) continue;
-            int bit = groupKey.BitDepth + index;
-            path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
-        }
+        if (relativeDepth == LevelsPerGroup) return groupKey.AppendNib(nibble);
 
-        return PbtPathOperations.Create(path, depth);
+        return groupKey.AppendBits(nibble, relativeDepth);
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
@@ -141,7 +134,7 @@ public static class PbtFourLevelGroupGeometry
         for (int index = 0; index < relativeDepth; index++)
         {
             int bitIndex = groupDepth + index;
-            int direction = (path.Path[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
+            int direction = path.GetBit(bitIndex);
             position = direction == 0 ? position - width : position - 1;
             width /= 2;
         }
@@ -153,9 +146,8 @@ public static class PbtFourLevelGroupGeometry
     {
         int byteLength = (depth + 7) >> 3;
         Span<byte> prefix = stackalloc byte[byteLength];
-        path.Path[..byteLength].CopyTo(prefix);
-        if (byteLength != 0 && (depth & 7) != 0)
-            prefix[^1] &= (byte)(0xFF << (8 - (depth & 7)));
+        prefix.Clear();
+        path.CopyBitsTo(0, prefix, 0, depth);
         return PbtPathOperations.Create(prefix, depth);
     }
 

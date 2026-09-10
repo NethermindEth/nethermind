@@ -395,7 +395,7 @@ public class PbtRocksDbPersistenceTests
                 PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
                 if (groupKey.BitDepth != 0)
                     Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
-                persisted.Add(new PbtPhysicalPayload(groupKey.Encode(), payload.GetSpan()));
+                persisted.Add(new PbtPhysicalPayload(groupKey.ToEncodedArray(), payload.GetSpan()));
             }
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
             Assert.That(reopened.EnumerateRecords().Count, Is.EqualTo(tree.Nodes.Count));
@@ -641,7 +641,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         IPbtNodePath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
-        byte[] physicalKey = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : groupKey.Encode();
+        byte[] physicalKey = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : groupKey.ToEncodedArray();
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -690,7 +690,7 @@ public class PbtRocksDbPersistenceTests
         [Values] bool stamped)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath(Bytes.FromHexString("00"), 4).Encode();
+        byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath(Bytes.FromHexString("00"), 4).ToEncodedArray();
         db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
         if (stamped) db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(12));
 

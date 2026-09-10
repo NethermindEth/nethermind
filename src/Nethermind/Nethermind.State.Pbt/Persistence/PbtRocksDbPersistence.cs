@@ -139,16 +139,20 @@ public class PbtRocksDbPersistence(
     private static PbtColumns NodeGroupColumn(IPbtNodePath groupKey)
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
-        if (groupKey.BitDepth == 4 && groupKey.Path[0] == 0xF0
-            || groupKey.BitDepth >= 8 && groupKey.Path[0] == Eip8297KeyDerivation.StorageZone)
+        if (groupKey.BitDepth == 4 && groupKey.GetByte(0) == 0xF0
+            || groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return PbtColumns.StorageNodeGroups;
-        if (groupKey.BitDepth >= 8 && groupKey.Path[0] == Eip8297KeyDerivation.CodeZone)
+        if (groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.CodeZone)
             return PbtColumns.CodeNodeGroups;
         return PbtColumns.AccountNodeGroups;
     }
 
-    private static ReadOnlySpan<byte> NodeGroupStorageKey(IPbtNodePath groupKey) =>
-        groupKey.BitDepth == 0 ? RootNodeGroupKey : groupKey.Encode();
+    private static ReadOnlySpan<byte> NodeGroupStorageKey(IPbtNodePath groupKey, Span<byte> destination)
+    {
+        if (groupKey.BitDepth == 0) return RootNodeGroupKey;
+        groupKey.Write(destination);
+        return destination[..groupKey.EncodedLength];
+    }
 
     private static byte[] PrefixUpperBound(ReadOnlySpan<byte> prefix)
     {
@@ -224,7 +228,8 @@ public class PbtRocksDbPersistence(
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
-            MemoryManager<byte>? owned = snapshot.GetColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey));
+            Span<byte> key = stackalloc byte[groupKey.EncodedLength];
+            MemoryManager<byte>? owned = snapshot.GetColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey, key));
             return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
@@ -343,8 +348,10 @@ public class PbtRocksDbPersistence(
 
             if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
             IWriteBatch groups = _batch.GetColumnBatch(NodeGroupColumn(groupKey));
-            if (payload is null) groups.Set(NodeGroupStorageKey(groupKey), null, flags);
-            else groups.PutSpan(NodeGroupStorageKey(groupKey), payload.GetSpan(), flags);
+            Span<byte> key = stackalloc byte[groupKey.EncodedLength];
+            ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(groupKey, key);
+            if (payload is null) groups.Set(storageKey, null, flags);
+            else groups.PutSpan(storageKey, payload.GetSpan(), flags);
         }
 
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount)

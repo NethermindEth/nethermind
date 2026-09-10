@@ -166,8 +166,13 @@ public class PbtFormatInteropTests
         const int iterations = 1000;
         TPath[] paths = new TPath[iterations];
         paths[0] = TPath.Create(bytes, 272);
+        ExercisePathOperations(paths[0], bytes);
         long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < iterations; index++) paths[index] = TPath.Create(bytes, 272);
+        for (int index = 0; index < iterations; index++)
+        {
+            paths[index] = TPath.Create(bytes, 272);
+            ExercisePathOperations(paths[index], bytes);
+        }
         long pathBytes = GC.GetAllocatedBytesForCurrentThread() - start;
         GC.KeepAlive(paths);
         start = GC.GetAllocatedBytesForCurrentThread();
@@ -190,6 +195,20 @@ public class PbtFormatInteropTests
         return (pathBytes / iterations, builderBytes, buildBytes / 10);
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ExercisePathOperations<TPath>(TPath path, ReadOnlySpan<byte> bytes)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        Span<byte> copied = stackalloc byte[bytes.Length];
+        copied.Clear();
+        path.CopyBitsTo(0, copied, 0, path.BitDepth);
+        TPath converted = path.ToPath<TPath>();
+        TPath appended = path.AppendBits<TPath>(0, 0);
+        if (path.GetBit(0) != 0 || path.GetByte(0) != 0 || !path.MatchesPrefix(bytes, path.BitDepth)
+            || !converted.MatchesPrefix(appended, path.BitDepth))
+            throw new InvalidOperationException("Path operations changed the zero key.");
+    }
+
     private static string[] CanonicalRecords(PbtNodeGroupStore store)
     {
         IReadOnlyList<PbtNodeRecord> records = store.EnumerateRecords();
@@ -197,7 +216,7 @@ public class PbtFormatInteropTests
         for (int index = 0; index < result.Length; index++)
         {
             PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span);
+            result[index] = Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span);
         }
         return result;
     }

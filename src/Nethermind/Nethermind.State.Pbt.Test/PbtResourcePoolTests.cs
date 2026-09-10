@@ -363,7 +363,7 @@ public class PbtResourcePoolTests
                 {
                     Assert.That(found, Is.True);
                     Assert.That(current is null, Is.EqualTo(tombstone));
-                    Assert.That(content.GetPayloadSize().Node, Is.EqualTo(groupKey.Encode().Length + (current?.Memory.Length ?? 0)));
+                    Assert.That(content.GetPayloadSize().Node, Is.EqualTo(groupKey.EncodedLength + (current?.Memory.Length ?? 0)));
                 }
             }
             content.Reset();

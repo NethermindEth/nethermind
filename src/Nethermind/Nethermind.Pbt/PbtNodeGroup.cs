@@ -186,11 +186,7 @@ public static class PbtNodeGroupCodec
     private static void ValidateNodePath(PbtNodeReader node, IPbtNodePath path)
     {
         if (!node.IsLeaf) return;
-        int completeBytes = path.BitDepth >> 3;
-        int tailBits = path.BitDepth & 7;
-        if (node.Key.Length * 8 < path.BitDepth
-            || !node.Key[..completeBytes].SequenceEqual(path.Path[..completeBytes])
-            || (tailBits != 0 && ((node.Key[completeBytes] ^ path.Path[completeBytes]) & (0xFF << (8 - tailBits))) != 0))
+        if (!path.MatchesPrefix(node.Key, path.BitDepth))
             throw new InvalidDataException("PBT leaf does not match its group position.");
     }
 
@@ -331,7 +327,8 @@ public readonly ref struct PbtNodeGroupReader
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
     }
-    internal static void ValidateLeafPath(IPbtNodePath groupKey, int position, ReadOnlySpan<byte> encoding)
+    [System.Diagnostics.Conditional("DEBUG")]
+    internal static void ValidateLeafPath<TPath>(TPath groupKey, int position, ReadOnlySpan<byte> encoding) where TPath : IPbtNodePath
     {
         if (encoding[0] != 0 || position == PbtFourLevelGroupGeometry.RootPosition) return;
         Span<byte> directions = stackalloc byte[PbtFourLevelGroupGeometry.LevelsPerGroup];
@@ -341,12 +338,12 @@ public readonly ref struct PbtNodeGroupReader
         if (keyLength * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
         ReadOnlySpan<byte> key = encoding.Slice(3, keyLength);
         int completeBytes = groupKey.BitDepth >> 3;
-        if (!key[..completeBytes].SequenceEqual(groupKey.Path[..completeBytes]))
+        if (!groupKey.MatchesPrefix(key, completeBytes * 8))
             throw new InvalidDataException("PBT leaf does not match its group position.");
 
         // Four-level group alignment keeps the group tail and relative path in one byte.
         int groupTailBits = groupKey.BitDepth & 7;
-        int expectedTail = groupTailBits == 0 ? 0 : groupKey.Path[completeBytes];
+        int expectedTail = groupTailBits == 0 ? 0 : groupKey.GetByte(completeBytes);
         for (int index = 0; index < relativeDepth; index++)
             expectedTail |= directions[index] << (7 - groupTailBits - index);
         int tailMask = 0xFF << (8 - groupTailBits - relativeDepth);

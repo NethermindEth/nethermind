@@ -169,8 +169,8 @@ public class PbtRocksDbConfigAdjusterTests
             foreach ((IPbtNodePath path, PbtColumns column) in groups)
             {
                 using RefCountingMemory? payload = reader.GetNodeGroup(path);
-                Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.Path)}");
-                byte[] storageKeyBytes = path.BitDepth == 0 ? "rootNodeGroup"u8.ToArray() : path.Encode();
+                Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToEncodedArray().AsSpan(4))}");
+                byte[] storageKeyBytes = path.BitDepth == 0 ? "rootNodeGroup"u8.ToArray() : path.ToEncodedArray();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));

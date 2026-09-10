@@ -56,7 +56,7 @@ internal sealed class PbtTreeHarness : IDisposable
         for (int index = 0; index < result.Length; index++)
         {
             PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span);
+            result[index] = Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span);
         }
         return result;
     }
@@ -64,6 +64,20 @@ internal sealed class PbtTreeHarness : IDisposable
 
 internal static class PbtStoreTestExtensions
 {
+    internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : IPbtNodePath
+    {
+        Span<byte> encoding = stackalloc byte[path.EncodedLength];
+        path.Write(encoding);
+        return encoding[4..].ToArray();
+    }
+
+    internal static byte[] ToEncodedArray(this IPbtNodePath path)
+    {
+        byte[] encoding = new byte[path.EncodedLength];
+        path.Write(encoding);
+        return encoding;
+    }
+
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {
         using PbtWriteBatchBuilder<PbtFullKey> account = new(2);
@@ -103,10 +117,10 @@ internal static class PbtStoreTestExtensions
             PbtNodeReader node = new(encoding);
             if (node.IsLeaf || currentPath.BitDepth + node.PrefixBitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.PrefixBitCount;
-            int direction = (path.Path[directionBit >> 3] >> (7 - (directionBit & 7))) & 1;
+            int direction = path.GetBit(directionBit);
             currentPath = PbtPathOperations.Append<PbtStorageNodePath>(currentPath, node.Prefix, node.PrefixBitCount, direction);
             for (int bit = 0; bit < currentPath.BitDepth; bit++)
-                if (((currentPath.Path[bit >> 3] ^ path.Path[bit >> 3]) & (0x80 >> (bit & 7))) != 0) return null;
+                if (currentPath.GetBit(bit) != path.GetBit(bit)) return null;
         }
         return null;
     }

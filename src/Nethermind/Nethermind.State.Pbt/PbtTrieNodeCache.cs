@@ -31,8 +31,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     }
 
     private static int ShardIndex(IPbtNodePath path) => path.BitDepth > 8
-        ? (path.Path[0] + path.Path[1]) & (ShardCount - 1)
-        : path.Path.IsEmpty ? 0 : path.Path[0];
+        ? (path.GetByte(0) + path.GetByte(1)) & (ShardCount - 1)
+        : path.BitDepth == 0 ? 0 : path.GetByte(0);
     private static int BucketIndex(IPbtNodePath path) => path.GetHashCode() & (BucketCount - 1);
 
     internal bool TryGet(in ValueHash256 root, IPbtNodePath path, [NotNullWhen(true)] out RefCountingMemory? payload)

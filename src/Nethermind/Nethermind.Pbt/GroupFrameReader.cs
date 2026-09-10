@@ -124,11 +124,8 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
 
     internal int Position(TPath path)
     {
-        int completeBytes = BitDepth >> 3;
-        int remainingBits = BitDepth & 7;
         if (PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) != BitDepth
-            || !path.Path[..completeBytes].SequenceEqual(GroupKey.Path[..completeBytes])
-            || (remainingBits != 0 && ((path.Path[completeBytes] ^ GroupKey.Path[completeBytes]) & 0xF0) != 0))
+            || !path.MatchesPrefix(GroupKey, BitDepth))
             throw new InvalidOperationException("The PBT node does not belong to the active group.");
         return PbtFourLevelGroupGeometry.PositionOf(path);
     }

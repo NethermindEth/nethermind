@@ -365,7 +365,7 @@ public class PbtRebuilderTests
         foreach (IPbtNodePath groupKey in groupKeys)
         {
             using RefCountingMemory? payload = getNodeGroup(groupKey);
-            result.Add($"{Convert.ToHexString(groupKey.Encode())}:{Convert.ToHexString(payload!.GetSpan())}");
+            result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(payload!.GetSpan())}");
         }
         result.Sort(StringComparer.Ordinal);
         return [.. result];

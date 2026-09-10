@@ -86,7 +86,7 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(smallRecords.Count, Is.EqualTo(wideRecords.Count), $"round {round}");
                 for (int index = 0; index < Math.Min(smallRecords.Count, wideRecords.Count); index++)
                 {
-                    Assert.That(smallRecords[index].Path.Encode(), Is.EqualTo(wideRecords[index].Path.Encode()));
+                    Assert.That(smallRecords[index].Path.ToEncodedArray(), Is.EqualTo(wideRecords[index].Path.ToEncodedArray()));
                     Assert.That(smallRecords[index].Encoding.ToArray(), Is.EqualTo(wideRecords[index].Encoding.ToArray()));
                 }
             }
@@ -347,7 +347,8 @@ public class Eip8297CanonicalTreeTests
         expectedPath[(resultDepth - 1) >> 3] |= (byte)(direction << (7 - ((resultDepth - 1) & 7)));
 
         PbtStorageNodePath appended = path.Append(prefix, direction);
-        PbtBitPrefix concatenated = PbtBitPrefix.Concat(new PbtBitPrefix(path.Path, pathDepth), direction, prefix);
+        byte[] pathBytes = path.ToPathArray();
+        PbtBitPrefix concatenated = PbtBitPrefix.Concat(new PbtBitPrefix(pathBytes, pathDepth), direction, prefix);
         byte[] expectedConcat = new byte[expectedPath.Length];
         CopyBitsReference(keyBytes, 0, pathDepth, expectedConcat, 0);
         expectedConcat[pathDepth >> 3] |= (byte)(direction << (7 - (pathDepth & 7)));
@@ -675,13 +676,14 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath constructed = new(constructorInput, bitDepth);
         constructorInput.AsSpan().Clear();
         source.AsSpan().Clear();
-        PbtStorageNodePath decoded = PbtStorageNodePath.Decode(constructed.Encode());
+        PbtStorageNodePath decoded = PbtStorageNodePath.Decode(constructed.ToEncodedArray());
         PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(constructed);
+        byte[] copiedPath = constructed.ToPathArray();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(constructed.Path.ToArray(), Is.EqualTo(expected));
-            Assert.That(constructed.Encode().Length, Is.EqualTo(4 + expected.Length));
+            Assert.That(copiedPath, Is.EqualTo(expected));
+            Assert.That(constructed.EncodedLength, Is.EqualTo(4 + expected.Length));
             Assert.That(fromKey, Is.EqualTo(constructed));
             Assert.That(decoded, Is.EqualTo(constructed));
             Assert.That(decoded.GetHashCode(), Is.EqualTo(constructed.GetHashCode()));
@@ -2353,7 +2355,7 @@ public class Eip8297CanonicalTreeTests
     {
         List<string> records = [];
         foreach (PbtNodeRecord record in store.EnumerateRecords())
-            records.Add(Convert.ToHexString(record.Path.Encode()) + Convert.ToHexString(record.Encoding.Span));
+            records.Add(Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span));
         return [.. records];
     }
 

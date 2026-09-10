@@ -969,7 +969,7 @@ public class PbtSnapshotBundleTests
         public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
         public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
         {
-            if (groupKey.BitDepth == 8 && groupKey.Path[0] == FailedZone)
+            if (groupKey.BitDepth == 8 && groupKey.GetByte(0) == FailedZone)
                 throw new InvalidDataException("Configured partition write failure.");
             ApplyCount++;
             bundle.SetNodeGroup(groupKey, payload);

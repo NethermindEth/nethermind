@@ -118,10 +118,12 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         IPbtNodePath[] keys = [.. _groups.Keys];
         Array.Sort(keys);
         PbtPhysicalPayload[] payloads = new PbtPhysicalPayload[keys.Length];
+        Span<byte> encodedKey = stackalloc byte[4 + PbtStorageFullKey.MaxLength];
         for (int index = 0; index < keys.Length; index++)
         {
             IPbtNodePath key = keys[index];
-            payloads[index] = new PbtPhysicalPayload(key.Encode(), _groups[key].GetSpan());
+            key.Write(encodedKey);
+            payloads[index] = new PbtPhysicalPayload(encodedKey[..key.EncodedLength], _groups[key].GetSpan());
         }
         return payloads;
     }
