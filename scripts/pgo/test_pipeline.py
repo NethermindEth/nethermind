@@ -8,9 +8,19 @@ import unittest
 from convert import check_profile, convert
 from collect import validate_expb_log
 from check_guest import compare
+from expb_errors import summarize
 
 
 class ProfileValidationTests(unittest.TestCase):
+    def test_expb_failure_summary_preserves_cause_and_redacts_jwt(self):
+        log = "Routine progress\n\x1b[31mERROR: image was not found\x1b[0m\nFailed authorization: eyJabc.payload.signature\n"
+        summary = summarize(log)
+        self.assertIn("ERROR: image was not found", summary)
+        self.assertIn("<redacted JWT>", summary)
+        self.assertNotIn("eyJabc", summary)
+        self.assertNotIn("Routine progress", summary)
+        self.assertNotIn("\x1b", summary)
+
     def test_guest_requires_correct_output_and_rejects_cost_regressions(self):
         expected = bytes.fromhex("01020301")
         with tempfile.TemporaryDirectory() as directory:
