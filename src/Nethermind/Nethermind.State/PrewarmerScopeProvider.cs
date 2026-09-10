@@ -61,13 +61,20 @@ public class PrewarmerScopeProvider(
             {
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
-                preBlockCaches.MainScope = scope;
+                lock (preBlockCaches)
+                {
+                    preBlockCaches.MainScope = scope;
+                }
                 // The consumer reads the state at baseBlock through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
+                return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, null, null, metrics, baseBlock?.StateRoot);
             }
             catch
             {
-                preBlockCaches.MainScope = null;
+                lock (preBlockCaches)
+                {
+                    if (ReferenceEquals(preBlockCaches.MainScope, scope)) preBlockCaches.MainScope = null;
+                }
                 try
                 {
                     scope.Dispose();
@@ -79,8 +86,29 @@ public class PrewarmerScopeProvider(
                 throw;
             }
         }
-        PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, baseBlock?.StateRoot);
+
+        IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = null;
+        try
+        {
+            lock (preBlockCaches)
+            {
+                trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
+            }
+            PreBlockCaches.StorageReadCapture? storageReadCapture = preBlockCaches.CurrentStorageReadCapture;
+            return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
+        }
+        catch
+        {
+            try
+            {
+                trieWarmupSession?.Dispose();
+            }
+            finally
+            {
+                scope.Dispose();
+            }
+            throw;
+        }
     }
 
     private sealed class ScopeWrapper(
@@ -88,6 +116,7 @@ public class PrewarmerScopeProvider(
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         bool isPrewarmer,
+        IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession,
         PreBlockCaches.StorageReadCapture? storageReadCapture,
         LocalMetrics metrics,
         Hash256? baseStateRoot) : IWorldStateScopeProvider.IScope
@@ -97,7 +126,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
-        private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
+        private readonly IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = trieWarmupSession;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -111,17 +140,39 @@ public class PrewarmerScopeProvider(
         {
             if (isPrewarmer)
             {
-                ObserveWriteBatchToDispose();
-                baseScope.Dispose();
+                try
+                {
+                    ObserveWriteBatchToDispose();
+                }
+                finally
+                {
+                    try
+                    {
+                        trieWarmupSession?.Dispose();
+                    }
+                    finally
+                    {
+                        baseScope.Dispose();
+                    }
+                }
                 return;
             }
 
             // Unregister before teardown so no new warm hints target a disposing scope.
-            preBlockCaches.MainScope = null;
+            lock (preBlockCaches)
+            {
+                if (ReferenceEquals(preBlockCaches.MainScope, baseScope)) preBlockCaches.MainScope = null;
+            }
             try
             {
-                ObserveWriteBatchToDispose();
-                baseScope.Dispose();
+                try
+                {
+                    ObserveWriteBatchToDispose();
+                }
+                finally
+                {
+                    baseScope.Dispose();
+                }
             }
             finally
             {
@@ -140,6 +191,11 @@ public class PrewarmerScopeProvider(
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+            storageReadCapture is not null
+                ? IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance
+                : baseScope.CreateTrieWarmupSession();
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
@@ -239,17 +295,25 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        // Populators target the consumer scope; capture-only scopes never forward their placeholder values.
+        // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
+        // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
+        // values, so their hinted addresses and slots can be fictitious — never forward them.
         public void HintWarmAccount(in ValueAddress address)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(in address);
+            if (isPrewarmer)
+                trieWarmupSession?.HintWarmAccount(in address);
+            else
+                baseScope.HintWarmAccount(in address);
         }
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
+            if (isPrewarmer)
+                trieWarmupSession?.HintWarmSlot(in address, in index);
+            else
+                baseScope.HintWarmSlot(in address, in index);
         }
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)

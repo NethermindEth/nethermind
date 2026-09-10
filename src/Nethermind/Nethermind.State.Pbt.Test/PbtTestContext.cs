@@ -24,6 +24,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
 {
     private readonly CancellationTokenSource _cts = new();
     private readonly PbtCachedReaderPersistence _cachedReaderPersistence;
+    private readonly PbtTrieNodeCache _trieNodeCache;
 
     public SnapshotableMemColumnsDb<PbtColumns> Db { get; }
     public MemDb CodeDb { get; } = new();
@@ -60,7 +61,8 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
         Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig);
+        _trieNodeCache = new PbtTrieNodeCache(Config);
+        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig), TrieWarmer, CodeDb);
     }
@@ -73,6 +75,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     {
         _cts.Cancel();
         await Manager.DisposeAsync();
+        _trieNodeCache.Dispose();
         await _cachedReaderPersistence.DisposeAsync();
         _cts.Dispose();
     }

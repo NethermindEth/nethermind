@@ -16,7 +16,7 @@ using Nethermind.State.Flat.ScopeProvider;
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
-public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
+public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
@@ -27,7 +27,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     private readonly bool _isReadOnly;
     private readonly ITrieWarmer _trieWarmer;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
-    private readonly HashSet<Stem> _queuedPrewarms = [];
     private readonly object _warmupLock = new();
 
     private StateId _currentStateId;
@@ -40,7 +39,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     private bool _isDisposed;
     private bool _pausePrewarmer;
     private int _hintSequenceId;
-    private int _outstandingWarmups;
+    private PbtTrieWarmupSession? _warmupSession;
 
     public PbtWorldStateScope(
         in StateId currentStateId,
@@ -80,7 +79,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     public Hash256 RootHash => _rootHash;
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
-    internal int HintSequenceId => Volatile.Read(ref _hintSequenceId);
 
     internal void UseAuthoritativeRoot(Hash256 root)
     {
@@ -95,9 +93,39 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         return account;
     }
 
-    public void HintGet(Address address, Account? account) { }
-    public void HintWarmAccount(in ValueAddress address) { }
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+    public void HintGet(Address address, Account? account) => HintWarmAccount(new ValueAddress(address.Bytes));
+
+    public void HintWarmAccount(in ValueAddress address)
+    {
+        using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
+        session.HintWarmAccount(in address);
+    }
+
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+    {
+        using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
+        session.HintWarmSlot(in address, in index);
+    }
+
+    internal void HintSet(Address address, in UInt256 index)
+    {
+        using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
+        if (session is PbtTrieWarmupSession pbtSession) pbtSession.HintWarmSlot(new ValueAddress(address.Bytes), in index, singleProducer: true);
+    }
+
+    /// <inheritdoc/>
+    public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession()
+    {
+        lock (_warmupLock)
+        {
+            if (_isDisposed || _pausePrewarmer || _trieWarmer is NoopTrieWarmer)
+                return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
+            _warmupSession ??= Bundle.CreateTrieWarmupSession(_trieWarmer, _hintSequenceId);
+            _warmupSession.AcquireLease();
+            return _warmupSession;
+        }
+    }
+
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => GetOrCreateStorageTree(address);
@@ -110,43 +138,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
             if (!exists) tree = new PbtStorageTree(this, address);
             return tree!;
         }
-    }
-
-    internal bool TryReservePrewarm(in Stem stem, out int sequenceId)
-    {
-        lock (_warmupLock)
-        {
-            sequenceId = _hintSequenceId;
-            if (_isDisposed || _pausePrewarmer) return false;
-            if (!_queuedPrewarms.Add(stem)) return false;
-            _outstandingWarmups++;
-            return true;
-        }
-    }
-
-    internal void CancelPrewarm(in Stem stem)
-    {
-        lock (_warmupLock)
-        {
-            _queuedPrewarms.Remove(stem);
-            CompletePrewarmUnderLock();
-        }
-    }
-
-    internal void CompletePrewarm()
-    {
-        lock (_warmupLock) CompletePrewarmUnderLock();
-    }
-
-    private void CompletePrewarmUnderLock()
-    {
-        if (--_outstandingWarmups == 0) Monitor.PulseAll(_warmupLock);
-    }
-
-    public bool WarmUpStateTrie(Address address, int sequenceId)
-    {
-        CompletePrewarm();
-        return false;
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
@@ -206,13 +197,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
 
     private void PauseAndDrainPrewarmer()
     {
+        PbtTrieWarmupSession? session;
         lock (_warmupLock)
         {
             _pausePrewarmer = true;
             _hintSequenceId++;
-            while (_outstandingWarmups != 0) Monitor.Wait(_warmupLock);
-            _queuedPrewarms.Clear();
+            session = _warmupSession;
+            _warmupSession = null;
         }
+        if (session is null) return;
+        session.StopWarming();
+        session.Dispose();
     }
 
     private void ResumePrewarmer()
@@ -227,13 +222,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
             if (_isDisposed) return;
             _isDisposed = true;
             if (_logger.IsDebug) LogLifecycle("close begin");
-            _pausePrewarmer = true;
-            _hintSequenceId++;
-            while (_outstandingWarmups != 0) Monitor.Wait(_warmupLock);
         }
         try
         {
-            Bundle.Dispose();
+            try
+            {
+                PauseAndDrainPrewarmer();
+            }
+            finally
+            {
+                Bundle.Dispose();
+            }
         }
         finally
         {

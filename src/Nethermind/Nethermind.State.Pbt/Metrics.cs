@@ -11,6 +11,10 @@ namespace Nethermind.State.Pbt;
 
 public static class Metrics
 {
+    [GaugeMetric]
+    [Description("Estimated retained PBT trie-cache memory in bytes, including entry and bucket overhead")]
+    public static long PbtTrieCacheMemory;
+
     internal static readonly PbtSnapshotMemoryLabel AccountLeafSnapshotMemory = new("account", "leaf");
     internal static readonly PbtSnapshotMemoryLabel AccountTrieSnapshotMemory = new("account", "trie");
     internal static readonly PbtSnapshotMemoryLabel CodeLeafSnapshotMemory = new("code", "leaf");
