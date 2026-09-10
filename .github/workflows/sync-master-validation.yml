@@ -196,14 +196,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
           MATRIX: ${{ needs.setup-matrix.outputs.matrix }}
         run: |
-          jobs=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
-            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name')
+          # Neither lookup may abort the step: without an output the Slack gate below reads
+          # as false, which would drop the alert this job exists to send.
+          if ! jobs=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name'); then
+            echo "::warning title=Sync master validation::could not list failed jobs"
+            jobs=""
+          fi
 
           # A reclaimed runner leaves a marker artifact; only unexplained failures may page.
-          labels=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
-            --paginate -q '.artifacts[].name | select(startswith("preempted-")) | ltrimstr("preempted-")')
+          # Markers carry the attempt because a re-run inherits the earlier attempt's artifacts.
+          if ! names=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
+            --paginate -q '.artifacts[].name'); then
+            echo "::warning title=Sync master validation::could not list artifacts, so no failure counts as preempted"
+            names=""
+          fi
+          labels=$(printf '%s\n' "$names" | sed -n "s/^preempted-${RUN_ATTEMPT}-//p")
           prefixes=$(jq -r --arg labels "$labels" \
             '($labels | split("\n") | map(select(length > 0))) as $preempted
              | .[] | select(.runner_label as $r | $preempted | index($r))

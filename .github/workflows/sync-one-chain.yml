@@ -210,11 +210,12 @@ jobs:
             printf '%s' "$RUNNER_LABEL" > preempted.txt
           fi
 
-      # An artifact, not a job output: a matrix clobbers outputs across its entries.
+      # An artifact, not a job output: a matrix clobbers outputs across its entries. The
+      # attempt is in the name because a re-run keeps the run id, and so its artifacts.
       - name: Publish the preemption marker
         if: ${{ always() && steps.destroy.outputs.preempted == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: preempted-${{ inputs.runner_label }}
+          name: preempted-${{ github.run_attempt }}-${{ inputs.runner_label }}
           path: preempted.txt
           retention-days: 1

@@ -31,8 +31,12 @@ MATRIX = (
 GH_STUB = """#!/usr/bin/env bash
 for a in "$@"; do
   case "$a" in
-    */jobs) exec cat "$JOBS_FIXTURE" ;;
-    */artifacts) exec cat "$ARTIFACTS_FIXTURE" ;;
+    */jobs)
+      if [ "${FAIL_ENDPOINT:-}" = jobs ]; then exit 1; fi
+      exec cat "$JOBS_FIXTURE" ;;
+    */artifacts)
+      if [ "${FAIL_ENDPOINT:-}" = artifacts ]; then exit 1; fi
+      exec cat "$ARTIFACTS_FIXTURE" ;;
   esac
 done
 """
@@ -45,7 +49,15 @@ class NotifyGatingTest(unittest.TestCase):
         assert len(bodies) == 1, f"expected one step, found {len(bodies)}"
         cls.body = "set -euo pipefail\n" + bodies[0]
 
-    def collect(self, failed_jobs, preempted_labels, matrix=MATRIX):
+    def collect(
+        self,
+        failed_jobs,
+        preempted_labels,
+        matrix=MATRIX,
+        attempt="1",
+        marker_attempt=None,
+        fail_endpoint="",
+    ):
         """Runs the shipped step and returns what it wrote to GITHUB_OUTPUT."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -57,7 +69,10 @@ class NotifyGatingTest(unittest.TestCase):
 
             (tmp / "jobs").write_text("".join(f"{n}\n" for n in failed_jobs))
             (tmp / "artifacts").write_text(
-                "".join(f"{label}\n" for label in preempted_labels)
+                "".join(
+                    f"preempted-{marker_attempt or attempt}-{label}\n"
+                    for label in preempted_labels
+                )
             )
             (tmp / "step.sh").write_text(self.body)
             output = tmp / "output"
@@ -74,6 +89,8 @@ class NotifyGatingTest(unittest.TestCase):
                     "GH_TOKEN": "x",
                     "REPO": "o/r",
                     "RUN_ID": "1",
+                    "RUN_ATTEMPT": attempt,
+                    "FAIL_ENDPOINT": fail_endpoint,
                     "MATRIX": matrix,
                     "GITHUB_OUTPUT": str(output),
                     "GITHUB_STEP_SUMMARY": str(tmp / "summary"),
@@ -148,6 +165,39 @@ class NotifyGatingTest(unittest.TestCase):
         name = "Sync gnosis (Flat) / " + "x" * 100
         out = self.collect([name], [])
         self.assertEqual(len(out["failed_jobs"]), 60)
+
+
+    def test_a_marker_from_an_earlier_attempt_does_not_silence_a_rerun(self):
+        # A re-run keeps the run id, so the earlier attempt's artifacts are still listed.
+        out = self.collect(
+            ["Sync mainnet (Flat) / sync"],
+            ["f-1-master-mainnet"],
+            attempt="2",
+            marker_attempt="1",
+        )
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "Sync mainnet (Flat) / sync")
+
+    def test_a_marker_from_the_current_attempt_still_silences_a_rerun(self):
+        out = self.collect(
+            ["Sync mainnet (Flat) / sync"], ["f-1-master-mainnet"], attempt="2"
+        )
+        self.assertEqual(out["should_page"], "false")
+
+    def test_an_artifact_lookup_failure_pages(self):
+        # Preemption cannot be verified, so nothing may be treated as explained.
+        out = self.collect(
+            ["Sync mainnet (Flat) / sync"],
+            ["f-1-master-mainnet"],
+            fail_endpoint="artifacts",
+        )
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "Sync mainnet (Flat) / sync")
+
+    def test_a_job_lookup_failure_pages_with_a_placeholder(self):
+        out = self.collect(["Sync gnosis (Flat) / sync"], [], fail_endpoint="jobs")
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "(check run for details)")
 
 
 if __name__ == "__main__":
