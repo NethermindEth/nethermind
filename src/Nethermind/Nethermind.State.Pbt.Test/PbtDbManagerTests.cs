@@ -40,7 +40,9 @@ public class PbtDbManagerTests
         {
             Assert.That(child.Resolve<PbtTrieNodeCache>(), Is.SameAs(cache));
             Assert.That(container.Resolve<IPbtDbManager>(), Is.TypeOf<PbtDbManager>());
-            Assert.That(config.TrieCacheMemoryBudget, Is.EqualTo(536870912UL));
+            Assert.That(config.AccountTrieNodeCacheSizeBudget, Is.EqualTo(134217728UL));
+            Assert.That(config.CodeTrieNodeCacheSizeBudget, Is.EqualTo(33554432UL));
+            Assert.That(config.StorageTrieNodeCacheSizeBudget, Is.EqualTo(234881024UL));
         }
     }
 
