@@ -49,6 +49,14 @@ public class DataFeedTests
         Assert.That(data, Is.Null);
     }
 
+    [TestCase(null, "processed,log,forkChoice,txLinks,system,peers")]
+    [TestCase("", "processed,log,forkChoice,txLinks,system,peers")]
+    [TestCase("processed", "processed")]
+    [TestCase(" Processed , forkchoice,processed", "processed,forkChoice")]
+    [TestCase("nodeData,bogus", "processed,log,forkChoice,txLinks,system,peers")]
+    public void Requested_events_resolve_to_streamed_entry_types(string? events, string expected) =>
+        Assert.That(string.Join(',', DataFeed.ParseRequestedEvents(events)), Is.EqualTo(expected));
+
     [Test]
     public void Channel_subscription_stops_when_cancelled_before_data_arrives()
     {
