@@ -52,10 +52,8 @@ using IContainer = Autofac.IContainer;
 
 namespace Nethermind.Synchronization.Test;
 
-[TestFixture(false)]
-[TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public partial class BlockDownloaderTests(bool useFlatDb)
+public partial class BlockDownloaderTests
 {
     private const int FullBatch = 24;
     private const ulong SyncBatchSizeMax = 128;
@@ -901,7 +899,7 @@ public partial class BlockDownloaderTests(bool useFlatDb)
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = useFlatDb;
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         ContainerBuilder b = new ContainerBuilder()
