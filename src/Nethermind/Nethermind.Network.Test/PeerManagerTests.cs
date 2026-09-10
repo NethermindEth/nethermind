@@ -236,6 +236,61 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Will_release_the_claimed_slot_when_the_candidate_is_already_active()
+        {
+            await using Context ctx = new(maxActivePeers: 2);
+            ctx.PeerManager.Start();
+
+            // An IN session for the same node can be initialized while the OUT attempt is in the rate
+            // limiter, so AddActivePeer refuses it - and the slot it claimed has to go back.
+            Node contested = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 30303);
+            ctx.PeerPool.ActivePeers[contested.Id] = new Peer(contested);
+            ctx.PeerPool.GetOrAdd(contested);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "an already active node was dialled again");
+
+            ctx.PeerPool.GetOrAdd(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.5", 30303));
+
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "the claim was not released, so the freed slot is unusable");
+        }
+
+        [Test]
+        public async Task Will_not_dial_when_the_slots_fill_between_the_check_and_the_claim()
+        {
+            const int maxActivePeers = 3;
+
+            await using Context ctx = new(maxActivePeers: maxActivePeers);
+            ctx.PeerManager.Start();
+
+            Node first = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 30303);
+            Node refused = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.5", 30303);
+
+            // Both dial paths check for a free slot before ShouldContact and claim one after it, so
+            // filling the slots from here lands inside the window the claim has to close.
+            bool filled = false;
+            ctx.RlpxPeer.OnShouldContact = ip =>
+            {
+                if (!ip.Equals(refused.Address.Address)) return;
+
+                PrivateKeyGenerator keyGenerator = new();
+                while (ctx.PeerPool.ActivePeers.Count < maxActivePeers)
+                {
+                    PublicKey key = keyGenerator.Generate().PublicKey;
+                    ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.6", 30303));
+                }
+
+                filled = true;
+            };
+
+            ctx.PeerPool.GetOrAdd(first);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
+
+            ctx.PeerPool.GetOrAdd(refused);
+
+            Assert.That(filled, Is.True, "the candidate never reached the claim");
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "dialled with no slot left");
+        }
+
+        [Test]
         public async Task Will_discard_a_duplicate_incoming_session()
         {
             await using Context ctx = new();
@@ -1103,7 +1158,13 @@ namespace Nethermind.Network.Test
 
             public void MakeItFail() => _isFailing = true;
 
-            public bool ShouldContact(IPAddress ip, bool exactOnly = false) => true;
+            public Action<IPAddress>? OnShouldContact { get; set; }
+
+            public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+            {
+                OnShouldContact?.Invoke(ip);
+                return true;
+            }
 
             private void Track(Session session) => session.Disconnected += OnSessionDisconnected;
 
