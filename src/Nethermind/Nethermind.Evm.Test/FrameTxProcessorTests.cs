@@ -1977,16 +1977,23 @@ public class FrameTxProcessorTests
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
-            new TxFrame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, Observer, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, target: Observer),
             Frame(TxFrame.ModeSender, target: Recipient),
             Frame(TxFrame.ModePostTx, target: Observer));
 
-        CallOutputTracer tracer = new();
+        FrameReceiptTracer tracer = new();
 
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
-            "the POST_TX write halts against the state the unroll restored");
-        AssertStorage(Observer, 0, UInt256.Zero, "the batch write is gone and the assertion added none");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the batch write has to land for the unroll to have anything to undo");
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the batch's terminal frame is the one whose failure unrolls it");
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
+                "the POST_TX write halts against the state the unroll restored");
+            AssertStorage(Observer, 0, UInt256.Zero, "the batch write is gone and the assertion added none");
+        }
     }
 
     // A failure in a later assertion must unwind the whole body, not only what ran after the first.
