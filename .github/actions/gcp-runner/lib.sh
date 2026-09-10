@@ -23,18 +23,13 @@ resolve_zone() {
   printf '%s' "$out"
 }
 
-# Classification of `gcloud compute instances create` stderr. Quota is deliberately separate
-# from fatal: Local SSD and CPU quotas are regional, so a quota wall means "skip this region",
-# not "give up". Anything matching none of the three is treated as fatal by the caller.
+# Quota is separate from fatal because it is per-region: another region may still work.
 RETRYABLE_CREATE_ERR='ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone'
 QUOTA_CREATE_ERR='QUOTA_EXCEEDED|Quota .* exceeded'
 FATAL_CREATE_ERR='PERMISSION_DENIED|Required .* permission'
 
-# Reorders a comma-separated zone list so concurrent creates do not all pile into the first
-# zone. Zones stay grouped by region, because a capacity miss should try a sibling zone -
-# whose subnet already exists - before crossing a region. Both the region order and the zone
-# order within each region are rotated by a hash of the seed, so the spread is deterministic:
-# a job re-run lands in the same place as its first attempt.
+# Rotates a comma-separated zone list by a hash of the seed, keeping each region's zones
+# together, so concurrent creates spread out. Deterministic: a re-run repeats the order.
 order_zones() {
   local seed="$1" zones="$2"
   local -a regions=() zone_list=()

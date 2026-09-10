@@ -2,13 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-"""Regression coverage for the gcp-runner zone ordering and create-error classification.
-
-Both were production failures. Every runner landed in the first zone of GCP_ZONES, and the
-Local SSD quota is regional, so overlapping sync runs exhausted one region while five others
-sat idle. A quota error was then classified as fatal, aborting the create instead of moving
-to another region, and the failed matrix entry paged Slack as if it were a sync regression.
-"""
+"""Regression coverage for the gcp-runner zone ordering and create-error classification."""
 
 import os
 import subprocess
@@ -63,21 +57,17 @@ def regions(zones):
 
 class OrderZonesTest(unittest.TestCase):
     def test_every_zone_is_kept_exactly_once(self):
-        # A dropped zone silently shrinks the pool the runner can fall back to.
         self.assertCountEqual(order("seed"), ZONES.split(","))
 
     def test_zones_of_a_region_stay_contiguous(self):
-        # A capacity miss should try a sibling zone before crossing to another region.
         for seed in ("mainnet", "gnosis", "hoodi", "sepolia"):
             collapsed = regions(order(seed))
             self.assertEqual(len(collapsed), len(set(collapsed)), seed)
 
     def test_the_same_seed_gives_the_same_order(self):
-        # A job re-run must land where its first attempt did, or the failure is not reproducible.
         self.assertEqual(order("gh-f-1-master-mainnet"), order("gh-f-1-master-mainnet"))
 
     def test_concurrent_runners_start_in_different_regions(self):
-        # These are the four instance names one sync-master-validation run creates at once.
         starts = {
             order(name)[0].rsplit("-", 1)[0]
             for name in (
@@ -143,18 +133,12 @@ class CreateErrorClassificationTest(unittest.TestCase):
                     self.assertEqual(self.matches(message), [name])
 
     def test_an_unrecognised_message_matches_nothing(self):
-        # create.sh treats these as fatal, which is why they must not silently match.
         self.assertEqual(self.matches("ERROR: something entirely new"), [])
 
 
 class CreateZoneWalkTest(unittest.TestCase):
-    """Runs create.sh against stubbed gcloud/gh/curl to check which zones it actually tries.
+    """Runs create.sh against stubbed gcloud/gh/curl to check which zones it actually tries."""
 
-    A quota error used to abort the create outright, so a saturated region failed the matrix
-    entry instead of moving to the next one, and Slack reported it as a sync regression.
-    """
-
-    # Succeeds only in SUCCEED_ZONE; every other zone reports the message QUOTA_ERR names.
     GCLOUD_STUB = """#!/usr/bin/env bash
     zone=""
     for a in "$@"; do case "$a" in --zone=*) zone="${a#--zone=}" ;; esac; done
@@ -252,7 +236,6 @@ class CreateZoneWalkTest(unittest.TestCase):
             SUCCEED_ZONE="europe-west4-a",
         )
         self.assertEqual(code, 0, out)
-        # One probe per region: the sibling zones share the regional quota and would fail alike.
         self.assertEqual(attempts, ["europe-west1-b", "europe-west4-a"])
 
     def test_a_capacity_error_still_walks_the_sibling_zones(self):
@@ -267,7 +250,6 @@ class CreateZoneWalkTest(unittest.TestCase):
         )
 
     def test_the_standard_retry_tries_a_region_spot_found_at_quota(self):
-        # Preemptible Local SSD is a separate quota, so a SPOT wall says nothing about STANDARD.
         code, out, attempts = self.create(
             "europe-west1-b,europe-west4-a",
             PROVISIONING_MODEL="SPOT",

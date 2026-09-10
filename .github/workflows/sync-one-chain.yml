@@ -210,9 +210,7 @@ jobs:
             printf '%s' "$RUNNER_LABEL" > preempted.txt
           fi
 
-      # A reclaimed Spot VM fails the sync job exactly like a real regression, and the matrix
-      # boundary hides the difference from the caller. A marker artifact is the only per-cell
-      # channel out of a reusable workflow, because a matrix clobbers job outputs.
+      # An artifact, not a job output: a matrix clobbers outputs across its entries.
       - name: Publish the preemption marker
         if: ${{ always() && steps.destroy.outputs.preempted == 'true' }}
         uses: actions/upload-artifact@v7

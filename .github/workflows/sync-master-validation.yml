@@ -47,10 +47,7 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
-# Each run holds 4 VMs for up to 6h, all drawing on one regional Local SSD quota, so
-# unbounded overlap exhausts it and the resulting create failures page as sync regressions.
-# cancel-in-progress stays false: it would kill a running sync, which is why #12817 removed
-# the guard. Only pending runs, which hold no VM, are superseded.
+# cancel-in-progress would abandon a running sync, which is why #12817 removed this guard.
 concurrency:
   group: sync-master-validation-${{ github.event_name }}
   cancel-in-progress: false
@@ -204,9 +201,7 @@ jobs:
           jobs=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
             --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name')
 
-          # Cells whose Spot VM was reclaimed leave a marker artifact. Their jobs failed for
-          # infrastructure reasons, so they must not page; a real regression alongside one
-          # still has to.
+          # A reclaimed runner leaves a marker artifact; only unexplained failures may page.
           labels=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
             --paginate -q '.artifacts[].name | select(startswith("preempted-")) | ltrimstr("preempted-")')
           prefixes=$(jq -r --arg labels "$labels" \

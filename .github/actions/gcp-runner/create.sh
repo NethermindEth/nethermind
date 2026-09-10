@@ -41,8 +41,7 @@ cleanup_failed() {
   rm -f "$JIT_FILE"
 }
 
-# Without this, a cancelled or timed-out create step leaves an instance whose insert already
-# succeeded server-side, racing destroy.sh's lookup.
+# A cancelled create step would otherwise leave the instance it had already inserted.
 trap 'cleanup_failed; exit 143' INT TERM
 
 response=$(jq -n \
@@ -132,7 +131,7 @@ QUOTA_SEEN=""
 
 for model in "${MODELS[@]}"; do
   build_create_args "$model"
-  # Preemptible Local SSD has its own quota, so a SPOT wall says nothing about STANDARD.
+  # A SPOT quota wall says nothing about STANDARD.
   QUOTA_BLOCKED=" "
   for zone in "${ZONE_LIST[@]}"; do
     zone="${zone//[[:space:]]/}"
@@ -160,7 +159,7 @@ for model in "${MODELS[@]}"; do
       exit 1
     fi
     if grep -qE "$QUOTA_CREATE_ERR" <<<"$err"; then
-      # Local SSD and CPU quotas are regional, so the sibling zones would fail identically.
+      # Quota is per-region, so the sibling zones would fail identically.
       QUOTA_BLOCKED+="${region} "
       QUOTA_SEEN+=" ${model}/${region}"
       echo "::notice title=GCP runner::${region} is at quota for ${model}, skipping its zones"
@@ -179,9 +178,6 @@ for model in "${MODELS[@]}"; do
 done
 
 if [ -z "$CHOSEN_ZONE" ]; then
-  # Being at quota and having no capacity need different responses: the first is a quota
-  # increase or too many concurrent runs, the second is only ever transient. Naming the
-  # quota-blocked regions is what tells the two apart when both happened.
   echo "::error title=GCP runner::could not create ${MACHINE_TYPE} in any of ${ZONES}"
   if [ -n "$QUOTA_SEEN" ]; then
     echo "::error title=GCP runner::regions at quota:${QUOTA_SEEN}"

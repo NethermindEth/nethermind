@@ -4,12 +4,6 @@
 
 """Coverage for the Slack gating in sync-master-validation's notify-on-failure job.
 
-The sync networks run on Spot VMs, and a reclaimed VM fails its sync job exactly like a
-real regression. The matrix boundary flattens both to a failed entry, so before this gate
-every preemption paged as a sync regression - which is why the master path was pinned to
-on-demand VMs instead. The gate must stay conservative in the other direction too: a real
-regression alongside a preemption still has to page.
-
 The step body is read out of the workflow so the shipped code is what runs here.
 """
 
@@ -24,8 +18,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO / ".github" / "workflows" / "sync-master-validation.yml"
 
-# The `run:` extractor already written for the benchmark runners' reaper suite. Imported
-# rather than copied so a fix to the parser covers both callers.
+# Imported rather than copied so a fix to the parser covers both callers.
 sys.path.insert(0, str(REPO / "scripts" / "ci"))
 from test_reap_stale_overlays import extract_step_bodies  # noqa: E402
 
@@ -35,7 +28,6 @@ MATRIX = (
     '{"network":"gnosis","mode":"Flat","runner_label":"f-1-master-gnosis"}]'
 )
 
-# Switches on the endpoint the step asks for, so one stub serves both gh api calls.
 GH_STUB = """#!/usr/bin/env bash
 for a in "$@"; do
   case "$a" in
@@ -113,7 +105,6 @@ class NotifyGatingTest(unittest.TestCase):
         self.assertEqual(out["should_page"], "false")
 
     def test_a_real_failure_beside_a_preemption_still_pages_alone(self):
-        # The whole point of the gate: it must not swallow the regression next to the reclaim.
         out = self.collect(
             ["Sync mainnet (Flat) / sync", "Sync gnosis (Flat) / sync"],
             ["f-1-master-mainnet"],
@@ -122,7 +113,6 @@ class NotifyGatingTest(unittest.TestCase):
         self.assertEqual(out["failed_jobs"], "Sync gnosis (Flat) / sync")
 
     def test_every_job_of_a_preempted_cell_is_covered(self):
-        # A reclaim fails the sync job and can fail teardown with it; both belong to the cell.
         out = self.collect(
             ["Sync mainnet (Flat) / sync", "Sync mainnet (Flat) / destroy_runner"],
             ["f-1-master-mainnet"],
@@ -130,7 +120,6 @@ class NotifyGatingTest(unittest.TestCase):
         self.assertEqual(out["should_page"], "false")
 
     def test_the_two_modes_of_one_network_are_not_confused(self):
-        # "Sync mainnet (Flat)" must not prefix-match the HalfPath cell or vice versa.
         out = self.collect(
             ["Sync mainnet (HalfPath) / sync"], ["f-1-master-mainnet"]
         )
@@ -138,14 +127,12 @@ class NotifyGatingTest(unittest.TestCase):
         self.assertEqual(out["failed_jobs"], "Sync mainnet (HalfPath) / sync")
 
     def test_a_marker_for_an_unknown_label_silences_nothing(self):
-        # A stale or foreign artifact must not be able to suppress a page.
         out = self.collect(["Sync gnosis (Flat) / sync"], ["f-9-master-sepolia"])
         self.assertEqual(out["should_page"], "true")
         self.assertEqual(out["failed_jobs"], "Sync gnosis (Flat) / sync")
 
     def test_no_failed_jobs_still_pages_with_a_placeholder(self):
-        # Pre-existing behaviour: the job only runs when something went wrong, so an empty
-        # list means the API told us nothing, not that the run was healthy.
+        # An empty list means the API told us nothing, not that the run was healthy.
         out = self.collect([], [])
         self.assertEqual(out["should_page"], "true")
         self.assertEqual(out["failed_jobs"], "(check run for details)")
