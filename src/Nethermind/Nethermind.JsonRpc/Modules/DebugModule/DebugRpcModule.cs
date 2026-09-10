@@ -6,6 +6,7 @@ using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -328,7 +329,7 @@ public class DebugRpcModule(
     private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
     {
         GethLikeTxTrace? selected = null;
-        Exception? disposeException = null;
+        ExceptionDispatchInfo? disposeFailure = null;
         int index = 0;
         foreach (GethLikeTxTrace trace in blockTrace)
         {
@@ -344,11 +345,13 @@ public class DebugRpcModule(
             }
             catch (Exception ex)
             {
-                disposeException = disposeException is null ? ex : new AggregateException(disposeException, ex);
+                disposeFailure = disposeFailure is null
+                    ? ExceptionDispatchInfo.Capture(ex)
+                    : ExceptionDispatchInfo.Capture(new AggregateException(disposeFailure.SourceException, ex));
             }
         }
 
-        if (disposeException is null)
+        if (disposeFailure is null)
         {
             return selected;
         }
@@ -359,10 +362,11 @@ public class DebugRpcModule(
         }
         catch (Exception ex)
         {
-            disposeException = new AggregateException(disposeException, ex);
+            disposeFailure = ExceptionDispatchInfo.Capture(new AggregateException(disposeFailure.SourceException, ex));
         }
 
-        throw disposeException;
+        disposeFailure.Throw();
+        return null;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
