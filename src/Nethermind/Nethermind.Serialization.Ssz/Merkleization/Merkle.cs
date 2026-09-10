@@ -285,9 +285,9 @@ public static partial class Merkle
 
     private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
-        if (limit <= 1 && (value.Length + lastChunk.Length == 1))
+        if (limit <= 1 && value.Length + lastChunk.Length <= 1)
         {
-            root = value.Length == 0 ? lastChunk[0] : value[0];
+            root = value.Length == 1 ? value[0] : lastChunk.Length == 1 ? lastChunk[0] : UInt256.Zero;
             return;
         }
 
@@ -311,6 +311,7 @@ public static partial class Merkle
     public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
     {
         // A single-chunk tree is its own root, and an empty one is the zero chunk.
+        // With no chunks fed, CalculateRoot's final top-slot read would use unwritten scratch.
         if (limit <= 1 && value.Length <= 1)
         {
             root = value.Length == 1 ? value[0] : UInt256.Zero;
