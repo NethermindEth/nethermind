@@ -56,6 +56,20 @@ public class HistoryWalkVerificationCoordinatorTests
     private readonly List<CommitmentReclaimer> _reclaimers = [];
     private readonly List<CommitmentMetadata> _metadatas = [];
 
+    private FakeHeaders CreateEmptyHeaders(HistoryRowFormat rowFormat)
+    {
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
+        for (ulong block = 0; block <= 8; block++)
+        {
+            headers.Roots[block] = emptyRoot;
+            HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+        }
+
+        return headers;
+    }
+
     private CommitmentMetadata CreateMetadata()
     {
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
@@ -155,16 +169,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
-        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
-        FakeHeaders headers = new();
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
-        {
-            for (ulong block = 0; block <= 8; block++)
-            {
-                headers.Roots[block] = emptyRoot;
-                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
-            }
-        }
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems);
@@ -194,16 +199,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
-        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
-        FakeHeaders headers = new();
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
-        {
-            for (ulong block = 0; block <= 8; block++)
-            {
-                headers.Roots[block] = emptyRoot;
-                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
-            }
-        }
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
 
         CommitmentMetadata metadata = CreateMetadata();
         metadata.TryPublishVerifiedCoverage(0, 2, out _, out _);
@@ -231,16 +227,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
-        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
-        FakeHeaders headers = new();
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
-        {
-            for (ulong block = 0; block <= 8; block++)
-            {
-                headers.Roots[block] = emptyRoot;
-                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
-            }
-        }
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
 
         CommitmentMetadata metadata = CreateMetadata();
         metadata.MarkWalkVerified(0, 8);
@@ -266,16 +253,7 @@ public class HistoryWalkVerificationCoordinatorTests
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
-        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
-        FakeHeaders headers = new();
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
-        {
-            for (ulong block = 0; block <= 8; block++)
-            {
-                headers.Roots[block] = emptyRoot;
-                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
-            }
-        }
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
 
         CommitmentMetadata metadata = CreateMetadata();
         metadata.MarkWalkVerified(0, 5);

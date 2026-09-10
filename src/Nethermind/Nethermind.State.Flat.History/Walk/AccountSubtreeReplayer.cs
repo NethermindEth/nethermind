@@ -45,6 +45,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 {
                     AccountRowRlp.Set(state, path, start);
                     stream.LastRoot = HistoryRowScanner.StorageRootOf(start);
+                    moveCheck.OnAnchor(path, replayedUpTo, stream.LastRoot);
                 }
 
                 stream.HasRow = cursor.MoveNext();

@@ -318,20 +318,40 @@ public class HistoryWalkVerifierTests
     }
 
     [Test]
-    public void A_contract_with_a_storage_root_but_no_slot_history_fails_a_range_that_starts_above_genesis()
+    public void VerifyRange_WithNonemptyStorageAnchor_RequiresSlotHistory(
+        [Values(1, 100)] int maxRowsPerPartition,
+        [Values] bool nonceUpdate,
+        [Values] bool hasSlotHistory)
     {
         Account b0 = ThreeSlotAccount(1, ThreeSlotsV1);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 0, b0);
+        Account b2 = nonceUpdate ? ThreeSlotAccount(2, ThreeSlotsV1) : b0;
+        if (nonceUpdate) HistoryColumnsWriter.RecordAccount(_historyColumns, AddrB, block: 2, b2);
+        if (hasSlotHistory) RecordThreeSlots(block: 0, ThreeSlotsV1);
 
         FakeHeaders headers = new();
         headers.Roots[0] = StateRootOf((AddrB, b0));
         headers.Roots[1] = headers.Roots[0];
+        headers.Roots[2] = StateRootOf((AddrB, b2));
         MarkAll(headers);
 
-        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(1, 1, CancellationToken.None);
+        HistoryWalkVerdict verdict = CreateVerifier(headers, maxRowsPerPartition).VerifyRange(1, 2, CancellationToken.None);
 
-        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Does.Contain((1UL, HistoryWalkMismatchKind.MissingSlotHistory)),
-            "a range that starts above genesis never sees the block that created this contract's storage; its anchor row claims a storage root, so the rows behind that root must exist, or a contract whose entire slot history is missing passes the walk");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.EqualTo(hasSlotHistory),
+                "a nonempty storage anchor requires slot history regardless of the account row budget or nonce-only changes");
+            if (hasSlotHistory)
+            {
+                Assert.That(verdict.Mismatches, Is.Empty, "existing slot history must remain valid on both replay paths");
+            }
+            else
+            {
+                Assert.That(verdict.Mismatches,
+                    Has.Some.Matches<HistoryWalkMismatch>(static m => m.Block == 1 && m.Kind == HistoryWalkMismatchKind.MissingSlotHistory),
+                    "missing slot history must be detected at the range anchor even when account rows are streamed");
+            }
+        }
     }
 
     [Test]
