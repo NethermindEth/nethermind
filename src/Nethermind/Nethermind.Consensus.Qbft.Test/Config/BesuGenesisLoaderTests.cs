@@ -15,6 +15,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -62,7 +63,7 @@ public class BesuGenesisLoaderTests
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
         GenesisBuilder inner = new(chainSpec, specProvider, worldState, Substitute.For<ITransactionProcessor>());
-        Block genesis = new QbftGenesisBuilder(inner, QbftOnlyCodecSelector.Instance).Build();
+        Block genesis = new BftGenesisBuilder(inner, QbftOnlyCodecSelector.Instance).Build();
         Assert.That(genesis.Hash, Is.EqualTo(RbbGenesisHash));
     }
 
@@ -94,7 +95,7 @@ public class BesuGenesisLoaderTests
             """;
         ChainSpec chainSpec = Load(json);
         QbftChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<QbftChainSpecEngineParameters>();
-        QbftForksSchedule schedule = QbftForksSchedule.Create(parameters, ulong.MaxValue);
+        BftForksSchedule schedule = BftForksSchedule.Create(parameters, ulong.MaxValue);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Qbft));
@@ -109,6 +110,159 @@ public class BesuGenesisLoaderTests
             Assert.That(schedule.GetFork(20, 0).BlockReward, Is.EqualTo((Nethermind.Int256.UInt256)5));
             Assert.That(schedule.GetValidatorOverride(20), Is.EqualTo(new[] { QbftTestData.Addr(1) }));
             Assert.That(chainSpec.Parameters.MaxCodeSize, Is.EqualTo(0x6000L), "default EIP-170 limit without contractSizeLimit");
+        }
+    }
+
+    /// <summary>
+    /// Besu builds its protocol schedule from cumulative spec builders, so the milestone in force at a
+    /// block carries every earlier fork's rules whether the genesis names them or not, and it accepts
+    /// <c>constantinoplefixblock</c> as the name for Petersburg. Alastria Red B relies on both: this is
+    /// the shape of its genesis, which names no fork before Petersburg.
+    /// </summary>
+    [Test]
+    public void OmittedForksActivateWithTheEarliestForkTheGenesisDeclares()
+    {
+        const string json = """
+            {
+              "config": {
+                "chainId": 2020,
+                "constantinoplefixblock": 0,
+                "istanbulBlock": 100,
+                "berlinBlock": 200,
+                "ibft2": { "blockperiodseconds": 1, "epochlength": 30000, "requesttimeoutseconds": 10 }
+              },
+              "nonce": "0x0",
+              "timestamp": "0x0",
+              "gasLimit": "0x1000000",
+              "difficulty": "0x1",
+              "mixHash": "0x63746963616c2062797a616e74696e65206661756c7420746f6c6572616e6365",
+              "coinbase": "0x0000000000000000000000000000000000000000",
+              "alloc": {},
+              "extraData": "0xf83aa00000000000000000000000000000000000000000000000000000000000000000d594000000000000000000000000000000000000000180c0"
+            }
+            """;
+        ChainParameters parameters = Load(json).Parameters;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters.Eip1283DisableTransition, Is.EqualTo(0UL), "constantinoplefixblock names Petersburg");
+            Assert.That(parameters.Eip140Transition, Is.EqualTo(0UL), "Byzantium is in force under Petersburg");
+            Assert.That(parameters.Eip145Transition, Is.EqualTo(0UL), "so is Constantinople");
+            Assert.That(parameters.Eip2200Transition, Is.EqualTo(100UL), "Istanbul as declared");
+            Assert.That(parameters.Eip2929Transition, Is.EqualTo(200UL), "Berlin as declared");
+            Assert.That(parameters.Eip1559Transition, Is.Null, "London is not declared, so nothing activates it");
+        }
+    }
+
+    /// <summary>A fork the genesis skips over activates at the earliest later fork, not at block 0.</summary>
+    [Test]
+    public void SkippedForksDoNotFallBackToBlockZero()
+    {
+        const string json = """
+            {
+              "config": {
+                "chainId": 1337,
+                "istanbulBlock": 100,
+                "qbft": { "blockperiodseconds": 2, "epochlength": 100 }
+              },
+              "nonce": "0x0",
+              "timestamp": "0x0",
+              "gasLimit": "0x1000000",
+              "difficulty": "0x1",
+              "alloc": {},
+              "extraData": "0xf83aa00000000000000000000000000000000000000000000000000000000000000000d594000000000000000000000000000000000000000180c0"
+            }
+            """;
+        ChainParameters parameters = Load(json).Parameters;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters.Eip7Transition, Is.EqualTo(100UL), "Homestead");
+            Assert.That(parameters.Eip150Transition, Is.EqualTo(100UL), "Tangerine Whistle");
+            Assert.That(parameters.Eip140Transition, Is.EqualTo(100UL), "Byzantium");
+            Assert.That(parameters.Eip1283DisableTransition, Is.EqualTo(100UL), "Petersburg");
+        }
+    }
+
+    /// <summary>
+    /// Besu has no <c>tangerinewhistleblock</c> or <c>spuriousdragonblock</c> key: it reads those two
+    /// forks from <c>eip150block</c> and <c>eip158block</c>, so on its path those name forks rather
+    /// than single EIPs, and the forks between them and the next declared one follow from there.
+    /// </summary>
+    [Test]
+    public void BesuReadsTangerineWhistleAndSpuriousDragonFromTheirEipKeys()
+    {
+        const string json = """
+            {
+              "config": {
+                "chainId": 1337,
+                "eip150Block": 5,
+                "eip158Block": 7,
+                "berlinBlock": 100,
+                "qbft": { "blockperiodseconds": 2, "epochlength": 100 }
+              },
+              "nonce": "0x0",
+              "timestamp": "0x0",
+              "gasLimit": "0x1000000",
+              "difficulty": "0x1",
+              "alloc": {},
+              "extraData": "0xf83aa00000000000000000000000000000000000000000000000000000000000000000d594000000000000000000000000000000000000000180c0"
+            }
+            """;
+        ChainParameters parameters = Load(json).Parameters;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters.Eip150Transition, Is.EqualTo(5UL), "Tangerine Whistle");
+            Assert.That(parameters.Eip161abcTransition, Is.EqualTo(7UL), "Spurious Dragon");
+            Assert.That(parameters.Eip7Transition, Is.EqualTo(5UL), "Homestead is in force under Tangerine Whistle");
+            Assert.That(parameters.Eip140Transition, Is.EqualTo(100UL), "Byzantium follows the next declared fork");
+            Assert.That(parameters.Eip2929Transition, Is.EqualTo(100UL), "Berlin as declared");
+        }
+    }
+
+    /// <summary>Besu refuses a genesis that names Petersburg twice with different blocks.</summary>
+    [Test]
+    public void ConflictingPetersburgSpellingsAreRejected()
+    {
+        const string json = """
+            {
+              "config": {
+                "chainId": 1337,
+                "petersburgBlock": 1,
+                "constantinoplefixblock": 2,
+                "qbft": { "blockperiodseconds": 2, "epochlength": 100 }
+              },
+              "nonce": "0x0",
+              "timestamp": "0x0",
+              "gasLimit": "0x1000000",
+              "difficulty": "0x1",
+              "alloc": {}
+            }
+            """;
+        Assert.That(() => Load(json), Throws.InstanceOf<InvalidDataException>().With.Message.Contains(nameof(ConstantinopleFix)));
+    }
+
+    /// <summary>
+    /// Geth evaluates each fork on its own, so the cumulative fill above must not reach a plain Geth
+    /// genesis: one that skips Byzantium keeps it switched off.
+    /// </summary>
+    [Test]
+    public void PlainGethGenesisKeepsPerForkActivation()
+    {
+        const string json = """
+            {
+              "config": { "chainId": 5, "ethash": {}, "istanbulBlock": 100 },
+              "nonce": "0x0",
+              "timestamp": "0x0",
+              "gasLimit": "0x1000000",
+              "difficulty": "0x1",
+              "alloc": {}
+            }
+            """;
+        ChainParameters parameters = Load(json).Parameters;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parameters.Eip2200Transition, Is.EqualTo(100UL), "Istanbul as declared");
+            Assert.That(parameters.Eip140Transition, Is.Null, "Byzantium is not declared and Geth does not imply it");
+            Assert.That(parameters.Eip145Transition, Is.Null, "nor Constantinople");
         }
     }
 

@@ -27,8 +27,14 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 {
     private const string TransitionsKey = "transitions";
 
-    /// <summary>Consensus sections a Besu genesis may carry; other <c>config</c> objects are left to the Geth path.</summary>
-    private static readonly string[] _besuEngineKeys = ["qbft", "ibft2"];
+    /// <summary>Suffix of the Geth-style per-fork activation keys, e.g. <c>berlinBlock</c>.</summary>
+    private const string BlockKeySuffix = "block";
+
+    private const string QbftEngineKey = "qbft";
+    private const string Ibft2EngineKey = "ibft2";
+
+    /// <summary>Consensus sections a Besu genesis may carry, most specific first; other <c>config</c> objects are left to the Geth path.</summary>
+    private static readonly string[] _besuEngineKeys = [QbftEngineKey, Ibft2EngineKey];
 
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<GethGenesisLoader>();
 
@@ -69,8 +75,37 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
     private void LoadEngine(GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        chainSpec.EngineChainSpecParametersProvider = CreateBesuEngineProvider(config) ?? new GethGenesisEngineParametersProvider(config);
+        IChainSpecParametersProvider? besuEngine = CreateBesuEngineProvider(config);
+        if (besuEngine is not null)
+        {
+            config.FillOmittedForkBlocks();
+            WarnAboutKeysBesuIgnores(config);
+        }
+
+        chainSpec.EngineChainSpecParametersProvider = besuEngine ?? new GethGenesisEngineParametersProvider(config);
         chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+    }
+
+    /// <summary>
+    /// Logs the block-numbered fork keys a Besu genesis carries that Besu has no schedule for, so that
+    /// a fork neither client activates is not mistaken for one this loader dropped.
+    /// </summary>
+    /// <remarks>
+    /// Besu schedules Shanghai onwards by timestamp only. KalyChain's genesis carries
+    /// <c>parisBlock</c> through <c>pragueBlock</c>, all long since passed, and its blocks still carry
+    /// no withdrawals root - so the chain runs London rules and this loader must leave them off too.
+    /// </remarks>
+    private void WarnAboutKeysBesuIgnores(GethGenesisConfigJson config)
+    {
+        if (config.ExtensionData is null || !_logger.IsWarn) return;
+
+        foreach ((string key, JsonElement value) in config.ExtensionData)
+        {
+            if (value.ValueKind == JsonValueKind.Number && key.EndsWith(BlockKeySuffix, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.Warn($"Genesis config key '{key}' names no fork Besu activates by block number and is ignored. Forks from Shanghai onwards are scheduled by timestamp.");
+            }
+        }
     }
 
     /// <summary>
@@ -92,7 +127,10 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         {
             if (TryGetIgnoreCase(config.ExtensionData, key, out JsonElement value) && value.ValueKind == JsonValueKind.Object)
             {
-                engines[key] = WithBesuTransitions(key, value, config.ExtensionData);
+                engines[key] = WithBesuSiblingSections(key, value, config.ExtensionData);
+                // A chain migrated from IBFT 2.0 keeps both sections and is a QBFT chain: its qbft
+                // section carries the startblock, and the ibft2 one only describes the earlier era.
+                break;
             }
         }
 
@@ -113,24 +151,36 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         }
     }
 
-    private static JsonElement WithBesuTransitions(string engineName, JsonElement engine, Dictionary<string, JsonElement> extensionData)
+    /// <summary>
+    /// Folds the sections Besu keeps beside the engine object into it: this engine's entry under
+    /// <c>transitions</c>, and for QBFT the sibling <c>ibft2</c> section, which on a migrated chain
+    /// describes the era below <c>startblock</c>.
+    /// </summary>
+    private static JsonElement WithBesuSiblingSections(string engineName, JsonElement engine, Dictionary<string, JsonElement> extensionData)
     {
-        if (!TryGetIgnoreCase(extensionData, TransitionsKey, out JsonElement transitions) || transitions.ValueKind != JsonValueKind.Object)
-        {
-            return engine;
-        }
+        JsonObject? merged = null;
 
-        foreach (JsonProperty property in transitions.EnumerateObject())
+        if (TryGetIgnoreCase(extensionData, TransitionsKey, out JsonElement transitions) && transitions.ValueKind == JsonValueKind.Object)
         {
-            if (property.Name.Equals(engineName, StringComparison.OrdinalIgnoreCase))
+            foreach (JsonProperty property in transitions.EnumerateObject())
             {
-                JsonObject merged = JsonNode.Parse(engine.GetRawText())!.AsObject();
-                merged[TransitionsKey] = JsonNode.Parse(property.Value.GetRawText());
-                return JsonSerializer.SerializeToElement(merged);
+                if (property.Name.Equals(engineName, StringComparison.OrdinalIgnoreCase))
+                {
+                    merged ??= JsonNode.Parse(engine.GetRawText())!.AsObject();
+                    merged[TransitionsKey] = JsonNode.Parse(property.Value.GetRawText());
+                }
             }
         }
 
-        return engine;
+        if (engineName.Equals(QbftEngineKey, StringComparison.OrdinalIgnoreCase)
+            && TryGetIgnoreCase(extensionData, Ibft2EngineKey, out JsonElement ibft2)
+            && ibft2.ValueKind == JsonValueKind.Object)
+        {
+            merged ??= JsonNode.Parse(engine.GetRawText())!.AsObject();
+            merged[Ibft2EngineKey] = JsonNode.Parse(ibft2.GetRawText());
+        }
+
+        return merged is null ? engine : JsonSerializer.SerializeToElement(merged);
     }
 
     private static bool TryGetIgnoreCase(Dictionary<string, JsonElement> dictionary, string key, out JsonElement value)

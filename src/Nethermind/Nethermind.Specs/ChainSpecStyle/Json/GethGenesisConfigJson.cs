@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -49,6 +51,12 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? ByzantiumBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? ConstantinopleBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? PetersburgBlock { get => GetBlock(nameof(ConstantinopleFix)); set => SetBlock(value, nameof(ConstantinopleFix)); }
+
+    /// <summary>Besu's spelling of <see cref="PetersburgBlock"/>, which its BFT chains use in place of it.</summary>
+    /// <remarks>
+    /// Besu refuses a genesis that carries both spellings; <see cref="SetBlock"/> refuses one where they disagree.
+    /// </remarks>
+    public ulong? ConstantinopleFixBlock { get => GetBlock(nameof(ConstantinopleFix)); set => SetBlock(value, nameof(ConstantinopleFix)); }
     public ulong? IstanbulBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? MuirGlacierBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? BerlinBlock { get => GetBlock(); set => SetBlock(value); }
@@ -98,8 +106,20 @@ public class GethGenesisConfigJson : IHasNamedForks
     private void SetBlock(ulong? value, [CallerMemberName] string propertyOrForkName = "")
     {
         string forkName = StripSuffix(propertyOrForkName, "Block");
-        if (value is null) _blocks.Remove(forkName);
-        else _blocks[forkName] = value.Value;
+        if (value is null)
+        {
+            _blocks.Remove(forkName);
+            return;
+        }
+
+        if (_blocks.TryGetValue(forkName, out ulong existing) && existing != value.Value)
+        {
+            throw new InvalidConfigurationException(
+                $"Genesis config activates {forkName} at both block {existing} and block {value.Value}. Either remove one of the two keys naming this fork or align both values.",
+                ExitCodes.ConflictingChainspecEipConfiguration);
+        }
+
+        _blocks[forkName] = value.Value;
     }
 
     private ulong? GetTime([CallerMemberName] string propertyOrForkName = "")
@@ -110,6 +130,42 @@ public class GethGenesisConfigJson : IHasNamedForks
         string forkName = StripSuffix(propertyOrForkName, "Time");
         if (value is null) _timestamps.Remove(forkName);
         else _timestamps[forkName] = value.Value;
+    }
+
+    /// <summary>
+    /// Activates every pre-merge fork the config omits at the earliest later fork it does declare.
+    /// </summary>
+    /// <remarks>
+    /// Besu's protocol schedule is a chain of cumulative spec builders, so the milestone in force at a
+    /// block also carries the rules of every fork before it, named in the genesis or not. Its BFT
+    /// chains rely on that: Alastria Red B declares <c>constantinoplefixblock</c> and nothing earlier,
+    /// and RBB declares only that and <c>berlinBlock</c>. Read per-EIP, such a genesis would leave
+    /// Byzantium and Constantinople switched off forever. Geth instead evaluates each fork
+    /// independently, so only <see cref="GethGenesisLoader"/>'s Besu path applies this.
+    /// </remarks>
+    internal void FillOmittedForkBlocks()
+    {
+        // Besu has no key named after either of these two forks: it reads them from the historical
+        // per-EIP names, so on its path those are fork declarations rather than EIP-level overrides.
+        TangerineWhistleBlock ??= Eip150Block;
+        SpuriousDragonBlock ??= Eip158Block;
+
+        // HardforkLabels.All runs in fork order, so a backward walk carries the earliest declared successor.
+        ulong? successor = null;
+        for (int i = HardforkLabels.All.Count - 1; i >= 0; i--)
+        {
+            IHardforkLabel label = HardforkLabels.All[i];
+            if (label.Kind != HardforkLabelKind.Block) continue;
+
+            if (_blocks.TryGetValue(label.LabelName, out ulong declared))
+            {
+                successor = successor is { } later && later < declared ? later : declared;
+            }
+            else if (successor is { } activation)
+            {
+                _blocks[label.LabelName] = activation;
+            }
+        }
     }
 
     private static string StripSuffix(string s, string suffix) =>
