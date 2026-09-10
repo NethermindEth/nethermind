@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -324,6 +325,41 @@ public struct EvmPooledMemory
         return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
     }
 
+    /// <summary>Stores a native stack word as big-endian bytes after memory expansion gas has been charged.</summary>
+    /// <remarks>The source must not alias this memory instance, which can replace its buffer during expansion.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void StoreNativeWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
+    {
+        Debug.Assert(location.IsUint64);
+        ulong overwriteEnd = location.u0 + WordSize;
+        ulong initializedSize = _initializedSize;
+        ulong preparedInitializedSize = 0;
+        if (overwriteEnd > initializedSize)
+        {
+            if (location.u0 <= initializedSize && overwriteEnd <= GetBackingCapacity())
+            {
+                preparedInitializedSize = overwriteEnd;
+            }
+            else if (_memory is null && _inlineMemoryManager is not null && overwriteEnd <= InlineCapacity)
+            {
+                GetInlineSpan().Slice((int)initializedSize, (int)(location.u0 - initializedSize)).Clear();
+                preparedInitializedSize = overwriteEnd;
+            }
+            else
+            {
+                MaterializeArray(overwriteEnd);
+            }
+        }
+        ref byte destination = ref Unsafe.Add(ref GetBackingReference(), TruncateToInt32(location.u0));
+        ref byte source = ref MemoryMarshal.GetReference(word);
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
+        Unsafe.WriteUnaligned(ref destination, swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24))));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16))));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 8))));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24), swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref source)));
+        CommitOverwrite(preparedInitializedSize);
+    }
+
     /// <summary>Stores a 32-byte word after memory expansion gas has been charged.</summary>
     /// <remarks>
     /// <paramref name="word"/> must not alias this memory instance because preparing the destination
@@ -338,7 +374,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + WordSize;
         byte[]? memory = _memory;
-        if (memory is not null && overwriteEnd <= (ulong)memory.Length)
+        if (memory is not null)
         {
             ulong initializedSize = _initializedSize;
             if (overwriteEnd <= initializedSize)
@@ -347,7 +383,7 @@ public struct EvmPooledMemory
                 return;
             }
 
-            if (location.u0 <= initializedSize)
+            if (location.u0 <= initializedSize && overwriteEnd <= (ulong)memory.Length)
             {
                 WriteWord(memory, offset, word);
                 _initializedSize = overwriteEnd;
@@ -394,7 +430,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         ulong overwriteEnd = location.u0 + 1;
         byte[]? memory = _memory;
-        if (memory is not null && overwriteEnd <= (ulong)memory.Length && overwriteEnd <= _initializedSize)
+        if (memory is not null && overwriteEnd <= _initializedSize)
         {
             ref byte memoryData = ref MemoryMarshal.GetArrayDataReference(memory);
             Unsafe.Add(ref memoryData, offset) = value;
@@ -687,7 +723,8 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureRented(ulong requiredEnd)
     {
-        if (requiredEnd > GetBackingCapacity() || requiredEnd > _initializedSize)
+        Debug.Assert(_initializedSize <= GetBackingCapacity());
+        if (requiredEnd > _initializedSize)
         {
             RentSlow(requiredEnd);
         }
