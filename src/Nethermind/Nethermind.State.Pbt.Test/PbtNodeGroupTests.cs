@@ -707,7 +707,6 @@ public class PbtNodeGroupTests
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, memory);
         try
         {
-            reader.Position(rootPath);
             Assert.That(reader.CopyRange(writer, 0, 0), Is.Zero);
             using (Assert.EnterMultipleScope())
             {
@@ -721,11 +720,11 @@ public class PbtNodeGroupTests
                 case 0: reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition); break;
                 case 1: reader.CopyRange(writer, 0, PbtNodeGroupCodec.PositionCount); break;
                 case 2:
-                    using (reader.Acquire(PbtFourLevelGroupGeometry.RootPosition, rootPath)) { }
+                    using (reader.Acquire(PbtFourLevelGroupGeometry.RootPosition)) { }
                     break;
             }
             Assert.That(reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition).ToArray(), Is.EqualTo(present ? encoding : Array.Empty<byte>()));
-            using (TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition, rootPath))
+            using (TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition))
                 Assert.That(node.IsEmpty, Is.EqualTo(!present));
             using (Assert.EnterMultipleScope())
             {
@@ -738,6 +737,44 @@ public class PbtNodeGroupTests
         writer.Dispose();
         store.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Group_frames_materialize_only_branch_anchors(
+        [Values(0, 4, 8, 244)] int groupDepth, [Range(0, 29)] int position, [Values] bool leaf)
+    {
+        using PbtNodeGroupStore store = new();
+        PbtStorageNodePath groupKey = PbtNodePathOperations.FromKey<PbtStorageNodePath>(Bytes.FromHexString(new string('A', 62)), groupDepth);
+        PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+        byte[] key = new byte[32];
+        path.CopyBitsTo(0, key, 0, path.BitDepth);
+        byte[] encoding = leaf
+            ? PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key), Value(1))
+            : PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+        store.SetNode(path, encoding);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, PooledRefCountingMemoryProvider.Instance);
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = default;
+        try
+        {
+            node = reader.Take(writer, position);
+            Assert.That(node.Path, Is.EqualTo(leaf ? (PbtStorageNodePath?)null : path));
+            using TrieUpdater<PbtFullKey, PbtNodePath>.Subtree converted = TrieUpdater<PbtFullKey, PbtNodePath>.Subtree.TakeFrom(ref node);
+            byte[] actual = new byte[converted.EncodedLength(path.BitDepth)];
+            converted.Encode(actual, path.BitDepth);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.IsEmpty, Is.True);
+                Assert.That(converted.IsLeaf, Is.EqualTo(leaf));
+                Assert.That(converted.Path, Is.EqualTo(leaf ? (PbtNodePath?)null : path.ToPath<PbtNodePath>()));
+                Assert.That(actual, Is.EqualTo(encoding));
+            }
+        }
+        finally
+        {
+            node.Dispose();
+            reader.Dispose();
+        }
     }
 
     [Test]
@@ -815,19 +852,19 @@ public class PbtNodeGroupTests
         {
             if (scenario == 2)
             {
-                original = reader.Take(writer, rootPath);
+                original = reader.Take(writer, PbtFourLevelGroupGeometry.RootPosition);
                 entry = new(ref original);
                 Assert.That(original.IsEmpty, Is.True, "entry takes ownership rather than copying the lease");
             }
             else if (scenario != 0)
-                entry = new(new ValueHash256(Value(1)), rootPath);
+                entry = new(new ValueHash256(Value(1)), PbtFourLevelGroupGeometry.RootPosition);
 
             if (consume)
             {
                 if (scenario == 3)
                 {
                     Assert.Throws<InvalidDataException>(() => entry.TakeSubtree(ref reader, writer));
-                    Assert.That(entry.SourcePath, Is.EqualTo(rootPath), "failed acquisition retains the path");
+                    Assert.That(entry.SourcePosition, Is.EqualTo(PbtFourLevelGroupGeometry.RootPosition), "failed acquisition retains the position");
                 }
                 else
                 {
@@ -835,12 +872,12 @@ public class PbtNodeGroupTests
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(entry.IsEmpty, Is.True);
-                        Assert.That(entry.SourcePath, Is.Null);
+                        Assert.That(entry.SourcePosition, Is.EqualTo(-1));
                         Assert.That(result.IsEmpty, Is.EqualTo(scenario == 0));
                         Assert.That(reader.Taken, Is.EqualTo(scenario == 0 ? 0u : 1u << 30));
                     }
                     using TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree second = entry.TakeSubtree(ref reader, writer);
-                    Assert.That(second.IsEmpty, Is.True, "consumption clears ownership and deferred paths");
+                    Assert.That(second.IsEmpty, Is.True, "consumption clears ownership and deferred positions");
                     if (!result.IsEmpty) Assert.That(result.IsLeaf, Is.True);
                 }
             }
@@ -890,7 +927,7 @@ public class PbtNodeGroupTests
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
         try
         {
-            root = reader.Take(writer, rootPath);
+            root = reader.Take(writer, PbtFourLevelGroupGeometry.RootPosition);
             uint frontierMask = 0;
             TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Decompose(ref reader, writer, ref root, 0, frontier, ref frontierMask, touchedMask);
             uint expectedTaken = 1u << 30;
@@ -907,7 +944,7 @@ public class PbtNodeGroupTests
                 Assert.That(frontier[slot].IsEmpty, Is.EqualTo(position == -1), $"compact slot {slot}");
                 if (position == -1) continue;
                 actualFrontier |= 1u << position;
-                if (frontier[slot].SourcePath is not null) actualReferences |= 1u << position;
+                if (frontier[slot].SourcePosition >= 0) actualReferences |= 1u << frontier[slot].SourcePosition;
             }
             using (Assert.EnterMultipleScope())
             {

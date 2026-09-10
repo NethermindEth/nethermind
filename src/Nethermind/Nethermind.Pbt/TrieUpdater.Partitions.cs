@@ -81,7 +81,7 @@ public static partial class TrieUpdater
                     touchedRootMask |= 1 << (worker.Zone >> 4);
                     touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
                 }
-                Subtree root = rootReader.Take(rootWriter, RootPath, allowAbsent: true);
+                Subtree root = rootReader.Take(rootWriter, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true);
                 try { Decompose(ref rootReader, rootWriter, ref root, 0, rootBoundaries.AsSpan(), ref rootFrontierMask, touchedRootMask); }
                 finally { root.Dispose(); }
                 foreach (PartitionFold worker in workers)

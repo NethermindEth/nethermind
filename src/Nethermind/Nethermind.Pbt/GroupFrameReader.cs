@@ -79,7 +79,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
-    internal TrieUpdater<TKey, TPath>.Subtree Acquire(int position, TPath path)
+    internal TrieUpdater<TKey, TPath>.Subtree Acquire(int position)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(position);
         if (encoding.IsEmpty)
@@ -88,8 +88,9 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
             if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
             ValueHash256 left = GetHash(position - width);
             ValueHash256 right = GetHash(position - 1);
-            return left == default || right == default ? default : new(path, left, right);
+            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.PathOf(GroupKey, position), left, right);
         }
+        TPath? path = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? null : PbtFourLevelGroupGeometry.PathOf(GroupKey, position);
         _lease!.AcquireLease();
         try { return new(_lease, encoding, path); }
         catch
@@ -123,13 +124,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return hash;
     }
 
-    internal int Position(TPath path)
-    {
-        Debug.Assert(PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth) == BitDepth
-            && path.MatchesPrefix(GroupKey, BitDepth), "The PBT node does not belong to the active group.");
-        return PbtFourLevelGroupGeometry.PositionOf(path);
-    }
-
     public void Dispose()
     {
         ((IDisposable?)_lease)?.Dispose();
@@ -154,12 +148,11 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         private int _element;
     }
 
-    internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter<TPath> writer, TPath path, bool allowAbsent = false)
+    internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter<TPath> writer, int position, bool allowAbsent = false)
     {
-        int position = Position(path);
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         TrieUpdater<TKey, TPath>.Subtree node = (Taken & (1U << position)) == 0
-            ? Acquire(position, path)
+            ? Acquire(position)
             : default;
         if (node.IsEmpty && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
         Taken |= 1U << position;

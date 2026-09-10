@@ -84,7 +84,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         try
         {
             using PbtNodeGroupWriter<TPath> writer = new(RootPath, memoryProvider);
-            Subtree root = reader.Take(writer, RootPath, allowAbsent: true);
+            Subtree root = reader.Take(writer, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true);
             Subtree result = default;
             try
             {
@@ -138,7 +138,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 {
                     PbtWriteOperation<TKey> operation = operations[0];
                     if (operation.Key.Equals(current.Key))
-                        return operation.Value == default ? default : new Subtree(operation, current.Path);
+                        return operation.Value == default ? default : new Subtree(operation);
                     if (operation.Value == default) return Subtree.Move(ref current);
                 }
             }
@@ -435,49 +435,46 @@ internal static partial class TrieUpdater<TKey, TPath>
             return;
         }
 
-        DecompositionEntry left = new(current.LeftHash, current.Path!.Value.Append(current.Prefix, 0));
-        DecompositionEntry right = new(current.RightHash, current.Path!.Value.Append(current.Prefix, 1));
+        ValueHash256 left = current.LeftHash;
+        ValueHash256 right = current.RightHash;
         current.Dispose();
-        DecomposeChild(ref reader, writer, ref left, bitDepth, frontier, ref frontierMask, touchedMask);
-        DecomposeChild(ref reader, writer, ref right, bitDepth, frontier, ref frontierMask, touchedMask);
+        DecomposeChild(ref reader, writer, left, branchSlot, effectiveLevel + 1, bitDepth, frontier, ref frontierMask, touchedMask);
+        DecomposeChild(ref reader, writer, right, branchSlot + branchWidth / 2, effectiveLevel + 1, bitDepth, frontier, ref frontierMask, touchedMask);
     }
 
     private static void DecomposeChild(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
-        ref DecompositionEntry child, int bitDepth, Span<DecompositionEntry> frontier, ref uint frontierMask, int touchedMask)
+        ValueHash256 hash, int slot, int level, int bitDepth, Span<DecompositionEntry> frontier, ref uint frontierMask, int touchedMask)
     {
-        if (child.IsEmpty) return;
-        TPath path = child.SourcePath!.Value;
-        int level = path.BitDepth - bitDepth;
-        int slot = level == 0 ? 0 : ((path.GetByte(bitDepth >> 3) >> (4 - (bitDepth & 4))) & 0xF) & (0xF << (4 - level));
+        if (hash == default) return;
         int width = 16 >> level;
+        int position = 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
         if (level == 4 || (touchedMask & (((1 << width) - 1) << slot)) == 0)
         {
-            int position = 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
-            frontier[slot] = child;
+            frontier[slot] = new(hash, position);
             frontierMask |= 1u << position;
-            child = default;
             return;
         }
 
-        Subtree subtree = child.TakeSubtree(ref reader, writer);
+        Subtree subtree = reader.Take(writer, position);
         try { Decompose(ref reader, writer, ref subtree, bitDepth, frontier, ref frontierMask, touchedMask); }
         finally { subtree.Dispose(); }
     }
 
-    /// <summary>Owns a materialized frontier node or retains a non-owning source path for deferred acquisition.</summary>
+    /// <summary>Owns a materialized frontier node or retains a non-owning group position for deferred acquisition.</summary>
     internal struct DecompositionEntry : IDisposable
     {
         private Subtree _subtree;
-        internal TPath? SourcePath { get; private set; }
-        internal readonly bool IsEmpty => SourcePath is null && _subtree.IsEmpty;
+        private readonly byte _sourcePositionPlusOne;
+        internal readonly int SourcePosition => _sourcePositionPlusOne - 1;
+        internal readonly bool IsEmpty => _sourcePositionPlusOne == 0 && _subtree.IsEmpty;
 
-        internal DecompositionEntry(ValueHash256 hash, TPath path) => SourcePath = hash == default ? null : path;
+        internal DecompositionEntry(ValueHash256 hash, int position) => _sourcePositionPlusOne = hash == default ? (byte)0 : (byte)(position + 1);
 
         internal DecompositionEntry(ref Subtree subtree) => _subtree = Subtree.Move(ref subtree);
 
         internal Subtree TakeSubtree(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer)
         {
-            Subtree subtree = SourcePath is { } path ? reader.Take(writer, path) : Subtree.Move(ref _subtree);
+            Subtree subtree = _sourcePositionPlusOne != 0 ? reader.Take(writer, SourcePosition) : Subtree.Move(ref _subtree);
             this = default;
             return subtree;
         }
@@ -515,7 +512,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         private readonly ValueHash256 _valueOrLeft;
         private readonly ValueHash256 _right;
 
-        internal Subtree(RefCountingMemory lease, ReadOnlyMemory<byte> encoding, TPath path)
+        internal Subtree(RefCountingMemory lease, ReadOnlyMemory<byte> encoding, TPath? path)
         {
             _lease = lease;
             _kind = NodeKind.Original;
@@ -523,12 +520,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             Path = path;
         }
 
-        internal Subtree(PbtWriteOperation<TKey> operation, TPath? path = null)
+        internal Subtree(PbtWriteOperation<TKey> operation)
         {
             _kind = NodeKind.Leaf;
             _key = operation.Key;
             _valueOrLeft = operation.Value;
-            Path = path;
         }
 
         internal Subtree(TPath path, in ValueHash256 left, in ValueHash256 right)
@@ -556,13 +552,13 @@ internal static partial class TrieUpdater<TKey, TPath>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
             TKey key = default;
+            TPath? path = null;
             if (source.IsLeaf)
             {
                 TSourceKey sourceKey = source.Key;
                 key = TKey.Create(sourceKey.Bytes);
             }
-            TPath? path = null;
-            if (source.Path is { } sourcePath)
+            else if (source.Path is { } sourcePath)
             {
                 path = sourcePath.ToPath<TPath>();
             }
