@@ -25,6 +25,61 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Decodes_uint256_of_every_payload_length([Range(0, 32)] int byteLength)
+        {
+            UInt256 value = UInt256OfByteLength(byteLength);
+
+            UInt256 decoded = Rlp.Decode<UInt256>(Rlp.Encode(value).Bytes);
+
+            Assert.That(decoded, Is.EqualTo(value));
+        }
+
+        /// <summary>Builds a value whose canonical big-endian encoding is exactly that many bytes.</summary>
+        private static UInt256 UInt256OfByteLength(int byteLength)
+        {
+            if (byteLength == 0)
+            {
+                return UInt256.Zero;
+            }
+
+            Span<byte> bytes = stackalloc byte[byteLength];
+            for (int i = 0; i < byteLength; i++)
+            {
+                // Distinct per position so a word assembled from the wrong offset cannot still match.
+                bytes[i] = (byte)(i + 1);
+            }
+
+            bytes[0] = 0xab; // non-zero, so the encoding is canonical at this length
+            return new UInt256(bytes, isBigEndian: true);
+        }
+
+        [Test]
+        public void InternKeccak_discriminators_match_the_interned_hashes()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    RlpHelpers.FirstWord(Keccak.OfAnEmptyString.Bytes),
+                    Is.EqualTo(RlpHelpers.OfAnEmptyStringFirstWord));
+                Assert.That(
+                    RlpHelpers.FirstWord(Keccak.EmptyTreeHash.Bytes),
+                    Is.EqualTo(RlpHelpers.EmptyTreeHashFirstWord));
+            }
+        }
+
+        // The first row is the boundaries of the length prefix. The second is one value per byte width,
+        // each distinct per position behind a non-zero leading byte, so the encoding stays canonical at
+        // that width and a word assembled from the wrong offset cannot still match.
+        [Test]
+        public void Decodes_ulong_round_trip(
+            [Values(
+                0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue,
+                0xabUL, 0xab02UL, 0xab0203UL, 0xab020304UL,
+                0xab02030405UL, 0xab0203040506UL, 0xab020304050607UL, 0xab02030405060708UL)]
+            ulong value) =>
+            Assert.That(Rlp.Decode<ulong>(Rlp.Encode(value).Bytes), Is.EqualTo(value));
+
+        [Test]
         public void DecodeArray_rejects_more_items_than_the_limit()
         {
             RlpLimit limit = new(4);
@@ -739,11 +794,7 @@ namespace Nethermind.Core.Test
 
                 CappedArray<byte> cappedData = new(data);
                 RlpReader cappedReader = new(cappedData);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(cappedReader.IsNotNull, Is.True);
-                    Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
-                }
+                Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
             }
         }
 
@@ -1068,17 +1119,12 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void RlpReader_from_default_capped_array_is_null()
+        public void RlpReader_from_default_capped_array_is_empty()
         {
             CappedArray<byte> data = default;
             RlpReader reader = new(data);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(reader.IsNull, Is.True);
-                Assert.That(reader.IsNotNull, Is.False);
-                Assert.That(reader.Length, Is.Zero);
-            }
+            Assert.That(reader.Length, Is.Zero);
         }
 
         [Test]

@@ -81,13 +81,11 @@ public class StorageProviderTests(bool useFlat)
 
     [Test]
     [NonParallelizable]
-    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
+    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned([Values(1_024, 16_384)] int changeCount)
     {
-        const int ChangeCount = 1_024;
-
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        for (int i = 0; i < ChangeCount; i++)
+        for (int i = 0; i < changeCount; i++)
         {
             provider.Set(new StorageCell(ctx.Address1, (UInt256)i), _values[1]);
         }
@@ -103,6 +101,7 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(capacityBeforeReturn, Is.GreaterThan(512));
             Assert.That(GetCapacity(blockChange), Is.GreaterThan(0));
             Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReturn));
+            Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
         }
     }
 

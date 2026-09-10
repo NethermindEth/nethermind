@@ -59,14 +59,11 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Block? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int blockCheck = decoderContext.Position + sequenceLength;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int blockCheck = position + sequenceLength;
+            decoderContext.Position = position;
 
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
