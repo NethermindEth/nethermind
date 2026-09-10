@@ -46,7 +46,7 @@ static class Program
             else
             {
                 failed++;
-                Console.WriteLine($"{Path.GetFileNameWithoutExtension(input)}: expected {Convert.ToHexStringLower(expected)[..Math.Min(32, expected.Length * 2)]}, got {Convert.ToHexStringLower(actual)[..Math.Min(32, actual.Length * 2)]}");
+                Console.WriteLine($"{Path.GetFileNameWithoutExtension(input)}: expected {Convert.ToHexStringLower(expected)}, got {Convert.ToHexStringLower(actual)}");
             }
         }
         clock.Stop();

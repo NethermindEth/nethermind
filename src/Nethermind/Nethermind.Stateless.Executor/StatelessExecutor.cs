@@ -74,6 +74,7 @@ public static class StatelessExecutor
         }
         catch (Exception ex)
         {
+            if (Environment.GetEnvironmentVariable("NETHERMIND_RUST_EVM_DEBUG") is "1") Console.Error.WriteLine($"execution threw: {ex}");
             Debug.Fail(ex.Message);
         }
 
@@ -139,6 +140,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
+            if (Environment.GetEnvironmentVariable("NETHERMIND_RUST_EVM_DEBUG") is "1") Console.Error.WriteLine($"processed block invalid: {error}");
             Debug.Fail(error);
             return false;
         }
