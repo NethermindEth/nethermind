@@ -31,7 +31,12 @@
   <Target Name="_GenerateRpcJsonSerializerContext"
     BeforeTargets="CoreCompile"
     DependsOnTargets="ResolveReferences"
-    Condition="'$(GenerateRpcJsonContext)' == 'true'">
+    Condition="'$(GenerateRpcJsonContext)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+
+    <Error Condition="'@(_RpcJsonContextGeneratorTool->Count())' != '1'"
+      Text="Expected exactly one RPC JSON context generator tool. Enable Nethermind.JsonRpc.SourceGenerator.Build in the solution configuration and build project references." />
+    <Error Condition="!Exists('%(_RpcJsonContextGeneratorTool.FullPath)')"
+      Text="RPC JSON context generator is missing: %(_RpcJsonContextGeneratorTool.FullPath). Build Nethermind.JsonRpc.SourceGenerator.Build before building without project references." />
 
     <PropertyGroup>
       <_RpcJsonContextOutputDir>$(IntermediateOutputPath)RpcJsonSourceGeneration\</_RpcJsonContextOutputDir>
@@ -48,7 +53,7 @@
       <_DotnetHost Condition="'$(_DotnetHost)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</_DotnetHost>
       <_DotnetHost Condition="'$(_DotnetHost)' == ''">dotnet</_DotnetHost>
     </PropertyGroup>
-    <Exec Command="&quot;$(_DotnetHost)&quot; &quot;@(_RpcJsonContextGeneratorTool)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
+    <Exec Command="&quot;$(_DotnetHost)&quot; &quot;%(_RpcJsonContextGeneratorTool.FullPath)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
 
     <ItemGroup>
       <FileWrites Include="$(_RpcJsonContextSourcesFile)" />

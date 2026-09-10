@@ -45,10 +45,12 @@ jobs:
       - name: Build ${{ matrix.solution }}.slnx
         env:
           DIAG_DIR: ${{ runner.temp }}/stall-diagnostics
+          # A single project can legitimately compile silently for several minutes.
+          STALL_SECONDS: 900
           MSBUILDDEBUGPATH: ${{ runner.temp }}/msbuild-debug
           # Names the build requests each node is blocked on, which is what identifies a scheduler
           # deadlock. Costs no measurable build time but writes ~0.5 GB, so it is limited to the
-          # solution that has deadlocked; the binary log covers the others.
+          # solution that has deadlocked. Remove scheduler tracing after the fix has proven stable.
           MSBUILDDEBUGSCHEDULER: ${{ matrix.solution == 'EthereumTests' && 1 || '' }}
         run: >
           bash scripts/ci/run-with-stall-watchdog.sh

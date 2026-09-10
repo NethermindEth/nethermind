@@ -17,14 +17,17 @@ set -uo pipefail
 
 STALL_SECONDS="${STALL_SECONDS:-300}"
 DIAG_DIR="${DIAG_DIR:-${RUNNER_TEMP:-/tmp}/stall-diagnostics}"
-POLL_SECONDS=15
+POLL_SECONDS="${POLL_SECONDS:-15}"
+DIAGNOSTIC_SECONDS="${DIAGNOSTIC_SECONDS:-120}"
+INSTALL_TIMEOUT_SECONDS="${INSTALL_TIMEOUT_SECONDS:-30}"
+STACK_TIMEOUT_SECONDS="${STACK_TIMEOUT_SECONDS:-10}"
 
 mkdir -p "$DIAG_DIR"
 log="$DIAG_DIR/command.log"
 : > "$log"
 
 # setsid puts the command in its own process group so a stall can take the whole tree down.
-setsid "$@" > "$log" 2>&1 &
+setsid --wait bash -c 'printf "%s\n" "$$" > "$1"; shift; exec "$@"' bash "$DIAG_DIR/command.pid" "$@" > "$log" 2>&1 &
 command_pid=$!
 
 # --pid makes tail drain the log and exit once the command is gone.
@@ -44,11 +47,15 @@ collect_diagnostics() {
     } > "$DIAG_DIR/system.txt" 2>&1
 
     # Managed stacks show which target or task each MSBuild node and the compiler server sit in.
-    dotnet tool install --global dotnet-stack > "$DIAG_DIR/dotnet-stack-install.log" 2>&1
+    local deadline=$((SECONDS + DIAGNOSTIC_SECONDS))
+    timeout --kill-after=1s "${INSTALL_TIMEOUT_SECONDS}s" dotnet tool install --global dotnet-stack > "$DIAG_DIR/dotnet-stack-install.log" 2>&1 || true
     export PATH="$PATH:$HOME/.dotnet/tools"
     if command -v dotnet-stack > /dev/null; then
         for pid in $(pgrep -x 'dotnet|VBCSCompiler'); do
-            dotnet-stack report --process-id "$pid" > "$DIAG_DIR/stack-$pid.txt" 2>&1
+            local remaining=$((deadline - SECONDS))
+            ((remaining > 0)) || break
+            ((remaining > STACK_TIMEOUT_SECONDS)) && remaining=$STACK_TIMEOUT_SECONDS
+            timeout --kill-after=1s "${remaining}s" dotnet-stack report --process-id "$pid" > "$DIAG_DIR/stack-$pid.txt" 2>&1 || true
         done
     fi
 
@@ -56,17 +63,20 @@ collect_diagnostics() {
         mkdir -p "$DIAG_DIR/msbuild-debug"
         # SchedulerState grows to hundreds of MB; only its tail describes the wedged build.
         for file in "$MSBUILDDEBUGPATH"/*; do
+            [[ -f "$file" ]] || continue
             tail -c 5000000 "$file" > "$DIAG_DIR/msbuild-debug/$(basename "$file")"
         done
     fi
 
-    # SIGTERM first so MSBuild gets to close its binary log.
-    kill -- "-$command_pid" 2>/dev/null || kill "$command_pid" 2>/dev/null
+    # A stalled build's binlog may be truncated; stacks and scheduler logs are the primary evidence.
+    local command_group
+    command_group=$(cat "$DIAG_DIR/command.pid")
+    kill -- "-$command_group" 2>/dev/null || kill "$command_pid" 2>/dev/null
     for _ in $(seq 30); do
         kill -0 "$command_pid" 2>/dev/null || return
         sleep 1
     done
-    kill -9 -- "-$command_pid" 2>/dev/null || kill -9 "$command_pid" 2>/dev/null
+    kill -9 -- "-$command_group" 2>/dev/null || kill -9 "$command_pid" 2>/dev/null
 }
 
 last_size=-1
