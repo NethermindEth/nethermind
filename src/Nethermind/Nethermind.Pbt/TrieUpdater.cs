@@ -248,6 +248,40 @@ internal static partial class TrieUpdater<TKey, TPath>
         finally { current.Dispose(); }
     }
 
+    private static Subtree FoldBoundaryFromPartition(
+        IPbtStore store,
+        TrieUpdaterMetrics? metrics,
+        ref GroupFrameReader<TKey, TPath> reader,
+        PbtNodeGroupWriter writer,
+        IRefCountingMemoryProvider memoryProvider,
+        ref Subtree current,
+        Span<PbtWriteOperation<TKey>> operations,
+        int bitDepth,
+        PartitionOutcome partition)
+    {
+        RefList16<Subtree> boundaryBuffer = new(PbtFourLevelGroupGeometry.BoundarySlots);
+        Span<Subtree> boundaries = boundaryBuffer.AsSpan();
+        try
+        {
+            Decompose(ref reader, writer, ref current, bitDepth, boundaries);
+
+            int offset = 0;
+            int countIndex = 0;
+            for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(mask);
+                int count = partition.Counts[countIndex++];
+                Span<PbtWriteOperation<TKey>> bucket = operations.Slice(offset, count);
+                offset += count;
+                boundaries[slot] = FoldMutations(
+                    store, metrics, ref reader, writer, memoryProvider, ref boundaries[slot], bucket, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
+            }
+
+            return Compose(ref reader, writer, metrics, boundaries, partition.UsedMask);
+        }
+        finally { Dispose(boundaries); }
+    }
+
     internal static Subtree Compose(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, TrieUpdaterMetrics? metrics, Span<Subtree> boundaries, int touchedMask)
     {
         int occupied = 0;
