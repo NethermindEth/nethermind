@@ -46,16 +46,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, logsRlpLimit.Limit + 1);
-        Rlp.GuardLimit(numberOfReceipts, (lastCheck - ctx.Position) / LogEntryDecoder.MinEncodedLength, logsRlpLimit);
-        LogEntry[] entries = new LogEntry[numberOfReceipts];
-        for (int i = 0; i < numberOfReceipts; i++)
-        {
-            entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-        }
-
-        txReceipt.Logs = entries;
+        txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
         // Handle any remaining extra bytes
         bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;

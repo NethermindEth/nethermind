@@ -21,11 +21,17 @@ internal class EraSlimReceiptDecoderTests
     // Pre-Byzantium: the "status" field is a 32-byte PostTransactionState (state root), not a status code.
     // Post-Byzantium (EIP-658): the "status" field is 0x00 or 0x01 (1 byte).
 
-    // Comfortably under RlpLimit.ReceiptLogs, but far more logs than the bytes declaring them could hold.
-    private const int UnbackedLogCount = 1_000;
-
     // Arbitrary - no test reads it back, it only has to be a well-formed cumulative gas item.
     private const ulong GasUsedTotal = 21000;
+
+    // Far more receipts than the bytes declaring them could hold.
+    private const int UnbackedReceiptCount = 1_000;
+
+    // The cheapest item a receipt count can be built from, and one no decoder accepts as a receipt.
+    private static readonly byte[] UnbackedReceipt = [0xc0];
+
+    // ["", "", "", []] - the smallest slim receipt: tx type, status, cumulative gas and no logs.
+    private static readonly byte[] MinimalReceipt = [0xc4, 0x80, 0x80, 0x80, 0xc0];
 
     [Test]
     public void Decode_GethFormat_PreByzantium_SetsPostTransactionStateNotStatusCode()
@@ -131,7 +137,7 @@ internal class EraSlimReceiptDecoderTests
     [Test]
     public void Decode_GethFormat_LogCountTheArchiveCannotHold_Throws()
     {
-        byte[] encoded = EncodeGethReceiptArchive(ReceiptRlpBuilder.Repeat(UnbackedLogCount));
+        byte[] encoded = EncodeGethReceiptArchive(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount));
 
         Action act = () => new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
 
@@ -141,11 +147,46 @@ internal class EraSlimReceiptDecoderTests
     [Test]
     public void Decode_GethFormat_LogListOfSmallestPossibleEntries_Decodes()
     {
-        byte[] encoded = EncodeGethReceiptArchive(ReceiptRlpBuilder.Repeat(UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+        byte[] encoded = EncodeGethReceiptArchive(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
 
         TxReceipt[] receipts = new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
 
-        Assert.That(receipts[0].Logs, Has.Length.EqualTo(UnbackedLogCount));
+        Assert.That(receipts[0].Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
+    }
+
+    [Test]
+    public void Decode_GethFormat_ReceiptCountTheArchiveCannotHold_Throws()
+    {
+        byte[] encoded = RepeatInSequence(UnbackedReceipt, UnbackedReceiptCount);
+
+        Action act = () => new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
+
+        Assert.That(act, Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void Decode_GethFormat_ReceiptListOfSmallestPossibleEntries_Decodes()
+    {
+        byte[] encoded = RepeatInSequence(MinimalReceipt, UnbackedReceiptCount);
+
+        TxReceipt[] receipts = new EraSlimReceiptDecoder().Decode(encoded.AsMemory());
+
+        Assert.That(receipts, Has.Length.EqualTo(UnbackedReceiptCount));
+    }
+
+    /// <summary>Builds an archive of identical, already-encoded receipts.</summary>
+    private static byte[] RepeatInSequence(ReadOnlySpan<byte> receipt, int receiptCount)
+    {
+        int contentLength = receipt.Length * receiptCount;
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        for (int i = 0; i < receiptCount; i++)
+        {
+            receipt.CopyTo(bytes.AsSpan(writer.Position + i * receipt.Length));
+        }
+
+        return bytes;
     }
 
     /// <summary>

@@ -31,8 +31,9 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     /// <remarks>
     /// A log costs at least <see cref="GasCostOf.Log"/> and a receipt's logs all come from one
     /// transaction, whose gas cannot exceed the block's, so <see cref="MaxBlockGas"/> bounds the count.
-    /// Clamped because the configured ceiling is unbounded. Recomputed by
-    /// <see cref="InitMaxBlockGas"/> rather than derived per read - receipt decoding is a hot path.
+    /// Clamped because the configured ceiling is unbounded; one below <see cref="int.MaxValue"/> so
+    /// that the <c>Limit + 1</c> peek idiom cannot wrap. Recomputed by <see cref="InitMaxBlockGas"/>
+    /// rather than derived per read - receipt decoding is a hot path.
     /// </remarks>
     public static RlpLimit ReceiptLogs { get; private set; } = ForReceiptLogs(DefaultMaxBlockGas);
 
@@ -43,7 +44,7 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     }
 
     private static RlpLimit ForReceiptLogs(ulong maxBlockGas) =>
-        For<TxReceipt>((int)ulong.Min(maxBlockGas / GasCostOf.Log + 1, int.MaxValue), nameof(TxReceipt.Logs));
+        For<TxReceipt>((int)ulong.Min(maxBlockGas / GasCostOf.Log + 1, int.MaxValue - 1), nameof(TxReceipt.Logs));
 
     public RlpLimit() : this((int)4.MiB) { }
 

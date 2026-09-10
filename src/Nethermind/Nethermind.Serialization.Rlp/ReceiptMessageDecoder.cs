@@ -54,16 +54,8 @@ namespace Nethermind.Serialization.Rlp
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int logsLength);
             int lastCheck = position + logsLength;
 
-            RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
-            int numberOfReceipts = RlpHelpers.CountItems(rlp, position, lastCheck, logsRlpLimit.Limit + 1);
-            Rlp.GuardLimit(numberOfReceipts, (lastCheck - position) / LogEntryDecoder.MinEncodedLength, logsRlpLimit);
-            LogEntry[] entries = new LogEntry[numberOfReceipts];
             ctx.Position = position;
-            for (int i = 0; i < numberOfReceipts; i++)
-            {
-                entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-            }
-            txReceipt.Logs = entries;
+            txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
             // Handle any remaining extra bytes
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
