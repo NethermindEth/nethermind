@@ -45,9 +45,10 @@ namespace Nethermind.Consensus.Processing
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
-                // No more gas available in block for any transactions,
-                // the only case we have to really stop
-                if (GasCostOf.Transaction > gasRemaining)
+                // No more gas available in block for any transactions, the only case we have to really stop. An
+                // EIP-8141 frame transaction reserves from its own lower intrinsic cost, so the legacy floor gates the spec read.
+                if (GasCostOf.Transaction > gasRemaining
+                    && (!_specProvider.GetSpec(block.Header).IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
                 {
                     return args.Set(TxAction.Stop, "Block full");
                 }

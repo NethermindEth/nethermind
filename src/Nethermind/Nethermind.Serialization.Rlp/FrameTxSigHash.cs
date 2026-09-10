@@ -14,8 +14,17 @@ public static class FrameTxSigHash
 {
     private static readonly FrameTxDecoder<Transaction> Decoder = new();
 
+    /// <summary>The digest a canonical-hash signature entry of <paramref name="transaction"/> signs.</summary>
+    /// <remarks>Allocates; prefer <see cref="ComputeValue"/> on the verification path, which this wraps.</remarks>
     public static Hash256 Compute(Transaction transaction) => new(ComputeValue(transaction));
 
+    /// <summary>The digest a canonical-hash signature entry of <paramref name="transaction"/> signs.</summary>
+    /// <remarks>
+    /// The preimage elides the <see cref="TxFrameSignature.Signature"/> bytes of canonical-hash entries alone, so
+    /// every such entry of one transaction shares this digest and it is computed only once. An entry carrying an
+    /// explicit <see cref="TxFrameSignature.Msg"/> signs that digest instead, and its own signature bytes stay in
+    /// the preimage (EIP-8141 § Signature Hash), so they must be final before this is computed.
+    /// </remarks>
     public static ValueHash256 ComputeValue(Transaction transaction)
     {
         KeccakRlpWriter writer = new();

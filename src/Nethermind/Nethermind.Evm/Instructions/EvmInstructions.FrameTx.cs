@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -48,13 +47,6 @@ public static unsafe partial class EvmInstructions
             return EvmExceptionType.OutOfGas;
         }
 
-        // Consumption happens at payment approval, so first use is charged against this frame's gas.
-        if (plan.ApprovesPayment && ctx.NonceKeys is { } nonceKeys
-            && !TGasPolicy.TryConsume(ref gas, KeyedNonceManager.FirstUseSurcharge(vm.WorldState, ctx.Sender, nonceKeys)))
-        {
-            return EvmExceptionType.OutOfGas;
-        }
-
         // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
@@ -62,8 +54,9 @@ public static unsafe partial class EvmInstructions
             return EvmExceptionType.OutOfGas;
         }
 
-        // Charged immediately before the nonce increment that would create the sender.
-        if (plan.CreatesSender && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetNewAccountStateCost()))
+        // Charged immediately before the consumption that writes the new state, after every execution charge.
+        long nonceStateGas = ctx.NonceStateGas<TGasPolicy>(in plan, vm.WorldState);
+        if (nonceStateGas != 0 && !TGasPolicy.TryConsumeStateGas(ref gas, nonceStateGas))
         {
             return EvmExceptionType.OutOfGas;
         }
@@ -96,14 +89,14 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        TGasPolicy.Consume<BaseGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (param > 0x11U) return EvmExceptionType.BadInstruction;
 
         byte[]?[]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
         {
-            0x00 => stack.PushUInt32<TTracingInst>((uint)TxType.FrameTx),
+            0x00 => stack.PushUInt32<TTracingInst, OnFlag>((uint)TxType.FrameTx),
             0x01 => stack.PushUInt256<TTracingInst>(ctx.Nonce),
             0x02 => stack.PushAddress<TTracingInst>(ctx.Sender),
             0x03 => stack.PushUInt256<TTracingInst>(ctx.MaxPriorityFeePerGas),
@@ -138,7 +131,7 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Spec stack order: field on top, index second — the reverse of FRAMEPARAM and SIGPARAM.
         if (!stack.PopUInt256(out UInt256 field, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (index >= (UInt256)ctx.RecentRootReferences.Length || field > 2) return EvmExceptionType.BadInstruction;
@@ -161,7 +154,7 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Spec stack order: offset on top, frameIndex second (matching CALLDATALOAD).
         if (!stack.PopUInt256(out UInt256 offset, out UInt256 frameIndex)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
@@ -169,7 +162,7 @@ public static unsafe partial class EvmInstructions
         ReadOnlySpan<byte> data = ctx.Frames[(int)frameIndex.u0].Data.Span;
         if (!offset.IsUint64 || offset.u0 >= (uint)data.Length)
         {
-            return stack.PushZero<TTracingInst>();
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         uint available = (uint)data.Length - (uint)offset.u0;
@@ -205,7 +198,7 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        TGasPolicy.Consume<BaseGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // Spec stack order: frameIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 frameIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
@@ -217,12 +210,12 @@ public static unsafe partial class EvmInstructions
         {
             0x00 => stack.PushAddress<TTracingInst>(ctx.ResolvedTarget(index)),
             0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.ExecutionGasLimit),
-            0x02 => stack.PushUInt32<TTracingInst>(frame.Mode),
-            0x03 => stack.PushUInt32<TTracingInst>(frame.Flags),
+            0x02 => stack.PushUInt32<TTracingInst, OnFlag>(frame.Mode),
+            0x03 => stack.PushUInt32<TTracingInst, OnFlag>(frame.Flags),
             0x04 => stack.PushUInt256<TTracingInst>((UInt256)frame.Data.Length),
             0x05 => FrameStatus<TTracingInst>(ctx, index, ref stack),
-            0x06 => stack.PushUInt32<TTracingInst>(frame.AllowedApproveScope),
-            0x07 => stack.PushUInt32<TTracingInst>((uint)(frame.IsAtomicBatch ? 1 : 0)),
+            0x06 => stack.PushUInt32<TTracingInst, OnFlag>(frame.AllowedApproveScope),
+            0x07 => stack.PushUInt32<TTracingInst, OnFlag>((uint)(frame.IsAtomicBatch ? 1 : 0)),
             0x08 => stack.PushUInt256<TTracingInst>(frame.Value),
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)frame.StateGasLimit),
             0x0A => FrameExecutionGasUsed<TTracingInst>(ctx, index, ref stack),
@@ -251,7 +244,7 @@ public static unsafe partial class EvmInstructions
         if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
         // 0 failure, 1 success, 2 skipped by a failed atomic batch.
         uint status = ctx.WasFrameSkipped(index) ? 2u : ctx.HasFrameSucceeded(index) ? 1u : 0u;
-        return stack.PushUInt32<TTracingInst>(status);
+        return stack.PushUInt32<TTracingInst, OnFlag>(status);
     }
 
     /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
@@ -271,15 +264,15 @@ public static unsafe partial class EvmInstructions
         int index = (int)signatureIndex.u0;
         TxFrameSignature signature = ctx.Signatures[index];
 
-        TGasPolicy.Consume<BaseGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         return param.u0 switch
         {
             0x00 => signature.Scheme == TxFrameSignature.SchemeArbitrary
                 ? EvmExceptionType.BadInstruction
                 : stack.PushAddress<TTracingInst>(ctx.ResolvedSigner(index)),
-            0x01 => stack.PushUInt32<TTracingInst>(signature.Scheme),
+            0x01 => stack.PushUInt32<TTracingInst, OnFlag>(signature.Scheme),
             0x02 => signature.Msg.IsEmpty
-                ? stack.PushZero<TTracingInst>()
+                ? stack.PushZero<TTracingInst, OnFlag>()
                 : stack.PushBytes<TTracingInst>(signature.Msg.Span),
             0x03 => signature.Scheme == TxFrameSignature.SchemeArbitrary
                 ? stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length)

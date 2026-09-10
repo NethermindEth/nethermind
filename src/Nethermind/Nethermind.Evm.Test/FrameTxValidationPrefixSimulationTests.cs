@@ -424,7 +424,13 @@ public class FrameTxValidationPrefixSimulationTests
         // work the gas schedule underprices, and it aborts rather than merely recording.
         DeployContract(Sender, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromTicks(1));
+        // Held still until the run starts, so the deadline is still ahead at the interpreter's first
+        // cancellation poll and can only be crossed by a later one, mid-loop.
+        PollTickingTimeProvider time = new();
+        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromMicroseconds(1), time);
+        Assert.That(tracer.TimedOut, Is.False, "the bound is measured from the tracer's own clock, which has not moved");
+
+        time.StartTicking();
 
         Assert.Throws<OperationCanceledException>(() => Run(tx, tracer));
         Assert.That(tracer.TimedOut, Is.True);
@@ -554,8 +560,9 @@ public class FrameTxValidationPrefixSimulationTests
             : Is.Null);
     }
 
-    // Nothing journals the code cache, so a deposit outlives the rollback that discards the prefix. Over the
-    // process-wide instance that lets a peer fill the cache block processing reads from, for code never deployed.
+    // Nothing journals the code cache, so a deposit outlives the rollback that discards the prefix. That the
+    // node's own wiring keeps this off the main processing cache is covered by
+    // FrameTxPrefixSimulatorCodeCacheTests, which can resolve the production simulator.
     [TestCase(false, TestName = "an accepted prefix deposits into the cache")]
     [TestCase(true, TestName = "a prefix rejected after the create deposits too")]
     public void Simulate_DeployFrameDeposit_EscapesTheRollbackIntoTheCodeCache(bool violates)
@@ -572,7 +579,6 @@ public class FrameTxValidationPrefixSimulationTests
         ValueHash256 depositedHash = Keccak.Compute(deployedCode).ValueHash256;
 
         StaticCodeCache given = new(MemoryAllowance.CodeCacheSize);
-        StaticCodeCache other = new(MemoryAllowance.CodeCacheSize);
 
         FrameTxValidationTracer tracer = RunUnder(given, DeployTx(deployed));
 
@@ -583,11 +589,7 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(tracer.ViolationReason, violates
                 ? Does.Contain("banned opcode SELFBALANCE")
                 : Is.Null);
-            // Contained rather than suppressed: the prefix keeps its read memoization, and the deposit is
-            // confined to the env's own instance — which is what wiring the simulator away from the
-            // process-wide one buys, since nothing journals either.
             Assert.That(given.Get(in depositedHash), Is.Not.Null, "a deposit lands in the cache the env was given");
-            Assert.That(other.Get(in depositedHash), Is.Null, "and in no other, which is what the isolation rests on");
         }
     }
 
@@ -916,8 +918,8 @@ public class FrameTxValidationPrefixSimulationTests
         return (Run(tx, tracer, slotNumber, extraOptions), tracer);
     }
 
-    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default) =>
-        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout);
+    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null) =>
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout, time);
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {
@@ -977,6 +979,21 @@ public class FrameTxValidationPrefixSimulationTests
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
+
+    /// <summary>A clock that stands still until <see cref="StartTicking"/>, then advances one tick per
+    /// reading, so elapsed time is a function of the interpreter's cancellation polling rather than of
+    /// anything the test does before the run.</summary>
+    private sealed class PollTickingTimeProvider : TimeProvider
+    {
+        private long _ticks;
+        private bool _ticking;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticking ? _ticks++ : _ticks;
+
+        public void StartTicking() => _ticking = true;
+    }
 
     private static Transaction FrameTx(ulong nonce, params TxFrame[] frames) =>
         new()

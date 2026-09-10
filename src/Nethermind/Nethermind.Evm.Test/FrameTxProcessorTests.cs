@@ -16,6 +16,7 @@ using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -776,16 +777,29 @@ public class FrameTxProcessorTests
     public void Execute_FrameParamStatusOfCurrentFrame_ExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Sentinels either side of the FRAMEPARAM separate the halt from an implementation that pushes zero
+        // and runs on, which would leave slot 0 at zero either way: slot 2 is rolled back, slot 1 never runs.
         DeployContract(Observer, Prepare.EvmCode
+            .PushData(0xaa).PushData(2).Op(Instruction.SSTORE)
             .PushData(0x05).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        TxFrame frame = Frame(TxFrame.ModeDefault, target: Observer);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), frame);
+        FrameReceiptTracer tracer = new();
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(tx, tracer: tracer);
 
         // Reading the current frame's status halts it, which discards its writes but leaves the tx valid.
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "an exceptional halt consumes the frame's execution gas limit");
+            AssertStorage(Observer, 1, UInt256.Zero, "the halt is what stopped the frame, not a zero-valued read");
+            AssertStorage(Observer, 2, UInt256.Zero, "the halted frame's earlier write is rolled back");
+        }
     }
 
     [Test]
@@ -887,16 +901,29 @@ public class FrameTxProcessorTests
     public void Execute_SigParamResolvedSignerOfArbitraryEntry_ExceptionallyHalts()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Sentinels either side of the SIGPARAM separate the halt from an implementation that pushes the absent
+        // signer as zero and runs on, which would leave slot 0 at zero either way.
         DeployContract(Observer, Prepare.EvmCode
+            .PushData(0xaa).PushData(2).Op(Instruction.SSTORE)
             .PushData(0x00).PushData(0).Op(Instruction.SIGPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0xff).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        TxFrame frame = Frame(TxFrame.ModeDefault, target: Observer);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), frame);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 1, 2, 3 })];
+        FrameReceiptTracer tracer = new();
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(tx, tracer: tracer);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].ExecutionGasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "an exceptional halt consumes the frame's execution gas limit");
+            AssertStorage(Observer, 1, UInt256.Zero, "the halt is what stopped the frame, not a zero-valued read");
+            AssertStorage(Observer, 2, UInt256.Zero, "the halted frame's earlier write is rolled back");
+        }
     }
 
     [Test]
@@ -1127,6 +1154,62 @@ public class FrameTxProcessorTests
             Assert.That(state, Is.GreaterThan(blockGasLimit), "only the state dimension exceeds it");
             Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
         }
+    }
+
+    /// <remarks>The mirror of the state case: the execution dimension carries the block budget as well as the
+    /// per-transaction cap, so a reservation under that cap but over the block is unestimable, matching what
+    /// <see cref="Eip8037BlockGasInclusionCheck"/> refuses even in an empty block.</remarks>
+    [Test]
+    public void EstimateGas_FrameTxWhoseExecutionBudgetAloneExceedsTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        const ulong blockGasLimit = 300_000;
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(blockGasLimit).TestObject;
+
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(execution, Is.GreaterThan(blockGasLimit), "only the execution dimension exceeds the block");
+            Assert.That(execution, Is.LessThanOrEqualTo(Eip7825Constants.DefaultTxGasLimitCap), "the per-tx cap cannot be what fires");
+            Assert.That(state, Is.LessThanOrEqualTo(blockGasLimit), "the state dimension fits the block");
+            Assert.That(Eip8037BlockGasInclusionCheck.Validate(blockGasLimit, 0, 0, execution, state),
+                Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.ExecutionDimensionExceeded),
+                "an empty block cannot hold this reservation");
+            Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
+        }
+    }
+
+    /// <remarks>Above the EIP-7825 per-transaction cap the frame validator rejects the transaction, so the
+    /// estimate must report it unestimable rather than hand back a budget that would fail admission; the cap
+    /// binds even where the reservation still fits the block.</remarks>
+    [Test]
+    public void EstimateGas_FrameTxReservingAboveThePerTxCapButUnderTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient,
+                executionGasLimit: Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        _transactionProcessor.CallAndRestore(tx, gasTracer);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
     /// <summary>Frame counts EIP-8141 never admits: an absent list, an empty one, and an oversized one.</summary>
@@ -1850,7 +1933,7 @@ public class FrameTxProcessorTests
         UInt256[] keys = [1, 7];
 
         Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
+            KeyedSelfVerifyFrame(keys.Length),
             Frame(TxFrame.ModeSender, target: Observer),
             Frame(TxFrame.ModePostTx, target: Recipient));
         tx.NonceKeys = keys;
@@ -1910,21 +1993,30 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_SecondPostTxFrameFails_UnwindsTheWholeBody()
     {
+        // APPROVE is banned in POST_TX, so the passing assertion cannot be the smart sender's own code.
+        Address passingAssertion = TestItem.AddressF;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(passingAssertion, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
             Frame(TxFrame.ModeSender, target: Observer),
-            Frame(TxFrame.ModePostTx, target: Sender),
+            Frame(TxFrame.ModePostTx, target: passingAssertion),
             Frame(TxFrame.ModePostTx, target: Recipient));
 
-        CallOutputTracer tracer = new();
+        FrameReceiptTracer tracer = new();
 
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        AssertStorage(Observer, 0, UInt256.Zero, "a failure in the second assertion unwinds the body the first one passed on");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the first assertion has to pass for the second to be the one that unwinds");
+            Assert.That(tracer.FrameReceipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            AssertStorage(Observer, 0, UInt256.Zero, "a failure in the second assertion unwinds the body the first one passed on");
+        }
     }
 
     /// <summary>A frame transaction's <c>CallAndRestore</c> must leave nothing behind.</summary>
@@ -2554,6 +2646,16 @@ public class FrameTxProcessorTests
         return _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
     }
 
+    private TransactionResult SimulateValidationPrefix(Transaction tx)
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+        return _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.FrameValidationPrefixOnly);
+    }
+
     private TransactionResult ProcessWithBlobHeader(Transaction tx, ulong excessBlobGas, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
@@ -2597,7 +2699,7 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         UInt256[] keys = [1, 7];
 
-        Transaction firstUse = FrameTx(nonce: 0, SelfVerifyFrame());
+        Transaction firstUse = FrameTx(nonce: 0, KeyedSelfVerifyFrame(keys.Length));
         firstUse.NonceKeys = keys;
         CallOutputTracer firstUseTracer = new();
         TransactionResult result = Process(firstUse, tracer: firstUseTracer);
@@ -2654,7 +2756,7 @@ public class FrameTxProcessorTests
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         UInt256[] keys = [1, 7];
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        Transaction tx = FrameTx(nonce: 0, KeyedSelfVerifyFrame(keys.Length));
         tx.NonceKeys = keys;
 
         Block block = Build.A.Block.WithNumber(1)
@@ -2688,7 +2790,7 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction executed = FrameTx(nonce: 5, SelfVerifyFrame());
         executed.NonceKeys = [7];
-        Transaction simulated = FrameTx(nonce: 5, SelfVerifyFrame());
+        Transaction simulated = FrameTx(nonce: 5, KeyedSelfVerifyFrame(freshKeyCount: 1));
         simulated.NonceKeys = [7];
 
         Assert.That(Process(executed).TransactionExecuted, Is.False, "key 7 sits at sequence 0, so the set is not consumable");
@@ -2696,11 +2798,15 @@ public class FrameTxProcessorTests
     }
 
     /// <remarks>Only the state half of the check may follow <c>SkipValidation</c>: the RPC view caps nothing,
-    /// so an oversized set would reach fixed-size buffers that assume a well-formed one.</remarks>
-    [Test]
-    public void CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown()
+    /// so an oversized set would reach fixed-size buffers that assume a well-formed one. The in-pool prefix
+    /// simulator is the other such entry point, and <c>TXPARAM 0x0E</c> hashes the set into one of those buffers.</remarks>
+    [TestCase(false, TestName = "CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown")]
+    [TestCase(true, TestName = "SimulateValidationPrefix_KeyedNonceSetOverTheLimit_IsMalformedNotThrown")]
+    public void KeyedNonceSetOverTheLimit_IsMalformedNotThrown(bool validationPrefixOnly)
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeploySmartSender([
+            .. Prepare.EvmCode.PushData(0x0E).Op(Instruction.TXPARAM).Op(Instruction.POP).Done,
+            .. ApproveCode(TxFrame.ApproveExecutionAndPayment)]);
         // Full-width and strictly increasing, so the length is the only thing that is wrong with the set.
         UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
         for (int i = 0; i < keys.Length; i++)
@@ -2711,9 +2817,9 @@ public class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.NonceKeys = keys;
 
-        TransactionResult result = CallAndRestore(tx);
+        TransactionResult result = validationPrefixOnly ? SimulateValidationPrefix(tx) : CallAndRestore(tx);
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(result.ErrorDescription, Is.EqualTo("frame transaction nonce key set is not well-formed"));
     }
 
     // The property the set semantics exist for: one advanced key makes the whole set unusable.
@@ -2731,7 +2837,7 @@ public class FrameTxProcessorTests
             "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
     }
 
-    // Key 0 is the account nonce itself, so the singleton set advances it and owes no first-use surcharge.
+    // Key 0 is the account nonce itself, so the singleton set advances it and owes no first-use charge.
     [Test]
     public void Execute_KeyedNonce_LegacyKeyBehavesAsTheAccountNonce()
     {
@@ -2739,15 +2845,20 @@ public class FrameTxProcessorTests
         Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
         keyed.NonceKeys = [UInt256.Zero];
 
-        CallOutputTracer keyedTracer = new();
+        FrameReceiptTracer keyedTracer = new();
         Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
 
-        CallOutputTracer plainTracer = new();
+        FrameReceiptTracer plainTracer = new();
         Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer).TransactionExecuted, Is.True);
-        Assert.That(keyedTracer.GasSpent - plainTracer.GasSpent,
-            Is.LessThan((long)Eip8250Constants.KeyedNonceFirstUseGas),
-            "the legacy key owes no first-use surcharge");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keyedTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the legacy key owes no first-use charge");
+            Assert.That(keyedTracer.FrameReceipts![0].ExecutionGasUsed,
+                Is.EqualTo(plainTracer.FrameReceipts![0].ExecutionGasUsed),
+                "the [0] set approves exactly as the absent set does");
+        }
     }
 
     // A payment approval's effects are journaled outside the atomic-batch snapshot, so an approval taken
@@ -2760,7 +2871,7 @@ public class FrameTxProcessorTests
         UInt256[] keys = [1, 7];
 
         Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
+            KeyedSelfVerifyFrame(keys.Length),
             Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Recipient),
             Frame(TxFrame.ModeSender, target: Recipient));
         tx.NonceKeys = keys;
@@ -2779,35 +2890,145 @@ public class FrameTxProcessorTests
         }
     }
 
-    // Default code approves without running APPROVE, so it must charge the same first-use surcharge.
+    // A key's slot exists after its first use, so only that use grows the state.
     [Test]
-    public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUse()
+    public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUseOnlyOnce()
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
         UInt256[] keys = [1, 7];
+        TxFrame verify = KeyedSelfVerifyFrame(keys.Length);
 
-        Transaction firstUse = SelfSignedSelfVerifyTx(nonce: 0, keys);
-        CallOutputTracer firstUseTracer = new();
-        Assert.That(Process(firstUse, tracer: firstUseTracer).TransactionExecuted, Is.True);
-        // Priced after processing, which is what measures the keyed-nonce calldata this intrinsic must include.
-        FrameTxValidation.TryCalculateGasBudget(firstUse, Spec, out ulong firstUseIntrinsic, out _, out _);
-        foreach (UInt256 key in keys)
-        {
-            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
-                Is.EqualTo(UInt256.One));
-        }
-        Assert.That((long)firstUseTracer.GasSpent - (long)firstUseIntrinsic,
-            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas + (long)Eip8038Constants.WarmAccess),
-            "the default-code approval owes the surcharge the APPROVE opcode charges, over the frame's entry access");
+        FrameReceiptTracer firstUseTracer = new();
+        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0, keys, verify), tracer: firstUseTracer).TransactionExecuted, Is.True);
 
-        Transaction reuse = SelfSignedSelfVerifyTx(nonce: 1, keys);
-        CallOutputTracer reuseTracer = new();
+        Transaction reuse = SelfSignedSelfVerifyTx(nonce: 1, keys, verify);
+        FrameReceiptTracer reuseTracer = new();
         Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
         FrameTxValidation.TryCalculateGasBudget(reuse, Spec, out _, out ulong reuseFloor, out _);
-        Assert.That(reuseTracer.GasSpent, Is.EqualTo(reuseFloor),
-            "a reused key adds no frame gas, so the transaction owes only its floor");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstUseTracer.FrameReceipts![0].StateGasUsed,
+                Is.EqualTo((ulong)(keys.Length * GasCostOf.SSetState)));
+            Assert.That(reuseTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the slots already exist");
+            Assert.That(reuseTracer.GasSpent, Is.EqualTo(reuseFloor),
+                "a reused key adds no frame gas, so the transaction owes only its floor");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo((UInt256)2), $"key {key} advanced once per transaction");
+            }
+        }
+    }
+
+    // EIP-8250: a fresh key writes a NONCE_MANAGER slot, so the approving frame owes one storage-set
+    // state charge per fresh key. An execution budget under the frame's state charge still approves.
+    [TestCase(true, TestName = "Execute_KeyedNonce_FirstUseIsStateGas_ApproveOpcode")]
+    [TestCase(false, TestName = "Execute_KeyedNonce_FirstUseIsStateGas_DefaultCode")]
+    public void Execute_KeyedNonce_FirstUseIsChargedAsStateGas(bool approveOpcode)
+    {
+        UInt256[] keys = [1, 7];
+        ulong nonceStateGas = (ulong)keys.Length * (ulong)GasCostOf.SSetState;
+        DeployKeyedNonceSender(approveOpcode);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(KeyedNonceTx(approveOpcode, nonce: 0, keys, executionGasLimit: 30_000, stateGasLimit: nonceStateGas), tracer: tracer);
+
+        // The identical transaction over the now-used keys isolates the execution gas the charge must not touch.
+        FrameReceiptTracer reuseTracer = new();
+        Assert.That(Process(KeyedNonceTx(approveOpcode, nonce: 1, keys, executionGasLimit: 30_000, stateGasLimit: nonceStateGas),
+            tracer: reuseTracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "the state dimension covers the fresh slots");
+            Assert.That(tracer.FrameReceipts![0].StateGasUsed, Is.EqualTo(nonceStateGas),
+                "the approving frame's receipt carries the whole charge in the state dimension");
+            Assert.That(reuseTracer.FrameReceipts![0].StateGasUsed, Is.Zero, "the slots already exist");
+            Assert.That(tracer.FrameReceipts![0].ExecutionGasUsed,
+                Is.EqualTo(reuseTracer.FrameReceipts![0].ExecutionGasUsed),
+                "EIP-8250: the charge does not consume execution gas, so no part of it leaks into that dimension");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo((UInt256)2), $"key {key} was consumed by both transactions");
+            }
+        }
+    }
+
+    // The exact boundary: one gas short of the state charge halts the approving frame, and no part of the
+    // approval — the nonce consumption included — survives.
+    [TestCase(true, TestName = "Execute_KeyedNonce_StarvedOfStateGas_ApproveOpcode")]
+    [TestCase(false, TestName = "Execute_KeyedNonce_StarvedOfStateGas_DefaultCode")]
+    public void Execute_KeyedNonce_FirstUseBelowTheStateCharge_ApprovesNothing(bool approveOpcode)
+    {
+        UInt256[] keys = [1, 7];
+        ulong nonceStateGas = (ulong)keys.Length * (ulong)GasCostOf.SSetState;
+        DeployKeyedNonceSender(approveOpcode);
+
+        TransactionResult result = Process(KeyedNonceTx(approveOpcode, nonce: 0, keys, executionGasLimit: 200_000, stateGasLimit: nonceStateGas - 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False,
+                "an execution surplus cannot pay for the slots the approval creates");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.Zero), $"key {key} stays unconsumed");
+            }
+        }
+    }
+
+    // EIP-8250: once the approving frame succeeds a later frame's failure must not revert the consumption,
+    // so the state gas it was priced at cannot be given back with the body either.
+    [Test]
+    public void Execute_KeyedNonce_FirstUseSurvivesAFailedPostTxFrame()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        UInt256[] keys = [1, 7];
+
+        Transaction tx = FrameTx(nonce: 0,
+            KeyedSelfVerifyFrame(keys.Length),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+        tx.NonceKeys = keys;
+
+        FrameReceiptTracer tracer = new();
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![0].StateGasUsed,
+                Is.EqualTo((ulong)(keys.Length * GasCostOf.SSetState)),
+                "the assertion rewinds the body down to the prefix, which the charge sits inside");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.One), $"key {key} stays consumed, so its slot stays paid for");
+            }
+        }
+    }
+
+    /// <summary>Gives <see cref="Sender"/> the code the chosen approval path needs: the <c>APPROVE</c>
+    /// contract, or none at all so the default code runs.</summary>
+    private void DeployKeyedNonceSender(bool approveOpcode) =>
+        DeployContract(Sender, approveOpcode ? ApproveCode(TxFrame.ApproveExecutionAndPayment) : [], 1.Ether);
+
+    /// <summary>A single-VERIFY-frame keyed-nonce transaction approved either by <c>APPROVE</c> or, from a
+    /// codeless sender, by the default code, so one case body covers both approval paths.</summary>
+    private static Transaction KeyedNonceTx(bool approveOpcode, ulong nonce, UInt256[] keys, ulong executionGasLimit, ulong stateGasLimit)
+    {
+        TxFrame verify = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            executionGasLimit, stateGasLimit, UInt256.Zero, default);
+
+        if (!approveOpcode) return SelfSignedSelfVerifyTx(nonce, keys, verify);
+
+        Transaction tx = FrameTx(nonce, verify);
+        tx.NonceKeys = keys;
+        return tx;
     }
 
     /// <summary>A codeless-sender self-verify transaction carrying the canonical-hash signature default code requires at index 0.</summary>
@@ -2871,7 +3092,8 @@ public class FrameTxProcessorTests
             .PushData((UInt256)param).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        Transaction tx = FrameTx(nonce: 0, keyed ? KeyedSelfVerifyFrame(freshKeyCount: 2) : SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: Observer));
         if (keyed) tx.NonceKeys = [3, 9];
 
         Assert.That(Process(tx).TransactionExecuted, Is.True);
@@ -2889,8 +3111,9 @@ public class FrameTxProcessorTests
             .PushData(0x0E).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
         UInt256[] keys = keyed ? [3, 9] : [UInt256.Zero];
+        Transaction tx = FrameTx(nonce: 0, keyed ? KeyedSelfVerifyFrame(keys.Length) : SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: Observer));
         if (keyed) tx.NonceKeys = keys;
 
         Assert.That(Process(tx).TransactionExecuted, Is.True);
@@ -3362,6 +3585,12 @@ public class FrameTxProcessorTests
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
+    /// <summary>A self-verify frame whose state budget funds the <c>NONCE_MANAGER</c> slots
+    /// <paramref name="freshKeyCount"/> first-use keys create at payment approval.</summary>
+    private static TxFrame KeyedSelfVerifyFrame(int freshKeyCount) =>
+        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            executionGasLimit: 200_000, (ulong)(freshKeyCount * GasCostOf.SSetState), UInt256.Zero, default);
+
     private static TxFrame Frame(byte mode, byte flags = 0, Address? target = null, UInt256 value = default, byte[]? data = null, ulong stateGasLimit = DefaultFrameStateGasLimit) =>
         new(mode, flags, target, executionGasLimit: 200_000, stateGasLimit, value, data ?? Array.Empty<byte>());
 
@@ -3385,10 +3614,9 @@ public class FrameTxProcessorTests
             DecodedMaxFeePerGas = 1,
         };
 
-    [TestCase(Instruction.TXTRACE)]
-    [TestCase(Instruction.TXDIFF)]
-    [TestCase(Instruction.EVENTDATACOPY)]
-    public void Execute_AssertionOpcodeOutsidePostTxFrame_HaltsExceptionally(Instruction opcode)
+    [Test]
+    public void Execute_AssertionOpcodeOutsidePostTxFrame_HaltsExceptionally(
+        [Values(Instruction.TXTRACE, Instruction.TXDIFF, Instruction.EVENTDATACOPY)] Instruction opcode)
     {
         // Four operands cover the widest of the three; a halt leaves any surplus unread.
         DeploySmartSender(Prepare.EvmCode
@@ -3399,10 +3627,9 @@ public class FrameTxProcessorTests
     }
 
     // The opcodes are in the jump table for every transaction once EIP-7906 is on.
-    [TestCase(Instruction.TXTRACE)]
-    [TestCase(Instruction.TXDIFF)]
-    [TestCase(Instruction.EVENTDATACOPY)]
-    public void Execute_AssertionOpcodeInOrdinaryTransaction_HaltsExceptionally(Instruction opcode)
+    [Test]
+    public void Execute_AssertionOpcodeInOrdinaryTransaction_HaltsExceptionally(
+        [Values(Instruction.TXTRACE, Instruction.TXDIFF, Instruction.EVENTDATACOPY)] Instruction opcode)
     {
         DeployContract(Recipient, Prepare.EvmCode
             .PushData(0).PushData(0).PushData(0).PushData(0).Op(opcode).Op(Instruction.STOP).Done);
@@ -4067,7 +4294,7 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
-        Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
+        Transaction keyed = FrameTx(nonce: 0, KeyedSelfVerifyFrame(freshKeyCount: 2));
         keyed.NonceKeys = [1, 7];
         Assert.That(Process(keyed).TransactionExecuted, Is.True);
 

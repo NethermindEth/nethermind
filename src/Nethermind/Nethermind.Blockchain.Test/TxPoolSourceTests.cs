@@ -213,7 +213,12 @@ public class TxPoolSourceTests
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
-        ulong selectedBlobs = result.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
+        ulong selectedBlobs = 0;
+        foreach (Transaction selected in result)
+        {
+            selectedBlobs += (ulong)selected.GetBlobCount();
+        }
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Contains(frameBlobTx), Is.EqualTo(expectSelected));
@@ -240,11 +245,14 @@ public class TxPoolSourceTests
             proofs[i] = [];
         }
 
+        byte[] senderBytes = new byte[Address.Size];
+        senderBytes[^1] = senderByte;
+
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = new Address(new byte[19].Concat(new[] { senderByte }).ToArray()),
+            SenderAddress = new Address(senderBytes),
             Nonce = 0,
             GasLimit = 1_000_000,
             GasPrice = 1,

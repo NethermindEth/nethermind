@@ -15,6 +15,8 @@ public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
     {
         if (KeyedNonceManager.UsesKeyedNonce(tx))
         {
+            // A nonce-distance bound is meaningless across independent domains; KeyedNonceFilter applies
+            // the same configured limit as a pending count.
             return AcceptTxResult.Accepted;
         }
 

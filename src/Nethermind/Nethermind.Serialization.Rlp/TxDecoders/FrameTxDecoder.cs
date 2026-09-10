@@ -132,8 +132,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
     }
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
+        RlpBehaviors rlpBehaviors)
     {
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64, the codebase-wide ChainId width.
         transaction.ChainId = decoderContext.DecodeULong();
@@ -142,7 +142,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.SenderAddress = decoderContext.DecodeAddress();
         transaction.Frames = decoderContext.DecodeNonNullArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
         transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance,
-            limit: SignaturesCountLimit(decoderContext.Length - decoderContext.Position));
+            limit: SignaturesCountLimit(Math.Max(0, payloadEnd - decoderContext.Position)));
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas

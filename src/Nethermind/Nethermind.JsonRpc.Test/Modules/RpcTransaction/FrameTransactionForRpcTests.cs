@@ -286,6 +286,89 @@ public class FrameTransactionForRpcTests
         Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
     }
 
+    private const int Secp256k1EntriesAtTheCap = (int)(GasCap / Eip8141Constants.Secp256k1VerificationGasCost);
+
+    /// <summary><paramref name="count"/> verifying SECP256K1 entries, each costing a full recovery.</summary>
+    /// <remarks>An explicit non-zero digest and a named signer, so every entry is structurally acceptable.</remarks>
+    private static FrameSignatureForRpc[] Secp256k1Signatures(int count)
+    {
+        FrameSignatureForRpc[] signatures = new FrameSignatureForRpc[count];
+        for (int i = 0; i < count; i++)
+        {
+            signatures[i] = new FrameSignatureForRpc
+            {
+                Scheme = TxFrameSignature.SchemeSecp256k1,
+                Signer = TestItem.AddressA,
+                Msg = TestItem.KeccakA.BytesToArray(),
+                Signature = new byte[TxFrameSignature.Secp256k1SignatureLength],
+            };
+        }
+
+        return signatures;
+    }
+
+    /// <summary>The RPC gas cap also bounds the signature verification a frame transaction asks for.</summary>
+    /// <remarks>
+    /// The processor runs <c>validate_signature</c> over every entry before it derives any gas budget, so
+    /// capping the frame limits alone leaves the elliptic-curve work unpriced: a request can keep its frames
+    /// tiny and repeat a verifying SECP256K1 entry to buy arbitrarily many recoveries off one call.
+    /// </remarks>
+    [TestCase(Secp256k1EntriesAtTheCap, false, TestName = "ToTransaction_SignatureWorkAtTheCap_IsAccepted")]
+    [TestCase(Secp256k1EntriesAtTheCap + 1, true, TestName = "ToTransaction_SignatureWorkAboveTheCap_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_CountsSignatureVerificationAgainstTheCap(int entries, bool expectedError)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            // Deliberately free of frame gas, so only the signature list can breach the cap.
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment }],
+            Signatures = Secp256k1Signatures(entries),
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.IsError, Is.EqualTo(expectedError), result.Error);
+    }
+
+    /// <remarks>
+    /// The rejection reports the two terms apart, because the common one is a frame transaction carrying no
+    /// signatures at all: a single combined figure blames a verification cost that contributed nothing to it.
+    /// </remarks>
+    [TestCase(0, 0UL, TestName = "ToTransaction_AboveTheCapWithoutSignatures_ReportsAZeroVerificationTerm")]
+    [TestCase(2, 2 * Eip8141Constants.Secp256k1VerificationGasCost, TestName = "ToTransaction_AboveTheCapWithSignatures_ReportsBothTerms")]
+    public void FrameTransactionForRpc_ToTransaction_ReportsTheFrameAndSignatureTermsApart(int entries, ulong expectedSignatureGas)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = GasCap + 1 }],
+            Signatures = Secp256k1Signatures(entries),
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.Error, Is.EqualTo(
+            $"frame gas limits ({GasCap + 1}) and signature verification ({expectedSignatureGas}) exceed the gas cap ({GasCap})"));
+    }
+
+    /// <summary>Signature work is charged on top of the frame limits, so neither alone hides the other.</summary>
+    /// <remarks>The saturating case also pins that the combined reservation does not wrap to a value under the cap.</remarks>
+    [TestCase(GasCap, TestName = "ToTransaction_SignatureWorkOnTopOfFrameGasAtTheCap_IsRejected")]
+    [TestCase(ulong.MaxValue, TestName = "ToTransaction_SignatureWorkSaturatingTheReservation_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_AddsSignatureWorkToTheFrameGas(ulong frameGas)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = frameGas }],
+            Signatures = Secp256k1Signatures(1),
+        };
+
+        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+    }
+
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)
     {
         Transaction tx = BuildMinimalFrameTx();
@@ -525,6 +608,28 @@ public class FrameTransactionForRpcTests
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
 
+    /// <summary>The stored receipt decoder holds the wire decoder's status bound, so an undefined status has to be
+    /// refused here too rather than stored as a receipt no read path, local or remote, accepts.</summary>
+    [TestCase(TxFrameReceipt.StatusFailure, false)]
+    [TestCase(TxFrameReceipt.StatusSuccess, false)]
+    [TestCase(TxFrameReceipt.StatusSkipped, false)]
+    [TestCase((byte)3, true)]
+    [TestCase(byte.MaxValue, true)]
+    public void ReceiptForRpc_FrameTx_RejectsAFrameStatusOutsideThePayloadValues(byte status, bool rejected)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts = [new FrameReceiptForRpc { Status = status }];
+
+        if (rejected)
+        {
+            Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+        }
+        else
+        {
+            Assert.That(receiptForRpc.ToReceipt().FrameReceipts![0].Status, Is.EqualTo(status));
+        }
+    }
+
     /// <summary>The same hazard on the top-level logs, which every receipt type carries.</summary>
     [Test]
     public void ReceiptForRpc_RejectsANullLogEntry()
@@ -532,6 +637,32 @@ public class FrameTransactionForRpcTests
         ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""")!;
 
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
+
+    /// <summary>And on the frame logs, which ConcatLogs then carries into the receipt's own log set: the element
+    /// annotation does not bind the deserializer, so <c>"logs": [null]</c> reaches the binder here too.</summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ReceiptForRpc_FrameTx_RejectsANullFrameLogEntry(bool withNullEntry)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc
+            {
+                Status = TxFrameReceipt.StatusSuccess,
+                Logs = withNullEntry ? [null!] : [new LogEntry(TestItem.AddressA, [1], [])],
+            }
+        ];
+
+        if (withNullEntry)
+        {
+            Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+        }
+        else
+        {
+            Assert.That(receiptForRpc.ToReceipt().FrameReceipts![0].Logs, Has.Length.EqualTo(1));
+        }
     }
 
     private const int MaxAggregateLogs = 270_000;

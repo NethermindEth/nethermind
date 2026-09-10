@@ -233,7 +233,7 @@ namespace Nethermind.TxPool
                     // The same predicate the release reads, so the two ends of a ledger entry cannot drift.
                     if (TryGetPayerReservation(restored, out Address? payer, out UInt256 reserved))
                     {
-                        _payerExposure.Restore(payer, reserved);
+                        _payerExposure.Restore(payer, restored.Hash!, reserved);
                     }
 
                     // Re-taken rather than re-gated for the same reason, and through the key the release reads.
@@ -257,6 +257,9 @@ namespace Nethermind.TxPool
             [
                 new NotSupportedTxFilter(txPoolConfig, _specProvider, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
+                // before GasLimitTxFilter, the first filter that prices a frame tx: a locally built one skips
+                // the decoder that measures these, and head revalidation would then price a different transaction
+                new FrameTxCalldataStatsFilter(),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
                 new PriorityFeeTooLowFilter(_headInfo, txPoolConfig, _logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger)
@@ -267,9 +270,6 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
-                // after MalformedTxFilter, before anything prices the transaction: a locally built frame tx
-                // skips the decoder that measures these, and would be priced as if the fields were free
-                new FrameTxCalldataStatsFilter(),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
@@ -283,7 +283,7 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after MalformedTxFilter as it uses the recovered sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
-                new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider), // the three above skip keyed sets, this one owns them
+                new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider, txPoolConfig, _transactions, _blobTransactions), // the three above skip keyed sets, this one owns them
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
@@ -310,7 +310,7 @@ namespace Nethermind.TxPool
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
-            postHashFilters.Add(new FrameTxPayerExposureFilter(_specProvider, chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
+            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -338,22 +338,48 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             _transactions.GetBucketSnapshot(filterToReadyTx ?
-                (data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)) :
+                (data => HasReadyTransaction(data.bucket, data.key, baseFee)) :
                 null);
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
         /// <remarks>An EIP-8250 keyed set does not use the account nonce, so readiness is per-key currency instead.</remarks>
-        private bool IsNonceReady(Transaction tx, Address sender) =>
+        private bool IsNonceReady(Transaction tx, ulong accountNonce) =>
             KeyedNonceManager.UsesKeyedNonce(tx)
                 ? IsKeyedNonceCurrent(tx)
-                : tx.Nonce == _accounts.GetNonce(sender);
+                : tx.Nonce == accountNonce;
+
+        /// <summary>Whether a sender's bucket holds anything includable in the next block.</summary>
+        /// <remarks>Scanned rather than judged on the bucket's lowest entry: an EIP-8250 keyed transaction is
+        /// ordered by its own sequence, so it can sort either side of an eligible account-nonce transaction whose
+        /// domain it says nothing about. Account-nonce entries do execute in nonce order, so once one at or above
+        /// the account nonce is unready the rest are too and the scan skips them; only keyed entries are judged all
+        /// the way down. Judging one reads a NONCE_MANAGER slot per key it selects, so the whole scan is bounded by
+        /// the pool's configured size times <see cref="Eip8250Constants.MaxNonceKeys"/>; a per-sender limit spreads
+        /// that same total over more buckets rather than lowering it.</remarks>
+        private bool HasReadyTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
+        {
+            ulong accountNonce = _accounts.GetNonce(sender);
+            bool accountNonceBlocked = false;
+            foreach (Transaction tx in bucket)
+            {
+                bool keyed = KeyedNonceManager.UsesKeyedNonce(tx);
+                if (!keyed && accountNonceBlocked) continue;
+                if (tx.CanPayBaseFee(baseFee) && IsNonceReady(tx, accountNonce)) return true;
+
+                // An entry under the account nonce is stale rather than blocking: it awaits a head change the
+                // pool has not processed yet, and the next entry may sit exactly at the nonce.
+                accountNonceBlocked |= !keyed && tx.Nonce >= accountNonce;
+            }
+
+            return false;
+        }
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
             _blobTransactions.GetBucketSnapshot(filterToReadyTx
-                ? data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)
+                ? data => HasReadyTransaction(data.bucket, data.key, baseFee)
                 : null);
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -933,7 +959,7 @@ namespace Nethermind.TxPool
         private bool RemoveIncludedTransaction(Transaction tx)
         {
             bool removed = RemoveTransaction(tx.Hash);
-            _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
+            _broadcaster.EnsureStopBroadcastUpToNonce(tx);
             return removed;
         }
 
@@ -1547,9 +1573,10 @@ namespace Nethermind.TxPool
         /// </remarks>
         private void ReleaseFrameTxReservations(Transaction tx)
         {
-            if (TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost))
+            // Guarded so an ordinary transaction's removal never reaches the ledger's lock.
+            if (TryGetPayerReservation(tx, out _, out _))
             {
-                _payerExposure.Subtract(payer, maxCost);
+                _payerExposure.Subtract(tx.Hash!);
             }
 
             if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)
@@ -1640,19 +1667,23 @@ namespace Nethermind.TxPool
                             if (!keyedValidation.Validation)
                             {
                                 invalidatedByFork++;
-                                // Keyed sequences advance independently, so no unconditional cascade here; a
-                                // blob-carrying frame tx still cascades through MarkForEviction's CarriesBlobs arm.
+                                // Keyed sequences advance independently, so removing this leaves no nonce gap to cascade over.
                                 MarkForEviction(tx, revalidation.RecordEviction(tx, keyedValidation));
                                 continue;
                             }
                         }
 
-                        if (tx.CheckForNotEnoughBalance(UInt256.Zero, balance, out _))
+                        // Measured against the same running total as the account domain: the sender funds both
+                        // out of one balance, so retention prices the two together as admission does.
+                        UInt256 keyedCumulativeCost = cumulativeCost;
+                        if (tx.FeeChargedToSender() && tx.CheckForNotEnoughBalance(cumulativeCost, balance, out keyedCumulativeCost))
                         {
                             MarkForEviction(tx, allowLaterPoolReentrance: true);
                         }
                         else
                         {
+                            // Only what is retained stays a liability for the sender's other transactions.
+                            cumulativeCost = keyedCumulativeCost;
                             UInt256 keyedBottleneck = tx.CalculateEffectiveGasPrice(isEip1559, _headInfo.CurrentBaseFee);
                             if (tx.GasBottleneck != keyedBottleneck)
                             {
@@ -1686,9 +1717,11 @@ namespace Nethermind.TxPool
                         }
                     }
 
+                    // The clamp is skipped for a payer-funded frame tx: seeded from a balance that never pays it,
+                    // it would return zero and pin the whole bucket's ordering key through the running minimum.
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
                         isEip1559,
-                        _headInfo.CurrentBaseFee, balance);
+                        _headInfo.CurrentBaseFee, tx.FeeChargedToSender() ? balance : UInt256.MaxValue);
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
                     if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)
@@ -1701,7 +1734,9 @@ namespace Nethermind.TxPool
                             tx.CalculateEffectiveGasPrice(isEip1559,
                                 _headInfo.CurrentBaseFee);
 
-                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
+                        // Short-circuits for a frame tx, so its payer-funded cost is left out of the running
+                        // total the sender's other transactions are measured against.
+                        if (tx.FeeChargedToSender() && tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
                         {
                             // balance too low, remove tx from the pool
                             MarkForEviction(tx, false);
@@ -1735,8 +1770,9 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
-                // evict all following txs to prevent nonce gaps between blob tx
-                evictNextTxs |= tx.CarriesBlobs || evictFollowingTransactions;
+                // Evict all following txs to prevent nonce gaps between blob tx, but a keyed tx spends no account
+                // nonce, so removing it leaves no gap for the account-domain txs sorted behind it.
+                evictNextTxs |= (tx.CarriesBlobs && !KeyedNonceManager.UsesKeyedNonce(tx)) || evictFollowingTransactions;
             }
         }
 
@@ -2035,7 +2071,7 @@ namespace Nethermind.TxPool
                 + FormattableString.Invariant($"|{spec.IsEip2780Enabled}|{spec.IsEip2930Enabled}|{spec.MaxInitCodeSize}")
                 + FormattableString.Invariant($"|{spec.IsEip1559Enabled}|{spec.IsEip3860Enabled}|{spec.IsEip4844Enabled}|{spec.IsEip7623Enabled}")
                 + FormattableString.Invariant($"|{spec.IsEip7702Enabled}|{spec.IsEip7976Enabled}|{spec.IsEip7981Enabled}|{spec.IsEip8037Enabled}|{spec.IsEip8038Enabled}")
-                + FormattableString.Invariant($"|{spec.IsEip8141Enabled}|{spec.IsEip8250Enabled}")
+                + FormattableString.Invariant($"|{spec.IsEip8141Enabled}|{spec.IsEip8250Enabled}|{spec.IsEip7906Enabled}|{spec.IsEip8272Enabled}")
                 + FormattableString.Invariant($"|{gasCosts.TxDataNonZeroMultiplier}|{gasCosts.TotalCostFloorPerToken}|{gasCosts.MaxBlobGasPerBlock}|{gasCosts.MaxBlobGasPerTx}")
                 + FormattableString.Invariant($"|{spec.GetTxGasLimitCap()}|{spec.BlobProofVersion}");
         }
@@ -2410,35 +2446,32 @@ namespace Nethermind.TxPool
             }
 
             TxDistinctSortedPool relevantPool = (hasPendingTxs ? _transactions : _blobTransactions);
+            // A gap-free bucket holding no keyed entry is settled by its highest nonce, so the common sender skips
+            // the walk that would otherwise run under the pool-wide lock on every poll.
+            if (relevantPool.TryGetContiguousPendingNonce(address, maxPendingNonce, out ulong contiguousNonce))
+            {
+                return contiguousNonce;
+            }
+
             // we are not doing any updating, but lets just use a thread-safe method without any data copying like snapshot
             relevantPool.UpdateGroup(address, (_, transactions) =>
             {
                 // This is under the assumption that the addressTransactions are sorted by Nonce.
-                if (transactions.Count > 0)
+                // A keyed transaction's Nonce is an EIP-8250 nonce_seq in its own domain: it consumes no account
+                // nonce, so it neither advances the count nor bounds the bucket's highest account nonce.
+                foreach (Transaction transaction in transactions)
                 {
-                    // if we don't have any gaps we can easily calculate the nonce
-                    Transaction lastTransaction = transactions.Max!;
-                    ulong pendingCount = (ulong)transactions.Count;
-                    if (maxPendingNonce + pendingCount - 1 == lastTransaction.Nonce)
+                    if (KeyedNonceManager.UsesKeyedNonce(transaction))
                     {
-                        maxPendingNonce = lastTransaction.Nonce + 1;
+                        continue;
                     }
 
-                    // we have a gap, need to scan the transactions
-                    else
+                    if (transaction.Nonce != maxPendingNonce)
                     {
-                        foreach (Transaction transaction in transactions)
-                        {
-                            if (transaction.Nonce == maxPendingNonce)
-                            {
-                                maxPendingNonce++;
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
+                        break;
                     }
+
+                    maxPendingNonce++;
                 }
 
                 // we won't do any actual changes

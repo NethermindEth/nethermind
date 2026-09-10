@@ -38,7 +38,7 @@ public class FrameTxBlockGasTests
     public void Setup()
     {
         // EIP-7906 is on so a POST_TX frame is admissible; the opcodes it adds are unused here.
-        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
+        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8250Enabled = true });
         _state = TestWorldStateFactory.CreateForTest();
         _closer = _state.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_state);
@@ -288,6 +288,50 @@ public class FrameTxBlockGasTests
             Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
                 Is.EqualTo(tracer.GasConsumedResult.SpentGas - expectedStateGas),
                 "the two dimensions must together account for the gas the transaction spent");
+        }
+    }
+
+    /// <summary>A first use of an EIP-8250 keyed nonce set grows the block's state dimension by one storage
+    /// set per fresh key, the same as if the approving frame had written those slots itself.</summary>
+    /// <remarks>
+    /// A full <c>MAX_NONCE_KEYS</c> set is 1,566,720 state gas from a single transaction, a material share
+    /// of a block's state budget, so it has to reach the dimension the budget is counted in. The consumption
+    /// outlives a failed assertion, so the charge has to outlive it too: the body is rewound down to the
+    /// validation prefix, which the approval sits inside.
+    /// </remarks>
+    [TestCase(false, TestName = "A first-use keyed nonce set grows the block state dimension")]
+    [TestCase(true, TestName = "A failed POST_TX assertion keeps a first-use keyed nonce set's state gas")]
+    public void Execute_KeyedNonceFirstUse_GrowsTheBlockStateDimension(bool postTxReverts)
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        const ulong nonceStateGas = Eip8250Constants.MaxNonceKeys * (ulong)GasCostOf.SSetState;
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys];
+        for (int i = 0; i < keys.Length; i++) keys[i] = (UInt256)(i + 1);
+
+        TxFrame verify = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            executionGasLimit: 200_000, nonceStateGas, UInt256.Zero, default);
+        Transaction tx = postTxReverts
+            ? FrameTx(nonce: 0, verify, new TxFrame(TxFrame.ModePostTx, 0, Asserter, gasLimit: 200_000, UInt256.Zero, default))
+            : FrameTx(nonce: 0, verify);
+        tx.NonceKeys = keys;
+
+        TestAllTracerWithOutput tracer = new();
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(nonceStateGas),
+                "every NONCE_MANAGER slot the approval creates grows the block's state");
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
+                Is.EqualTo(tracer.GasConsumedResult.SpentGas - nonceStateGas),
+                "the charge leaves the regular dimension; counting it in both bills the block twice");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_state.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.One), $"key {key} stays consumed, so its slot stays paid for");
+            }
         }
     }
 

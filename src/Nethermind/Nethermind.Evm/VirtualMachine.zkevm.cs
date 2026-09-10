@@ -13,6 +13,9 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    // Keeping this call boundary reduces guest execution cost.
+    private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
+
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
     private static readonly OpcodeTable _opcodeTable = new();
@@ -58,7 +61,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             snapshot: in snapshot,
             newAccountCharged: newAccountCharged);
 
-        CallResult callResult = ExecutePrecompile(child, _isTracingActionsCached, out Exception? failure, out _);
+        CallResult callResult = ExecutePrecompile(child, isTracingActions: false, out Exception? failure, out _);
 
         if (failure is not null)
         {
@@ -71,8 +74,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             if (child.NewAccountCharged)
                 CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
             child.Dispose();
-            ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         bool reverted = callResult.ShouldRevert;

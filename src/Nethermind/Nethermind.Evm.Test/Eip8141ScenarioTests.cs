@@ -70,18 +70,21 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(receipt.Payer, Is.EqualTo(Sender));
-        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[] { TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess }));
-        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(transferred));
-        Assert.That(_stateProvider.GetBalance(Sender),
-            Is.EqualTo(1.Ether - transferred - (UInt256)receipt.GasUsed),
-            "payer covers gas at the effective price on top of the transferred value");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Payer, Is.EqualTo(Sender));
+            Assert.That(FrameStatuses(receipt), Is.EqualTo(new[] { TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess }));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(transferred));
+            Assert.That(_stateProvider.GetBalance(Sender),
+                Is.EqualTo(1.Ether - transferred - (UInt256)receipt.GasUsed),
+                "payer covers gas at the effective price on top of the transferred value");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        }
     }
 
-    // EIP-7708: a codeless SENDER frame transfers through default code, not the VM, so its log must
-    // still reach the frame receipt and the transaction log union.
+    // EIP-7708: a codeless SENDER frame runs empty code through the VM, so nothing but the transfer itself
+    // emits, and that log must still reach the frame receipt and the transaction log union.
     [Test]
     public void CodelessSenderFrameTransfer_EmitsEip7708TransferLog()
     {
@@ -162,11 +165,16 @@ public class Eip8141ScenarioTests
 
         static ulong CalldataTokens(byte[] bytes)
         {
-            ulong zeros = (ulong)bytes.Count(static b => b == 0);
+            ulong zeros = 0;
+            foreach (byte b in bytes)
+            {
+                if (b == 0) zeros++;
+            }
+
             return zeros + ((ulong)bytes.Length - zeros) * 4;
         }
 
-        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong frameGasUsed = FrameGasUsed(receipt);
         ulong tokens = CalldataTokens(frameData) + CalldataTokens(witnessBytes);
         ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
         ulong expected = (ulong)Eip8141Constants.IntrinsicGasCost
@@ -211,7 +219,7 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong frameGasUsed = FrameGasUsed(receipt);
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         using (Assert.EnterMultipleScope())
         {
@@ -236,7 +244,7 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong frameGasUsed = FrameGasUsed(receipt);
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         ulong standardTokenCost = 64 * 4UL;
         using (Assert.EnterMultipleScope())
@@ -293,7 +301,7 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong frameGasUsed = FrameGasUsed(receipt);
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
         ulong grossGas = mandatoryGas + (ulong)frameData.Length * 4UL + frameGasUsed;
@@ -324,7 +332,7 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        ulong grossFrameGas = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong grossFrameGas = FrameGasUsed(receipt);
         ulong gross = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL + grossFrameGas;
         ulong applied = gross - (ulong)receipt.GasUsed;
         using (Assert.EnterMultipleScope())
@@ -360,9 +368,8 @@ public class Eip8141ScenarioTests
 
     // Spec Example 2: an ERC-20-style approval batched with a swap — if the swap reverts, neither the
     // approval state nor its log may survive.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void AtomicApproveAndSwap_NoDanglingApprovalWhenSwapReverts(bool swapReverts)
+    [Test]
+    public void AtomicApproveAndSwap_NoDanglingApprovalWhenSwapReverts([Values] bool swapReverts)
     {
         Address token = TestItem.AddressE;
         Address dex = TestItem.AddressF;
@@ -461,9 +468,8 @@ public class Eip8141ScenarioTests
 
     // Two batches in one transaction: batch B's bounds depend on batchStartIndex being re-seeded, which
     // rests on inBatch being reset when batch A closes. A stale start would wipe the between frame's log.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void TwoBatches_EachClearsOnlyItsOwnFrames_CommittedLogsBetweenSurvive(bool secondBatchReverts)
+    [Test]
+    public void TwoBatches_EachClearsOnlyItsOwnFrames_CommittedLogsBetweenSurvive([Values] bool secondBatchReverts)
     {
         Address logger = TestItem.AddressD;
         Address tokenA = TestItem.AddressE;
@@ -540,9 +546,8 @@ public class Eip8141ScenarioTests
 
     // EIP-8141 § Expiry Verifier Frame: reverts unless block.timestamp <= the 8-byte calldata expiry,
     // and a reverted VERIFY invalidates the whole transaction.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ExpiryVerifierFrame_GatesTransactionOnBlockTimestamp(bool expired)
+    [Test]
+    public void ExpiryVerifierFrame_GatesTransactionOnBlockTimestamp([Values] bool expired)
     {
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         DeployContract(Eip8141Constants.ExpiryVerifierAddress, ExpiryVerifierCode());
@@ -857,8 +862,28 @@ public class Eip8141ScenarioTests
         Assert.That(actual, Is.EqualTo(expected), message);
     }
 
-    private static byte[] FrameStatuses(TxReceipt receipt) =>
-        receipt.FrameReceipts!.Select(static frameReceipt => frameReceipt.Status).ToArray();
+    private static byte[] FrameStatuses(TxReceipt receipt)
+    {
+        byte[] statuses = new byte[receipt.FrameReceipts!.Length];
+        for (int i = 0; i < statuses.Length; i++)
+        {
+            statuses[i] = receipt.FrameReceipts[i].Status;
+        }
+
+        return statuses;
+    }
+
+    /// <summary>The transaction's gross frame gas: the per-frame receipts summed, before refunds and the floor.</summary>
+    private static ulong FrameGasUsed(TxReceipt receipt)
+    {
+        ulong total = 0;
+        foreach (TxFrameReceipt frameReceipt in receipt.FrameReceipts!)
+        {
+            total += frameReceipt.GasUsed;
+        }
+
+        return total;
+    }
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;

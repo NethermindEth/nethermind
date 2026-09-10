@@ -19,7 +19,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
-    public class Transaction
+    public partial class Transaction
     {
         public const byte MaxTxType = 0x7F;
         public const uint BaseTxGasCost = 21000;
@@ -105,16 +105,23 @@ namespace Nethermind.Core
             Hash256? hash = _hash;
             if (hash is not null) return hash;
 
-            lock (this)
-            {
-                hash = _hash;
-                if (hash is not null) return hash;
+            return CalculateHashSynchronized();
+        }
 
-                if (_preHash.Length > 0)
-                {
-                    _hash = hash = Keccak.Compute(_preHash.Span);
-                    ClearPreHashInternal();
-                }
+        /// <summary>Computes and memoizes the hash, holding whatever exclusion the target needs.</summary>
+        /// <remarks>Split per target: see <c>Transaction.std.cs</c> and <c>Transaction.zkevm.cs</c>.</remarks>
+        private partial Hash256 CalculateHashSynchronized();
+
+        /// <summary>The memoizing computation itself, with no exclusion of its own.</summary>
+        private Hash256 ComputeAndMemoizeHash()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            if (_preHash.Length > 0)
+            {
+                _hash = hash = Keccak.Compute(_preHash.Span);
+                ClearPreHashInternal();
             }
 
             return hash!;
@@ -241,8 +248,9 @@ namespace Nethermind.Core
         public Address? PayerAddress { get; set; }
 
         /// <summary>
-        /// Exposure reserved against <see cref="PayerAddress"/> at mempool admission, released unchanged when the
-        /// transaction leaves the pool. In-memory only (not encoded).
+        /// The maximum cost mempool admission priced this transaction at, released unchanged from
+        /// <see cref="PayerAddress"/>'s exposure when the transaction leaves the pool. Recorded with no payer too,
+        /// where it reserves nothing and only prices the sender's pending total. In-memory only (not encoded).
         /// </summary>
         /// <remarks>
         /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light

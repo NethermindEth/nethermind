@@ -94,6 +94,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(malformed!);
         }
 
+        if (tx.NonceKeys is { } nonceKeys)
+        {
+            if (!spec.IsEip8250Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
+            }
+
+            // Structural, so it holds even where validation is skipped: the fixed-size buffers keyed on the set
+            // take a well-formed one as their precondition, and eth_call and the simulator arrive without a validator.
+            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+            }
+        }
+
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
         {
             return SimulateFrameValidationPrefix(tx, tracer, opts, header, spec);
@@ -101,18 +116,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
-
-        if (tx.NonceKeys is not null && !spec.IsEip8250Enabled)
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
-        }
-
-        // Structural, so it holds even where validation is skipped: the fixed-size buffers below take a
-        // well-formed set as their precondition, and eth_call arrives without a validator.
-        if (tx.NonceKeys is { } nonceKeys && !KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
-        }
 
         // Follows SkipValidation as the account-nonce path does: eth_call overwrites the supplied nonce.
         if (ShouldValidate(opts))
@@ -904,7 +907,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>
     /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require a canonical-hash
     /// SECP256K1 signature signed by the target, then APPROVE. The default code draws no execution gas of
-    /// its own beyond the EIP-8250 surcharge; the frame's entry access charge is already accounted for.
+    /// its own beyond the frame's entry access charge, which is already accounted for.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// </summary>
@@ -947,31 +950,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
-        // Owes APPROVE's charges out of the frame's declared limits, which the default code never draws on otherwise.
-        if (plan.ApprovesPayment && frameContext.NonceKeys is { } nonceKeys)
+        // The declared limit still is state_gas_left: default code writes no state before the approval, so
+        // it never draws on the state dimension. A state charge added ahead of this would silently undercharge.
+        long nonceStateGas = frameContext.NonceStateGas<TGasPolicy>(in plan, WorldState);
+        if ((ulong)nonceStateGas > frame.StateGasLimit)
         {
-            ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
-            if (surcharge > frame.ExecutionGasLimit - entryExecution)
-            {
-                gasUsed = frame.ExecutionGasLimit;
-                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-            }
-
-            gasUsed = entryExecution + surcharge;
+            gasUsed = frame.ExecutionGasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
-        if (plan.CreatesSender)
-        {
-            long newAccountCost = TGasPolicy.GetNewAccountStateCost();
-            if ((ulong)newAccountCost > frame.StateGasLimit)
-            {
-                gasUsed = frame.ExecutionGasLimit;
-                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-            }
-
-            stateGasUsed = newAccountCost;
-            gasUsed += (ulong)newAccountCost;
-        }
+        stateGasUsed = nonceStateGas;
+        gasUsed += (ulong)nonceStateGas;
 
         frameContext.ApplyApproval(in plan, resolvedTarget, WorldState, spec, in accessTracker);
         return DefaultCodeSuccess();

@@ -74,10 +74,10 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             ShardBlobNetworkWrapperRlp.Encode(ref writer, GetNetworkWrapper(transaction), rlpBehaviors);
     }
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
+        RlpBehaviors rlpBehaviors)
     {
-        base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
+        base.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
     }

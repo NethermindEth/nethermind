@@ -16,10 +16,10 @@ public sealed class SetCodeTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly AuthorizationTupleDecoder AuthTupleDecoder = AuthorizationTupleDecoder.Instance;
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
+        RlpBehaviors rlpBehaviors)
     {
-        base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
+        base.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
         transaction.AuthorizationList = decoderContext.DecodeNonNullArray(AuthTupleDecoder, limit: AuthorizationListLimit);
     }
 

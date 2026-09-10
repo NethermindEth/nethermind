@@ -51,7 +51,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         if (!result.IsZero)
@@ -91,7 +91,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) goto OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         // Ahead of the zero-length short-circuit: a zero-length read past the end still halts.
@@ -136,6 +136,7 @@ public static partial class EvmInstructions
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
     public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -207,11 +208,11 @@ public static partial class EvmInstructions
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!TGasPolicy.ConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
@@ -296,14 +297,14 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
-        TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
+        if (!TGasPolicy.UpdateGas<ExtCodeSizeGasCost>(ref gas, spec)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
 
         // Pop the account address from the stack.
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!TGasPolicy.ConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
@@ -341,7 +342,7 @@ public static partial class EvmInstructions
                 vm.OpCodeCount++;
                 programCounter++;
                 // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
-                TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+                if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
                 bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
@@ -354,7 +355,7 @@ public static partial class EvmInstructions
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
                 return new OpcodeResult(programCounter, !isCodeLengthNotZero
                     ? stack.PushOne<TTracingInst>()
-                    : stack.PushZero<TTracingInst>());
+                    : stack.PushZero<TTracingInst, OnFlag>());
             }
         }
 
@@ -362,7 +363,7 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst>((uint)accountCode.Length));
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst, OnFlag>((uint)accountCode.Length));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);

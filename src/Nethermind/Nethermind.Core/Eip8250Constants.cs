@@ -10,7 +10,6 @@ public static class Eip8250Constants
 {
     public const int MaxNonceKeys = 16;
     public const ulong MaxNonceSeq = ulong.MaxValue;
-    public const long KeyedNonceFirstUseGas = 20_000;
 
     public static readonly Address NonceManagerAddress = new("0x0000000000000000000000000000000000008250");
 

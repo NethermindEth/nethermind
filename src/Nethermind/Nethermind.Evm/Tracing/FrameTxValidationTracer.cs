@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,18 +14,23 @@ namespace Nethermind.Evm.Tracing;
 /// and captures the resolved payer.</summary>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
+/// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
     IReadOnlyStateProvider state,
     IReleaseSpec spec,
     CancellationToken token = default,
-    TimeSpan timeout = default)
+    TimeSpan timeout = default,
+    TimeProvider? timeProvider = null)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
-    private readonly long _deadline = timeout > TimeSpan.Zero
-        ? Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency)
-        : 0;
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+
+    private readonly long _deadline = Deadline(timeProvider ?? TimeProvider.System, timeout);
+
+    private static long Deadline(TimeProvider time, TimeSpan timeout) =>
+        timeout > TimeSpan.Zero ? time.GetTimestamp() + (long)(timeout.TotalSeconds * time.TimestampFrequency) : 0;
 
     // Stack slots holding the current CALL*/EXTCODE* target and value operands, or -1. Set in StartOperation
     // and consumed in SetOperationStack, as the operands aren't available any earlier.
@@ -55,7 +59,7 @@ public sealed class FrameTxValidationTracer(
     bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
 
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
-    public bool TimedOut => _deadline != 0 && Stopwatch.GetTimestamp() > _deadline;
+    public bool TimedOut => _deadline != 0 && _time.GetTimestamp() > _deadline;
 
     // The VM reports the address a creation frame is entered at; recomputing it here would duplicate
     // CREATE2's initcode hashing for no gain.

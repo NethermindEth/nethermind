@@ -3,12 +3,19 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 namespace Nethermind.Evm;
 
+/// <remarks>
+/// Extension contract: there is no base class to derive from, so an added member is a compile error for every
+/// implementation, deliberately. A wrapping repository has to answer for the one it wraps, and a default body
+/// would let a missing forward return the terminal answer silently — the reason <see cref="IsCodeOverridable"/>
+/// had its <c>=> false</c> default stripped again in #12282.
+/// </remarks>
 public interface ICodeInfoRepository
 {
     /// <summary>Whether account code may be overridden (e.g. <c>eth_call</c> state overrides), disabling the simple-transfer fast path.</summary>
@@ -51,6 +58,7 @@ public static class CodeInfoRepositoryExtensions
     /// <summary>
     /// Returns the <see cref="CodeInfo"/> at <paramref name="codeSource"/> without resolving any EIP-7702 delegation.
     /// </summary>
+    [SkipLocalsInit]
     public static CodeInfo GetCachedCodeInfoNoDelegation(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, false, vmSpec, out _);
 }

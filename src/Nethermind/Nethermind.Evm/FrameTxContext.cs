@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -15,6 +17,20 @@ namespace Nethermind.Evm;
 
 /// <summary>Transaction-scoped context for an in-flight EIP-8141 frame transaction: the read-only envelope
 /// plus the approval state the outer loop advances and the <c>APPROVE</c> opcode writes.</summary>
+/// <remarks>One instance per transaction, not thread-safe: it is mutated by the single frame loop executing it.</remarks>
+/// <param name="sender">The transaction sender, and the default target and signer of frames and entries that name none.</param>
+/// <param name="nonce">The nonce the envelope was signed at: the account nonce, or the shared <c>nonce_seq</c> when
+/// <paramref name="nonceKeys"/> is set.</param>
+/// <param name="frames">The envelope's frames, in execution order.</param>
+/// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
+/// <param name="sigHash">The canonical signature hash the entries that carry no explicit <c>msg</c> sign.</param>
+/// <param name="maxCost">The gas and blob-gas cost the payer's approval reserves up front.</param>
+/// <param name="maxPriorityFeePerGas">EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</param>
+/// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
+/// <param name="maxFeePerBlobGas">EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope, zero when it carries no blobs.</param>
+/// <param name="legacyNonce">The sender's account nonce before any frame executed.</param>
+/// <param name="recentRootReferences">EIP-8272 recent-root references of the signed envelope.</param>
+/// <param name="nonceKeys">EIP-8250 nonce keys, or <see langword="null"/> for a plain account nonce.</param>
 public sealed class FrameTxContext(
     Address sender,
     ulong nonce,
@@ -29,7 +45,10 @@ public sealed class FrameTxContext(
     RecentRootReference[]? recentRootReferences = null,
     UInt256[]? nonceKeys = null)
 {
+    /// <summary>The transaction sender: the default target of a frame and signer of an entry that names none.</summary>
     public Address Sender { get; } = sender;
+
+    /// <summary>The nonce the envelope was signed at; with <see cref="NonceKeys"/> set, the shared <c>nonce_seq</c>.</summary>
     public ulong Nonce { get; } = nonce;
 
     /// <summary>The EIP-8250 nonce keys this transaction consumes, or <see langword="null"/> for a plain account nonce.</summary>
@@ -49,12 +68,26 @@ public sealed class FrameTxContext(
 
     private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([UInt256.Zero]);
 
+    /// <summary>The envelope's frames, in execution order.</summary>
     public TxFrame[] Frames { get; } = frames;
+
+    /// <summary>The envelope's signature entries, validated before the first frame runs.</summary>
     public TxFrameSignature[] Signatures { get; } = signatures;
+
+    /// <summary>The hash entries carrying no explicit <c>msg</c> are taken to have signed.</summary>
     public ValueHash256 SigHash { get; } = sigHash;
+
+    /// <summary>The cost an approving payer reserves up front: the whole gas budget plus blob gas at the
+    /// envelope's maximum prices.</summary>
     public UInt256 MaxCost { get; } = maxCost;
+
+    /// <summary>EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</summary>
     public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
+
+    /// <summary>EIP-1559 <c>max_fee_per_gas</c> of the envelope.</summary>
     public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
+
+    /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
 
     /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
@@ -71,25 +104,37 @@ public sealed class FrameTxContext(
     /// <summary>EVM code only runs while some frame executes, so completed means strictly earlier.</summary>
     public bool IsFrameCompleted(int frameIndex) => frameIndex < CurrentFrameIndex;
 
+    /// <summary>Whether a completed frame ran to success; meaningless for a frame that has not completed.</summary>
     public bool HasFrameSucceeded(int frameIndex) => (_frameSucceededBits & (1UL << frameIndex)) != 0;
 
+    /// <summary>Records that <paramref name="frameIndex"/> completed successfully.</summary>
     public void MarkFrameSucceeded(int frameIndex) => _frameSucceededBits |= 1UL << frameIndex;
 
+    /// <summary>Whether a frame was skipped rather than run, as a failed atomic batch's remaining members are.</summary>
     public bool WasFrameSkipped(int frameIndex) => (_frameSkippedBits & (1UL << frameIndex)) != 0;
 
+    /// <summary>Records that <paramref name="frameIndex"/> was skipped rather than run.</summary>
     public void MarkFrameSkipped(int frameIndex) => _frameSkippedBits |= 1UL << frameIndex;
 
 
+    /// <summary>Whether some frame has authorized the transaction on the sender's behalf.</summary>
+    /// <remarks>Set through <see cref="ApplyApproval"/>, which journals it; assigning it directly skips the undo record.</remarks>
     public bool SenderApproved { get; set; }
+
+    /// <summary>The account whose balance covers the transaction, once a frame has approved payment.</summary>
+    /// <remarks>Write-once for the life of the transaction, apart from a journal restore.</remarks>
     public Address? Payer { get; set; }
 
+    /// <summary>The frame the outer loop is currently executing.</summary>
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
     /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
     internal TransactionDiffView? PostTxDiffView { get; set; }
 
+    /// <summary>A frame's target with the omitted-target encoding resolved to the sender.</summary>
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
 
+    /// <summary>An entry's signer with the omitted-signer encoding resolved to the sender.</summary>
     public Address ResolvedSigner(int signatureIndex) => Signatures[signatureIndex].Signer ?? Sender;
 
     private const int NoOwner = -1;
@@ -170,6 +215,21 @@ public sealed class FrameTxContext(
 
         plan = new FrameApprovalPlan(approvesExecution, approvesPayment, createsSender);
         return FrameApprovalOutcome.Approved;
+    }
+
+    /// <summary>EIP-8250 <c>nonce_state_gas</c>: the state gas the approval's nonce consumption owes.</summary>
+    /// <remarks>The branches are exclusive: a keyed set writes <c>NONCE_MANAGER</c> slots and never the sender's
+    /// account, so <see cref="FrameApprovalPlan.CreatesSender"/> is set only for the account-nonce set.</remarks>
+    internal long NonceStateGas<TGasPolicy>(in FrameApprovalPlan plan, IReadOnlyStateProvider state)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        Debug.Assert(!plan.CreatesSender || NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys),
+            "a keyed set never creates the sender, so the two branches must stay exclusive");
+
+        return plan.CreatesSender ? TGasPolicy.GetNewAccountStateCost()
+            : plan.ApprovesPayment
+                ? KeyedNonceManager.FirstUseCount(state, Sender, NonceKeys) * TGasPolicy.GetStorageSetStateCost()
+                : 0;
     }
 
     /// <summary>
@@ -294,8 +354,12 @@ public sealed class FrameTxContext(
     /// receipt kinds, the previous approval stage for <see cref="FrameJournalKind.ApprovalAdvanced"/>.</summary>
     private readonly record struct FrameJournalEntry(FrameJournalKind Kind, StorageCell Slot, int Value, long Amount);
 
+    /// <exception cref="ArgumentOutOfRangeException">The set is longer than a well-formed one, which the
+    /// fixed-size preimage buffer cannot hold.</exception>
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(nonceKeys.Length, Eip8250Constants.MaxNonceKeys);
+
         Span<byte> input = stackalloc byte[(1 + Eip8250Constants.MaxNonceKeys) * 32];
         new UInt256((ulong)nonceKeys.Length).ToBigEndian(input[..32]);
         for (int i = 0; i < nonceKeys.Length; i++)

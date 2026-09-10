@@ -249,25 +249,8 @@ public class FrameTxSignatureValidatorTests
     [Test]
     public void Validate_P256ValidSignature_ReturnsTrue()
     {
-        using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        ECParameters pub = key.ExportParameters(includePrivateParameters: false);
-        byte[] qx = Pad32(pub.Q.X!);
-        byte[] qy = Pad32(pub.Q.Y!);
-        Address signer = new(Keccak.Compute([.. qx, .. qy]).Bytes[12..]);
-
         Transaction tx = CreateFrameTx();
-        // Install the placeholder (scheme/signer/msg) so the sig hash is fixed before signing.
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-
-        byte[] rs = key.SignHash(sigHash.Bytes); // IEEE P1363: r || s
-        byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
-        rs.CopyTo(raw.AsSpan(0));
-        qx.CopyTo(raw.AsSpan(64));
-        qy.CopyTo(raw.AsSpan(96));
-        // .NET does not guarantee low-s; the spec requires it, so normalize before validating.
-        NormalizeP256LowS(raw);
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw)];
+        SignP256(tx);
 
         Assert.That(Validate(tx, out string? error), Is.True, error);
     }
@@ -276,29 +259,42 @@ public class FrameTxSignatureValidatorTests
     public void Validate_P256WithHighS_RejectedAsNonCanonical()
     {
         // P256VERIFY accepts both s and N - s, so the low-s gate must reject the high-s encoding.
+        Transaction tx = CreateFrameTx();
+        byte[] raw = SignP256(tx);
+
+        // Flip the (now low) s to its high-s counterpart N - s, leaving the rest of the entry alone.
+        UInt256 lowS = new(raw.AsSpan(32, 32), isBigEndian: true);
+        (SecP256r1Curve.N - lowS).ToBigEndian(raw.AsSpan(32, 32));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(tx, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalP256Signature));
+        }
+    }
+
+    /// <summary>Signs <paramref name="tx"/> with a fresh P-256 key and installs the low-s entry it produces,
+    /// returning the entry's signature bytes so a caller can corrupt them in place.</summary>
+    private static byte[] SignP256(Transaction tx)
+    {
         using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         ECParameters pub = key.ExportParameters(includePrivateParameters: false);
         byte[] qx = Pad32(pub.Q.X!);
         byte[] qy = Pad32(pub.Q.Y!);
         Address signer = new(Keccak.Compute([.. qx, .. qy]).Bytes[12..]);
 
-        Transaction tx = CreateFrameTx();
+        // Install the placeholder (scheme/signer/msg) so the sig hash is fixed before signing.
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
 
-        byte[] rs = key.SignHash(sigHash.Bytes);
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
-        rs.CopyTo(raw.AsSpan(0));
+        key.SignHash(sigHash.Bytes).CopyTo(raw.AsSpan(0)); // IEEE P1363: r || s
         qx.CopyTo(raw.AsSpan(64));
         qy.CopyTo(raw.AsSpan(96));
+        // .NET does not guarantee low-s; the spec requires it, so normalize before validating.
         NormalizeP256LowS(raw);
-        // Flip the (now low) s to its high-s counterpart N - s.
-        UInt256 lowS = new(raw.AsSpan(32, 32), isBigEndian: true);
-        (SecP256r1Curve.N - lowS).ToBigEndian(raw.AsSpan(32, 32));
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw)];
-
-        Assert.That(Validate(tx, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalP256Signature));
+        return raw;
     }
 
     private static void NormalizeP256LowS(byte[] raw)

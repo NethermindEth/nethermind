@@ -420,7 +420,7 @@ public class BlockValidator(
         return true;
     }
 
-    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
+    public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
         // n.b. block BAL body is a side-channel property only set by engine API or local production.
         // It is NOT part of block RLP, so blocks from p2p/fixtures will have null BlockAccessList
