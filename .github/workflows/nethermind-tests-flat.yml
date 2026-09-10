@@ -59,9 +59,10 @@ jobs:
           - Nethermind.Runner.Test
         chunk: ['']
         include:
-          - project: Nethermind.Synchronization.Test
-            chunk: ''
-            filter: FullyQualifiedName~BlockDownloaderTests
+          - { project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - project: Ethereum.Legacy.Blockchain.Test
             chunk: 1of8
           - project: Ethereum.Legacy.Blockchain.Test
@@ -102,17 +103,12 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
-          TEST_FILTER: ${{ matrix.filter }}
         run: |
           dotnet restore ${{ matrix.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
           # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
-          test_args=()
-          if [[ -n "$TEST_FILTER" ]]; then
-            test_args+=(-- --filter "$TEST_FILTER")
-          fi
-          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini "${test_args[@]}"
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini
 
       - name: Upload hang dump
         if: ${{ failure() || cancelled() }}

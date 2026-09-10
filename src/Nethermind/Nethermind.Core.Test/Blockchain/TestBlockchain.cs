@@ -202,8 +202,12 @@ public class TestBlockchain : IDisposable
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IConfig[] configs = [.. CreateConfigs()];
+        IConfigProvider configProvider = new ConfigProvider(configs);
+        if (!TestStateBackend.PinsBackend(configs))
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        }
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
@@ -244,9 +248,10 @@ public class TestBlockchain : IDisposable
     /// <remarks>
     /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
     /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
-    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
+    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix. An explicit
+    /// <see cref="IFlatDbConfig"/> from <see cref="CreateConfigs"/> takes precedence over this property.
     /// </remarks>
-    public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+    public bool UseFlatDb { get; set; } = TestStateBackend.UseFlatDb;
 
     protected virtual ChainSpec CreateChainSpec() => new();
 
