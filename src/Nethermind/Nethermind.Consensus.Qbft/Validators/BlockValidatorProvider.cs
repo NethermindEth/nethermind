@@ -14,10 +14,10 @@ namespace Nethermind.Consensus.Qbft.Validators;
 public sealed class BlockValidatorProvider : IValidatorProvider
 {
     private readonly VoteTallyCache _voteTallyCache;
-    private readonly QbftBlockInterface _blockInterface;
+    private readonly BftBlockInterface _blockInterface;
     private readonly BlockVoteProvider _voteProvider;
 
-    private BlockValidatorProvider(VoteTallyCache voteTallyCache, QbftBlockInterface blockInterface)
+    private BlockValidatorProvider(VoteTallyCache voteTallyCache, BftBlockInterface blockInterface)
     {
         _voteTallyCache = voteTallyCache;
         _blockInterface = blockInterface;
@@ -25,11 +25,11 @@ public sealed class BlockValidatorProvider : IValidatorProvider
     }
 
     /// <summary>Provider honouring the validator lists installed by <c>transitions.qbft</c>.</summary>
-    public static BlockValidatorProvider Forking(IBlockTree blockTree, EpochManager epochManager, QbftBlockInterface blockInterface, QbftForksSchedule forksSchedule) =>
+    public static BlockValidatorProvider Forking(IBlockTree blockTree, EpochManager epochManager, BftBlockInterface blockInterface, BftForksSchedule forksSchedule) =>
         new(new ForkingVoteTallyCache(blockTree, new VoteTallyUpdater(epochManager, blockInterface), epochManager, blockInterface, forksSchedule), blockInterface);
 
     /// <summary>Provider with its own tally cache, for read-only consumers such as RPC that must not share the consensus vote store.</summary>
-    public static BlockValidatorProvider NonForking(IBlockTree blockTree, EpochManager epochManager, QbftBlockInterface blockInterface) =>
+    public static BlockValidatorProvider NonForking(IBlockTree blockTree, EpochManager epochManager, BftBlockInterface blockInterface) =>
         new(new VoteTallyCache(blockTree, new VoteTallyUpdater(epochManager, blockInterface), epochManager, blockInterface), blockInterface);
 
     public IReadOnlyList<Address> GetValidatorsAtHead() => _voteTallyCache.GetVoteTallyAtHead().Validators;

@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Qbft.StateMachine;
 public sealed class QbftRound
 {
     private readonly IQbftBlockCreator _blockCreator;
-    private readonly QbftBlockInterface _blockInterface;
+    private readonly BftBlockInterface _blockInterface;
     private readonly IQbftBlockImporter _blockImporter;
     private readonly IReadOnlyList<IMinedBlockObserver> _observers;
     private readonly MessageFactory _messageFactory;
@@ -31,7 +31,7 @@ public sealed class QbftRound
     public QbftRound(
         RoundState roundState,
         IQbftBlockCreator blockCreator,
-        QbftBlockInterface blockInterface,
+        BftBlockInterface blockInterface,
         IQbftBlockImporter blockImporter,
         IReadOnlyList<IMinedBlockObserver> observers,
         MessageFactory messageFactory,

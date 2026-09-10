@@ -26,115 +26,47 @@ public sealed class QbftRpcModule(
     IValidatorProvider validatorProvider,
     IValidatorContract validatorContract,
     EpochManager epochManager,
-    QbftBlockInterface blockInterface,
-    QbftForksSchedule forksSchedule,
+    BftBlockInterface blockInterface,
+    BftForksSchedule forksSchedule,
     QbftChainSpecEngineParameters parameters,
     ISigner signer,
     ValidatorPeers validatorPeers,
     QbftConsensusStatus status) : IQbftRpcModule
 {
-    private const long DefaultRangeBlocks = 100;
-    /// <summary>Besu's <c>RpcErrorType.METHOD_NOT_ENABLED</c>.</summary>
-    public const int MethodNotEnabledErrorCode = -32604;
+    /// <inheritdoc cref="BftValidatorRpc.MethodNotEnabledErrorCode"/>
+    public const int MethodNotEnabledErrorCode = BftValidatorRpc.MethodNotEnabledErrorCode;
 
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IValidatorProvider _validatorProvider = validatorProvider;
-    private readonly IValidatorProvider _readOnlyValidatorProvider = new ForkingValidatorProvider(
+    private readonly BftValidatorRpc _bft = new(
         blockTree,
-        forksSchedule,
-        BlockValidatorProvider.NonForking(blockTree, epochManager, blockInterface),
-        new TransactionValidatorProvider(blockTree, validatorContract, forksSchedule));
-    private readonly QbftBlockInterface _blockInterface = blockInterface;
-    private readonly QbftForksSchedule _forksSchedule = forksSchedule;
+        validatorProvider,
+        new ForkingValidatorProvider(
+            blockTree,
+            forksSchedule,
+            BlockValidatorProvider.NonForking(blockTree, epochManager, blockInterface),
+            new TransactionValidatorProvider(blockTree, validatorContract, forksSchedule)));
+    private readonly BftBlockInterface _blockInterface = blockInterface;
+    private readonly BftForksSchedule _forksSchedule = forksSchedule;
     private readonly QbftChainSpecEngineParameters _parameters = parameters;
     private readonly ISigner _signer = signer;
     private readonly ValidatorPeers _validatorPeers = validatorPeers;
     private readonly QbftConsensusStatus _status = status;
 
-    public ResultWrapper<bool> qbft_discardValidatorVote(Address validatorAddress)
-    {
-        IVoteProvider? votes = _validatorProvider.GetVoteProviderAtHead();
-        if (votes is null) return MethodNotEnabled<bool>();
-        votes.DiscardVote(validatorAddress);
-        return ResultWrapper<bool>.Success(true);
-    }
+    public ResultWrapper<bool> qbft_discardValidatorVote(Address validatorAddress) => _bft.DiscardValidatorVote(validatorAddress);
 
-    public ResultWrapper<IReadOnlyDictionary<Address, bool>> qbft_getPendingVotes()
-    {
-        IVoteProvider? votes = _validatorProvider.GetVoteProviderAtHead();
-        if (votes is null) return MethodNotEnabled<IReadOnlyDictionary<Address, bool>>();
-        Dictionary<Address, bool> result = [];
-        foreach ((Address address, VoteType type) in votes.GetProposals())
-        {
-            result[address] = type == VoteType.Add;
-        }
+    public ResultWrapper<IReadOnlyDictionary<Address, bool>> qbft_getPendingVotes() => _bft.GetPendingVotes();
 
-        return ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(result);
-    }
-
-    public ResultWrapper<bool> qbft_proposeValidatorVote(Address validatorAddress, bool add)
-    {
-        IVoteProvider? votes = _validatorProvider.GetVoteProviderAtHead();
-        if (votes is null) return MethodNotEnabled<bool>();
-        if (add) votes.AuthVote(validatorAddress);
-        else votes.DropVote(validatorAddress);
-        return ResultWrapper<bool>.Success(true);
-    }
+    public ResultWrapper<bool> qbft_proposeValidatorVote(Address validatorAddress, bool add) => _bft.ProposeValidatorVote(validatorAddress, add);
 
     public ResultWrapper<int> qbft_getRequestTimeoutSeconds() => ResultWrapper<int>.Success(_parameters.RequestTimeoutSeconds);
 
-    public ResultWrapper<Address[]?> qbft_getValidatorsByBlockHash(Hash256 blockHash)
-    {
-        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        return ResultWrapper<Address[]?>.Success(header is null ? null : [.. _readOnlyValidatorProvider.GetValidatorsForBlock(header)]);
-    }
+    public ResultWrapper<Address[]?> qbft_getValidatorsByBlockHash(Hash256 blockHash) => _bft.GetValidatorsByBlockHash(blockHash);
 
-    public ResultWrapper<Address[]?> qbft_getValidatorsByBlockNumber(BlockParameter blockParameter)
-    {
-        if (blockParameter.Type == BlockParameterType.Pending)
-        {
-            BlockHeader? head = _blockTree.Head?.Header;
-            return ResultWrapper<Address[]?>.Success(head is null ? null : [.. _readOnlyValidatorProvider.GetValidatorsAfterBlock(head)]);
-        }
+    public ResultWrapper<Address[]?> qbft_getValidatorsByBlockNumber(BlockParameter blockParameter) => _bft.GetValidatorsByBlockNumber(blockParameter);
 
-        BlockHeader? header = _blockTree.FindHeader(blockParameter);
-        return ResultWrapper<Address[]?>.Success(header is null ? null : [.. _readOnlyValidatorProvider.GetValidatorsForBlock(header)]);
-    }
-
-    public ResultWrapper<SignerMetricResult[]> qbft_getSignerMetrics(BlockParameter? fromBlock = null, BlockParameter? toBlock = null)
-    {
-        long headNumber = (long)(_blockTree.Head?.Number ?? 0);
-        long from = fromBlock is null ? System.Math.Max(0, headNumber - DefaultRangeBlocks) : ResolveBlockNumber(fromBlock, headNumber);
-        long to = toBlock is null ? headNumber : System.Math.Min(ResolveBlockNumber(toBlock, headNumber), headNumber);
-        if (from >= to)
-        {
-            return ResultWrapper<SignerMetricResult[]>.Fail("Invalid block range: fromBlock must be lower than toBlock", ErrorCodes.InvalidParams);
-        }
-
-        Dictionary<Address, SignerMetricResult> metrics = [];
-        long last = to - 1;
-        for (long number = from; number < to; number++)
-        {
-            BlockHeader? header = _blockTree.FindHeader((ulong)number, BlockTreeLookupOptions.RequireCanonical);
-            if (header is null) continue;
-
-            Address proposer = QbftBlockInterface.GetProposer(header);
-            SignerMetricResult metric = GetOrAdd(metrics, proposer);
-            metric.ProposedBlockCount += 1;
-            metric.LastProposedBlockNumber = (UInt256)number;
-
-            // Every validator of the last block shows up even when it proposed nothing in the range.
-            if (number == last)
-            {
-                foreach (Address validator in _readOnlyValidatorProvider.GetValidatorsAfterBlock(header))
-                {
-                    GetOrAdd(metrics, validator);
-                }
-            }
-        }
-
-        return ResultWrapper<SignerMetricResult[]>.Success([.. metrics.Values]);
-    }
+    public ResultWrapper<SignerMetricResult[]> qbft_getSignerMetrics(BlockParameter? fromBlock = null, BlockParameter? toBlock = null) =>
+        _bft.GetSignerMetrics(fromBlock, toBlock);
 
     public ResultWrapper<QbftBlockSealInfo?> qbft_getBlockCommitters(BlockParameter blockParameter)
     {
@@ -158,7 +90,7 @@ public sealed class QbftRpcModule(
         {
             BlockHash = header.Hash!,
             BlockNumber = header.Number,
-            Proposer = QbftBlockInterface.GetProposer(header),
+            Proposer = BftBlockInterface.GetProposer(header),
             Round = extraData.Round,
             Committers = header.IsGenesis ? [] : BftBlockHashing.RecoverCommitters(header, extraData, _blockInterface.CodecFor(header)),
             Validators = [.. extraData.Validators],
@@ -175,7 +107,7 @@ public sealed class QbftRpcModule(
             return ResultWrapper<QbftConfigForRpc>.Fail("Block not found", ErrorCodes.ResourceNotFound);
         }
 
-        QbftConfigSnapshot config = _forksSchedule.GetFork((long)header.Number, header.Timestamp);
+        BftConfigSnapshot config = _forksSchedule.GetFork((long)header.Number, header.Timestamp);
         return ResultWrapper<QbftConfigForRpc>.Success(new QbftConfigForRpc
         {
             EpochLength = config.EpochLength,
@@ -211,25 +143,4 @@ public sealed class QbftRpcModule(
         });
     }
 
-    private static ResultWrapper<T> MethodNotEnabled<T>() =>
-        ResultWrapper<T>.Fail("Method not enabled: validators are selected by contract on this chain", MethodNotEnabledErrorCode);
-
-    private long ResolveBlockNumber(BlockParameter parameter, long headNumber) => parameter.Type switch
-    {
-        BlockParameterType.BlockNumber => (long)parameter.BlockNumber!.Value,
-        BlockParameterType.Earliest => 0,
-        BlockParameterType.BlockHash => (long)(_blockTree.FindHeader(parameter.BlockHash!, BlockTreeLookupOptions.None)?.Number ?? (ulong)headNumber),
-        _ => headNumber,
-    };
-
-    private static SignerMetricResult GetOrAdd(Dictionary<Address, SignerMetricResult> metrics, Address address)
-    {
-        if (!metrics.TryGetValue(address, out SignerMetricResult? metric))
-        {
-            metric = new SignerMetricResult(address);
-            metrics[address] = metric;
-        }
-
-        return metric;
-    }
 }

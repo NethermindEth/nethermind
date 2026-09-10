@@ -17,15 +17,15 @@ public class QbftForksScheduleTests
 {
     private static readonly Address Beneficiary = new("0xdee0519f7c7cb0f9843fa1e93b99255c89507a9c");
 
-    private static QbftChainSpecEngineParameters Parameters(params QbftTransition[] transitions) => new() { Transitions = [.. transitions] };
+    private static QbftChainSpecEngineParameters Parameters(params BftTransition[] transitions) => new() { Transitions = [.. transitions] };
 
-    private static QbftForksSchedule Create(QbftChainSpecEngineParameters parameters, ulong firstTimestampFork = ISpecProvider.TimestampForkNever) =>
-        QbftForksSchedule.Create(parameters, firstTimestampFork);
+    private static BftForksSchedule Create(QbftChainSpecEngineParameters parameters, ulong firstTimestampFork = ISpecProvider.TimestampForkNever) =>
+        BftForksSchedule.Create(parameters, firstTimestampFork);
 
     [Test]
     public void RetrievesGenesisFork()
     {
-        QbftForksSchedule schedule = Create(Parameters(new QbftTransition { Block = 10, BlockPeriodSeconds = 10 }));
+        BftForksSchedule schedule = Create(Parameters(new BftTransition { Block = 10, BlockPeriodSeconds = 10 }));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetForkSpec(0, 0).Block, Is.EqualTo(0));
@@ -37,11 +37,11 @@ public class QbftForksScheduleTests
     [Test]
     public void RetrievesLatestForkByBlockNumber()
     {
-        QbftForksSchedule schedule = Create(Parameters(
-            new QbftTransition { Block = 1, BlockPeriodSeconds = 10 },
-            new QbftTransition { Block = 2, BlockPeriodSeconds = 20 },
-            new QbftTransition { Block = 3, MiningBeneficiary = Beneficiary.ToString() },
-            new QbftTransition { Block = 4, MiningBeneficiary = "" }));
+        BftForksSchedule schedule = Create(Parameters(
+            new BftTransition { Block = 1, BlockPeriodSeconds = 10 },
+            new BftTransition { Block = 2, BlockPeriodSeconds = 20 },
+            new BftTransition { Block = 3, MiningBeneficiary = Beneficiary.ToString() },
+            new BftTransition { Block = 4, MiningBeneficiary = "" }));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetForkSpec(0, 0).Block, Is.EqualTo(0));
@@ -58,11 +58,11 @@ public class QbftForksScheduleTests
     public void RetrievesLatestForkByTimestampOnceTimestampMilestonesStart()
     {
         // Every transition at or above the first timestamp milestone (100) is compared against block timestamps.
-        QbftForksSchedule schedule = Create(Parameters(
-            new QbftTransition { Block = 100, BlockPeriodSeconds = 10 },
-            new QbftTransition { Block = 200, BlockPeriodSeconds = 20 },
-            new QbftTransition { Block = 300, MiningBeneficiary = Beneficiary.ToString() },
-            new QbftTransition { Block = 400, MiningBeneficiary = "" }), firstTimestampFork: 100);
+        BftForksSchedule schedule = Create(Parameters(
+            new BftTransition { Block = 100, BlockPeriodSeconds = 10 },
+            new BftTransition { Block = 200, BlockPeriodSeconds = 20 },
+            new BftTransition { Block = 300, MiningBeneficiary = Beneficiary.ToString() },
+            new BftTransition { Block = 400, MiningBeneficiary = "" }), firstTimestampFork: 100);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetForkSpec(0, 0).Block, Is.EqualTo(0));
@@ -77,9 +77,9 @@ public class QbftForksScheduleTests
     [Test]
     public void FallbackReturnsSmallestForkNotLargest()
     {
-        QbftForksSchedule schedule = new([
-            new QbftForkSpec(20, false, Snapshot(20), null),
-            new QbftForkSpec(10, false, Snapshot(10), null),
+        BftForksSchedule schedule = new([
+            new BftForkSpec(20, false, Snapshot(20), null),
+            new BftForkSpec(10, false, Snapshot(10), null),
         ]);
         using (Assert.EnterMultipleScope())
         {
@@ -91,7 +91,7 @@ public class QbftForksScheduleTests
     [Test]
     public void CreatesScheduleWithForkThatOverridesGenesisValues()
     {
-        QbftForksSchedule schedule = Create(Parameters(new QbftTransition
+        BftForksSchedule schedule = Create(Parameters(new BftTransition
         {
             Block = 1,
             Validators = [QbftTestData.Addr(1), QbftTestData.Addr(2), QbftTestData.Addr(3)],
@@ -102,8 +102,8 @@ public class QbftForksScheduleTests
             ValidatorContractAddress = QbftTestData.Addr(0x10),
         }));
 
-        QbftConfigSnapshot genesis = schedule.GetFork(0, 0);
-        QbftConfigSnapshot fork = schedule.GetFork(1, 0);
+        BftConfigSnapshot genesis = schedule.GetFork(0, 0);
+        BftConfigSnapshot fork = schedule.GetFork(1, 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(genesis.BlockPeriodSeconds, Is.EqualTo(1));
@@ -121,15 +121,15 @@ public class QbftForksScheduleTests
     [Test]
     public void CreatingScheduleThrowsErrorForContractForkWithoutContractAddress() =>
         Assert.That(
-            () => Create(Parameters(new QbftTransition { Block = 1, ValidatorSelectionMode = "contract" })),
+            () => Create(Parameters(new BftTransition { Block = 1, ValidatorSelectionMode = "contract" })),
             Throws.InvalidOperationException.With.Message.EqualTo("QBFT transition has config with contract mode but no contract address"));
 
     [Test]
     public void SwitchingToBlockHeaderRemovesValidatorContractAddress()
     {
-        QbftChainSpecEngineParameters parameters = Parameters(new QbftTransition { Block = 1, ValidatorSelectionMode = "blockheader", Validators = [QbftTestData.Addr(1)] });
+        QbftChainSpecEngineParameters parameters = Parameters(new BftTransition { Block = 1, ValidatorSelectionMode = "blockheader", Validators = [QbftTestData.Addr(1)] });
         parameters.ValidatorContractAddress = QbftTestData.Addr(0x10);
-        QbftForksSchedule schedule = Create(parameters);
+        BftForksSchedule schedule = Create(parameters);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetFork(0, 0).IsValidatorContractMode, Is.True);
@@ -141,7 +141,7 @@ public class QbftForksScheduleTests
     [TestCase(false)]
     public void SwitchingToBlockHeaderRequiresValidators(bool validatorsListIsNull)
     {
-        QbftChainSpecEngineParameters parameters = Parameters(new QbftTransition
+        QbftChainSpecEngineParameters parameters = Parameters(new BftTransition
         {
             Block = 1,
             ValidatorSelectionMode = "blockheader",
@@ -157,10 +157,10 @@ public class QbftForksScheduleTests
     public void TransactionGasLimitIsPreservedAndChangedAcrossTransitions()
     {
         QbftChainSpecEngineParameters parameters = Parameters(
-            new QbftTransition { Block = 1, BlockPeriodSeconds = 10 },
-            new QbftTransition { Block = 5, PerTxGasLimit = 16_000_000 });
+            new BftTransition { Block = 1, BlockPeriodSeconds = 10 },
+            new BftTransition { Block = 5, PerTxGasLimit = 16_000_000 });
         parameters.PerTxGasLimit = 8_000_000;
-        QbftForksSchedule schedule = Create(parameters);
+        BftForksSchedule schedule = Create(parameters);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetFork(0, 0).PerTxGasLimit, Is.EqualTo(8_000_000UL));
@@ -181,7 +181,7 @@ public class QbftForksScheduleTests
             StartBlock = 300,
             Ibft2 = new Ibft2Parameters { BlockPeriodSeconds = 2, EpochLength = 100 },
         };
-        QbftForksSchedule schedule = Create(parameters);
+        BftForksSchedule schedule = Create(parameters);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetFork(0, 0).BlockPeriodSeconds, Is.EqualTo(2));
@@ -194,23 +194,23 @@ public class QbftForksScheduleTests
     [Test]
     public void UnknownValidatorSelectionModeIsRejected() =>
         Assert.That(
-            () => Create(Parameters(new QbftTransition { Block = 1, ValidatorSelectionMode = "committee" })),
+            () => Create(Parameters(new BftTransition { Block = 1, ValidatorSelectionMode = "committee" })),
             Throws.InvalidOperationException.With.Message.Contains("unknown validator selection mode"));
 
     [Test]
     public void TransitionAtGenesisIsRejected() =>
-        Assert.That(() => Create(Parameters(new QbftTransition { Block = 0 })), Throws.ArgumentException.With.Message.Contains("genesis"));
+        Assert.That(() => Create(Parameters(new BftTransition { Block = 0 })), Throws.ArgumentException.With.Message.Contains("genesis"));
 
     [Test]
     public void DuplicateTransitionBlocksAreRejected() =>
-        Assert.That(() => Create(Parameters(new QbftTransition { Block = 3 }, new QbftTransition { Block = 3 })), Throws.ArgumentException.With.Message.Contains("Duplicate"));
+        Assert.That(() => Create(Parameters(new BftTransition { Block = 3 }, new BftTransition { Block = 3 })), Throws.ArgumentException.With.Message.Contains("Duplicate"));
 
     [Test]
     public void ForksAreEnumeratedInAscendingOrder()
     {
-        QbftForksSchedule schedule = Create(Parameters(new QbftTransition { Block = 30 }, new QbftTransition { Block = 10 }, new QbftTransition { Block = 20 }));
+        BftForksSchedule schedule = Create(Parameters(new BftTransition { Block = 30 }, new BftTransition { Block = 10 }, new BftTransition { Block = 20 }));
         List<ulong> blocks = [];
-        foreach (QbftForkSpec fork in schedule.Forks) blocks.Add(fork.Block);
+        foreach (BftForkSpec fork in schedule.Forks) blocks.Add(fork.Block);
         Assert.That(blocks, Is.EqualTo(new ulong[] { 0, 10, 20, 30 }));
     }
 
@@ -224,7 +224,7 @@ public class QbftForksScheduleTests
         }
     }
 
-    private static QbftConfigSnapshot Snapshot(int blockPeriodSeconds) => new()
+    private static BftConfigSnapshot Snapshot(int blockPeriodSeconds) => new()
     {
         EpochLength = QbftChainSpecEngineParameters.DefaultEpochLength,
         BlockPeriodSeconds = blockPeriodSeconds,

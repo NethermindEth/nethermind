@@ -127,7 +127,7 @@ public sealed class QbftTestContext
         EpochManager epochManager = new(QbftTestContextBuilder.EpochLength);
         IValidatorProvider validatorProvider = BlockValidatorProvider.NonForking(blockTree, epochManager, BlockInterface);
         ProposerSelector = new BftProposerSelector(blockTree, validatorProvider);
-        QbftForksSchedule forksSchedule = QbftForksSchedule.Create(new QbftChainSpecEngineParameters
+        BftForksSchedule forksSchedule = BftForksSchedule.Create(new QbftChainSpecEngineParameters
         {
             EpochLength = QbftTestContextBuilder.EpochLength,
             BlockPeriodSeconds = QbftTestContextBuilder.BlockTimerSeconds,
@@ -174,7 +174,7 @@ public sealed class QbftTestContext
     public QbftFinalState FinalState { get; }
     public BftProposerSelector ProposerSelector { get; }
     public QbftMessageCodec Codec { get; }
-    public QbftBlockInterface BlockInterface { get; }
+    public BftBlockInterface BlockInterface { get; }
     public IBlockTree BlockTree { get; }
     public ITimestamper Clock { get; }
     public RecordingScheduler Scheduler { get; } = new();

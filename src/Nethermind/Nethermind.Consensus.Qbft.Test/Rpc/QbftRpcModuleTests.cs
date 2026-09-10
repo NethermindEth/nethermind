@@ -51,7 +51,7 @@ public class QbftRpcModuleTests
             Substitute.For<IValidatorContract>(),
             new EpochManager(parameters.EpochLength),
             QbftTestMessages.BlockInterface,
-            QbftForksSchedule.Create(parameters, ulong.MaxValue),
+            BftForksSchedule.Create(parameters, ulong.MaxValue),
             parameters,
             signer ?? NullSigner.Instance,
             new ValidatorPeers(provider, LimboLogs.Instance),
@@ -201,7 +201,7 @@ public class QbftRpcModuleTests
         {
             BlockPeriodSeconds = 4,
             RequestTimeoutSeconds = 8,
-            Transitions = [new QbftTransition { Block = 2, BlockPeriodSeconds = 10, BlockReward = 7, MiningBeneficiary = QbftTestData.Addr(9).ToString() }],
+            Transitions = [new BftTransition { Block = 2, BlockPeriodSeconds = 10, BlockReward = 7, MiningBeneficiary = QbftTestData.Addr(9).ToString() }],
         };
         QbftRpcModule module = CreateModule(parameters: parameters);
         QbftConfigForRpc genesis = module.qbft_getConfig(new BlockParameter(1)).Data;

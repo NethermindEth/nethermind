@@ -73,7 +73,7 @@ public class QbftChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? StartBlock { get; set; }
 
     /// <summary>Block-scheduled changes, Besu's <c>transitions.qbft</c>.</summary>
-    public List<QbftTransition> Transitions { get; set; } = [];
+    public List<BftTransition> Transitions { get; set; } = [];
 
     /// <summary>The pre-migration IBFT 2.0 options of a migrated chain, Besu's <c>config.ibft2</c>.</summary>
     public Ibft2Parameters? Ibft2 { get; set; }
@@ -92,7 +92,7 @@ public class QbftChainSpecEngineParameters : IChainSpecEngineParameters
         if (chainSpec.Genesis is { } genesis)
         {
             ValidatePerTxGasLimit(PerTxGasLimit, genesis.GasLimit);
-            foreach (QbftTransition transition in Transitions)
+            foreach (BftTransition transition in Transitions)
             {
                 ValidatePerTxGasLimit(transition.PerTxGasLimit, genesis.GasLimit);
             }
@@ -109,7 +109,7 @@ public class QbftChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
-        foreach (QbftTransition transition in Transitions)
+        foreach (BftTransition transition in Transitions)
         {
             blockNumbers.Add(transition.Block);
         }
@@ -123,12 +123,12 @@ public class QbftChainSpecEngineParameters : IChainSpecEngineParameters
     public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
     {
         spec.MaximumExtraDataSize = int.MaxValue;
-        spec.BlockReward = QbftForksSchedule.Create(this, ISpecProvider.TimestampForkNever).GetFork((long)startBlock, startTimestamp ?? 0).BlockReward;
+        spec.BlockReward = BftForksSchedule.Create(this, ISpecProvider.TimestampForkNever).GetFork((long)startBlock, startTimestamp ?? 0).BlockReward;
     }
 }
 
 /// <summary>One entry of Besu's <c>transitions.qbft</c>; unset members keep the previous fork's value.</summary>
-public class QbftTransition
+public class BftTransition
 {
     public ulong Block { get; set; }
     public int? BlockPeriodSeconds { get; set; }

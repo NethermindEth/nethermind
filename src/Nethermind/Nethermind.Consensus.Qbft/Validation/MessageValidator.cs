@@ -18,7 +18,7 @@ public sealed class SubsequentMessageValidator
     private readonly PrepareValidator _prepareValidator;
     private readonly CommitValidator _commitValidator;
 
-    public SubsequentMessageValidator(IReadOnlyList<Address> validators, ConsensusRoundIdentifier targetRound, Block proposalBlock, QbftBlockInterface blockInterface, ILogManager logManager)
+    public SubsequentMessageValidator(IReadOnlyList<Address> validators, ConsensusRoundIdentifier targetRound, Block proposalBlock, BftBlockInterface blockInterface, ILogManager logManager)
     {
         Hash256 proposalDigest = new(blockInterface.Digest(proposalBlock));
         Hash256 commitDigest = new(blockInterface.Digest(blockInterface.ReplaceRound(proposalBlock, targetRound.Round)));
@@ -87,7 +87,7 @@ public sealed class MessageValidatorFactory(
     IProposerSelector proposerSelector,
     IQbftBlockValidator blockValidator,
     IValidatorProvider validatorProvider,
-    QbftBlockInterface blockInterface,
+    BftBlockInterface blockInterface,
     ILogManager logManager)
 {
     public RoundChangeMessageValidator CreateRoundChangeMessageValidator(long chainHeight, BlockHeader parentHeader)

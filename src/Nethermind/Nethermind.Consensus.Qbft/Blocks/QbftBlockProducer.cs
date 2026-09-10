@@ -46,7 +46,7 @@ public sealed class QbftBlockProducer(
     ISpecProvider specProvider,
     IBlocksConfig blocksConfig,
     IValidatorProvider validatorProvider,
-    QbftForksSchedule forksSchedule,
+    BftForksSchedule forksSchedule,
     IBftExtraDataCodecSelector codecs,
     ILogManager logManager)
     : BlockProducerBase(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, ConstantDifficulty.One, blocksConfig)
@@ -62,8 +62,8 @@ public sealed class QbftBlockProducer(
         attributes.ParentBeaconBlockRoot ??= spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null;
 
         BlockHeader header = base.PrepareBlockHeader(parent, attributes);
-        QbftConfigSnapshot config = forksSchedule.GetFork((long)header.Number, header.Timestamp);
-        QbftBlockHeader qbftHeader = QbftBlockHeader.UpgradeFrom(header, codecs.ForBlock(header.Number));
+        BftConfigSnapshot config = forksSchedule.GetFork((long)header.Number, header.Timestamp);
+        BftBlockHeader qbftHeader = BftBlockHeader.UpgradeFrom(header, codecs.ForBlock(header.Number));
         qbftHeader.Beneficiary = Sealer.Address;
         // Fees go to the configured beneficiary when there is one; the coinbase stays the proposer.
         qbftHeader.Author = config.MiningBeneficiary ?? Sealer.Address;
@@ -74,7 +74,7 @@ public sealed class QbftBlockProducer(
         return qbftHeader;
     }
 
-    private byte[] CreateExtraData(BlockHeader parent, int round, QbftConfigSnapshot config, IBftExtraDataCodec codec)
+    private byte[] CreateExtraData(BlockHeader parent, int round, BftConfigSnapshot config, IBftExtraDataCodec codec)
     {
         byte[] vanity = ZeroLeftPad(_blocksConfig.GetExtraDataBytes(), BftExtraData.VanityLength);
         if (config.IsValidatorContractMode)

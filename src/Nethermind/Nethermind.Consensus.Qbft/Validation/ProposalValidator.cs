@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Qbft.Validation;
 /// </summary>
 /// <remarks>Mirrors Besu's <c>ProposalValidator</c>.</remarks>
 public sealed class ProposalValidator(
-    QbftBlockInterface blockInterface,
+    BftBlockInterface blockInterface,
     IQbftBlockValidator blockValidator,
     int quorumMessageCount,
     IReadOnlyList<Address> validators,
@@ -102,7 +102,7 @@ public sealed class ProposalValidator(
 
     private bool ValidateBlockCoinbaseMatchesMsgAuthor(Proposal message)
     {
-        if (QbftBlockInterface.GetProposer(message.Block.Header) != message.Author)
+        if (BftBlockInterface.GetProposer(message.Block.Header) != message.Author)
         {
             Log("block coinbase does not match the proposer's address");
             return false;

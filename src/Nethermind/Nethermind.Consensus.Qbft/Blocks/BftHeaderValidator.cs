@@ -18,13 +18,13 @@ namespace Nethermind.Consensus.Qbft.Blocks;
 /// <remarks>
 /// The parent-distance rule is skipped when the test-only millisecond block period is in effect,
 /// because header timestamps only have second resolution. Extra data size is not limited here; its
-/// structure is validated by <see cref="QbftSealValidator"/>.
+/// structure is validated by <see cref="BftSealValidator"/>.
 /// </remarks>
-public class QbftHeaderValidator(
+public class BftHeaderValidator(
     IBlockTree blockTree,
     ISealValidator sealValidator,
     ISpecProvider specProvider,
-    QbftForksSchedule forksSchedule,
+    BftForksSchedule forksSchedule,
     ITimestamper timestamper,
     ILogManager logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
@@ -45,7 +45,7 @@ public class QbftHeaderValidator(
             return false;
         }
 
-        QbftConfigSnapshot config = forksSchedule.GetFork((long)header.Number, header.Timestamp);
+        BftConfigSnapshot config = forksSchedule.GetFork((long)header.Number, header.Timestamp);
         TimeSpan minimumPeriod = config.MinimumBlockPeriod;
         if (minimumPeriod < TimeSpan.FromSeconds(1))
         {

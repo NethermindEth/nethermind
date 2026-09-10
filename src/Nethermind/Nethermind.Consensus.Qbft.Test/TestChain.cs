@@ -31,7 +31,7 @@ public sealed class TestChain
     public BlockHeader Head => _blocks[^1].Header;
 
     /// <summary>Appends a header proposed by <paramref name="proposer"/> carrying the given extra data; the hash is the BFT on-chain digest.</summary>
-    public QbftBlockHeader Add(Address proposer, BftExtraData extraData, ulong timestamp = 0, IBftExtraDataCodec? codec = null)
+    public BftBlockHeader Add(Address proposer, BftExtraData extraData, ulong timestamp = 0, IBftExtraDataCodec? codec = null)
     {
         codec ??= QbftExtraDataCodec.Instance;
         ulong number = (ulong)_blocks.Count;
@@ -39,12 +39,12 @@ public sealed class TestChain
             .WithTimestamp(timestamp)
             .WithParentHash(_blocks.Count == 0 ? Keccak.Zero : _blocks[^1].Hash!)
             .TestObject;
-        QbftBlockHeader qbft = QbftTestData.ToQbftHeader(header, codec);
+        BftBlockHeader qbft = QbftTestData.ToQbftHeader(header, codec);
         _blocks.Add(Build.A.Block.WithHeader(qbft).TestObject);
         return qbft;
     }
 
-    public QbftBlockHeader Add(Address proposer, IReadOnlyList<Address> validators, Vote? vote = null, int round = 0, IReadOnlyList<Signature>? seals = null) =>
+    public BftBlockHeader Add(Address proposer, IReadOnlyList<Address> validators, Vote? vote = null, int round = 0, IReadOnlyList<Signature>? seals = null) =>
         Add(proposer, new BftExtraData(QbftTestData.ZeroVanity(), seals ?? [], vote, round, validators));
 
     private BlockHeader? FindByHash(Hash256 hash)

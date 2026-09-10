@@ -32,7 +32,7 @@ public sealed class QbftMessageCodec(IRlpDecoder<Block> blockDecoder)
     private static readonly EthereumEcdsa _ecdsa = new(0);
     private static readonly BlockAccessListDecoder _balDecoder = BlockAccessListDecoder.Instance;
 
-    public QbftMessageCodec() : this(new BlockDecoder(new QbftHeaderDecoder())) { }
+    public QbftMessageCodec() : this(new BlockDecoder(new BftHeaderDecoder())) { }
 
     public byte[] EncodePayload(QbftPayload payload)
     {

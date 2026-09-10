@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Qbft.Bft;
 /// why the header keeps its <see cref="Codec"/> — an IBFT 2.0 era header of a migrated chain hashes
 /// with the IBFT codec. Decoded extra data is cached per <see cref="BlockHeader.ExtraData"/> instance.
 /// </remarks>
-public sealed class QbftBlockHeader(
+public sealed class BftBlockHeader(
     Hash256? parentHash,
     Hash256? unclesHash,
     Address? beneficiary,
@@ -80,17 +80,17 @@ public sealed class QbftBlockHeader(
 
     public override BlockHeader CloneForProcessing()
     {
-        QbftBlockHeader clone = new(ParentHash, UnclesHash, Beneficiary, Difficulty, Number, GasLimit, Timestamp, ExtraData) { Codec = Codec };
+        BftBlockHeader clone = new(ParentHash, UnclesHash, Beneficiary, Difficulty, Number, GasLimit, Timestamp, ExtraData) { Codec = Codec };
         CopyProcessingFields(clone);
         return clone;
     }
 
-    /// <summary>Copy of <paramref name="src"/> as a <see cref="QbftBlockHeader"/>; returns the input when it already is one.</summary>
-    public static QbftBlockHeader UpgradeFrom(BlockHeader src, IBftExtraDataCodec codec)
+    /// <summary>Copy of <paramref name="src"/> as a <see cref="BftBlockHeader"/>; returns the input when it already is one.</summary>
+    public static BftBlockHeader UpgradeFrom(BlockHeader src, IBftExtraDataCodec codec)
     {
-        if (src is QbftBlockHeader qbft) return qbft;
+        if (src is BftBlockHeader qbft) return qbft;
 
-        return new QbftBlockHeader(
+        return new BftBlockHeader(
             src.ParentHash,
             src.UnclesHash,
             src.Beneficiary,

@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Qbft.Messages;
 
 /// <summary>Builds and signs the local node's QBFT messages.</summary>
 /// <param name="useLegacyEncoding">Emit the pre-Besu-26.1.0 shapes without the block access list slot.</param>
-public sealed class MessageFactory(ISigner signer, QbftMessageCodec codec, QbftBlockInterface blockInterface, bool useLegacyEncoding = false)
+public sealed class MessageFactory(ISigner signer, QbftMessageCodec codec, BftBlockInterface blockInterface, bool useLegacyEncoding = false)
 {
     public Address LocalAddress => signer.Address;
 

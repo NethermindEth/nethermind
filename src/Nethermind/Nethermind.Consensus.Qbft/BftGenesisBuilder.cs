@@ -8,15 +8,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Qbft;
 
-/// <summary>Ensures the genesis block carries a <see cref="QbftBlockHeader"/>; genesis hashes as-is so its hash is unchanged.</summary>
-public class QbftGenesisBuilder(IGenesisBuilder inner, IBftExtraDataCodecSelector codecs) : IGenesisBuilder
+/// <summary>Ensures the genesis block carries a <see cref="BftBlockHeader"/>; genesis hashes as-is so its hash is unchanged.</summary>
+public class BftGenesisBuilder(IGenesisBuilder inner, IBftExtraDataCodecSelector codecs) : IGenesisBuilder
 {
     public Block Build()
     {
         Block genesis = inner.Build();
-        if (genesis.Header is QbftBlockHeader) return genesis;
+        if (genesis.Header is BftBlockHeader) return genesis;
 
-        QbftBlockHeader upgraded = QbftBlockHeader.UpgradeFrom(genesis.Header, codecs.ForBlock(genesis.Number));
+        BftBlockHeader upgraded = BftBlockHeader.UpgradeFrom(genesis.Header, codecs.ForBlock(genesis.Number));
         upgraded.Hash = new Hash256(upgraded.CalculateHash());
         return genesis.WithReplacedHeader(upgraded);
     }

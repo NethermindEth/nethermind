@@ -14,5 +14,6 @@ namespace Nethermind.Core
         public const string Optimism = nameof(Optimism);
         public const string Taiko = nameof(Taiko);
         public const string Qbft = nameof(Qbft);
+        public const string Ibft2 = nameof(Ibft2);
     }
 }

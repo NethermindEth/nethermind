@@ -75,14 +75,14 @@ public class BftBlockHashingTests
     [Test]
     public void QbftHeaderHashIsTheOnChainDigestAndSurvivesRlpRoundTrip()
     {
-        QbftBlockHeader header = QbftTestData.ToQbftHeader(Header(4, [QbftTestData.Seal(1, 10, 0), QbftTestData.Seal(10, 1, 1)]));
+        BftBlockHeader header = QbftTestData.ToQbftHeader(Header(4, [QbftTestData.Seal(1, 10, 0), QbftTestData.Seal(10, 1, 1)]));
         Assert.That(header.Hash!.ValueHash256, Is.EqualTo(BftBlockHashing.CalculateOnChainHash(header, Codec)));
 
-        QbftHeaderDecoder decoder = new();
+        BftHeaderDecoder decoder = new();
         BlockHeader decoded = decoder.Decode(decoder.Encode(header).Bytes)!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded, Is.InstanceOf<QbftBlockHeader>());
+            Assert.That(decoded, Is.InstanceOf<BftBlockHeader>());
             Assert.That(decoded.Hash, Is.EqualTo(header.Hash));
             Assert.That(decoded.Hash, Is.Not.EqualTo(Keccak.Compute(decoder.Encode(header).Bytes)), "the BFT hash is not the keccak of the full RLP");
         }
@@ -91,7 +91,7 @@ public class BftBlockHashingTests
     [Test]
     public void ReplaceRoundKeepsSealsAndChangesOnlyTheRound()
     {
-        QbftBlockInterface blockInterface = new(QbftOnlyCodecSelector.Instance);
+        BftBlockInterface blockInterface = new(QbftOnlyCodecSelector.Instance);
         Block block = Build.A.Block.WithHeader(QbftTestData.ToQbftHeader(Header(0, []))).TestObject;
 
         Block inRound2 = blockInterface.ReplaceRound(block, 2);
@@ -108,7 +108,7 @@ public class BftBlockHashingTests
     [Test]
     public void CreateSealedBlockWritesSealsAndRound()
     {
-        QbftBlockInterface blockInterface = new(QbftOnlyCodecSelector.Instance);
+        BftBlockInterface blockInterface = new(QbftOnlyCodecSelector.Instance);
         Block block = Build.A.Block.WithHeader(QbftTestData.ToQbftHeader(Header(0, []))).TestObject;
         Signature[] seals = [QbftTestData.Seal(1, 10, 0), QbftTestData.Seal(10, 1, 1)];
 

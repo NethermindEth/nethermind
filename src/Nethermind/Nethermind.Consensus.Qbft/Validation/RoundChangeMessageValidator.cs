@@ -18,7 +18,7 @@ public sealed class RoundChangeMessageValidator(
     long quorumMessageCount,
     long chainHeight,
     IReadOnlyList<Address> validators,
-    QbftBlockInterface blockInterface,
+    BftBlockInterface blockInterface,
     IQbftBlockValidator blockValidator,
     ILogManager logManager)
 {

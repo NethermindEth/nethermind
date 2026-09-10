@@ -39,10 +39,10 @@ public static class QbftTestData
         .WithNonce(0)
         .WithExtraData(extraData);
 
-    /// <summary>A header typed as <see cref="QbftBlockHeader"/> whose hash is the BFT on-chain digest.</summary>
-    public static QbftBlockHeader ToQbftHeader(BlockHeader header, IBftExtraDataCodec? codec = null)
+    /// <summary>A header typed as <see cref="BftBlockHeader"/> whose hash is the BFT on-chain digest.</summary>
+    public static BftBlockHeader ToQbftHeader(BlockHeader header, IBftExtraDataCodec? codec = null)
     {
-        QbftBlockHeader qbft = QbftBlockHeader.UpgradeFrom(header, codec ?? QbftExtraDataCodec.Instance);
+        BftBlockHeader qbft = BftBlockHeader.UpgradeFrom(header, codec ?? QbftExtraDataCodec.Instance);
         qbft.Hash = new Hash256(qbft.CalculateHash());
         return qbft;
     }
@@ -59,7 +59,7 @@ public static class QbftTestData
 /// <summary>Signed-message helpers: one <see cref="MessageFactory"/> per validator key over the QBFT-only codec.</summary>
 public static class QbftTestMessages
 {
-    public static readonly QbftBlockInterface BlockInterface = new(QbftOnlyCodecSelector.Instance);
+    public static readonly BftBlockInterface BlockInterface = new(QbftOnlyCodecSelector.Instance);
     public static readonly QbftMessageCodec Codec = new();
 
     public static MessageFactory Factory(PrivateKey key, bool legacy = false) =>

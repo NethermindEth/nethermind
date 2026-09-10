@@ -18,16 +18,16 @@ namespace Nethermind.Consensus.Qbft.Blocks;
 /// mode), proposer membership and a quorum of distinct committed seals from validators.
 /// </summary>
 /// <remarks>Mirrors Besu's <c>QbftBlockHeaderValidationRulesetFactory</c> rules that are not already part of <c>HeaderValidator</c>.</remarks>
-public class QbftSealValidator(
+public class BftSealValidator(
     IValidatorProvider validatorProvider,
-    QbftBlockInterface blockInterface,
-    QbftForksSchedule forksSchedule,
+    BftBlockInterface blockInterface,
+    BftForksSchedule forksSchedule,
     ILogManager logManager) : ISealValidator
 {
     [ThreadStatic]
     private static bool _validatingProposal;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<QbftSealValidator>();
+    private readonly ILogger _logger = logManager.GetClassLogger<BftSealValidator>();
 
     /// <summary>
     /// While the returned scope is alive on this thread, headers are validated as proposals: every rule
@@ -125,7 +125,7 @@ public class QbftSealValidator(
 
     private bool ValidateCoinbase(BlockHeader header, IReadOnlyList<Address> storedValidators, [NotNullWhen(false)] out string? error)
     {
-        Address proposer = QbftBlockInterface.GetProposer(header);
+        Address proposer = BftBlockInterface.GetProposer(header);
         if (!storedValidators.ContainsAddress(proposer))
         {
             return Fail(header, $"block proposer {proposer} is not a member of the validators", out error);

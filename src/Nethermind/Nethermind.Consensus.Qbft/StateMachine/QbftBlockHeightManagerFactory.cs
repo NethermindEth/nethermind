@@ -18,7 +18,7 @@ public sealed class QbftBlockHeightManagerFactory(
     MessageFactory messageFactory,
     QbftMessageTransmitter transmitter,
     IValidatorProvider validatorProvider,
-    QbftBlockInterface blockInterface,
+    BftBlockInterface blockInterface,
     ValidatorModeTransitionLogger validatorModeTransitionLogger,
     ILogManager logManager)
 {

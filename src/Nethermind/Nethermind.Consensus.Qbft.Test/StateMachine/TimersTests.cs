@@ -73,8 +73,8 @@ public class TimersTests
         Assert.That(timer.IsRunning, Is.False);
     }
 
-    private static QbftForksSchedule Schedule(int blockPeriodSeconds, int emptyBlockPeriodSeconds = 0, long xBlockPeriodMillis = 0) =>
-        QbftForksSchedule.Create(new QbftChainSpecEngineParameters { BlockPeriodSeconds = blockPeriodSeconds, EmptyBlockPeriodSeconds = emptyBlockPeriodSeconds, XBlockPeriodMilliseconds = xBlockPeriodMillis }, ulong.MaxValue);
+    private static BftForksSchedule Schedule(int blockPeriodSeconds, int emptyBlockPeriodSeconds = 0, long xBlockPeriodMillis = 0) =>
+        BftForksSchedule.Create(new QbftChainSpecEngineParameters { BlockPeriodSeconds = blockPeriodSeconds, EmptyBlockPeriodSeconds = emptyBlockPeriodSeconds, XBlockPeriodMilliseconds = xBlockPeriodMillis }, ulong.MaxValue);
 
     [Test]
     public void BlockTimerExpiresAtParentTimestampPlusBlockPeriod()
@@ -119,8 +119,8 @@ public class TimersTests
         RecordingScheduler scheduler = new();
         ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(1000));
         // Fork at timestamp 1001 to a 10s period; the block after a parent at 1000 must wait 10s, not 1s.
-        QbftChainSpecEngineParameters parameters = new() { BlockPeriodSeconds = 1, Transitions = [new QbftTransition { Block = 1001, BlockPeriodSeconds = 10 }] };
-        BlockTimer timer = new(new RecordingQueue(), QbftForksSchedule.Create(parameters, 1001), scheduler, clock, LimboLogs.Instance);
+        QbftChainSpecEngineParameters parameters = new() { BlockPeriodSeconds = 1, Transitions = [new BftTransition { Block = 1001, BlockPeriodSeconds = 10 }] };
+        BlockTimer timer = new(new RecordingQueue(), BftForksSchedule.Create(parameters, 1001), scheduler, clock, LimboLogs.Instance);
         timer.StartTimer(new ConsensusRoundIdentifier(1, 0), 1000);
         using (Assert.EnterMultipleScope())
         {

@@ -13,13 +13,13 @@ using ValidationResult = Nethermind.Core.ValidationResult;
 namespace Nethermind.Consensus.Qbft.Blocks;
 
 /// <summary>Besu's <c>pertxgaslimit</c>: a transaction may not declare more gas than the cap in force; 0 means unlimited.</summary>
-public static class QbftPerTxGasLimit
+public static class BftPerTxGasLimit
 {
-    public static ulong? EffectiveCap(QbftConfigSnapshot config) => config.PerTxGasLimit is { } cap && cap != 0 ? cap : null;
+    public static ulong? EffectiveCap(BftConfigSnapshot config) => config.PerTxGasLimit is { } cap && cap != 0 ? cap : null;
 }
 
 /// <summary>Applies the per-transaction cap of the fork after the current head to transactions entering the pool.</summary>
-public sealed class QbftPerTxGasLimitTxValidator(ITxValidator inner, QbftForksSchedule forksSchedule, IBlockTree blockTree) : ITxValidator
+public sealed class BftPerTxGasLimitTxValidator(ITxValidator inner, BftForksSchedule forksSchedule, IBlockTree blockTree) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         Exceeds(transaction) ?? inner.IsWellFormed(transaction, releaseSpec);
@@ -34,7 +34,7 @@ public sealed class QbftPerTxGasLimitTxValidator(ITxValidator inner, QbftForksSc
     {
         BlockHeader? head = blockTree.Head?.Header;
         if (head is null) return null;
-        ulong? cap = QbftPerTxGasLimit.EffectiveCap(forksSchedule.GetFork((long)head.Number + 1, head.Timestamp));
+        ulong? cap = BftPerTxGasLimit.EffectiveCap(forksSchedule.GetFork((long)head.Number + 1, head.Timestamp));
         if (cap is { } limit && transaction.GasLimit > limit)
         {
             return new ValidationResult($"Transaction gas limit {transaction.GasLimit} exceeds the QBFT per-transaction cap {limit}.");
@@ -45,7 +45,7 @@ public sealed class QbftPerTxGasLimitTxValidator(ITxValidator inner, QbftForksSc
 }
 
 /// <summary>Rejects blocks containing a transaction above the per-transaction cap of the block's own fork.</summary>
-public sealed class QbftPerTxGasLimitBlockValidator(IBlockValidator inner, QbftForksSchedule forksSchedule) : IBlockValidator
+public sealed class BftPerTxGasLimitBlockValidator(IBlockValidator inner, BftForksSchedule forksSchedule) : IBlockValidator
 {
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) => inner.Validate(header, parent, isUncle, out error);
 
@@ -67,7 +67,7 @@ public sealed class QbftPerTxGasLimitBlockValidator(IBlockValidator inner, QbftF
 
     private bool ValidateTxGasLimits(Block block, [NotNullWhen(false)] out string? error)
     {
-        ulong? cap = QbftPerTxGasLimit.EffectiveCap(forksSchedule.GetFork((long)block.Number, block.Timestamp));
+        ulong? cap = BftPerTxGasLimit.EffectiveCap(forksSchedule.GetFork((long)block.Number, block.Timestamp));
         if (cap is { } limit)
         {
             foreach (Transaction tx in block.Transactions)

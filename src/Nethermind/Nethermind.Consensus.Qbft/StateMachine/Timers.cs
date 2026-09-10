@@ -72,7 +72,7 @@ public sealed class RoundTimer(IBftEventQueue queue, BftRoundExpiryTimeCalculato
 /// longer of the two is used so the produced block still validates. The test-only millisecond period
 /// counts from now instead. Mirrors Besu's <c>BlockTimer</c>.
 /// </remarks>
-public sealed class BlockTimer(IBftEventQueue queue, QbftForksSchedule forksSchedule, IBftTimerScheduler scheduler, ITimestamper clock, ILogManager logManager)
+public sealed class BlockTimer(IBftEventQueue queue, BftForksSchedule forksSchedule, IBftTimerScheduler scheduler, ITimestamper clock, ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockTimer>();
     private readonly Lock _lock = new();
@@ -133,7 +133,7 @@ public sealed class BlockTimer(IBftEventQueue queue, QbftForksSchedule forksSche
         lock (_lock)
         {
             CancelTimer();
-            QbftConfigSnapshot current = forksSchedule.GetFork(round.Sequence, parentTimestamp);
+            BftConfigSnapshot current = forksSchedule.GetFork(round.Sequence, parentTimestamp);
             long blockPeriodSeconds = current.BlockPeriodSeconds;
             long nextBlockPeriodSeconds = forksSchedule.GetFork(round.Sequence, parentTimestamp + (ulong)blockPeriodSeconds).BlockPeriodSeconds;
             // When the period grows at the next fork this block must already honour the longer one, or it fails validation.

@@ -21,6 +21,14 @@ public sealed class QbftOnlyCodecSelector : IBftExtraDataCodecSelector
     public IBftExtraDataCodec ForBlock(ulong blockNumber) => QbftExtraDataCodec.Instance;
 }
 
+/// <summary>Every block of an IBFT 2.0 chain.</summary>
+public sealed class Ibft2OnlyCodecSelector : IBftExtraDataCodecSelector
+{
+    public static readonly Ibft2OnlyCodecSelector Instance = new();
+
+    public IBftExtraDataCodec ForBlock(ulong blockNumber) => Ibft2ExtraDataCodec.Instance;
+}
+
 /// <summary>Blocks below <paramref name="qbftStartBlock"/> use the IBFT 2.0 codec, the rest the QBFT codec.</summary>
 public sealed class MigrationCodecSelector(ulong qbftStartBlock) : IBftExtraDataCodecSelector
 {

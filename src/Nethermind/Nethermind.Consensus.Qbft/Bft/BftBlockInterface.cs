@@ -16,13 +16,13 @@ namespace Nethermind.Consensus.Qbft.Bft;
 /// digest: round kept, seals cleared), which is what Besu's in-flight <c>QbftBlock.getHash()</c>
 /// returns. The on-chain hash (<see cref="BlockHeader.Hash"/>) additionally zeroes the round.
 /// </remarks>
-public class QbftBlockInterface(IBftExtraDataCodecSelector codecs)
+public class BftBlockInterface(IBftExtraDataCodecSelector codecs)
 {
     public IBftExtraDataCodec CodecFor(BlockHeader header) =>
-        header is QbftBlockHeader qbft ? qbft.Codec : codecs.ForBlock(header.Number);
+        header is BftBlockHeader qbft ? qbft.Codec : codecs.ForBlock(header.Number);
 
     public BftExtraData GetExtraData(BlockHeader header) =>
-        header is QbftBlockHeader qbft ? qbft.GetBftExtraData() : CodecFor(header).Decode(header.ExtraData);
+        header is BftBlockHeader qbft ? qbft.GetBftExtraData() : CodecFor(header).Decode(header.ExtraData);
 
     public static Address GetProposer(BlockHeader header) => header.Beneficiary ?? Address.Zero;
 
@@ -59,10 +59,10 @@ public class QbftBlockInterface(IBftExtraDataCodecSelector codecs)
     private Block WithExtraData(Block block, BftExtraData extraData)
     {
         IBftExtraDataCodec codec = CodecFor(block.Header);
-        QbftBlockHeader header = QbftBlockHeader.UpgradeFrom(block.Header, codec);
+        BftBlockHeader header = BftBlockHeader.UpgradeFrom(block.Header, codec);
         if (ReferenceEquals(header, block.Header))
         {
-            header = (QbftBlockHeader)header.Clone();
+            header = (BftBlockHeader)header.Clone();
         }
 
         header.ExtraData = codec.Encode(extraData);

@@ -45,7 +45,7 @@ public sealed class QbftBlockValidatorAdapter(
 
         string? error;
         bool valid;
-        using (QbftSealValidator.EnterProposalValidation())
+        using (BftSealValidator.EnterProposalValidation())
         {
             valid = blockValidator.ValidateSuggestedBlock(block, parent, out error);
         }

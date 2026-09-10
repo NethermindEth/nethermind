@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Qbft.Test.Validators;
 [Parallelizable(ParallelScope.All)]
 public class VoteTallyCacheTests
 {
-    private static readonly QbftBlockInterface BlockInterface = new(QbftOnlyCodecSelector.Instance);
+    private static readonly BftBlockInterface BlockInterface = new(QbftOnlyCodecSelector.Instance);
     private static readonly Address[] Validators = [QbftTestData.Addr(1), QbftTestData.Addr(2), QbftTestData.Addr(3)];
 
     private sealed class Chain
@@ -32,7 +32,7 @@ public class VoteTallyCacheTests
             BlockHeader header = QbftTestData.BftHeader(number, proposer, extraData)
                 .WithParentHash(Headers.Count == 0 ? Keccak.Zero : Headers[^1].Hash!)
                 .TestObject;
-            QbftBlockHeader qbft = QbftTestData.ToQbftHeader(header);
+            BftBlockHeader qbft = QbftTestData.ToQbftHeader(header);
             BlockTree.FindHeader(qbft.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(qbft);
             Headers.Add(qbft);
             return qbft;
@@ -100,7 +100,7 @@ public class VoteTallyCacheTests
         chain.Add(Address.Zero, null, Validators);
         BlockHeader block1 = chain.Add(Validators[0], null, Validators);
         Address[] forkValidators = [QbftTestData.Addr(7), QbftTestData.Addr(8)];
-        QbftForksSchedule schedule = QbftForksSchedule.Create(new QbftChainSpecEngineParameters { Transitions = [new QbftTransition { Block = 2, Validators = forkValidators }] }, ulong.MaxValue);
+        BftForksSchedule schedule = BftForksSchedule.Create(new QbftChainSpecEngineParameters { Transitions = [new BftTransition { Block = 2, Validators = forkValidators }] }, ulong.MaxValue);
         ForkingVoteTallyCache cache = new(chain.BlockTree, new VoteTallyUpdater(new EpochManager(30_000), BlockInterface), new EpochManager(30_000), BlockInterface, schedule);
         using (Assert.EnterMultipleScope())
         {

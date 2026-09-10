@@ -14,7 +14,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.Qbft.Validators;
 
 /// <summary>Applies a block's vote to a tally: epoch blocks reset the outstanding votes instead.</summary>
-public sealed class VoteTallyUpdater(EpochManager epochManager, QbftBlockInterface blockInterface)
+public sealed class VoteTallyUpdater(EpochManager epochManager, BftBlockInterface blockInterface)
 {
     public void UpdateForBlock(BlockHeader header, VoteTally tally)
     {
@@ -36,7 +36,7 @@ public sealed class VoteTallyUpdater(EpochManager epochManager, QbftBlockInterfa
 /// Tallies validator votes along the chain and caches the tally after each block; walks back to the
 /// nearest epoch block (or cached ancestor) when a block has not been tallied yet.
 /// </summary>
-public class VoteTallyCache(IBlockTree blockTree, VoteTallyUpdater updater, EpochManager epochManager, QbftBlockInterface blockInterface)
+public class VoteTallyCache(IBlockTree blockTree, VoteTallyUpdater updater, EpochManager epochManager, BftBlockInterface blockInterface)
 {
     private const int CacheSize = 100;
     private readonly LruCache<Hash256AsKey, VoteTally> _cache = new(CacheSize, nameof(VoteTallyCache));
@@ -101,8 +101,8 @@ public sealed class ForkingVoteTallyCache(
     IBlockTree blockTree,
     VoteTallyUpdater updater,
     EpochManager epochManager,
-    QbftBlockInterface blockInterface,
-    QbftForksSchedule forksSchedule) : VoteTallyCache(blockTree, updater, epochManager, blockInterface)
+    BftBlockInterface blockInterface,
+    BftForksSchedule forksSchedule) : VoteTallyCache(blockTree, updater, epochManager, blockInterface)
 {
     protected override VoteTally? GetValidatorsAfter(BlockHeader header)
     {

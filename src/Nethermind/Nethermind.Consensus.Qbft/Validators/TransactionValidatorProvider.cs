@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Qbft.Validators;
 /// The set for a block's child is read from the block's own state through the contract address the
 /// fork schedule names for the child, so a transition can move the contract.
 /// </remarks>
-public sealed class TransactionValidatorProvider(IBlockTree blockTree, IValidatorContract validatorContract, QbftForksSchedule forksSchedule) : IValidatorProvider
+public sealed class TransactionValidatorProvider(IBlockTree blockTree, IValidatorContract validatorContract, BftForksSchedule forksSchedule) : IValidatorProvider
 {
     private const int CacheSize = 100;
     private readonly LruCache<Hash256AsKey, IReadOnlyList<Address>> _afterBlockCache = new(CacheSize, "qbft validators after block");

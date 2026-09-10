@@ -41,21 +41,21 @@ public class QbftModule : Module
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<QbftChainSpecEngineParameters>())
             .AddSingleton<IBftExtraDataCodecSelector, QbftChainSpecEngineParameters>(static parameters =>
                 parameters.StartBlock is { } startBlock ? new MigrationCodecSelector(startBlock) : QbftOnlyCodecSelector.Instance)
-            .AddSingleton<QbftForksSchedule, QbftChainSpecEngineParameters, ISpecProvider>(static (parameters, specProvider) =>
-                QbftForksSchedule.Create(parameters, specProvider.TimestampFork))
+            .AddSingleton<BftForksSchedule, QbftChainSpecEngineParameters, ISpecProvider>(static (parameters, specProvider) =>
+                BftForksSchedule.Create(parameters, specProvider.TimestampFork))
             .AddSingleton<EpochManager, QbftChainSpecEngineParameters>(static parameters =>
                 new EpochManager(parameters.EpochLength, (long)(parameters.StartBlock ?? 0), parameters.Ibft2?.EpochLength))
 
             // Header typing: registered eagerly because the RLP registry is global.
             .AddModule(new QbftHeaderModuleFromParameters())
 
-            .AddSingleton<QbftBlockInterface>()
+            .AddSingleton<BftBlockInterface>()
             .AddSingleton<QbftMessageCodec, BlockDecoder>(static blockDecoder => new QbftMessageCodec(blockDecoder))
 
             // Validator sets
             .AddSingleton<IValidatorContract, IAbiEncoder, IReadOnlyTxProcessingEnvFactory>(static (abiEncoder, envFactory) =>
                 new ValidatorContract(abiEncoder, envFactory.Create()))
-            .AddSingleton<IValidatorProvider, IBlockTree, EpochManager, QbftBlockInterface, QbftForksSchedule, IValidatorContract>(
+            .AddSingleton<IValidatorProvider, IBlockTree, EpochManager, BftBlockInterface, BftForksSchedule, IValidatorContract>(
                 static (blockTree, epochManager, blockInterface, forksSchedule, validatorContract) => new ForkingValidatorProvider(
                     blockTree,
                     forksSchedule,
@@ -65,20 +65,20 @@ public class QbftModule : Module
             .AddSingleton<ValidatorModeTransitionLogger>()
 
             // Validation
-            .AddSingleton<ISealValidator, QbftSealValidator>()
-            .AddSingleton<IHeaderValidator, QbftHeaderValidator>()
-            .AddSingleton<IUnclesValidator, QbftUnclesValidator>()
-            .AddDecorator<ITxValidator, QbftPerTxGasLimitTxValidator>()
-            .AddDecorator<IBlockValidator, QbftPerTxGasLimitBlockValidator>()
-            .AddLast<IBlockPreprocessorStep, QbftAuthorRecoveryStep>()
+            .AddSingleton<ISealValidator, BftSealValidator>()
+            .AddSingleton<IHeaderValidator, BftHeaderValidator>()
+            .AddSingleton<IUnclesValidator, BftUnclesValidator>()
+            .AddDecorator<ITxValidator, BftPerTxGasLimitTxValidator>()
+            .AddDecorator<IBlockValidator, BftPerTxGasLimitBlockValidator>()
+            .AddLast<IBlockPreprocessorStep, BftAuthorRecoveryStep>()
             .AddSingleton<IOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv>>(static ctx => CreateProposalProcessingEnv(ctx))
             .AddSingleton<IQbftBlockValidator, QbftBlockValidatorAdapter>()
             .AddSingleton<IQbftBlockImporter, QbftBlockImporter>()
 
             // Rewards, gas, sealing
-            .AddSingleton<IRewardCalculatorSource, QbftRewardCalculator>()
-            .AddSingleton<IGasLimitCalculator, QbftGasLimitCalculator>()
-            .AddSingleton<ISealer, QbftSealer>()
+            .AddSingleton<IRewardCalculatorSource, BftRewardCalculator>()
+            .AddSingleton<IGasLimitCalculator, BftGasLimitCalculator>()
+            .AddSingleton<ISealer, BftSealer>()
             .AddSingleton<IBlockProductionPolicy>(AlwaysStartBlockProductionPolicy.Instance)
 
             // Consensus loop
@@ -135,17 +135,17 @@ public class QbftModule : Module
             {
                 // The global RLP decoder for BlockHeader must be in place before any block is decoded.
                 IBftExtraDataCodecSelector codecs = scope.Resolve<IBftExtraDataCodecSelector>();
-                QbftHeaderDecoder headerDecoder = new(codecs);
+                BftHeaderDecoder headerDecoder = new(codecs);
                 Rlp.RegisterDecoder(typeof(BlockHeader), headerDecoder);
                 Rlp.RegisterDecoder(typeof(Block), new BlockDecoder(headerDecoder));
                 Rlp.RegisterDecoder(typeof(BlockBody), new BlockBodyDecoder(headerDecoder));
             });
 
             builder
-                .AddSingleton<IHeaderDecoder, IBftExtraDataCodecSelector>(static codecs => new QbftHeaderDecoder(codecs))
+                .AddSingleton<IHeaderDecoder, IBftExtraDataCodecSelector>(static codecs => new BftHeaderDecoder(codecs))
                 .AddSingleton<BlockDecoder, IHeaderDecoder>(static headerDecoder => new BlockDecoder(headerDecoder))
                 .AddSingleton<BlockBodyDecoder, IHeaderDecoder>(static headerDecoder => new BlockBodyDecoder(headerDecoder))
-                .AddDecorator<IGenesisBuilder, QbftGenesisBuilder>();
+                .AddDecorator<IGenesisBuilder, BftGenesisBuilder>();
         }
     }
 }

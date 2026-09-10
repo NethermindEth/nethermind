@@ -65,7 +65,7 @@ public sealed class QbftBlockHeightManager : IBlockHeightManager
     private readonly FutureRoundProposalMessageValidator _futureRoundProposalMessageValidator;
     private readonly MessageValidatorFactory _messageValidatorFactory;
     private readonly IQbftFinalState _finalState;
-    private readonly QbftBlockInterface _blockInterface;
+    private readonly BftBlockInterface _blockInterface;
     private readonly bool _isEarlyRoundChangeEnabled;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
@@ -81,7 +81,7 @@ public sealed class QbftBlockHeightManager : IBlockHeightManager
         MessageFactory messageFactory,
         QbftMessageTransmitter transmitter,
         IValidatorProvider validatorProvider,
-        QbftBlockInterface blockInterface,
+        BftBlockInterface blockInterface,
         ILogManager logManager,
         bool isEarlyRoundChangeEnabled = false)
     {

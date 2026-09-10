@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.Qbft.Bft;
 
 /// <summary>
-/// Header decoder for QBFT chains: materialises <see cref="QbftBlockHeader"/> instances and sets
+/// Header decoder for QBFT chains: materialises <see cref="BftBlockHeader"/> instances and sets
 /// their hash to the BFT on-chain digest rather than the keccak of the received RLP.
 /// </summary>
 /// <remarks>
@@ -17,9 +17,9 @@ namespace Nethermind.Consensus.Qbft.Bft;
 /// <see cref="QbftModule"/> both as the global <see cref="BlockHeader"/> RLP decoder and the DI
 /// <see cref="IHeaderDecoder"/>.
 /// </remarks>
-public sealed class QbftHeaderDecoder(IBftExtraDataCodecSelector codecs) : HeaderDecoder
+public sealed class BftHeaderDecoder(IBftExtraDataCodecSelector codecs) : HeaderDecoder
 {
-    public QbftHeaderDecoder() : this(QbftOnlyCodecSelector.Instance) { }
+    public BftHeaderDecoder() : this(QbftOnlyCodecSelector.Instance) { }
 
     protected override BlockHeader DecodeSealAndCreateHeader(
         ref RlpReader decoderContext,
@@ -34,7 +34,7 @@ public sealed class QbftHeaderDecoder(IBftExtraDataCodecSelector codecs) : Heade
     {
         Hash256 mixHash = decoderContext.DecodeKeccak();
         ulong nonce = (ulong)decoderContext.DecodeUInt256(NonceLength);
-        return new QbftBlockHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData)
+        return new BftBlockHeader(parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData)
         {
             MixHash = mixHash,
             Nonce = nonce,
@@ -46,7 +46,7 @@ public sealed class QbftHeaderDecoder(IBftExtraDataCodecSelector codecs) : Heade
     {
         BlockHeader? header = base.DecodeInternal(ref decoderContext, rlpBehaviors);
         // The base decoder hashes the raw bytes before the optional tail is read; the BFT digest needs the whole header.
-        if (header is QbftBlockHeader qbftHeader && !qbftHeader.IsGenesis)
+        if (header is BftBlockHeader qbftHeader && !qbftHeader.IsGenesis)
         {
             qbftHeader.Hash = new Hash256(qbftHeader.CalculateHash());
         }

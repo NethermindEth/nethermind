@@ -7,7 +7,7 @@ using Nethermind.Core;
 namespace Nethermind.Consensus.Qbft.Blocks;
 
 /// <summary>BFT blocks never carry ommers.</summary>
-public sealed class QbftUnclesValidator : IUnclesValidator
+public sealed class BftUnclesValidator : IUnclesValidator
 {
     public bool Validate(BlockHeader header, BlockHeader[] uncles) => uncles.Length == 0;
 }

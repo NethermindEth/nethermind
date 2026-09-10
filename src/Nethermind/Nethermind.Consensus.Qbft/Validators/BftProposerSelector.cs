@@ -34,7 +34,7 @@ public sealed class BftProposerSelector(IBlockTree blockTree, IValidatorProvider
         BlockHeader parent = blockTree.FindHeader(parentNumber, BlockTreeLookupOptions.RequireCanonical)
                              ?? throw new InvalidOperationException($"Unable to determine past proposer, block {parentNumber} is unknown.");
 
-        return SelectProposerForRound(roundIdentifier, QbftBlockInterface.GetProposer(parent), validatorProvider.GetValidatorsAfterBlock(parent));
+        return SelectProposerForRound(roundIdentifier, BftBlockInterface.GetProposer(parent), validatorProvider.GetValidatorsAfterBlock(parent));
     }
 
     public static Address SelectProposerForRound(ConsensusRoundIdentifier roundIdentifier, Address previousProposer, IReadOnlyList<Address> validators)

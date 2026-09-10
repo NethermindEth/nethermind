@@ -19,6 +19,7 @@ public static class NethermindPlugins
         typeof(Nethermind.Consensus.Ethash.EthashPlugin),
         typeof(Nethermind.Consensus.Ethash.NethDevPlugin),
         typeof(Nethermind.Consensus.Qbft.QbftPlugin),
+        typeof(Nethermind.Consensus.Qbft.Ibft2Plugin),
         typeof(Nethermind.EthStats.EthStatsPlugin),
         typeof(Nethermind.Flashbots.Flashbots),
         typeof(Nethermind.HealthChecks.HealthChecksPlugin),

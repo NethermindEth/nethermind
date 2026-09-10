@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Qbft.Validators;
 /// <summary>Delegates to the block-header or contract provider according to the selection mode in force at each height.</summary>
 public sealed class ForkingValidatorProvider(
     IBlockTree blockTree,
-    QbftForksSchedule forksSchedule,
+    BftForksSchedule forksSchedule,
     IValidatorProvider blockValidatorProvider,
     IValidatorProvider transactionValidatorProvider) : IValidatorProvider
 {

@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Qbft.StateMachine;
 
 public sealed class QbftRoundFactory(
     IQbftFinalState finalState,
-    QbftBlockInterface blockInterface,
+    BftBlockInterface blockInterface,
     IQbftBlockImporter blockImporter,
     IReadOnlyList<IMinedBlockObserver> minedBlockObservers,
     MessageValidatorFactory messageValidatorFactory,
