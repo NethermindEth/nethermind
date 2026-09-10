@@ -92,7 +92,11 @@ public sealed class ThreadingTimerScheduler : IBftTimerScheduler
         private System.Threading.Timer? _timer;
         private int _fired;
 
-        public void Start(TimeSpan delay) => _timer = new System.Threading.Timer(Fire, null, delay < TimeSpan.Zero ? TimeSpan.Zero : delay, System.Threading.Timeout.InfiniteTimeSpan);
+        public void Start(TimeSpan delay)
+        {
+            _timer = new System.Threading.Timer(Fire, null, System.Threading.Timeout.InfiniteTimeSpan, System.Threading.Timeout.InfiniteTimeSpan);
+            _timer.Change(delay < TimeSpan.Zero ? TimeSpan.Zero : delay, System.Threading.Timeout.InfiniteTimeSpan);
+        }
 
         private void Fire(object? _)
         {

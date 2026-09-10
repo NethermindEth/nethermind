@@ -80,7 +80,13 @@ public sealed class QbftExtraDataCodec : IBftExtraDataCodec
 
         int round = reader.DecodeInt();
         Signature[] seals = BftExtraDataRlp.DecodeSeals(ref reader);
-        reader.Check(end);
+        if (reader.Position > end)
+        {
+            throw new RlpException("BFT extra data items overrun the enclosing list.");
+        }
+
+        // Besu's decoder leaves the list leniently: trailing items are ignored and every digest re-encodes the canonical five.
+        reader.Position = end;
         return new BftExtraData(vanity, seals, vote, round, validators);
     }
 

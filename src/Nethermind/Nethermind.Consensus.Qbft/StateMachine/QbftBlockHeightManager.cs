@@ -186,7 +186,7 @@ public sealed class QbftBlockHeightManager : IBlockHeightManager
         {
             return _blockInterface.GetExtraData(block.Header).Vote is null;
         }
-        catch (Exception e) when (e is Serialization.Rlp.RlpException or ArgumentException)
+        catch (Exception e) when (e is Serialization.Rlp.RlpException or ArgumentException or IndexOutOfRangeException)
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to decode extra data for block {block.Number} while checking for empty block: {e.Message}");
             return true;

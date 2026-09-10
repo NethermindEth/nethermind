@@ -117,10 +117,16 @@ public class QbftExtraDataCodecTests
     }
 
     [Test]
-    public void IncorrectlyStructuredRlpThrowsException()
+    public void TrailingItemsAreIgnoredLikeBesuLeaveListLenient()
     {
         byte[] encoded = Encode(QbftTestData.ZeroVanity(), [], (ref RlpWriter writer) => EncodeVote(ref writer, QbftTestData.Addr(1), true), Scalar(Round), [], trailingItem: 1);
-        Assert.That(() => _codec.Decode(encoded), Throws.InstanceOf<RlpException>());
+        BftExtraData extraData = _codec.Decode(encoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(extraData.Round, Is.EqualTo(Round));
+            Assert.That(extraData.Vote, Is.EqualTo(Vote.AuthVote(QbftTestData.Addr(1))));
+            Assert.That(_codec.Encode(extraData), Is.Not.EqualTo(encoded), "the canonical re-encoding drops the trailing item");
+        }
     }
 
     [Test]

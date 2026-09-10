@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.OverridableEnv;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Qbft;
@@ -43,7 +44,7 @@ public class QbftModule : Module
             .AddSingleton<QbftForksSchedule, QbftChainSpecEngineParameters, ISpecProvider>(static (parameters, specProvider) =>
                 QbftForksSchedule.Create(parameters, specProvider.TimestampFork))
             .AddSingleton<EpochManager, QbftChainSpecEngineParameters>(static parameters =>
-                new EpochManager(parameters.EpochLength, (long)(parameters.StartBlock ?? 0)))
+                new EpochManager(parameters.EpochLength, (long)(parameters.StartBlock ?? 0), parameters.Ibft2?.EpochLength))
 
             // Header typing: registered eagerly because the RLP registry is global.
             .AddModule(new QbftHeaderModuleFromParameters())
@@ -70,6 +71,7 @@ public class QbftModule : Module
             .AddDecorator<ITxValidator, QbftPerTxGasLimitTxValidator>()
             .AddDecorator<IBlockValidator, QbftPerTxGasLimitBlockValidator>()
             .AddLast<IBlockPreprocessorStep, QbftAuthorRecoveryStep>()
+            .AddSingleton<IOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv>>(static ctx => CreateProposalProcessingEnv(ctx))
             .AddSingleton<IQbftBlockValidator, QbftBlockValidatorAdapter>()
             .AddSingleton<IQbftBlockImporter, QbftBlockImporter>()
 
@@ -102,6 +104,23 @@ public class QbftModule : Module
     }
 
     /// <summary>Loads <see cref="QbftHeaderModule"/> with the codec selector derived from the chainspec once it is available.</summary>
+    /// <summary>
+    /// Proposed blocks are executed on the parent's state in a throwaway overridable world scope with its own
+    /// processing chain, the same way receipt regeneration and <c>eth_call</c> build theirs; the typed
+    /// <see cref="IOverridableEnv{T}"/> is only resolvable inside that scope.
+    /// </summary>
+    private static IOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv> CreateProposalProcessingEnv(IComponentContext ctx)
+    {
+        IOverridableEnv env = ctx.Resolve<IOverridableEnvFactory>().Create();
+        ILifetimeScope rootScope = ctx.Resolve<ILifetimeScope>();
+        ILifetimeScope envScope = rootScope.BeginLifetimeScope(builder => builder
+            .AddModule(ctx.Resolve<IBlockValidationModule[]>())
+            .AddScoped<QbftBlockValidatorAdapter.ProcessingEnv>()
+            .AddModule(env));
+        rootScope.Disposer.AddInstanceForDisposal(envScope);
+        return envScope.Resolve<IOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv>>();
+    }
+
     private sealed class QbftHeaderModuleFromParameters : Module
     {
         protected override void Load(ContainerBuilder builder)

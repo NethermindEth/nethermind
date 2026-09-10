@@ -120,9 +120,9 @@ public class QbftRpcModuleTests
         QbftRpcModule module = CreateModule(contractMode);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(module.qbft_proposeValidatorVote(QbftTestData.Addr(4), true).ErrorCode, Is.EqualTo(ErrorCodes.MethodNotFound));
-            Assert.That(module.qbft_discardValidatorVote(QbftTestData.Addr(4)).ErrorCode, Is.EqualTo(ErrorCodes.MethodNotFound));
-            Assert.That(module.qbft_getPendingVotes().ErrorCode, Is.EqualTo(ErrorCodes.MethodNotFound));
+            Assert.That(module.qbft_proposeValidatorVote(QbftTestData.Addr(4), true).ErrorCode, Is.EqualTo(QbftRpcModule.MethodNotEnabledErrorCode));
+            Assert.That(module.qbft_discardValidatorVote(QbftTestData.Addr(4)).ErrorCode, Is.EqualTo(QbftRpcModule.MethodNotEnabledErrorCode));
+            Assert.That(module.qbft_getPendingVotes().ErrorCode, Is.EqualTo(QbftRpcModule.MethodNotEnabledErrorCode));
         }
     }
 

@@ -97,7 +97,7 @@ public sealed class QbftController(
         {
             message = codec.Decode(raw.Code, raw.Data);
         }
-        catch (Exception e) when (e is RlpException or ArgumentException or IndexOutOfRangeException)
+        catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Debug($"Discarding undecodable {QbftMessageCode.Name(raw.Code)} message from {raw.SenderAddress}: {e.Message}");
             return;

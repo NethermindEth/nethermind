@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -83,8 +84,28 @@ public class QbftChainSpecEngineParameters : IChainSpecEngineParameters
     [JsonIgnore]
     public bool IsMigratedFromIbft2 => StartBlock is > 0;
 
-    // BFT extra data carries the validator list and every committed seal, far beyond the 32-byte default.
-    public void ApplyToChainSpec(ChainSpec chainSpec) => chainSpec.Parameters.MaximumExtraDataSize = int.MaxValue;
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+        // BFT extra data carries the validator list and every committed seal, far beyond the 32-byte default.
+        chainSpec.Parameters.MaximumExtraDataSize = int.MaxValue;
+
+        if (chainSpec.Genesis is { } genesis)
+        {
+            ValidatePerTxGasLimit(PerTxGasLimit, genesis.GasLimit);
+            foreach (QbftTransition transition in Transitions)
+            {
+                ValidatePerTxGasLimit(transition.PerTxGasLimit, genesis.GasLimit);
+            }
+        }
+    }
+
+    private static void ValidatePerTxGasLimit(ulong? perTxGasLimit, ulong genesisGasLimit)
+    {
+        if (perTxGasLimit > genesisGasLimit)
+        {
+            throw new InvalidOperationException($"pertxgaslimit {perTxGasLimit} exceeds the genesis gas limit {genesisGasLimit}");
+        }
+    }
 
     public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -57,7 +58,7 @@ public sealed class QbftBlockHeader(
             extraData = GetBftExtraData();
             return true;
         }
-        catch (RlpException)
+        catch (Exception e) when (e is RlpException or ArgumentException or IndexOutOfRangeException)
         {
             extraData = null;
             return false;

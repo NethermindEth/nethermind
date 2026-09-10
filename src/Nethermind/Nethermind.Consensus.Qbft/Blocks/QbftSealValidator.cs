@@ -63,7 +63,7 @@ public class QbftSealValidator(
         {
             extraData = blockInterface.GetExtraData(header);
         }
-        catch (Exception e) when (e is Serialization.Rlp.RlpException or ArgumentException)
+        catch (Exception e) when (e is Serialization.Rlp.RlpException or ArgumentException or IndexOutOfRangeException)
         {
             return Fail(header, $"extra data cannot be decoded: {e.Message}", out error);
         }

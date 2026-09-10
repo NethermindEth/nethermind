@@ -119,6 +119,19 @@ public sealed class QbftForksSchedule
         };
 
         List<QbftForkSpec> forks = [new QbftForkSpec(0, false, genesis, null)];
+        if (parameters.StartBlock is > 0 and { } startBlock)
+        {
+            // Below startblock the chain ran IBFT 2.0 with its own period and epoch; QBFT settings apply from startblock on.
+            Ibft2Parameters ibft2 = parameters.Ibft2 ?? new Ibft2Parameters();
+            forks[0] = new QbftForkSpec(0, false, genesis with
+            {
+                EpochLength = ibft2.EpochLength,
+                BlockPeriodSeconds = ibft2.BlockPeriodSeconds,
+                RequestTimeoutSeconds = ibft2.RequestTimeoutSeconds,
+            }, null);
+            forks.Add(new QbftForkSpec(startBlock, startBlock >= firstTimestampFork, genesis, null));
+        }
+
         QbftTransition[] transitions = [.. parameters.Transitions];
         Array.Sort(transitions, static (a, b) => a.Block.CompareTo(b.Block));
         HashSet<ulong> seen = [];

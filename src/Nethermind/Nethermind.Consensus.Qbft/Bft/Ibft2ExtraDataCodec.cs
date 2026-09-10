@@ -87,7 +87,7 @@ public sealed class Ibft2ExtraDataCodec : IBftExtraDataCodec
         }
 
         RlpReader reader = new(extraData);
-        reader.ReadSequenceLength();
+        int listEnd = reader.ReadSequenceLength() + reader.Position;
         byte[] vanity = reader.DecodeByteArray();
         Address[] validators = BftExtraDataRlp.DecodeValidators(ref reader);
 
@@ -125,6 +125,7 @@ public sealed class Ibft2ExtraDataCodec : IBftExtraDataCodec
 
         int round = BinaryPrimitives.ReadInt32BigEndian(roundBytes);
         Signature[] seals = BftExtraDataRlp.DecodeSeals(ref reader);
+        reader.Check(listEnd);
         return new BftExtraData(vanity, seals, vote, round, validators);
     }
 

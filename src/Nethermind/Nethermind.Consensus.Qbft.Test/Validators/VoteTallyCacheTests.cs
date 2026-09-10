@@ -127,16 +127,18 @@ public class VoteTallyCacheTests
     [Test]
     public void EpochManagerWithStartBlockCountsFromTheMigrationBlock()
     {
-        // Besu semantics: the last IBFT 2.0 block (startBlock - 1) is the epoch block that seeds the first QBFT validator set.
-        EpochManager manager = new(100, startBlock: 250);
+        // Besu semantics: the last IBFT 2.0 block (startBlock - 1) is the epoch block that seeds the first QBFT validator set;
+        // below it the IBFT 2.0 epoch length applies.
+        EpochManager manager = new(100, startBlock: 250, ibft2EpochLength: 40);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(manager.IsEpochBlock(100), Is.False);
+            Assert.That(manager.IsEpochBlock(120), Is.True, "IBFT 2.0 epoch");
             Assert.That(manager.IsEpochBlock(249), Is.True);
             Assert.That(manager.IsEpochBlock(250), Is.False);
             Assert.That(manager.IsEpochBlock(349), Is.True);
             Assert.That(manager.GetLastEpochBlock(360), Is.EqualTo(350));
-            Assert.That(() => manager.GetLastEpochBlock(10), Throws.ArgumentException);
+            Assert.That(manager.GetLastEpochBlock(130), Is.EqualTo(120));
         }
     }
 

@@ -34,6 +34,8 @@ public sealed class QbftRpcModule(
     QbftConsensusStatus status) : IQbftRpcModule
 {
     private const long DefaultRangeBlocks = 100;
+    /// <summary>Besu's <c>RpcErrorType.METHOD_NOT_ENABLED</c>.</summary>
+    public const int MethodNotEnabledErrorCode = -32604;
 
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IValidatorProvider _validatorProvider = validatorProvider;
@@ -210,7 +212,7 @@ public sealed class QbftRpcModule(
     }
 
     private static ResultWrapper<T> MethodNotEnabled<T>() =>
-        ResultWrapper<T>.Fail("Method not enabled: validators are selected by contract on this chain", ErrorCodes.MethodNotFound);
+        ResultWrapper<T>.Fail("Method not enabled: validators are selected by contract on this chain", MethodNotEnabledErrorCode);
 
     private long ResolveBlockNumber(BlockParameter parameter, long headNumber) => parameter.Type switch
     {

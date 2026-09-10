@@ -172,6 +172,26 @@ public class QbftForksScheduleTests
     }
 
     [Test]
+    public void MigrationFromIbft2KeepsIbft2SettingsBelowStartBlock()
+    {
+        QbftChainSpecEngineParameters parameters = new()
+        {
+            BlockPeriodSeconds = 5,
+            EpochLength = 1000,
+            StartBlock = 300,
+            Ibft2 = new Ibft2Parameters { BlockPeriodSeconds = 2, EpochLength = 100 },
+        };
+        QbftForksSchedule schedule = Create(parameters);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.GetFork(0, 0).BlockPeriodSeconds, Is.EqualTo(2));
+            Assert.That(schedule.GetFork(299, 0).EpochLength, Is.EqualTo(100));
+            Assert.That(schedule.GetFork(300, 0).BlockPeriodSeconds, Is.EqualTo(5));
+            Assert.That(schedule.GetFork(300, 0).EpochLength, Is.EqualTo(1000));
+        }
+    }
+
+    [Test]
     public void TransitionAtGenesisIsRejected() =>
         Assert.That(() => Create(Parameters(new QbftTransition { Block = 0 })), Throws.ArgumentException.With.Message.Contains("genesis"));
 
