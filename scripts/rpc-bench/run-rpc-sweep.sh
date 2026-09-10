@@ -55,6 +55,11 @@ CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 # Sample the node container's cgroup during each corpus cell. Counters only, and a missing cgroup
 # is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
 # to doing more work, waiting on IO, or leaving the machine idle.
+# Deep-check captures every response of a non-corpus cell into OUT_DIR, which sits on RUNNER_TEMP.
+# That is the box's root disk, and on the arm64 runner it is ~6.8 GB: the 2026-09-02 heavy-multicall
+# sweep filled it, failed with ENOSPC and took the runner offline. Corpus cells never deep-check;
+# this lets a dispatch turn it off for the config-driven cells too, on boxes that cannot spare it.
+DEEP_CHECK="${DEEP_CHECK:-true}"
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
 # Discarded load applied to each node before its measured cells; 0 measures a cold node
 # deliberately. The 2026-08-13 measurements put the cold-failure knee at ~24k requests (two 120s
@@ -170,7 +175,7 @@ db_isolation_for() {
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
 run_cell() {
   local cfg="$1" rps="$2" dur="$3" cell="$4" ctype="$5" label="$6" corpus="${7:-}" node="${8:-}"
-  local is_corpus="false" deep="true"
+  local is_corpus="false" deep="$DEEP_CHECK"
   [[ -n "$corpus" ]] && { is_corpus="true"; deep="false"; }
   mkdir -p "$cell"
   # run-jsonbench.sh owns the sampling window so it covers container execution only, and it
