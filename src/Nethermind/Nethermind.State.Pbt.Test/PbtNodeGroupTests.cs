@@ -430,31 +430,38 @@ public class PbtNodeGroupTests
         PbtStorageNodePath rootPath = new([], 0);
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, new TrackingMemoryProvider());
-        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[31];
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[16];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree root = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
         try
         {
             root = reader.Take(writer, rootPath);
-            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Decompose(ref reader, writer, ref root, 0, frontier, touchedMask);
+            uint frontierMask = 0;
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Decompose(ref reader, writer, ref root, 0, frontier, ref frontierMask, touchedMask);
             uint expectedTaken = 1u << 30;
             uint expectedFrontier = 0;
             uint deferredTaken = 0;
+            int[] expectedPositions = new int[16];
+            Array.Fill(expectedPositions, -1);
             Visit(0, 16, 30);
             uint actualFrontier = 0;
             uint actualReferences = 0;
-            for (int position = 0; position < frontier.Length; position++)
+            for (int slot = 0; slot < frontier.Length; slot++)
             {
-                if (!frontier[position].IsEmpty) actualFrontier |= 1u << position;
-                if (frontier[position].SourcePath is not null) actualReferences |= 1u << position;
+                int position = expectedPositions[slot];
+                Assert.That(frontier[slot].IsEmpty, Is.EqualTo(position == -1), $"compact slot {slot}");
+                if (position == -1) continue;
+                actualFrontier |= 1u << position;
+                if (frontier[slot].SourcePath is not null) actualReferences |= 1u << position;
             }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.Taken, Is.EqualTo(expectedTaken), "decomposition must not acquire untouched siblings");
+                Assert.That(frontierMask, Is.EqualTo(expectedFrontier));
                 Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
                 Assert.That(actualReferences, Is.EqualTo(deferredTaken & ~expectedTaken), "only unacquired nodes retain source references");
             }
-            result = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier);
+            result = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier, frontierMask);
             ValueHash256 hash = writer.Write(30, 0, ref result);
             using RefCountingMemory? payload = writer.Detach();
             using (Assert.EnterMultipleScope())
@@ -468,6 +475,7 @@ public class PbtNodeGroupTests
             {
                 if (width == 1 || (touchedMask & (((1 << width) - 1) << slot)) == 0)
                 {
+                    expectedPositions[slot] = position;
                     expectedFrontier |= 1u << position;
                     deferredTaken |= 1u << position;
                     return;
@@ -479,6 +487,7 @@ public class PbtNodeGroupTests
                     position = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.BoundaryPosition(slot + 1) + 1;
                     if ((touchedMask & (3 << slot)) == 0)
                     {
+                        expectedPositions[slot] = position;
                         expectedFrontier |= 1u << position;
                         return;
                     }
@@ -491,6 +500,53 @@ public class PbtNodeGroupTests
         {
             root.Dispose();
             result.Dispose();
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Dispose(frontier);
+            reader.Dispose();
+        }
+    }
+
+    [Test]
+    public void Compact_frontier_boundary_results_track_insertions_and_deletions([Values(0, 15)] int slot)
+    {
+        using PbtTreeHarness expected = new();
+        byte[] key = Bytes.FromHexString($"{slot << 4:X2}00");
+        using PbtNodeGroupStore store = new();
+        PbtStorageNodePath rootPath = new([], 0);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, new TrackingMemoryProvider());
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[16];
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree subtree = default;
+        uint frontierMask = 0;
+        try
+        {
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Decompose(ref reader, writer, ref subtree, 0, frontier, ref frontierMask, 1 << slot);
+            Assert.That(frontierMask, Is.Zero);
+            subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier, frontierMask);
+            Assert.That(subtree.IsEmpty, Is.True);
+
+            subtree = new(new PbtWriteOperation<PbtStorageFullKey>(new(key), new ValueHash256(Value(1))));
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.SetBoundary(frontier, ref frontierMask, slot, ref subtree);
+            Assert.That(frontierMask, Is.EqualTo(1u << TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.BoundaryPosition(slot)));
+            subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.TakeBoundary(ref reader, writer, frontier, ref frontierMask, slot);
+            Assert.That(frontierMask, Is.Zero);
+            subtree.Dispose();
+            subtree = default;
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.SetBoundary(frontier, ref frontierMask, slot, ref subtree);
+            subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier, frontierMask);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frontierMask, Is.Zero);
+                Assert.That(subtree.IsEmpty, Is.True);
+            }
+
+            subtree = new(new PbtWriteOperation<PbtStorageFullKey>(new(key), new ValueHash256(Value(1))));
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.SetBoundary(frontier, ref frontierMask, slot, ref subtree);
+            subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier, frontierMask);
+            Assert.That(writer.Write(30, 0, ref subtree), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
+        }
+        finally
+        {
+            subtree.Dispose();
             TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Dispose(frontier);
             reader.Dispose();
         }
