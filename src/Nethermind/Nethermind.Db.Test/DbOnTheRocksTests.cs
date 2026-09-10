@@ -161,7 +161,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void RocksDbFeatureCollectiveNine_ResolvesOptionsAndRoundTripsDeletesAndIteration()
+        public void RocksDbFeatureCollectiveEight_ResolvesOptionsAndRoundTripsDeletesAndIteration()
         {
             DbConfig config = new();
             RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
@@ -181,11 +181,9 @@ namespace Nethermind.Db.Test
                 Assert.That(globalOptions["optimize_manifest_for_recovery"], Is.EqualTo("true"));
                 Assert.That(globalOptions["max_compaction_trigger_wakeup_seconds"], Is.EqualTo("60"));
                 Assert.That(flatOptions["block_based_table_factory.filter_policy"], Is.EqualTo("ribbonfilter:10:3"));
-                Assert.That(flatOptions["block_based_table_factory.cache_index_and_filter_blocks"], Is.EqualTo("true"));
                 Assert.That(flatOptions["min_tombstones_for_range_conversion"], Is.EqualTo("32"));
                 Assert.That(flatOptions["read_triggered_compaction_threshold"], Is.EqualTo("0.01"));
                 Assert.That(accountOptions["block_based_table_factory.filter_policy"], Is.EqualTo("ribbonfilter:10:3"));
-                Assert.That(accountOptions["block_based_table_factory.cache_index_and_filter_blocks"], Is.EqualTo("true"));
                 Assert.That(accountOptions["min_tombstones_for_range_conversion"], Is.EqualTo("32"));
                 Assert.That(accountOptions["read_triggered_compaction_threshold"], Is.EqualTo("0.01"));
                 Assert.That(accountOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kInterpolation"));

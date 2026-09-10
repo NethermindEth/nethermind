@@ -314,7 +314,6 @@ public class DbConfig : IDbConfig
         // We bsearch instead of partitioned tree. This take up memory for improved latency.
         "block_based_table_factory.partition_filters=false;" +
         "block_based_table_factory.index_type=kBinarySearch;" +
-        "block_based_table_factory.cache_index_and_filter_blocks=true;" +
 
         "ttl=0;" +
         "periodic_compaction_seconds=0;" +
