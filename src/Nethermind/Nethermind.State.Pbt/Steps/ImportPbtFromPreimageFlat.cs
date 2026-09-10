@@ -71,6 +71,9 @@ public class ImportPbtFromPreimageFlat(
     /// <summary>Keys deleted per view and write batch when clearing an interrupted import.</summary>
     internal int ClearKeyChunk { get; init; } = 10_000;
 
+    /// <summary>Writes per phase-one batch, bounding retained storage keys even within one account.</summary>
+    internal int CopyBatchSize { get; init; } = 10_000;
+
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -194,9 +197,9 @@ public class ImportPbtFromPreimageFlat(
             {
                 (ValueHash256 start, ValueHash256 end) = PartitionBounds(partition, partitionCount);
 
-                // Limit each source snapshot and write batch to one range.
+                // Limit each source snapshot to one range.
                 using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
-                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateStagingWriteBatch(WriteFlags.DisableWAL))
+                using (CopyBatch batch = new(pbtPersistence, CopyBatchSize))
                 {
                     CopyAccounts(reader, batch, start, end, ref accounts, ref slots, cancellationToken);
                     batch.Commit();
@@ -272,7 +275,7 @@ public class ImportPbtFromPreimageFlat(
     /// <summary>Copies whole accounts and their code, with storage in its own column.</summary>
     private void CopyAccounts(
         FlatPersistence.IPersistenceReader reader,
-        IPbtPersistence.IWriteBatch batch,
+        CopyBatch batch,
         ValueHash256 start,
         ValueHash256 end,
         ref long accounts,
@@ -296,8 +299,8 @@ public class ImportPbtFromPreimageFlat(
 
             if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
 
-            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
-            if (code is not null) batch.SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
+            batch.NextWrite().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
+            if (code is not null) batch.NextWrite().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
 
             pendingAccounts++;
             if (pendingAccounts >= ProgressPublishInterval)
@@ -314,7 +317,7 @@ public class ImportPbtFromPreimageFlat(
     /// <remarks>Ascending slots let the key deriver reuse one address hash and one suffix hash per 256-slot run.</remarks>
     private static void CopySlots(
         FlatPersistence.IPersistenceReader reader,
-        IPbtPersistence.IWriteBatch batch,
+        CopyBatch batch,
         in ValueHash256 accountKey,
         Address address,
         ref long slots,
@@ -329,7 +332,7 @@ public class ImportPbtFromPreimageFlat(
             // In preimage mode, the key is the raw 32-byte big-endian slot.
             UInt256 slot = new(slotIterator.CurrentKey.Bytes, isBigEndian: true);
             EvmWord value = EvmWordSlot.FromStripped(slotIterator.CurrentValue);
-            batch.SetSlot(PbtStateKey.Storage(address, slot), value);
+            batch.NextWrite().SetSlot(PbtStateKey.Storage(address, slot), value);
 
             if (++pendingSlots >= ProgressPublishInterval)
             {
@@ -339,6 +342,31 @@ public class ImportPbtFromPreimageFlat(
         }
 
         Interlocked.Add(ref slots, pendingSlots);
+    }
+
+    private sealed class CopyBatch(PbtRocksDbPersistence persistence, int maxWrites) : IDisposable
+    {
+        private IPbtPersistence.IWriteBatch? _batch;
+        private int _writes;
+
+        public IPbtPersistence.IWriteBatch NextWrite()
+        {
+            if (_writes == maxWrites)
+            {
+                Commit();
+                _batch!.Dispose();
+                _batch = null;
+                _writes = 0;
+            }
+
+            _batch ??= persistence.CreateStagingWriteBatch(WriteFlags.DisableWAL);
+            _writes++;
+            return _batch;
+        }
+
+        public void Commit() => _batch?.Commit();
+
+        public void Dispose() => _batch?.Dispose();
     }
 
     /// <summary>Returns a partition over the first two raw-address bytes, which distributes accounts evenly.</summary>
