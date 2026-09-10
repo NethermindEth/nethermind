@@ -141,7 +141,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter writer, TPath path, bool allowAbsent = false)
     {
         int position = Position(path);
-        if (position < writer.NextPosition) throw new InvalidOperationException("Cannot take a PBT node after its output position has passed.");
+        if (position <= writer.LastPosition) throw new InvalidOperationException("Cannot take a PBT node after its output position has passed.");
         TrieUpdater<TKey, TPath>.Subtree node = (Taken & (1U << position)) == 0
             ? Acquire(position, path)
             : default;

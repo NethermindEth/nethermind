@@ -496,48 +496,57 @@ public class PbtNodeGroupTests
     public void Multiple_node_changes_publish_one_complete_group_and_unchanged_batch_publishes_none()
     {
         using PublishingStore store = new();
+        TrieUpdaterMetrics metrics = new();
         using PbtWriteBatchBuilder<PbtFullKey> batch = new(0);
         batch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(1)));
         batch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(2)));
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build());
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Publishes, Is.EqualTo(1));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(3));
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(3));
         }
 
         using PbtWriteBatchBuilder<PbtFullKey> changedBatch = new(0);
         changedBatch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(3)));
         changedBatch.Set(new PbtFullKey([0x80]), new ValueHash256(Value(4)));
-        root = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
-        Assert.That(store.Publishes, Is.EqualTo(2));
+        root = TrieUpdater.UpdateRoot(store, root, changedBatch.Build(), metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Publishes, Is.EqualTo(2));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(6));
+        }
 
-        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
+        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, changedBatch.Build(), metrics);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unchangedRoot, Is.EqualTo(root));
             Assert.That(store.Publishes, Is.EqualTo(2));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(6));
         }
 
         PbtNodePath siblingPath = new([0x80], 1);
         byte[]? sibling = store.Inner.GetNode(siblingPath);
         using PbtWriteBatchBuilder<PbtFullKey> siblingChangeBatch = new(0);
         siblingChangeBatch.Set(new PbtFullKey([0x00]), new ValueHash256(Value(5)));
-        root = TrieUpdater.UpdateRoot(store, root, siblingChangeBatch.Build());
+        root = TrieUpdater.UpdateRoot(store, root, siblingChangeBatch.Build(), metrics);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Publishes, Is.EqualTo(3));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(8));
             Assert.That(store.Inner.GetNode(siblingPath), Is.EqualTo(sibling));
         }
 
         using PbtWriteBatchBuilder<PbtFullKey> deleteBatch = new(0);
         deleteBatch.Delete(new PbtFullKey([0x00]));
         deleteBatch.Delete(new PbtFullKey([0x80]));
-        root = TrieUpdater.UpdateRoot(store, root, deleteBatch.Build());
+        root = TrieUpdater.UpdateRoot(store, root, deleteBatch.Build(), metrics);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(default(ValueHash256)));
             Assert.That(store.Publishes, Is.EqualTo(4));
+            Assert.That(metrics.EmittedNodeWrites, Is.EqualTo(11));
             Assert.That(store.Inner.EnumerateNodeGroupKeys(), Is.Empty);
         }
     }
@@ -815,6 +824,79 @@ public class PbtNodeGroupTests
                 if (found) Assert.That(encoding.ToArray(), Is.EqualTo(encodings[position].ToArray()));
                 else Assert.That(reader.Availability & (1u << position), Is.Zero);
             }
+        }
+    }
+
+    [Test]
+    public void Explicit_emissions_preserve_only_selected_nodes_independently_of_taken_positions(
+        [Values(0, 4, 516)] int groupDepth,
+        [Values(0u, 0x400C0189u, 0x7FFFFFFFu)] uint selected,
+        [Values] bool markTaken,
+        [Values] bool copyRanges)
+    {
+        PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
+        List<PbtNodeRecord> records = [];
+        List<PbtNodeRecord> expectedRecords = [];
+        int positionCount = groupDepth == 0 ? PbtNodeGroupCodec.PositionCount : PbtFourLevelGroupGeometry.RootPosition;
+        for (int position = 0; position < positionCount; position++)
+        {
+            if (position % 7 == 0) continue;
+            IPbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+            byte[] encoding = position % 3 == 2
+                ? PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value((byte)(position + 1))), new ValueHash256(Value(0xFF)))
+                : PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(path.Path.IsEmpty ? Bytes.FromHexString("00") : path.Path), Value((byte)(position + 1)));
+            PbtNodeRecord record = new(path, encoding);
+            records.Add(record);
+            if ((selected & (1u << position)) != 0) expectedRecords.Add(record);
+        }
+        byte[] sourcePayload = EncodeGroup(groupKey, records);
+        using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads([new(groupKey.Encode(), sourcePayload)]);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
+        using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
+        try
+        {
+            uint taken = markTaken ? 0x7FFFFFFFu : 0;
+            reader.Taken = taken;
+            int nextPosition = 0;
+            int lastEmittedPosition = -1;
+            uint emitted = 0;
+            foreach (int endPosition in new[] { 0, 3, 8, 19, 31 })
+            {
+                while (nextPosition < endPosition)
+                {
+                    if ((selected & (1u << nextPosition)) == 0)
+                    {
+                        nextPosition++;
+                        continue;
+                    }
+                    int startPosition = nextPosition;
+                    do
+                    {
+                        ReadOnlyMemory<byte> encoding = reader.GetEncoding(nextPosition);
+                        if (!encoding.IsEmpty)
+                        {
+                            if (!copyRanges) writer.Write(nextPosition, encoding.Span);
+                            emitted |= 1u << nextPosition;
+                            lastEmittedPosition = nextPosition;
+                        }
+                        nextPosition++;
+                    } while (nextPosition < endPosition && (selected & (1u << nextPosition)) != 0);
+                    if (copyRanges) reader.CopyRange(writer, startPosition, nextPosition);
+                }
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(writer.LastPosition, Is.EqualTo(lastEmittedPosition));
+                    Assert.That(writer.Availability, Is.EqualTo(emitted));
+                    Assert.That(reader.Taken, Is.EqualTo(taken));
+                }
+            }
+            using RefCountingMemory? payload = writer.Detach();
+            Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expectedRecords.Count == 0 ? null : EncodeGroup(groupKey, expectedRecords)));
+        }
+        finally
+        {
+            reader.Dispose();
         }
     }
 
