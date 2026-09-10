@@ -14,6 +14,9 @@ public interface ISnapshotRepository
     /// <summary>Number of in-memory base snapshots currently held.</summary>
     int SnapshotCount { get; }
 
+    /// <summary>Estimated bytes held by the in-memory snapshot tiers (base + compacted).</summary>
+    long InMemoryBytes { get; }
+
     /// <summary>Total persisted snapshots across the base/compacted/CompactSized buckets.</summary>
     int PersistedSnapshotCount { get; }
 
