@@ -35,9 +35,15 @@ static class Program
             byte[] bytes = File.ReadAllBytes(input);
             byte[] expected = File.ReadAllBytes(Path.ChangeExtension(input, ".out"));
             byte[] actual = [];
+            long started = Stopwatch.GetTimestamp();
             for (int i = 0; i < repeat; i++)
             {
                 actual = StatelessExecutor.Execute(bytes).ToArray();
+            }
+            TimeSpan took = Stopwatch.GetElapsedTime(started);
+            if (took.TotalMilliseconds > 100)
+            {
+                Console.WriteLine($"slow {Path.GetFileNameWithoutExtension(input)}: {took.TotalMilliseconds:F0} ms");
             }
             if (actual.AsSpan().SequenceEqual(expected))
             {
@@ -52,7 +58,7 @@ static class Program
         clock.Stop();
         Console.WriteLine($"{matched} of {inputs.Length} cases matched in {clock.Elapsed.TotalSeconds:F1}s");
 #if RUST_EVM
-        Console.WriteLine($"frames: rust {Nethermind.Evm.Rust.RustVirtualMachine.RustFrames}, csharp {Nethermind.Evm.Rust.RustVirtualMachine.CSharpFrames}, rust evm available: {Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable}, inside {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.InsideTicks).TotalSeconds:F1}s write-back {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.WriteBackTicks).TotalSeconds:F1}s");
+        Console.WriteLine($"frames: rust {Nethermind.Evm.Rust.RustVirtualMachine.RustFrames}, csharp {Nethermind.Evm.Rust.RustVirtualMachine.CSharpFrames}, rust evm available: {Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable}, inside {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.InsideTicks).TotalSeconds:F1}s write-back {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.WriteBackTicks).TotalSeconds:F1}s, callbacks account {Nethermind.Evm.Rust.RustVirtualMachine.AccountCalls} storage {Nethermind.Evm.Rust.RustVirtualMachine.StorageCalls} code {Nethermind.Evm.Rust.RustVirtualMachine.CodeCalls} observer {Nethermind.Evm.Rust.RustVirtualMachine.ObserverCalls} ({Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.ObserverTicks).TotalSeconds:F1}s)");
 #endif
         return failed == 0 ? 0 : 1;
     }

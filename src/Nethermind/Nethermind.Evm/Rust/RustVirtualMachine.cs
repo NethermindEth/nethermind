@@ -63,14 +63,15 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     /// <summary>Whether the interpreter is linked in and speaks the ABI this binding expects.</summary>
     public static bool IsAvailable { get; } = Probe();
 
-    private static readonly bool Debug = Environment.GetEnvironmentVariable("NETHERMIND_RUST_EVM_DEBUG") is "1";
-    private static readonly bool Compare = Environment.GetEnvironmentVariable("NETHERMIND_RUST_EVM_COMPARE") is "1";
 
     /// <summary>How many frames went to the Rust interpreter, and how many the C# one took.</summary>
     public static long RustFrames, CSharpFrames;
 
     /// <summary>Ticks spent inside the interpreter's call, and in the write-back after it.</summary>
     public static long InsideTicks, WriteBackTicks;
+
+    /// <summary>How often each callback was called, and the ticks the observer ones took.</summary>
+    public static long AccountCalls, StorageCalls, CodeCalls, ObserverCalls, ObserverTicks;
 
     private static bool Probe()
     {
@@ -104,17 +105,6 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         {
             CSharpFrames++;
             return _inner.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
-        }
-
-        if (Compare)
-        {
-            // A diagnostic: the C# interpreter runs the frame, with the same trace the Rust one prints.
-            CSharpFrames++;
-            ExecutionEnvironment env = state.Env;
-            Console.Error.WriteLine($"csharp frame #{CSharpFrames}: type {state.ExecutionType} gas {state.Gas.Value} code {env.CodeInfo.Code.Length} input {env.InputData.Length} to {env.ExecutingAccount}");
-            TransactionSubstate substate = _inner.ExecuteTransaction<TTracingInst>(state, worldState, txTracer);
-            Console.Error.WriteLine($"  -> exception {substate.EvmExceptionType} revert {substate.ShouldRevert} gas {state.Gas.Value} state {state.Gas.StateGasUsed}/{state.Gas.StateReservoir}/{state.Gas.StateGasSpill} out {substate.Output.Length} refund {substate.Refund}");
-            return substate;
         }
 
         RustFrames++;
@@ -248,11 +238,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                     AccountAccess = &AccountReadCallback,
                 };
 
-                if (Debug) Console.Error.WriteLine($"rust frame #{RustFrames}: type {state.ExecutionType} gas {state.Gas.Value} code {code.Length} input {input.Length} warm {addresses.Length}/{cells.Length} to {env.ExecutingAccount} state {state.Gas.StateGasUsed}/{state.Gas.StateReservoir}/{state.Gas.StateGasSpill} value {env.Value} balance {worldState.GetBalance(env.ExecutingAccount)} nonce {worldState.GetNonce(env.ExecutingAccount)} exists {worldState.AccountExists(env.ExecutingAccount)} codehex {Convert.ToHexStringLower(code.Span)}");
                 long started = System.Diagnostics.Stopwatch.GetTimestamp();
                 int status = RustEvmNative.Execute(&request, &callbacks, &result);
                 InsideTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
-                if (Debug) Console.Error.WriteLine($"  -> status {status} exception {result.Exception} revert {result.ShouldRevert} gas {result.Gas.Remaining} state {result.Gas.StateGasUsed}/{result.Gas.StateReservoir}/{result.Gas.StateGasSpill} out {result.Output.Len} refund {result.Refund} logs {result.LogCount} accounts {result.AccountCount} storage {result.StorageCount}");
                 if (_readException is not null)
                 {
                     System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(_readException);
@@ -411,13 +399,12 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+            AccountCalls++;
             RustVirtualMachine machine = Of(context);
             if (!machine._worldState!.TryGetAccount(FromFfi(in *address), out AccountStruct found))
             {
-                if (Debug) Console.Error.WriteLine($"  account {FromFfi(in *address)}: none");
                 return 0;
             }
-            if (Debug) Console.Error.WriteLine($"  account {FromFfi(in *address)}: nonce {found.Nonce} balance {found.Balance} code {found.CodeHash}");
             UInt256 balance = found.Balance;
             ValueHash256 codeHash = found.CodeHash;
             ValueHash256 storageRoot = found.StorageRoot;
@@ -439,11 +426,11 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+            StorageCalls++;
             RustVirtualMachine machine = Of(context);
             StorageCell cell = new(FromFfi(in *address), FromFfi(in *key));
             ReadOnlySpan<byte> bytes = machine._worldState!.Get(in cell);
             UInt256 read = bytes.IsEmpty ? UInt256.Zero : new UInt256(bytes, isBigEndian: true);
-            if (Debug) Console.Error.WriteLine($"  storage {cell.Address}[{cell.Index}] = {read} (bytes {Convert.ToHexStringLower(bytes)})");
             *value = ToFfi(in read);
             return 1;
         }
@@ -459,6 +446,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+            CodeCalls++;
             RustVirtualMachine machine = Of(context);
             ValueHash256 hash = new(new ReadOnlySpan<byte>(codeHash->Bytes, 32));
             byte[]? found = machine._worldState!.GetCode(in hash);
@@ -512,7 +500,10 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+            ObserverCalls++;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             Of(context)._worldState!.AddAccountRead(FromFfi(in *address));
+            ObserverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
         }
         catch (Exception exception)
         {
@@ -527,10 +518,13 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     {
         try
         {
+            ObserverCalls++;
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             IWorldState worldState = Of(context)._worldState!;
             Address read = FromFfi(in *address);
             worldState.AddAccountRead(read);
             worldState.RecordBytecodeAccess(read);
+            ObserverTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
         }
         catch (Exception exception)
         {
