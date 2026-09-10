@@ -320,9 +320,11 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    // A throwing Dispose() on one discarded trace must not stop the rest from being drained, or a single
-    // bad trace leaks the whole collection. If any dispose failed, the selected trace is disposed here too
-    // (the caller returns it, not us) and the failure is surfaced rather than swallowed.
+    /// <remarks>
+    /// A throwing Dispose() on one discarded trace must not stop the rest from being drained, or a single
+    /// bad trace leaks the whole collection. If any dispose failed, the selected trace is disposed here too
+    /// (the caller returns it, not us) and the failure is surfaced rather than swallowed.
+    /// </remarks>
     private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
     {
         GethLikeTxTrace? selected = null;

@@ -480,27 +480,17 @@ public class DebugModuleTests
         // which is where the rest of the block's traces would otherwise leak.
         GethTraceOptions options = new() { Tracer = "callTracer" };
 
-        ResultWrapper<GethLikeTxTrace> result = CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(3), 1, options);
-
-        try
+        using (ResultWrapper<GethLikeTxTrace> result = CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(3), 1, options))
         {
             Assert.That(result.Data, Is.SameAs(traces[1]));
             engines[1].DidNotReceive().Dispose();
-
-            // Dispose explicitly, rather than `using`, so the returned trace's own disposal - owned by the
-            // RPC pipeline - is exercised and asserted alongside the discarded ones.
-            result.Dispose();
-
-            using (Assert.EnterMultipleScope())
-            {
-                engines[0].Received(1).Dispose();
-                engines[1].Received(1).Dispose();
-                engines[2].Received(1).Dispose();
-            }
         }
-        finally
+
+        using (Assert.EnterMultipleScope())
         {
-            result?.Dispose();
+            engines[0].Received(1).Dispose();
+            engines[1].Received(1).Dispose();
+            engines[2].Received(1).Dispose();
         }
     }
 
