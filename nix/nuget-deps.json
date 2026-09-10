@@ -125,31 +125,6 @@
     "hash": "sha256-a6UViZFeNkDh/904SGPdDXPwymqKrFkeyBxCxqPuVc4="
   },
   {
-    "pname": "Google.Protobuf.Tools",
-    "version": "3.35.1",
-    "hash": "sha256-1oqUqk083zPBWbH4DHPwvR+3wtrqtza1TxwmmE9uHFw="
-  },
-  {
-    "pname": "Grpc",
-    "version": "2.46.6",
-    "hash": "sha256-UvshzRfdXji+35rPAlS5Kcc5On6OxvFJ0Lbhk+CRQv4="
-  },
-  {
-    "pname": "Grpc.Core",
-    "version": "2.46.6",
-    "hash": "sha256-/8HjIi72DMNH8WMCHcinEmNwdHWudZlc3s7K3hEV3tM="
-  },
-  {
-    "pname": "Grpc.Core.Api",
-    "version": "2.46.6",
-    "hash": "sha256-HjqMERYygA3hrkPVJ489qMsANGXYxuh/23xbLeBAsLA="
-  },
-  {
-    "pname": "Grpc.Tools",
-    "version": "2.82.0",
-    "hash": "sha256-5yYsikQ12205O5Gd5LoUELbO0xhm35joNFb5Accygz4="
-  },
-  {
     "pname": "Humanizer.Core",
     "version": "2.14.1",
     "hash": "sha256-EXvojddPu+9JKgOG9NSQgUTfWq1RpOYw7adxDPKDJ6o="

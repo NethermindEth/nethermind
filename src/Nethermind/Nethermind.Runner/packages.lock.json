@@ -108,19 +108,6 @@
         "resolved": "6.0.2",
         "contentHash": "8GZqv6buY71KQlWT+cl2eMi+aNX9xQ61RgI3Pzv9zPxPOX6tWCLRrBj0MYQ3h871r2RhiHUl7f0AXUD/POr8eA=="
       },
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
-      "Grpc.Core.Api": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "Z7HJGqJYyKb53qfp1jf0wRDYs3sxOnkAFxXAW6q52LLmX/zxzjtFLI9eaWO5UC0weiWjn4iT1FzR+tj9qYZAMg=="
-      },
       "Humanizer.Core": {
         "type": "Transitive",
         "resolved": "2.14.1",
@@ -590,7 +577,6 @@
         "dependencies": {
           "Nethermind.Blockchain": "[1.40.0-unstable, )",
           "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.Grpc": "[1.40.0-unstable, )",
           "Nethermind.History": "[1.40.0-unstable, )",
           "Nethermind.JsonRpc": "[1.40.0-unstable, )",
           "Nethermind.Monitoring": "[1.40.0-unstable, )",
@@ -856,17 +842,6 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Merge.Plugin": "[1.40.0-unstable, )"
-        }
-      },
-      "nethermind.grpc": {
-        "type": "Project",
-        "dependencies": {
-          "Google.Protobuf": "[3.35.1, )",
-          "Google.Protobuf.Tools": "[3.35.1, )",
-          "Grpc": "[2.46.6, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )"
         }
       },
       "nethermind.healthchecks": {
@@ -1403,21 +1378,6 @@
         "resolved": "3.35.1",
         "contentHash": "pxtkuXhR8svkvDTQrYew9GZQt6eWhblz/V/WKUFrQgkHYlQPsumJTeF6ppHRJpe6j9ffukkd5lQULiiKaek4xA=="
       },
-      "Google.Protobuf.Tools": {
-        "type": "CentralTransitive",
-        "requested": "[3.35.1, )",
-        "resolved": "3.35.1",
-        "contentHash": "tM2NOWuOYMGjU3zIRqTl8LBt6YgeRXVKHRPCf1T+dTac9sW0WYYFmrkPq6lzgrxflGOk8r6PtDBbj0OjqOPrvA=="
-      },
-      "Grpc": {
-        "type": "CentralTransitive",
-        "requested": "[2.46.6, )",
-        "resolved": "2.46.6",
-        "contentHash": "vpC39vgCxbVBnsn8boeQv2aGIdEFqQMnjsoDvyYfr6tC93Fe9KqNG1mAiF6KLzJTwk6aiWHGNYE2EqmDUzk5ng==",
-        "dependencies": {
-          "Grpc.Core": "2.46.6"
-        }
-      },
       "JetBrains.Profiler.Api": {
         "type": "CentralTransitive",
         "requested": "[1.4.11, )",
@@ -1754,14 +1714,6 @@
       }
     },
     "net10.0/linux-arm64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -1852,14 +1804,6 @@
       }
     },
     "net10.0/linux-x64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -1950,14 +1894,6 @@
       }
     },
     "net10.0/osx-arm64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2048,14 +1984,6 @@
       }
     },
     "net10.0/osx-x64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2146,14 +2074,6 @@
       }
     },
     "net10.0/win-x64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
