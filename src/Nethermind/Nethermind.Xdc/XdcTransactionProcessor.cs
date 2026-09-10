@@ -49,9 +49,10 @@ internal class XdcTransactionProcessor(
     {
         IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
 
-        // Randomize gas is charged in BuyGas but burned, not paid out: XDPoSChain guards its whole fee
-        // payment with !types.IsSpecialTx(msg.To) (core/state_transition.go). Sign transactions never
-        // reach here — Execute routes them to ExecuteSpecialTransaction, which charges no gas at all.
+        // Randomize gas is charged in BuyGas but burned, not paid out: the reference client guards its
+        // whole fee payment with !types.IsSpecialTx(msg.To), see XinFinOrg/XDPoSChain
+        // https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_transition.go#L505
+        // Sign transactions never reach here — Execute routes them to ExecuteSpecialTransaction.
         if (tx.IsSpecialTransaction(xdcSpec)) return;
 
         if (!xdcSpec.IsTipTrc21FeeEnabled)
@@ -74,9 +75,10 @@ internal class XdcTransactionProcessor(
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-    // A randomize transaction carries a zero gas price yet must execute, so XDPoSChain waives the
-    // EIP-1559 floor for it (!types.IsSpecialTx(msg.To) in preCheck) — the floor only: gas is still
-    // bought and refunded. The premium is left to the base calculation, which clamps it to zero.
+    // A randomize transaction carries a zero gas price yet must execute, so the reference client
+    // waives the EIP-1559 floor for it — the floor only: gas is still bought and refunded. The premium
+    // is left to the base calculation, which clamps it to zero. See XinFinOrg/XDPoSChain preCheck
+    // https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_transition.go#L356
     protected override bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
         base.TryCalculatePremiumPerGas(tx, in baseFee, out premiumPerGas)
         || tx.IsSpecialTransaction((IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec);

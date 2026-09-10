@@ -138,7 +138,10 @@ internal class XdcTransactionProcessorTests
     // A randomize transaction reaches PayFees and must pay nobody; a sign transaction is routed to
     // ExecuteSpecialTransaction long before, and is covered here only against a future routing change.
     [Test]
-    public void PayFees_SignOrRandomizeTransaction_PaysNobody([Values] bool tipTrc21FeeEnabled, [Values] bool toBlockSigner)
+    public void PayFees_SignOrRandomizeTransaction_PaysNobody(
+        [Values] bool tipTrc21FeeEnabled,
+        [Values] bool toBlockSigner,
+        [Values] bool eip1559Tx)
     {
         Address blockSigner = TestItem.AddressE;
         Address randomize = TestItem.AddressC;
@@ -157,8 +160,10 @@ internal class XdcTransactionProcessorTests
         Transaction tx = Build.A.Transaction
             .WithTo(toBlockSigner ? blockSigner : randomize)
             .WithGasPrice(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)
+            .WithMaxFeePerGas(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)
+            .WithMaxPriorityFeePerGas((UInt256)XdcBaseFeeCalculator.BaseFee)
             .WithGasLimit(100000)
-            .WithType(TxType.Legacy)
+            .WithType(eip1559Tx ? TxType.EIP1559 : TxType.Legacy)
             .TestObject;
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
