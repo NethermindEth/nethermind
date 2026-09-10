@@ -100,39 +100,57 @@ if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
 fi
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
 
-# Sweep mode resolves ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — and varies only
-# the image, so a geth/reth entry would reach start-node.sh with a DB_SOURCE that does not exist. That
-# is only a per-client `::warning::`, so the sweep would report a two-thirds-empty matrix as success —
-# and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Refuse it up front.
-# (Cross-client comparison lives in single-node mode, which resolves a path per client.) The single-node
-# workflow rejects the same two axes, but it reads the top-level inputs that sweep mode supersedes, so
-# the sweep has to check its own. Widening this means teaching it a per-client snapshot path.
-for entry in $CLIENTS; do
-  if [[ "${entry%%@*}" != "nethermind" ]]; then
-    echo "::error::sweep mode resolves one Nethermind snapshot set, so client '${entry%%@*}' cannot run here"
-    echo "::error::use benchmark_tool=jsonbench (single-node) with client/reference_client for cross-client work"
+# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
+# passes the resolved Nethermind one. `ctype@image` variants share their type's set, so within one type
+# the image is the only variable.
+SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
+ARCH="${ARCH:-amd64}"
+
+# The Nethermind set is layout-resolved: `nethermind-flat-<block>` opens with --FlatDb.Enabled=true and
+# `nethermind-<block>` with it off. Both flags are stated explicitly because the client default is still
+# moving between releases, and this sweep runs images from either side of that change.
+case "$STATE_LAYOUT" in
+  flat)     SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="--FlatDb.Enabled=true" ;;
+  halfpath) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-${SNAPSHOT_BLOCK}";      NM_LAYOUT_FLAGS="--FlatDb.Enabled=false" ;;
+  *) echo "::error::sweep mode resolves a flat or halfpath Nethermind snapshot; state_layout '${STATE_LAYOUT}' cannot run here"; exit 1 ;;
+esac
+
+# Each non-Nethermind type has its own block-tagged set, mirroring the single-node path: `<root>/<client>-<block>`
+# on amd64, and `<root>/../<client>/<client>-<block>` on arm64, where each client owns a directory under /data.
+snap_path() {
+  case "$1" in
+    nethermind) printf '%s' "$SNAPSHOT_PATH" ;;
+    *) if [[ "$ARCH" == "arm64" ]]; then printf '%s' "$(dirname "$SNAPSHOT_ROOT")/$1/$1-${SNAPSHOT_BLOCK}"
+       else printf '%s' "${SNAPSHOT_ROOT}/$1-${SNAPSHOT_BLOCK}"; fi ;;
+  esac
+}
+# A client whose set is absent reaches start-node.sh with a DB_SOURCE that does not exist, which is only a
+# per-client `::warning::` there: the sweep would report a partly empty matrix as success and, in corpus
+# mode, a baseline with no candidate. Check every requested type up front instead.
+declare -A SWEEP_CTYPES=()
+for entry in $CLIENTS; do entry="${entry%%#*}"; SWEEP_CTYPES["${entry%%@*}"]=1; done
+for ctype in "${!SWEEP_CTYPES[@]}"; do
+  case "$ctype" in
+    nethermind|geth|reth) ;;
+    *) echo "::error::unknown sweep client type '${ctype}' (expected nethermind | geth | reth)"; exit 1 ;;
+  esac
+  if [[ ! -d "$(snap_path "$ctype")" ]]; then
+    echo "::error::no ${ctype} snapshot set at $(snap_path "$ctype") - this box cannot serve that client"
     exit 1
   fi
 done
-if [[ "$STATE_LAYOUT" != "flat" ]]; then
-  echo "::error::sweep mode resolves a flat snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
-fi
 
-# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
-# passes the resolved one. `ctype@image` variants share that set, so the image is the only variable.
-SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
-SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
-NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
-# One isolation mode for every node, so storage counters stay comparable: overlayfs adds a layer and
-# changes readahead and page-cache behaviour, so disk-read-per-request would otherwise measure a
-# harness difference as much as a code one. DB_ISOLATION_ALL forces a specific mode; `copy` is the
-# overlay-free choice that still leaves the snapshot intact.
+# Isolation is per client type, so storage counters stay comparable between the images of one type:
+# overlayfs adds a layer and changes readahead and page-cache behaviour, so a disk-read-per-request delta
+# across types measures the harness as much as the code. DB_ISOLATION_ALL forces one mode everywhere.
 #
 # `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
 # startup alone rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column
 # family. The Nethermind snapshots on these boxes are shared with expb, so one direct run
-# silently replaces the fixture every later benchmark compares against — which happened on
+# silently replaces the fixture every later benchmark compares against - which happened on
 # 2026-08-13 and cost a day of measurements (eth_call p99 tripled while an untouched client moved 2%).
+# reth is the exception: its DB is one large mdbx.dat whose startup write forces overlayfs to copy the
+# whole file up before the node opens (~200 s), and its set is reth-only, so it runs `direct` by default.
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
 DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
@@ -140,7 +158,13 @@ if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION"
   echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
   exit 1
 fi
-DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
+db_isolation_for() {
+  if [[ -n "$DB_ISOLATION_ALL" ]]; then printf '%s' "$DB_ISOLATION_ALL"; return; fi
+  case "$1" in
+    reth) printf 'direct' ;;
+    *)    printf 'overlay' ;;
+  esac
+}
 
 # One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
@@ -316,9 +340,10 @@ for entry in $CLIENTS; do
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${SNAPSHOT_PATH}, head=${SNAPSHOT_BLOCK})"
+  snap="$(snap_path "$ctype")"; iso="$(db_isolation_for "$ctype")"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${snap}, isolation=${iso}, head=${SNAPSHOT_BLOCK})"
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
-       DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
+       DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \

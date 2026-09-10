@@ -18,15 +18,14 @@ The amd64 box holds the full snapshot set, so it serves every `client`,
 (`/data/<client>/<client>-<block>`), so there any single provisioned `client`
 runs in single-node mode, `reference_client` is held to `none`, `state_layout`
 to `flat`, and an image it would have to build is refused as well (that box's
-small root disk dies under a build). Sweep mode stays Nethermind-only on both
-boxes (below). `resolve` checks those limits against the selected runner.
+small root disk dies under a build). `resolve` checks those limits against the
+selected runner.
 
-Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
-Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
-a non-Nethermind entry in `tool_config.clients`
-instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
-geth/reth or a second layout is a matter of provisioning the snapshot set and
-widening those two guards.
+**Sweep mode** (`jsonbench-sweep`) resolves a snapshot set per client type, so
+`tool_config.clients` may name geth/reth arms alongside Nethermind ones and
+`tool_config.state_layout` may select `halfpath`. Every requested type's set is
+checked before any node starts, because a missing one would otherwise surface as
+a per-client warning and a silently partial matrix.
 
 ## Goals
 
@@ -48,7 +47,9 @@ which uses the same snapshots on this runner:
   `NethermindConfig`.
 - `state_layout=flat` → `<snapshot root>/nethermind-flat-<block>` +
   `--FlatDb.Enabled=true` (the `snapshot_source` of
-  `github-action-mainnet-flat.yaml`). Override via `node_config.db_source`.
+  `github-action-mainnet-flat.yaml`); `halfpath` → `<snapshot root>/nethermind-<block>`.
+  Sweep mode states `--FlatDb.Enabled` either way, since the client default has moved
+  between the releases a sweep may span. Override via `node_config.db_source`.
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
   including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
   fallback).
@@ -167,13 +168,13 @@ the workflow's defensive-cleanup step).
 | Input | Meaning |
 |---|---|
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
-| `client` | `nethermind` — the only client with a snapshot set on this runner. |
+| `client` | `nethermind`, or any client with a snapshot set on the selected runner. Superseded by `tool_config.clients` in sweep mode. |
 | `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
 | `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
-| `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
+| `state_layout` | `flat` or `halfpath` (amd64 only — the arm64 box carries the flat set alone). In sweep mode pass it as `tool_config.state_layout`. |
 | `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
 | `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a Nethermind `jsonbench` benchmark with no reference client (the only shape with a warm-up to attach the collector after; one is supplied when the dispatch sets none). See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
