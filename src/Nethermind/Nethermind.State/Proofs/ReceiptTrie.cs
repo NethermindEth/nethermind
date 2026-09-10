@@ -14,7 +14,7 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="TxReceipt"/>.
 /// </summary>
-public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
+public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
     private readonly IRlpDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
@@ -73,6 +73,12 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 
         RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
             | RlpBehaviors.SkipTypedWrapping;
-        return new RootCalculator(txReceipts, receiptDecoder, behavior).Calculate();
+        return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior)).Calculate();
+    }
+    private readonly struct ReceiptEncoder(ReceiptMessageDecoder decoder, RlpBehaviors behavior) : IndexedTrieRoot.IValueEncoder<TxReceipt>
+    {
+        public ReadOnlySpan<byte> GetEncodedValue(TxReceipt item) => default;
+        public int GetLength(TxReceipt item) => decoder.GetLength(item, behavior);
+        public void Encode<TWriter>(ref TWriter writer, TxReceipt item) where TWriter : struct, IRlpWriteBackend, allows ref struct => decoder.Encode(ref writer, item, behavior);
     }
 }

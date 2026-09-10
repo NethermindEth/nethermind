@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
@@ -22,6 +23,111 @@ namespace Nethermind.Blockchain.Test.Proofs;
 public class TxTrieTests(bool useEip2718)
 {
     private readonly IReleaseSpec _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
+
+    private static readonly int[] RootCounts = [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 255, 256, 257, 4096];
+
+    [Test]
+    public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool cached)
+    {
+        Transaction[] transactions = new Transaction[count];
+        byte[][] encoded = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            Transaction transaction = Build.A.Transaction.WithNonce(i).WithType(useEip2718 ? (TxType)(i % 5) : TxType.Legacy)
+                .WithData(new byte[i % 128]).WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1).WithAuthorizationCodeIfAuthorizationListTx()
+                .WithSignature(new Signature(new byte[64], 0)).TestObject;
+            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+            if (cached) transaction.SetPreHashMemoryNoLock(encoded[i]);
+            transactions[i] = transaction;
+        }
+
+        using TrackingCappedArrayPool pool = new();
+        Hash256 expected = new TxTrie(transactions, bufferPool: pool, canBeParallel: false).RootHash;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TxTrie.CalculateRoot(transactions), Is.EqualTo(expected));
+            Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Encoded_root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool sparse)
+    {
+        byte[][] encoded = new byte[count][];
+        Random random = new(42);
+        using TrackingCappedArrayPool pool = new();
+        TxTrie trie = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++)
+        {
+            // Include unprefixed bytes, inline nodes, and the 32/56-byte RLP boundaries.
+            byte[] value = new byte[sparse && i % 3 == 0 ? 0 : i % 65 + 1];
+            random.NextBytes(value);
+            encoded[i] = sparse && i % 6 == 0 ? null! : value;
+            trie.Set(Rlp.Encode(i).Bytes, value);
+        }
+        trie.UpdateRootHash(canBeParallel: false);
+
+        Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
+    }
+
+    [TestCase(65535)]
+    [TestCase(65536)]
+    [TestCase(65537)]
+    [NonParallelizable]
+    public void Encoded_root_handles_three_byte_indices(int count)
+    {
+        byte[][] encoded = new byte[count][];
+        Array.Fill(encoded, new byte[] { 1 });
+        using TrackingCappedArrayPool pool = new();
+        TxTrie trie = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++) trie.Set(Rlp.Encode(i).Bytes, encoded[i]);
+        trie.UpdateRootHash(canBeParallel: false);
+
+        Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
+    }
+
+    [TestCase(1)]
+    [TestCase(128)]
+    public void Cached_rlp_slice_takes_precedence_and_is_preserved(int count)
+    {
+        Transaction transaction = Build.A.Transaction.TestObject;
+        byte[] encoded = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] buffer = new byte[encoded.Length + 2];
+        buffer[0] = buffer[^1] = 0xff;
+        encoded.CopyTo(buffer.AsSpan(1));
+        transaction.SetPreHashMemoryNoLock(buffer.AsMemory(1, encoded.Length));
+        transaction.Type = (TxType)127;
+        Transaction[] transactions = new Transaction[count];
+        byte[][] values = new byte[count][];
+        Array.Fill(transactions, transaction);
+        Array.Fill(values, encoded);
+
+        Hash256 root = TxTrie.CalculateRoot(transactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(TxTrie.CalculateRoot(values)));
+            Assert.That(buffer.AsSpan(1, encoded.Length).ToArray(), Is.EqualTo(encoded));
+            Assert.That(buffer[0], Is.EqualTo(0xff));
+            Assert.That(buffer[^1], Is.EqualTo(0xff));
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(128)]
+    public void Encoding_failure_does_not_affect_the_next_root(int count)
+    {
+        Transaction transaction = Build.A.Transaction.TestObject;
+        Transaction[] transactions = new Transaction[count];
+        Array.Fill(transactions, Build.A.Transaction.TestObject);
+        transactions[^1] = transaction;
+        Hash256 expected = TxTrie.CalculateRoot(transactions);
+        transaction.Type = (TxType)127;
+        Assert.Throws<RlpException>(() => TxTrie.CalculateRoot(transactions));
+
+        transaction.Type = TxType.Legacy;
+        Assert.That(TxTrie.CalculateRoot(transactions), Is.EqualTo(expected));
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root()
