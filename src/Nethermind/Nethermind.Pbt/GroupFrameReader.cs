@@ -9,7 +9,7 @@ namespace Nethermind.Pbt;
 
 internal struct GroupFrameReader<TKey, TPath> : IDisposable
     where TKey : struct, IPbtKey<TKey>
-    where TPath : class, IPbtNodePath<TPath>
+    where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly IPbtStore _store;
     private readonly TrieUpdaterMetrics? _metrics;

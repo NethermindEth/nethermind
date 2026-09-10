@@ -76,6 +76,8 @@ public class PbtNodeGroupTests
             Assert.That(entries[smallPath], Is.Null);
             Assert.That(reader.GroupKey.Equals(smallPath), Is.True);
             Assert.That(entries.Remove(smallPath), Is.True);
+            Assert.That(smallPath.Equals(default), Is.EqualTo(depth == 0));
+            Assert.That(storagePath.Equals(default), Is.EqualTo(depth == 0));
         }
     }
 
@@ -182,7 +184,7 @@ public class PbtNodeGroupTests
     }
 
     private static int ValidateLeafGroup<TPath>(TPath groupKey, int position, byte[] payload, bool streamingWriter)
-        where TPath : class, IPbtNodePath<TPath>
+        where TPath : struct, IPbtNodePath<TPath>
     {
         if (!streamingWriter) return ReadGroupCount(groupKey, payload);
         using PbtNodeGroupWriter<TPath> writer = new(groupKey, new TrackingMemoryProvider());
@@ -372,7 +374,7 @@ public class PbtNodeGroupTests
                 if (scenario == 3)
                 {
                     Assert.Throws<InvalidDataException>(() => entry.TakeSubtree(ref reader, writer));
-                    Assert.That(entry.SourcePath, Is.SameAs(rootPath), "failed acquisition retains the reference");
+                    Assert.That(entry.SourcePath, Is.EqualTo(rootPath), "failed acquisition retains the path");
                 }
                 else
                 {

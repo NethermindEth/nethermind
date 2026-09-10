@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nethermind.Pbt;
 
 /// <summary>A canonical node's structural identity, independent of its in-memory capacity.</summary>
@@ -9,13 +11,14 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
     /// <summary>Gets the number of consumed key bits.</summary>
     int BitDepth { get; }
     /// <summary>Gets the canonical zero-padded path bytes.</summary>
+    [UnscopedRef]
     ReadOnlySpan<byte> Path { get; }
     /// <summary>Encodes the depth and canonical path bytes.</summary>
     byte[] Encode();
 }
 
 /// <summary>Constructs paths with a statically selected inline capacity.</summary>
-public interface IPbtNodePath<TSelf> : IPbtNodePath where TSelf : class, IPbtNodePath<TSelf>
+public interface IPbtNodePath<TSelf> : IPbtNodePath where TSelf : struct, IPbtNodePath<TSelf>
 {
     /// <summary>Gets the maximum supported path depth.</summary>
     static abstract int MaxBitDepth { get; }

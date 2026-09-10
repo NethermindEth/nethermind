@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nethermind.Pbt;
 
 /// <summary>Identifies a canonical tree node by its consumed MSB-first key path.</summary>
 /// <remarks>Paths are limited to 272 bits.</remarks>
-public sealed class PbtNodePath : IPbtNodePath<PbtNodePath>
+public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNodePath>, IComparable<PbtNodePath>
 {
     private readonly PbtFullKey _path;
 
@@ -22,6 +24,7 @@ public sealed class PbtNodePath : IPbtNodePath<PbtNodePath>
     }
 
     public int BitDepth { get; }
+    [UnscopedRef]
     public ReadOnlySpan<byte> Path => _path.Bytes;
 
     public byte[] Encode() => PbtPathOperations.Encode(this);
@@ -33,6 +36,8 @@ public sealed class PbtNodePath : IPbtNodePath<PbtNodePath>
     internal PbtNodePath Append(ReadOnlySpan<byte> prefix, int bitCount, int direction) =>
         PbtPathOperations.Append<PbtNodePath>(this, prefix, bitCount, direction);
 
+    public int CompareTo(PbtNodePath other) => PbtPathOperations.Compare(this, other);
+    public bool Equals(PbtNodePath other) => PbtPathOperations.Equal(this, other);
     public int CompareTo(IPbtNodePath? other) => PbtPathOperations.Compare(this, other);
     public bool Equals(IPbtNodePath? other) => PbtPathOperations.Equal(this, other);
     public override bool Equals(object? obj) => obj is IPbtNodePath other && Equals(other);

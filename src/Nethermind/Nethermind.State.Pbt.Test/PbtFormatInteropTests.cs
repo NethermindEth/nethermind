@@ -149,7 +149,9 @@ public class PbtFormatInteropTests
         {
             Assert.That(Unsafe.SizeOf<PbtFullKey>(), Is.LessThan(Unsafe.SizeOf<PbtStorageFullKey>()));
             Assert.That(Unsafe.SizeOf<PbtWriteOperation<PbtFullKey>>(), Is.LessThan(Unsafe.SizeOf<PbtWriteOperation<PbtStorageFullKey>>()));
-            Assert.That(smallPath, Is.LessThan(widePath));
+            Assert.That(Unsafe.SizeOf<PbtNodePath>(), Is.LessThan(Unsafe.SizeOf<PbtStorageNodePath>()));
+            Assert.That(smallPath, Is.Zero);
+            Assert.That(widePath, Is.Zero);
             Assert.That(smallBuilder, Is.LessThan(wideBuilder));
         }
         TestContext.Out.WriteLine($"MEMORY small key={Unsafe.SizeOf<PbtFullKey>()} operation={Unsafe.SizeOf<PbtWriteOperation<PbtFullKey>>()} path={smallPath} cold-builder={smallBuilder} warm-build={smallBuild}");
@@ -158,14 +160,16 @@ public class PbtFormatInteropTests
 
     private static (long Path, long Builder, long Build) MeasureMemory<TKey, TPath>()
         where TKey : struct, IPbtKey<TKey>
-        where TPath : class, IPbtNodePath<TPath>
+        where TPath : struct, IPbtNodePath<TPath>
     {
         byte[] bytes = new byte[34];
         const int iterations = 1000;
-        GC.KeepAlive(TPath.Create(bytes, 272));
+        TPath[] paths = new TPath[iterations];
+        paths[0] = TPath.Create(bytes, 272);
         long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < iterations; index++) GC.KeepAlive(TPath.Create(bytes, 272));
+        for (int index = 0; index < iterations; index++) paths[index] = TPath.Create(bytes, 272);
         long pathBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        GC.KeepAlive(paths);
         start = GC.GetAllocatedBytesForCurrentThread();
         using PbtWriteBatchBuilder<TKey> builder = new(0);
         for (int index = 0; index < iterations; index++)

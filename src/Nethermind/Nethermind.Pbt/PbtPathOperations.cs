@@ -16,7 +16,7 @@ internal static class PbtPathOperations
             throw new ArgumentException("Unused path bits must be zero.", nameof(path));
     }
 
-    internal static byte[] Encode(IPbtNodePath path)
+    internal static byte[] Encode<TPath>(TPath path) where TPath : IPbtNodePath
     {
         byte[] encoding = GC.AllocateUninitializedArray<byte>(4 + path.Path.Length);
         BinaryPrimitives.WriteUInt32BigEndian(encoding, (uint)path.BitDepth);
@@ -24,7 +24,7 @@ internal static class PbtPathOperations
         return encoding;
     }
 
-    internal static TPath Decode<TPath>(ReadOnlySpan<byte> encoding) where TPath : class, IPbtNodePath<TPath>
+    internal static TPath Decode<TPath>(ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
     {
         if (encoding.Length < 4) throw new InvalidDataException("Truncated PBT node path.");
         uint depth = BinaryPrimitives.ReadUInt32BigEndian(encoding);
@@ -44,7 +44,7 @@ internal static class PbtPathOperations
     internal static IPbtNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => bitDepth <= PbtNodePath.MaxBitDepth
         ? new PbtNodePath(path, bitDepth) : new PbtStorageNodePath(path, bitDepth);
 
-    internal static TPath FromKey<TPath>(ReadOnlySpan<byte> key, int bitDepth) where TPath : class, IPbtNodePath<TPath>
+    internal static TPath FromKey<TPath>(ReadOnlySpan<byte> key, int bitDepth) where TPath : struct, IPbtNodePath<TPath>
     {
         if (key.IsEmpty) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
         ArgumentOutOfRangeException.ThrowIfNegative(bitDepth);
@@ -55,7 +55,15 @@ internal static class PbtPathOperations
         return TPath.Create(path, bitDepth);
     }
 
-    internal static TPath Append<TPath>(IPbtNodePath source, ReadOnlySpan<byte> prefix, int bitCount, int direction) where TPath : class, IPbtNodePath<TPath>
+    internal static TPath Append<TPath>(TPath source, ReadOnlySpan<byte> prefix, int bitCount, int direction) where TPath : struct, IPbtNodePath<TPath> =>
+        Append<TPath, TPath>(source, prefix, bitCount, direction);
+
+    internal static TPath Append<TPath>(IPbtNodePath source, ReadOnlySpan<byte> prefix, int bitCount, int direction) where TPath : struct, IPbtNodePath<TPath> =>
+        Append<TPath, IPbtNodePath>(source, prefix, bitCount, direction);
+
+    private static TPath Append<TPath, TSource>(TSource source, ReadOnlySpan<byte> prefix, int bitCount, int direction)
+        where TPath : struct, IPbtNodePath<TPath>
+        where TSource : IPbtNodePath
     {
         if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
         int depth = checked(source.BitDepth + bitCount + 1);
@@ -72,17 +80,21 @@ internal static class PbtPathOperations
         return TPath.Create(path, depth);
     }
 
-    internal static int Compare(IPbtNodePath path, IPbtNodePath? other)
+    internal static int Compare<TPath, TOther>(TPath path, TOther? other)
+        where TPath : IPbtNodePath
+        where TOther : IPbtNodePath
     {
         if (other is null) return 1;
         int depthComparison = path.BitDepth.CompareTo(other.BitDepth);
         return depthComparison != 0 ? depthComparison : path.Path.SequenceCompareTo(other.Path);
     }
 
-    internal static bool Equal(IPbtNodePath path, IPbtNodePath? other) =>
+    internal static bool Equal<TPath, TOther>(TPath path, TOther? other)
+        where TPath : IPbtNodePath
+        where TOther : IPbtNodePath =>
         other is not null && path.BitDepth == other.BitDepth && path.Path.SequenceEqual(other.Path);
 
-    internal static int Hash(IPbtNodePath path)
+    internal static int Hash<TPath>(TPath path) where TPath : IPbtNodePath
     {
         HashCode hash = new();
         hash.Add(path.BitDepth);

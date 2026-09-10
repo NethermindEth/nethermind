@@ -149,7 +149,7 @@ public static partial class TrieUpdater
 
         void AddWorker<TKey, TPath>(PbtWriteBatch<TKey>? batch, byte zone)
             where TKey : struct, IPbtKey<TKey>
-            where TPath : class, IPbtNodePath<TPath>
+            where TPath : struct, IPbtNodePath<TPath>
         {
             if (batch is null) return;
             ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
@@ -180,7 +180,7 @@ public static partial class TrieUpdater
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
         bool collectMetrics, IRefCountingMemoryProvider memoryProvider) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
-        where TPath : class, IPbtNodePath<TPath>
+        where TPath : struct, IPbtNodePath<TPath>
     {
         internal override void Fold()
         {
@@ -219,7 +219,7 @@ public static partial class TrieUpdater
 
 internal static partial class TrieUpdater<TKey, TPath>
     where TKey : struct, IPbtKey<TKey>
-    where TPath : class, IPbtNodePath<TPath>
+    where TPath : struct, IPbtNodePath<TPath>
 {
     internal static Subtree FoldBoundary(
         IPbtStore store,

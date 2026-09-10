@@ -82,7 +82,7 @@ public class PbtSnapshotCompactorTests
             ? CreateLeafGroup(storagePath, value)
             : CreateLeafGroup((PbtNodePath)groupKey, value);
 
-        RefCountingMemory CreateLeafGroup<TPath>(TPath path, ValueHash256 value) where TPath : class, IPbtNodePath<TPath>
+        RefCountingMemory CreateLeafGroup<TPath>(TPath path, ValueHash256 value) where TPath : struct, IPbtNodePath<TPath>
         {
             using PbtNodeGroupWriter<TPath> writer = new(path, memoryProvider);
             writer.Write(PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));

@@ -71,7 +71,7 @@ public class PbtNodePathAppendBenchmark
 [MemoryDiagnoser]
 [GenericTypeArguments(typeof(PbtNodePath))]
 [GenericTypeArguments(typeof(PbtStorageNodePath))]
-public class PbtNodePathMemoryBenchmark<TPath> where TPath : class, IPbtNodePath<TPath>
+public class PbtNodePathMemoryBenchmark<TPath> where TPath : struct, IPbtNodePath<TPath>
 {
     private byte[] _bytes;
 

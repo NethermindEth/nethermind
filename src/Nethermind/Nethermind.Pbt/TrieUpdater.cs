@@ -38,7 +38,7 @@ public static partial class TrieUpdater
 
 internal static partial class TrieUpdater<TKey, TPath>
     where TKey : struct, IPbtKey<TKey>
-    where TPath : class, IPbtNodePath<TPath>
+    where TPath : struct, IPbtNodePath<TPath>
 {
     private static readonly TPath RootPath = TPath.Create([], 0);
 
@@ -210,7 +210,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
             else if (!current.IsEmpty)
             {
-                int prefixStart = current.Path!.BitDepth;
+                int prefixStart = current.Path!.Value.BitDepth;
                 branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Prefix, current.PrefixBitCount, firstKey, prefixStart));
             }
             // Integer floor to the preceding or equal group boundary.
@@ -420,7 +420,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return;
         }
 
-        int branchDepth = current.Path!.BitDepth + current.PrefixBitCount;
+        int branchDepth = current.Path!.Value.BitDepth + current.PrefixBitCount;
         int effectiveLevel = Math.Min(branchDepth, boundaryDepth) - bitDepth;
         int branchSlot = 0;
         for (int bit = bitDepth; bit < bitDepth + effectiveLevel; bit++)
@@ -435,8 +435,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             return;
         }
 
-        DecompositionEntry left = new(current.LeftHash, PbtPathOperations.Append<TPath>(current.Path, current.Prefix, current.PrefixBitCount, 0));
-        DecompositionEntry right = new(current.RightHash, PbtPathOperations.Append<TPath>(current.Path, current.Prefix, current.PrefixBitCount, 1));
+        DecompositionEntry left = new(current.LeftHash, PbtPathOperations.Append<TPath>(current.Path!.Value, current.Prefix, current.PrefixBitCount, 0));
+        DecompositionEntry right = new(current.RightHash, PbtPathOperations.Append<TPath>(current.Path!.Value, current.Prefix, current.PrefixBitCount, 1));
         current.Dispose();
         DecomposeChild(ref reader, writer, ref left, bitDepth, frontier, ref frontierMask, touchedMask);
         DecomposeChild(ref reader, writer, ref right, bitDepth, frontier, ref frontierMask, touchedMask);
@@ -446,7 +446,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         ref DecompositionEntry child, int bitDepth, Span<DecompositionEntry> frontier, ref uint frontierMask, int touchedMask)
     {
         if (child.IsEmpty) return;
-        TPath path = child.SourcePath!;
+        TPath path = child.SourcePath!.Value;
         int level = path.BitDepth - bitDepth;
         int slot = level == 0 ? 0 : BoundarySlot(path.Path, bitDepth) & (0xF << (4 - level));
         int width = 16 >> level;
@@ -494,9 +494,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         foreach (ref DecompositionEntry entry in entries) entry.Dispose();
     }
 
-    private static int PrefixBit(Subtree subtree, int bit) => bit < subtree.Path!.BitDepth
-        ? (subtree.Path.Path[bit >> 3] >> (7 - (bit & 7))) & 1
-        : GetBit(subtree.Prefix, bit - subtree.Path.BitDepth);
+    private static int PrefixBit(Subtree subtree, int bit) => bit < subtree.Path!.Value.BitDepth
+        ? (subtree.Path!.Value.Path[bit >> 3] >> (7 - (bit & 7))) & 1
+        : GetBit(subtree.Prefix, bit - subtree.Path!.Value.BitDepth);
 
     private static TPath BoundaryPath(TPath groupKey, int slot, int level)
     {
@@ -558,7 +558,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal static Subtree TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.Subtree source)
             where TSourceKey : struct, IPbtKey<TSourceKey>
-            where TSourcePath : class, IPbtNodePath<TSourcePath>
+            where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
             TKey key = default;
             if (source.IsLeaf)
@@ -567,7 +567,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 key = TKey.Create(sourceKey.Bytes);
             }
             TPath? path = source.Path is { } sourcePath
-                ? sourcePath as TPath ?? TPath.Create(sourcePath.Path, sourcePath.BitDepth)
+                ? sourcePath is TPath matchingPath ? matchingPath : TPath.Create(sourcePath.Path, sourcePath.BitDepth)
                 : null;
             Subtree result = new(source._lease, source._kind, source._encoding, key,
                 source._valueOrLeft, source._right, path);
@@ -587,11 +587,11 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal readonly int EncodedLength(int depth) => IsLeaf
             ? (_kind == NodeKind.Leaf ? 3 + _key.Length + 32 : _encoding.Length)
-            : 3 + PbtBitPrefix.ByteCount(Path!.BitDepth + PrefixBitCount - depth) + 64;
+            : 3 + PbtBitPrefix.ByteCount(Path!.Value.BitDepth + PrefixBitCount - depth) + 64;
 
         internal readonly ValueHash256 Encode(Span<byte> encoding, int depth)
         {
-            if (_kind == NodeKind.Original && (IsLeaf || depth == Path!.BitDepth))
+            if (_kind == NodeKind.Original && (IsLeaf || depth == Path!.Value.BitDepth))
             {
                 _encoding.Span.CopyTo(encoding);
                 return PbtNodeCodec.Hash(Reader);
@@ -603,12 +603,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
 
             // EIP-8297 promotion absorbs skipped path bits; the source anchor remains unchanged until placement.
-            int pathDepth = Path!.BitDepth;
+            int pathDepth = Path!.Value.BitDepth;
             int bitCount = pathDepth + PrefixBitCount - depth;
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, LeftHash, RightHash);
             Span<byte> prefix = encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount));
             int pathBits = Math.Max(0, pathDepth - depth);
-            PbtBitPrefix.CopyBits(Path.Path, Math.Min(depth, pathDepth), pathBits, prefix, 0);
+            PbtBitPrefix.CopyBits(Path!.Value.Path, Math.Min(depth, pathDepth), pathBits, prefix, 0);
             int prefixOffset = Math.Max(0, depth - pathDepth);
             PbtBitPrefix.CopyBits(Prefix, prefixOffset, bitCount - pathBits, prefix, pathBits);
             return Blake3Hash.Hash(encoding);

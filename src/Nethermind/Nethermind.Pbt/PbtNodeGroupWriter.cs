@@ -10,7 +10,7 @@ namespace Nethermind.Pbt;
 /// <summary>Appends canonical nodes in position order to an owned, growable group payload.</summary>
 /// <remarks>Writable spans are borrowed until the next writer operation. Detach transfers the sole output lease.</remarks>
 internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
-    where TPath : class, IPbtNodePath<TPath>
+    where TPath : struct, IPbtNodePath<TPath>
 {
     private const int MaxEntriesLength = ushort.MaxValue;
     private readonly TPath _groupKey;
@@ -26,7 +26,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     internal PbtNodeGroupWriter(TPath groupKey, IRefCountingMemoryProvider memoryProvider)
     {
-        ArgumentNullException.ThrowIfNull(groupKey);
         ArgumentNullException.ThrowIfNull(memoryProvider);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
