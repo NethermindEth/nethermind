@@ -118,7 +118,7 @@ public static partial class TrieUpdater
                 try
                 {
                     rootReader.Resolve(rootWriter, ref result);
-                    ValueHash256 hash = Write(rootWriter, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                    ValueHash256 hash = rootWriter.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
                     using (RefCountingMemory? payload = rootWriter.Detach())
                         store.SetNodeGroup(RootPath, payload);
                     return hash;

@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
@@ -77,6 +78,19 @@ internal sealed class PbtNodeGroupWriter : IDisposable
     {
         encoding.CopyTo(GetSpan(position, encoding.Length));
         Commit();
+    }
+
+    /// <summary>Emits the resolved subtree root at its final position and consumes its lease.</summary>
+    internal ValueHash256 Write<TKey, TPath>(int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
+        where TKey : struct, IPbtKey<TKey>
+        where TPath : class, IPbtNodePath<TPath>
+    {
+        if (node.IsEmpty) return default;
+        Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
+        ValueHash256 hash = node.Encode(encoding, depth);
+        Commit();
+        node.Dispose();
+        return hash;
     }
 
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>

@@ -90,7 +90,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref root, operations, 0, plan);
                 reader.Resolve(writer, ref result);
-                ValueHash256 hash = Write(writer, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                ValueHash256 hash = writer.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
                 using (RefCountingMemory? payload = writer.Detach())
                     store.SetNodeGroup(reader.GroupKey, payload);
                 return hash;
@@ -313,7 +313,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 {
                     // The left root must be emitted before any descendants of the right subtree.
                     reader.Resolve(writer, ref result);
-                    frame.LeftHash = Write(writer, frame.Path.Position - frame.Path.Width, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
+                    frame.LeftHash = writer.Write(frame.Path.Position - frame.Path.Width, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
                     frame.Stage = ComposeStage.RightCompleted;
                     if (halfWidth == 1)
                         result = Subtree.Move(ref boundaries[frame.Path.Slot + 1]);
@@ -324,7 +324,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 if (frame.Stage == ComposeStage.RightCompleted)
                 {
                     reader.Resolve(writer, ref result);
-                    ValueHash256 rightHash = Write(writer, frame.Path.Position - 1, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
+                    ValueHash256 rightHash = writer.Write(frame.Path.Position - 1, reader.GroupKey.BitDepth + frame.Path.Length + 1, ref result);
                     TPath branchPath = BoundaryPath(reader.GroupKey, frame.Path.Slot, frame.Path.Length);
                     result = new Subtree(branchPath, frame.LeftHash, rightHash);
                     frameCount--;
@@ -383,17 +383,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (copiedNodes != 0) metrics?.AddBulkCopy(copiedNodes);
             return true;
         }
-    }
-
-    /// <summary>Emits the resolved subtree root at its final position and consumes its lease.</summary>
-    internal static ValueHash256 Write(PbtNodeGroupWriter writer, int position, int depth, ref Subtree node)
-    {
-        if (node.IsEmpty) return default;
-        Span<byte> encoding = writer.GetSpan(position, node.EncodedLength(depth));
-        ValueHash256 hash = node.Encode(encoding, depth);
-        writer.Commit();
-        node.Dispose();
-        return hash;
     }
 
     private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
