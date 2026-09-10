@@ -39,6 +39,7 @@ public class FrameTxValidationPrefixSimulationTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressD;
     private static readonly Address Factory = TestItem.AddressB;
+    private static readonly Address Beneficiary = TestItem.AddressE;
     private static readonly Address IdentityPrecompile = Address.FromNumber(4);
     private static readonly byte[] Salt = new byte[32];
 
@@ -127,6 +128,42 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(tx), Is.True,
                 "the pool bound must claim the trailing VERIFY frame the simulation never reaches");
         }
+    }
+
+    private static IEnumerable<TestCaseData> PrefixVerdictParityCases()
+    {
+        // The frame fields whose value the simulation has to reproduce, each read by a sponsor that
+        // approves payment only on the answer named here.
+        yield return ParityCase("SponsorRequiresZeroExecutionGasUsed", 0x0A, approveWhenZero: true, expectedValid: false);
+        yield return ParityCase("SponsorRequiresNonZeroExecutionGasUsed", 0x0A, approveWhenZero: false, expectedValid: true);
+        // Frame status is recorded on both paths, so it agrees whatever the gas receipts do.
+        yield return ParityCase("SponsorRequiresSuccessfulPredecessor", 0x05, approveWhenZero: false, expectedValid: true);
+    }
+
+    [TestCaseSource(nameof(PrefixVerdictParityCases))]
+    public void SimulationAndExecution_SponsorReadsThePrecedingFrame_ReachTheSameVerdict(byte param, bool approveWhenZero, bool expectedValid)
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
+        DeployContract(Sponsor, ApprovesOnFrameReading(param, approveWhenZero, TxFrame.ApprovePayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default));
+
+        AssertPrefixVerdictParity(tx, expectedValid);
+    }
+
+    [Test]
+    public void SimulationAndExecution_SenderReadsTheDeployFramesStateGas_ReachTheSameVerdict()
+    {
+        // The opening deploy frame is the one prefix frame that spends state gas, so it is the only
+        // shape from which a following frame reads a non-zero gas_used.state.
+        byte[] initCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .ForInitOf(ApprovesOnFrameReading(0x0B, approveWhenZero: false, TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+
+        AssertPrefixVerdictParity(DeployTx(deployed), expectedValid: true);
     }
 
     [Test]
@@ -910,6 +947,51 @@ public class FrameTxValidationPrefixSimulationTests
         byte[] data = new byte[length];
         data.AsSpan().Fill(0xff);
         return data;
+    }
+
+    private static TestCaseData ParityCase(string name, byte param, bool approveWhenZero, bool expectedValid) =>
+        new TestCaseData(param, approveWhenZero, expectedValid).SetName($"Parity_{name}");
+
+    /// <summary>
+    /// Asserts that the pool's validation-prefix simulation reaches the same verdict on
+    /// <paramref name="tx"/> as full execution does.
+    /// </summary>
+    /// <remarks>Simulation runs first because it rolls its state back; execution then runs against the
+    /// state the pool judged. A divergence either admits a transaction execution rejects, or drops one
+    /// it would have accepted.</remarks>
+    private void AssertPrefixVerdictParity(Transaction tx, bool expectedValid)
+    {
+        (TransactionResult simulated, FrameTxValidationTracer tracer) = Simulate(tx);
+        TransactionResult executed = Execute(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.False, tracer.ViolationReason);
+            Assert.That(executed.TransactionExecuted, Is.EqualTo(expectedValid), executed.ErrorDescription);
+            Assert.That(simulated.TransactionExecuted, Is.EqualTo(executed.TransactionExecuted),
+                $"simulation said '{simulated.ErrorDescription ?? "valid"}', execution said '{executed.ErrorDescription ?? "valid"}'");
+        }
+    }
+
+    /// <summary>Code approving <paramref name="scope"/> only when <c>FRAMEPARAM</c> field
+    /// <paramref name="param"/> of frame 0 reads as zero, or only when it does not.</summary>
+    /// <remarks>An approval the context refuses reverts the frame, so a scope of zero is the rejection.</remarks>
+    private static byte[] ApprovesOnFrameReading(byte param, bool approveWhenZero, byte scope)
+    {
+        Prepare code = Prepare.EvmCode.PushData(param).PushData(0).Op(Instruction.FRAMEPARAM).Op(Instruction.ISZERO);
+        if (!approveWhenZero) code = code.Op(Instruction.ISZERO);
+        // APPROVE stack order (top to bottom): offset, length, scope.
+        return code.PushData(scope).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+    }
+
+    private TransactionResult Execute(Transaction tx)
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
     }
 
     private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)

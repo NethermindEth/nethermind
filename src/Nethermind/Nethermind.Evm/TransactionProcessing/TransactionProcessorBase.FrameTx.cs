@@ -637,6 +637,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
 
                 frameContext.MarkFrameSucceeded(i);
+                // As full execution records it: a later prefix frame reading gas_used through FRAMEPARAM
+                // must see the same value here, or admission disagrees with execution.
+                frameContext.RecordFrameReceipt(i, frameGasUsed - (ulong)frameStateGas, (ulong)frameStateGas);
 
                 // A deploy frame that leaves tx.sender codeless would have the VERIFY frames behind it
                 // validate against default code instead of the account being deployed.
