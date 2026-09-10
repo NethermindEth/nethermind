@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -154,13 +156,38 @@ public class SnapshotTests
 
             if (shouldShrink)
             {
-                Assert.That(original.Nodes.Capacity, Is.GreaterThan(0));
+                Assert.That(original.Nodes.Capacity, Is.LessThanOrEqualTo(4_096));
                 Assert.That(original.Nodes.Capacity, Is.LessThan(capacityBeforeClear));
             }
             else
             {
                 Assert.That(original.Nodes.Capacity, Is.EqualTo(capacityBeforeClear));
             }
+        }
+    }
+
+    [Test]
+    public void AddressOwnedStorageNodesReuseRetainedLargeDictionaryForLargeBatches()
+    {
+        // A size no other test requests, so the retained dictionary found is the one released here.
+        const int LargeBatch = 12_345;
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        AddressStorageNodeDictionary.AddressNodes first = storageNodes.GetOrAddAddress(addressA);
+        first.EnsureAdditionalCapacity(LargeBatch);
+        Dictionary<HashedKey<TreePath>, TrieNode> large = first.Nodes;
+        first.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+
+        storageNodes.NoLockClear();
+        AddressStorageNodeDictionary.AddressNodes second = storageNodes.GetOrAddAddress(addressB);
+        second.EnsureAdditionalCapacity(LargeBatch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Nodes, Is.SameAs(large));
+            Assert.That(second.Nodes, Is.Empty);
+            Assert.That(second.Nodes.Capacity, Is.GreaterThanOrEqualTo(LargeBatch));
         }
     }
 
