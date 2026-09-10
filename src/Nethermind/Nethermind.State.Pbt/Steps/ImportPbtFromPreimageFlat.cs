@@ -133,6 +133,7 @@ public class ImportPbtFromPreimageFlat(
     {
         long cleared = 0;
         byte[] pastEnd = PastEveryKey();
+        pbtDb.GetColumnDb(PbtColumns.Metadata).Remove(PbtRocksDbPersistence.RootNodeGroupKey);
 
         foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {

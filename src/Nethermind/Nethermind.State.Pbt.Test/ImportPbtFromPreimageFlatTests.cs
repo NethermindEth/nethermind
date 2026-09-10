@@ -190,7 +190,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_11_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_12_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -210,7 +210,7 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
         }
 
-        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
+        using RecordingColumnsDb pbtDb = new();
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
 
         async Task<ValueHash256> Import()
@@ -243,9 +243,24 @@ public class ImportPbtFromPreimageFlatTests
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
 
+        PbtColumns[] groupColumns = [PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
+        foreach (PbtColumns column in groupColumns)
+            pbtDb.GetColumnDb(column)[maximumLengthKey] = Bytes.FromHexString("0x7f");
+        pbtDb.AfterCopy = () =>
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pbtDb.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null, "the stale root must be removed before folding");
+                foreach (PbtColumns column in groupColumns)
+                    Assert.That(pbtDb.GetColumnDb(column).GetAll(), Is.Empty, column.ToString());
+            }
+        };
+
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000c")));
+            Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
             Assert.That(() => new PbtRocksDbPersistence(pbtDb, new PbtConfig()),
@@ -257,6 +272,10 @@ public class ImportPbtFromPreimageFlatTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(metadata.Get("validState"u8), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
+            foreach (PbtColumns column in groupColumns)
+                Assert.That(pbtDb.GetColumnDb(column).Get(maximumLengthKey), Is.Null, column.ToString());
+            Assert.That(pbtDb.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
             Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty, "import must not populate a split-leaf column");
             Assert.That(pbtDb.GetColumnDb(PbtColumns.Storages).Get(maximumLengthKey), Is.Null, "the full keyspace must be cleared during retry");
             Assert.That(() => new PbtRocksDbPersistence(pbtDb, new PbtConfig()), Throws.Nothing);
@@ -275,8 +294,10 @@ public class ImportPbtFromPreimageFlatTests
         void Add(PbtColumns column, byte[] key, byte[] value)
         {
             db.GetColumnDb(column).Set(key, value);
-            expected.TryGetValue(column, out (long Count, long Keys, long Values) totals);
-            expected[column] = (totals.Count + 1, totals.Keys + key.Length, totals.Values + value.Length);
+            PbtColumns reportColumn = column is PbtColumns.Metadata or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups
+                ? PbtColumns.NodeGroups : column;
+            expected.TryGetValue(reportColumn, out (long Count, long Keys, long Values) totals);
+            expected[reportColumn] = (totals.Count + 1, totals.Keys + key.Length, totals.Values + value.Length);
             expectedRows.Add($"{column}:{Convert.ToHexString(key)}");
         }
         foreach (byte prefix in new byte[] { 0, 8, 128, 255 })
@@ -300,10 +321,22 @@ public class ImportPbtFromPreimageFlatTests
         long[] expectedNodes = new long[expectedGroups.Length];
         long[] expectedPayloads = new long[expectedGroups.Length];
         long encodingBytes = 0;
-        foreach (int depth in new[] { 0, 4, 8, 32, PbtFourLevelGroupGeometry.MaxGroupDepth })
+        (int Depth, byte Prefix, PbtColumns Column)[] groups =
+        [
+            (0, 0, PbtColumns.Metadata),
+            (4, 0, PbtColumns.AccountNodeGroups),
+            (4, 0xF0, PbtColumns.StorageNodeGroups),
+            (8, 0, PbtColumns.AccountNodeGroups),
+            (8, 1, PbtColumns.CodeNodeGroups),
+            (8, 0xFF, PbtColumns.StorageNodeGroups),
+            (32, 0x80, PbtColumns.AccountNodeGroups),
+            (PbtFourLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups),
+        ];
+        foreach ((int depth, byte prefix, PbtColumns column) in groups)
         {
             byte[] pathBytes = new byte[(depth + 7) / 8];
             Array.Fill(pathBytes, byte.MaxValue);
+            if (pathBytes.Length != 0) pathBytes[0] = prefix;
             if (depth % 8 != 0) pathBytes[^1] &= 0xF0;
             IPbtNodePath group = PbtPathOperations.Create(pathBytes, depth);
             IPbtNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
@@ -314,7 +347,7 @@ public class ImportPbtFromPreimageFlatTests
                 : PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(keyBytes), TestItem.KeccakA.Bytes);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) });
-            Add(PbtColumns.NodeGroups, group.Encode(), writer.WrittenSpan.ToArray());
+            Add(column, depth == 0 ? "rootNodeGroup"u8.ToArray() : group.Encode(), writer.WrittenSpan.ToArray());
             expectedGroups[depth]++;
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;
@@ -345,10 +378,10 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(report.NodeGroups.GroupsByDepth, Is.EqualTo(expectedGroups));
             Assert.That(report.NodeGroups.PayloadBytesByDepth, Is.EqualTo(expectedPayloads));
             Assert.That(report.NodeGroups.NodesByDepth, Is.EqualTo(expectedNodes));
-            Assert.That(report.NodeGroups.NodeCount, Is.EqualTo(5));
-            Assert.That(report.NodeGroups.LeafCount, Is.EqualTo(4));
+            Assert.That(report.NodeGroups.NodeCount, Is.EqualTo(groups.Length));
+            Assert.That(report.NodeGroups.LeafCount, Is.EqualTo(groups.Length - 1));
             Assert.That(report.NodeGroups.BranchCount, Is.EqualTo(1));
-            Assert.That(report.NodeGroups.GroupsByOccupancy[1], Is.EqualTo(5));
+            Assert.That(report.NodeGroups.GroupsByOccupancy[1], Is.EqualTo(groups.Length));
             Assert.That(report.NodeGroups.NodeEncodingBytes, Is.EqualTo(encodingBytes));
             Assert.That(report.Format(), Does.Contain("not hash or reachability verification"));
         }
@@ -365,9 +398,9 @@ public class ImportPbtFromPreimageFlatTests
         using CancellationTokenSource cancellation = new();
         using CountdownEvent opened = new(2);
         int arrivals = 0;
-        db.ViewOpened = (_, _, _) =>
+        db.ViewOpened = (column, _, _) =>
         {
-            if (Interlocked.Increment(ref arrivals) > 2) return;
+            if (column != PbtColumns.Accounts || Interlocked.Increment(ref arrivals) > 2) return;
             opened.Signal();
             if (!opened.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("Two scan workers did not overlap.");
             if (outcome == "cancel") cancellation.Cancel();
@@ -406,7 +439,7 @@ public class ImportPbtFromPreimageFlatTests
                     throw new TimeoutException("No periodic scan progress was logged.");
             };
         PbtScanReport report = await new PbtScanner(db, new PbtConfig { ScanTreeConcurrency = 2 }, logs).Scan(CancellationToken.None);
-        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.NodeGroups })
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
             logger.Received().Info(Arg.Is<string>(message => message.Contains($"PBT scan {column}:") && message.Contains("(completed)")));
         Assert.That(report.Accounts.RecordCount, Is.EqualTo(1), "flat rows are counted without RLP decoding");
         if (periodic) Assert.That(progressLogged.IsSet, Is.True);
@@ -414,25 +447,38 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     [Test]
-    public async Task Scanner_startup_outcomes([Values("empty", "complete", "cancel", "malformed")] string outcome)
+    public async Task Scanner_startup_outcomes([Values("empty", "complete", "cancel", "malformed-root", "malformed-account", "malformed-code", "malformed-storage")] string outcome)
     {
         using RecordingColumnsDb db = new();
         PbtConfig config = new() { ScanTreeConcurrency = 2 };
         PbtRocksDbPersistence persistence = new(db, config);
         if (outcome != "empty")
             using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), TestItem.KeccakB.ValueHash256, WriteFlags.None)) batch.Commit();
-        if (outcome == "malformed") db.GetColumnDb(PbtColumns.NodeGroups).Set(new PbtNodePath([], 0).Encode(), Bytes.FromHexString("0x7f"));
+        bool malformed = outcome.StartsWith("malformed", StringComparison.Ordinal);
+        if (malformed)
+        {
+            PbtColumns column = outcome switch
+            {
+                "malformed-root" => PbtColumns.Metadata,
+                "malformed-account" => PbtColumns.AccountNodeGroups,
+                "malformed-code" => PbtColumns.CodeNodeGroups,
+                _ => PbtColumns.StorageNodeGroups,
+            };
+            byte prefix = column == PbtColumns.CodeNodeGroups ? (byte)1 : column == PbtColumns.StorageNodeGroups ? (byte)0xFF : (byte)0;
+            byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath([prefix], 8).Encode();
+            db.GetColumnDb(column).Set(key, Bytes.FromHexString("0x7f"));
+        }
         db.Recording = true;
         db.RecordAllColumns = true;
         using CancellationTokenSource cancellation = new();
         if (outcome == "cancel") cancellation.Cancel();
         RecordingExitSource exit = new();
         ScanPbtTree step = new(new PbtScanner(db, config, LimboLogs.Instance), persistence, exit, LimboLogs.Instance);
-        if (outcome == "malformed") Assert.That(async () => await step.Execute(cancellation.Token), Throws.InstanceOf<InvalidDataException>());
+        if (malformed) Assert.That(async () => await step.Execute(cancellation.Token), Throws.InstanceOf<InvalidDataException>());
         else await step.Execute(cancellation.Token);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exit.ExitCode, outcome == "malformed" ? Is.Null : Is.EqualTo(outcome == "cancel" ? 1 : 0));
+            Assert.That(exit.ExitCode, malformed ? Is.Null : Is.EqualTo(outcome == "cancel" ? 1 : 0));
             Assert.That(db.ActiveViews, Is.Zero);
         }
     }
@@ -831,9 +877,23 @@ public class ImportPbtFromPreimageFlatTests
             private bool _groups;
             public IWriteBatch GetColumnBatch(PbtColumns key)
             {
-                if (key == PbtColumns.NodeGroups && owner.Recording) _groups = true;
-                return batch.GetColumnBatch(key);
+                IWriteBatch columnBatch = batch.GetColumnBatch(key);
+                if (key == PbtColumns.Metadata) return new RecordingMetadataBatch(owner, this, columnBatch);
+                if (key is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups && owner.Recording) _groups = true;
+                return columnBatch;
             }
+            private sealed class RecordingMetadataBatch(RecordingColumnsDb owner, RecordingBatch ownerBatch, IWriteBatch metadata) : IWriteBatch
+            {
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    if (key.SequenceEqual("rootNodeGroup"u8) && owner.Recording) ownerBatch._groups = true;
+                    metadata.Set(key, value, flags);
+                }
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => metadata.Merge(key, value, flags);
+                public void Clear() => metadata.Clear();
+                public void Dispose() => metadata.Dispose();
+            }
+
             public void Clear()
             {
                 _groups = false;
