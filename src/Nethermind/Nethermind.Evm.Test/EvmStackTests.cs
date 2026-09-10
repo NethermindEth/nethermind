@@ -306,6 +306,48 @@ public class EvmStackTests
         }
     }
 
+    [Test]
+    public void Arithmetic_preserves_unaligned_native_slots(
+        [Values(Instruction.ADD, Instruction.SUB)] Instruction instruction,
+        [Values(0, 1, 7)] int offset,
+        [ValueSource(nameof(ArithmeticOperands))] UInt256 a,
+        [ValueSource(nameof(ArithmeticOperands))] UInt256 b)
+    {
+        byte[] buffer = new byte[96 + offset];
+        EvmStack stack = new(0, ref buffer[offset], ReadOnlySpan<byte>.Empty, null);
+        stack.PushUInt256<OffFlag>(in b);
+        stack.PushUInt256<OffFlag>(in a);
+        BigInteger left = (BigInteger)a;
+        BigInteger right = (BigInteger)b;
+        BigInteger expected = instruction == Instruction.ADD ? left + right : left - right;
+        expected &= (BigInteger.One << 256) - 1;
+
+        EvmExceptionType status = instruction == Instruction.ADD
+            ? EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag, OnFlag>(ref stack)
+            : EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag, OnFlag>(ref stack);
+        bool popped = stack.PopUInt256(out UInt256 actual);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(popped, Is.True);
+            Assert.That(actual, Is.EqualTo((UInt256)expected));
+            Assert.That(stack.Head, Is.EqualTo((nint)0));
+        }
+    }
+
+    private static IEnumerable<UInt256> ArithmeticOperands()
+    {
+        yield return UInt256.Zero;
+        yield return UInt256.One;
+        yield return UInt256.MaxValue;
+        yield return new UInt256(1_000_000_000_000_000_000);
+        for (int bit = 64; bit <= 192; bit += 64)
+        {
+            yield return UInt256.One << bit;
+            yield return (UInt256.One << bit) - UInt256.One;
+        }
+    }
+
     private static IEnumerable<UInt256> ShiftAmounts()
     {
         int[] counts = [0, 1, 63, 64, 65, 127, 128, 129, 191, 192, 193, 255, 256, 257];

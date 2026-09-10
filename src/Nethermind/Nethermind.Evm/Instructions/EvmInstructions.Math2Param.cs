@@ -68,10 +68,18 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        // ADD and SUB run on the stack's own limbs on every target. Going through UInt256 homes the
-        // operands and the result on the frame around a vectorised carry chain that, on the 256-bit
-        // path, also has a data-dependent branch and a table lookup for the carry fix-up. The carry
-        // chain is four dependent adds either way.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpAdd) || typeof(TOpMath) == typeof(OpSub)))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
+            ref UInt256 arithmeticB = ref As<byte, UInt256>(ref arithmeticTopRef);
+            ref UInt256 arithmeticA = ref Add(ref arithmeticB, 1);
+            TOpMath.Operation(in arithmeticA, in arithmeticB, out arithmeticB);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref arithmeticTopRef);
+            return EvmExceptionType.None;
+        }
+
         if (typeof(TOpMath) == typeof(OpAdd))
         {
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
