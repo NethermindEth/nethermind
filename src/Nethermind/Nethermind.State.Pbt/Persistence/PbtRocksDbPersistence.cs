@@ -85,7 +85,7 @@ public class PbtRocksDbPersistence(
     {
         if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
 
-        PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.NodeGroups, PbtColumns.CodeReferences,
+        PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.CodeReferences,
             PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
             PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes,

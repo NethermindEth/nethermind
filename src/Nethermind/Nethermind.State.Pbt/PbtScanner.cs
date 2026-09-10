@@ -242,17 +242,27 @@ public sealed class PbtScanReport
     public ColumnStats Storages { get; } = new();
     /// <summary>Stored whole-bytecode records, including unreferenced code.</summary>
     public ColumnStats Codes { get; } = new();
+    /// <summary>Stored account and shared account/code node groups.</summary>
+    public ColumnStats AccountNodeGroups { get; } = new();
+    /// <summary>Stored code node groups.</summary>
+    public ColumnStats CodeNodeGroups { get; } = new();
+    /// <summary>Stored storage node groups.</summary>
+    public ColumnStats StorageNodeGroups { get; } = new();
+    /// <summary>The root node group stored in metadata, excluding other metadata records.</summary>
+    public ColumnStats MetadataRoot { get; } = new();
     /// <summary>Aggregate stored node groups across partition columns and the metadata root, with their locally decoded shape.</summary>
     public NodeGroupStats NodeGroups { get; } = new();
 
-    /// <summary>Gets flat-column statistics or aggregate node-group statistics for any group column or root metadata.</summary>
+    /// <summary>Gets per-column statistics, with metadata limited to the root node group.</summary>
     public ColumnStats this[PbtColumns column] => column switch
     {
         PbtColumns.Accounts => Accounts,
         PbtColumns.Storages => Storages,
         PbtColumns.Codes => Codes,
-        PbtColumns.NodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups
-            or PbtColumns.StorageNodeGroups or PbtColumns.Metadata => NodeGroups,
+        PbtColumns.AccountNodeGroups => AccountNodeGroups,
+        PbtColumns.CodeNodeGroups => CodeNodeGroups,
+        PbtColumns.StorageNodeGroups => StorageNodeGroups,
+        PbtColumns.Metadata => MetadataRoot,
         _ => throw new ArgumentOutOfRangeException(nameof(column)),
     };
 
@@ -261,7 +271,14 @@ public sealed class PbtScanReport
         Accounts.MergeFrom(other.Accounts);
         Storages.MergeFrom(other.Storages);
         Codes.MergeFrom(other.Codes);
-        NodeGroups.MergeFrom(other.NodeGroups);
+        AccountNodeGroups.MergeFrom(other.AccountNodeGroups);
+        CodeNodeGroups.MergeFrom(other.CodeNodeGroups);
+        StorageNodeGroups.MergeFrom(other.StorageNodeGroups);
+        MetadataRoot.MergeFrom(other.MetadataRoot);
+        NodeGroups.MergeFrom(other.AccountNodeGroups);
+        NodeGroups.MergeFrom(other.CodeNodeGroups);
+        NodeGroups.MergeFrom(other.StorageNodeGroups);
+        NodeGroups.MergeFrom(other.MetadataRoot);
         NodeGroups.NodeCount += other.NodeGroups.NodeCount;
         NodeGroups.LeafCount += other.NodeGroups.LeafCount;
         NodeGroups.BranchCount += other.NodeGroups.BranchCount;
@@ -283,11 +300,13 @@ public sealed class PbtScanReport
         StringBuilder report = new();
         report.AppendLine();
         report.AppendLine("=== PBT scan: persisted inventory (not hash or reachability verification) ===");
-        report.AppendLine($"  {"column",-12} {"records",15} {"key bytes",18} {"value bytes",18} {"total bytes",18} {"avg bytes",12}");
-        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.NodeGroups })
+        report.AppendLine($"  {"column",-20} {"records",15} {"key bytes",18} {"value bytes",18} {"total bytes",18} {"avg bytes",12}");
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes,
+            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
         {
             ColumnStats stats = this[column];
-            report.AppendLine($"  {column,-12} {stats.RecordCount,15:N0} {stats.KeyBytes,18:N0} {stats.ValueBytes,18:N0} {stats.TotalBytes,18:N0} {stats.AverageRecordBytes,12:N1}");
+            string label = column == PbtColumns.Metadata ? "Metadata (root only)" : column.ToString();
+            report.AppendLine($"  {label,-20} {stats.RecordCount,15:N0} {stats.KeyBytes,18:N0} {stats.ValueBytes,18:N0} {stats.TotalBytes,18:N0} {stats.AverageRecordBytes,12:N1}");
         }
         report.AppendLine($"Contained nodes: {NodeGroups.NodeCount:N0} ({NodeGroups.LeafCount:N0} leaves, {NodeGroups.BranchCount:N0} branches), {NodeGroups.NodeEncodingBytes:N0} encoding bytes (excluding group keys and footers)");
         report.AppendLine("Node groups and contained nodes by bit depth");

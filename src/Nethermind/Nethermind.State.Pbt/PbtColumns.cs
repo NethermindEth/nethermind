@@ -10,9 +10,6 @@ public enum PbtColumns
     /// <summary>Legacy EIP-8297 split leaves, retained for schema detection.</summary>
     FullLeaves,
 
-    /// <summary>Legacy unpartitioned node groups, retained for schema detection.</summary>
-    NodeGroups,
-
     /// <summary>Content-addressed overflow-code reference records.</summary>
     CodeReferences,
 

@@ -56,7 +56,6 @@ public class PbtColumnRoutingTests
             Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
             Assert.That(persistedGroup!.GetSpan().ToArray(), Is.EqualTo(group!.GetSpan().ToArray()));
             Assert.That(db.GetColumnDb(PbtColumns.AccountLeaves).GetAll(), Is.Empty);
-            Assert.That(db.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.EqualTo(group.GetSpan().ToArray()));
         }
     }

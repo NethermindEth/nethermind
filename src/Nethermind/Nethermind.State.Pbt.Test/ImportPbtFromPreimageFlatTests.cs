@@ -275,7 +275,6 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             foreach (PbtColumns column in groupColumns)
                 Assert.That(pbtDb.GetColumnDb(column).Get(maximumLengthKey), Is.Null, column.ToString());
-            Assert.That(pbtDb.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
             Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty, "import must not populate a split-leaf column");
             Assert.That(pbtDb.GetColumnDb(PbtColumns.Storages).Get(maximumLengthKey), Is.Null, "the full keyspace must be cleared during retry");
             Assert.That(() => new PbtRocksDbPersistence(pbtDb, new PbtConfig()), Throws.Nothing);
@@ -294,10 +293,8 @@ public class ImportPbtFromPreimageFlatTests
         void Add(PbtColumns column, byte[] key, byte[] value)
         {
             db.GetColumnDb(column).Set(key, value);
-            PbtColumns reportColumn = column is PbtColumns.Metadata or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups
-                ? PbtColumns.NodeGroups : column;
-            expected.TryGetValue(reportColumn, out (long Count, long Keys, long Values) totals);
-            expected[reportColumn] = (totals.Count + 1, totals.Keys + key.Length, totals.Values + value.Length);
+            expected.TryGetValue(column, out (long Count, long Keys, long Values) totals);
+            expected[column] = (totals.Count + 1, totals.Keys + key.Length, totals.Values + value.Length);
             expectedRows.Add($"{column}:{Convert.ToHexString(key)}");
         }
         foreach (byte prefix in new byte[] { 0, 8, 128, 255 })
@@ -357,6 +354,7 @@ public class ImportPbtFromPreimageFlatTests
         db.RecordAllColumns = true;
         db.ForbidPointReads = true;
         PbtScanReport report = await new PbtScanner(db, config, LimboLogs.Instance).Scan(CancellationToken.None);
+        string formatted = report.Format();
         using (Assert.EnterMultipleScope())
         {
             foreach ((PbtColumns column, (long count, long keys, long values)) in expected)
@@ -366,6 +364,8 @@ public class ImportPbtFromPreimageFlatTests
                 Assert.That(report[column].ValueBytes, Is.EqualTo(values));
                 Assert.That(report[column].TotalBytes, Is.EqualTo(keys + values));
                 Assert.That(report[column].AverageRecordBytes, Is.EqualTo((double)(keys + values) / count));
+                string label = column == PbtColumns.Metadata ? "Metadata (root only)" : column.ToString();
+                Assert.That(formatted, Does.Contain($"  {label,-20} {count,15:N0} {keys,18:N0} {values,18:N0} {keys + values,18:N0} {(double)(keys + values) / count,12:N1}"));
             }
             HashSet<string> actualRows = [];
             foreach ((string key, int count) in db.Rows)
@@ -383,7 +383,18 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(report.NodeGroups.BranchCount, Is.EqualTo(1));
             Assert.That(report.NodeGroups.GroupsByOccupancy[1], Is.EqualTo(groups.Length));
             Assert.That(report.NodeGroups.NodeEncodingBytes, Is.EqualTo(encodingBytes));
-            Assert.That(report.Format(), Does.Contain("not hash or reachability verification"));
+            Assert.That(report.NodeGroups.RecordCount, Is.EqualTo(groups.Length));
+            long groupKeyBytes = 0, groupValueBytes = 0;
+            foreach (PbtColumns column in new[] { PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
+            {
+                groupKeyBytes += expected[column].Keys;
+                groupValueBytes += expected[column].Values;
+            }
+            Assert.That(report.NodeGroups.KeyBytes, Is.EqualTo(groupKeyBytes));
+            Assert.That(report.NodeGroups.ValueBytes, Is.EqualTo(groupValueBytes));
+            Assert.That(formatted, Does.Contain("not hash or reachability verification"));
+            Assert.That(formatted, Does.Contain("Node groups and contained nodes by bit depth"));
+            Assert.That(formatted, Does.Contain("Node-group occupancy"));
         }
     }
 

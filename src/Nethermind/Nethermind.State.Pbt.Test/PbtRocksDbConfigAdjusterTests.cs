@@ -37,7 +37,7 @@ public class PbtRocksDbConfigAdjusterTests
         AccountsRocksDbOptions = $"column={nameof(PbtColumns.Accounts)};",
         CodesRocksDbOptions = $"column={nameof(PbtColumns.Codes)};",
         StoragesRocksDbOptions = $"column={nameof(PbtColumns.Storages)};",
-        NodeGroupsRocksDbOptions = $"column={nameof(PbtColumns.NodeGroups)};",
+        NodeGroupsRocksDbOptions = "column=NodeGroups;",
         CodeReferencesRocksDbOptions = $"column={nameof(PbtColumns.CodeReferences)};",
     };
 
@@ -50,14 +50,14 @@ public class PbtRocksDbConfigAdjusterTests
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
             .GetForDatabase(nameof(DbNames.Pbt), column.ToString());
 
-        PbtColumns optionsColumn = column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups
-            ? PbtColumns.NodeGroups : column;
+        string optionsColumn = column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups
+            ? "NodeGroups" : column.ToString();
         Assert.That(config.RocksDbOptions, Is.EqualTo($"global=1;shared=1;column={optionsColumn};"));
     }
 
     [Test]
     public void LegacyColumnsAndDatabaseItselfGetTheSharedOptionsOnly(
-        [Values(null, nameof(PbtColumns.NodeGroups), nameof(PbtColumns.FullLeaves), nameof(PbtColumns.AccountLeaves), nameof(PbtColumns.CodeLeaves),
+        [Values(null, "NodeGroups", nameof(PbtColumns.FullLeaves), nameof(PbtColumns.AccountLeaves), nameof(PbtColumns.CodeLeaves),
             nameof(PbtColumns.StorageLeaves), nameof(PbtColumns.AccountTrieNodes), nameof(PbtColumns.CodeTrieNodes),
             nameof(PbtColumns.StorageTrieNodes))] string? columnName)
     {
@@ -164,7 +164,6 @@ public class PbtRocksDbConfigAdjusterTests
                 Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
                 Assert.That(reader.GetCode(account.CodeHash.ValueHash256), Is.EqualTo(code));
                 Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
-                Assert.That(db.GetColumnDb(PbtColumns.NodeGroups).GetAll(), Is.Empty);
                 Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(expectedPaths));
             }
             foreach ((IPbtNodePath path, PbtColumns column) in groups)

@@ -604,7 +604,6 @@ public class PbtRocksDbPersistenceTests
     [TestCase(PbtColumns.Storages)]
     [TestCase(PbtColumns.Codes)]
     [TestCase(PbtColumns.FullLeaves)]
-    [TestCase(PbtColumns.NodeGroups)]
     [TestCase(PbtColumns.AccountNodeGroups)]
     [TestCase(PbtColumns.CodeNodeGroups)]
     [TestCase(PbtColumns.StorageNodeGroups)]
@@ -664,7 +663,7 @@ public class PbtRocksDbPersistenceTests
                 Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
                 Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey }));
                 Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Not.Null);
-                foreach (PbtColumns otherColumn in new[] { PbtColumns.NodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
+                foreach (PbtColumns otherColumn in new[] { PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
                     if (otherColumn != column) Assert.That(db.GetColumnDb(otherColumn).GetAll(), Is.Empty, otherColumn.ToString());
                 if (column != PbtColumns.Metadata) Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
             }
@@ -798,7 +797,7 @@ public class PbtRocksDbPersistenceTests
 
         public IDb GetColumnDb(PbtColumns key)
         {
-            if (key is PbtColumns.NodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups)
+            if (key is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups)
             {
                 NodeGroupsAccessed = true;
                 throw new AssertionException("Node groups were accessed before metadata rejection.");
