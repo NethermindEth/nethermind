@@ -14,7 +14,7 @@ namespace Nethermind.State.Proofs;
 /// <summary>
 /// Represents a Patricia trie built of a collection of <see cref="TxReceipt"/>.
 /// </summary>
-public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
+public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
     private readonly IRlpDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
@@ -60,9 +60,19 @@ public sealed class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, ReadOnlySpan<TxReceipt> txReceipts, IRlpDecoder<TxReceipt> decoder)
     {
-        bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
-        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);
-        Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, decoder, bufferPool: cappedArrayPool, canBeParallel: canBeParallel).RootHash;
-        return receiptsRoot;
+        ArgumentNullException.ThrowIfNull(receiptSpec);
+        ArgumentNullException.ThrowIfNull(decoder);
+        if (txReceipts.IsEmpty) return Keccak.EmptyTreeHash;
+
+        if (decoder is not ReceiptMessageDecoder receiptDecoder)
+        {
+            bool canBeParallel = txReceipts.Length > MinItemsForParallelRootHash;
+            using TrackingCappedArrayPool pool = new(txReceipts.Length * 4, canBeParallel: canBeParallel);
+            return new ReceiptTrie(receiptSpec, txReceipts, decoder, pool, canBeParallel: canBeParallel).RootHash;
+        }
+
+        RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
+            | RlpBehaviors.SkipTypedWrapping;
+        return new RootCalculator(txReceipts, receiptDecoder, behavior).Calculate();
     }
 }
