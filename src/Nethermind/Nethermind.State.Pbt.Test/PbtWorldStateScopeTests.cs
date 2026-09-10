@@ -16,11 +16,42 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtWorldStateScopeTests
 {
+    [Test]
+    public async Task Lifecycle_logging_respects_debug_level([Values] bool debugEnabled)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(debugEnabled);
+        List<string> messages = [];
+        logger.When(log => log.Debug(Arg.Any<string>())).Do(call => messages.Add(call.Arg<string>()));
+        await using PbtTestContext ctx = new();
+        IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(logManager: new OneLoggerLogManager(new ILogger(logger)))
+            .BeginScope(null, new LocalMetrics());
+        using (scope)
+        {
+            Write(scope, 1);
+            scope.Commit(0);
+        }
+        scope.Dispose();
+
+        string[] stages = ["opened", "commit begin", "root calculation begin", "root calculated", "commit completed", "close begin", "closed"];
+        Assert.That(messages, Has.Count.EqualTo(debugEnabled ? stages.Length : 0));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int index = 0; index < messages.Count; index++)
+            {
+                Assert.That(messages[index], Does.Contain(stages[index]));
+                Assert.That(messages[index], Does.Contain("managedBytes="));
+                Assert.That(messages[index], Does.Contain("state="));
+            }
+        }
+    }
+
     /// <summary>
     /// A read-only scope is read-only with respect to the repository, not to itself: it processes and
     /// commits locally like any other, and only keeps the result to itself.

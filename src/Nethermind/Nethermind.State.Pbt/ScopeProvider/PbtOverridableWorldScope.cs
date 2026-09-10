@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
@@ -26,6 +27,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
     private readonly ConcurrentDictionary<StateId, PbtSnapshot> _snapshots = new();
     private readonly IReadOnlyDb _codeDbOverlay;
+    private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
     private readonly bool _recordDetailedMetrics;
@@ -35,8 +37,10 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IPbtDbManager manager,
         IPbtResourcePool resourcePool,
-        IMetricsConfig metricsConfig)
+        IMetricsConfig metricsConfig,
+        ILogManager? logManager = null)
     {
+        _logManager = logManager ?? NullLogManager.Instance;
         _manager = manager;
         _resourcePool = resourcePool;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
@@ -119,7 +123,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             StateId stateId = new(baseBlock);
             return new PbtWorldStateScope(
                 stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
-                outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, _noopTrieWarmer);
+                outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, _noopTrieWarmer, outer._logManager);
         }
     }
 

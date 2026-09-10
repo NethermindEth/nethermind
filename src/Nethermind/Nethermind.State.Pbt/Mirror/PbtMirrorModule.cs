@@ -8,6 +8,7 @@ using Nethermind.Core.Container;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.Init.Modules;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
@@ -64,6 +65,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
                         : new PbtMirrorScopeProvider(
                             worldStateScopeProvider,
                             ctx.Resolve<IPbtDbManager>(),
-                            ctx.Resolve<IPbtResourcePool>()));
+                            ctx.Resolve<IPbtResourcePool>(),
+                            ctx.Resolve<ILogManager>()));
     }
 }

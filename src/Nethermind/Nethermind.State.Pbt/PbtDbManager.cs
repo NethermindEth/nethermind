@@ -131,6 +131,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     /// </remarks>
     private void ClearReadOnlyBundleCache()
     {
+        if (_logger.IsDebug) _logger.Debug($"Clearing Pbt read-only bundle cache: bundles={_readOnlyBundleCache.Count}, snapshots={_repository.Count}, compactedSnapshots={_repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
         foreach ((StateId stateId, PbtReadOnlySnapshotBundle bundle) in _readOnlyBundleCache)
         {
             if (_readOnlyBundleCache.TryRemove(new KeyValuePair<StateId, PbtReadOnlySnapshotBundle>(stateId, bundle)))
@@ -174,6 +175,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 return;
             }
             if (!_repository.TryAdd(snapshot)) return;
+            if (_logger.IsDebug) _logger.Debug($"Admitted Pbt snapshot {snapshot.From} -> {committed}: persisted={persisted}, snapshots={_repository.Count}, compactedSnapshots={_repository.CompactedCount}, cachedBundles={_readOnlyBundleCache.Count}, managedBytes={GC.GetTotalMemory(false)}");
 
             if (_compactionJobs.Writer.TryWrite(committed)) return;
             if (_logger.IsWarn) _logger.Warn("Pbt compaction/persistence is not keeping up with block processing; stalling the commit until it does.");

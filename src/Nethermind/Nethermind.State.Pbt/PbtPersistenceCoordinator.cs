@@ -159,12 +159,13 @@ public class PbtPersistenceCoordinator(
         using PbtSnapshot? candidate = repository.FindSnapshotToPersist(seed, GetCurrentPersistedStateId(), _compactSize);
         if (candidate is null) return false;
 
+        if (_logger.IsDebug) _logger.Debug($"Persisting Pbt state segment {candidate.From} -> {candidate.To}: seed={seed}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
         persistenceBarrier.FlushDeferred();
         Persist(candidate);
         Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(candidate.To));
         repository.RemoveSiblingAndDescendents(candidate.To);
         repository.RemoveStatesUntil(candidate.To.BlockNumber);
-        if (_logger.IsDebug) _logger.Debug($"Persisted pbt state segment up to {candidate.To}");
+        if (_logger.IsDebug) _logger.Debug($"Persisted Pbt state segment {candidate.From} -> {candidate.To} and pruned snapshots: snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
         return true;
     }
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 
@@ -17,6 +18,10 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private static long _nextScopeId;
+    private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
+    private readonly ILogger _logger;
+    private readonly PbtResourcePool.Usage _usage;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
@@ -47,8 +52,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
-        ITrieWarmer trieWarmer)
+        ITrieWarmer trieWarmer,
+        ILogManager? logManager = null)
     {
+        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
+        _usage = usage;
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
         Bundle = bundle;
@@ -61,7 +69,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         Bundle.ReadCode = hash => codeDb.GetCode(hash);
         CodeDb = new PbtCodeDb(codeDb, Bundle);
         _trieWarmer.OnEnterScope();
+        if (_logger.IsDebug) LogLifecycle("opened");
     }
+
+    private void LogLifecycle(string stage) =>
+        _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, usage={_usage}, readOnly={_isReadOnly}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
 
     internal PbtSnapshotBundle Bundle { get; }
     internal int LastFoldMutationCount { get; private set; }
@@ -142,6 +154,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     public void UpdateRootHash()
     {
         if (!_rootDirty) return;
+        if (_logger.IsDebug) LogLifecycle("root calculation begin");
         long start = Stopwatch.GetTimestamp();
         PbtPartitionBatches changes = Bundle.PrepareLeafChanges();
         try
@@ -158,10 +171,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
         _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
         _rootDirty = false;
+        if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_treeRoot}, mutations={LastFoldMutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
     }
 
     public void Commit(ulong blockNumber)
     {
+        if (_logger.IsDebug) LogLifecycle($"commit begin block={blockNumber}");
         PauseAndDrainPrewarmer();
         try
         {
@@ -178,6 +193,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
             _childHeader = null;
             lock (_storages) _storages.Clear();
             _rootDirty = false;
+            if (_logger.IsDebug) LogLifecycle($"commit completed block={blockNumber}");
         }
         finally
         {
@@ -207,6 +223,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            if (_logger.IsDebug) LogLifecycle("close begin");
             _pausePrewarmer = true;
             _hintSequenceId++;
             while (_outstandingWarmups != 0) Monitor.Wait(_warmupLock);
@@ -218,6 +235,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         finally
         {
             _trieWarmer.OnExitScope();
+            if (_logger.IsDebug) _logger.Debug($"PBT scope {_scopeId} closed: state={_currentStateId}, usage={_usage}, managedBytes={GC.GetTotalMemory(false)}");
         }
     }
 

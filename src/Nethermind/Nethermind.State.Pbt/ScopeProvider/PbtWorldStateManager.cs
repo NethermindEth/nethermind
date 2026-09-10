@@ -6,6 +6,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.SnapServer;
@@ -20,9 +21,10 @@ public class PbtWorldStateManager(
     PbtStateReader stateReader,
     Func<PbtOverridableWorldScope> overridableWorldScopeFactory,
     ITrieWarmer trieWarmer,
-    [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
+    [KeyFilter(DbNames.Code)] IDb codeDb,
+    ILogManager? logManager = null) : IWorldStateManager
 {
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, trieWarmer);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, trieWarmer, logManager);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -34,7 +36,7 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, trieWarmer);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, trieWarmer, logManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 

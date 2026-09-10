@@ -64,9 +64,9 @@ internal sealed class PbtTestContext : IAsyncDisposable
         WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, new MetricsConfig()), TrieWarmer, CodeDb);
     }
 
-    public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
+    public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>
         new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            TrieWarmer);
+            TrieWarmer, logManager);
 
     public async ValueTask DisposeAsync()
     {

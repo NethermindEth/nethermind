@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -23,7 +24,8 @@ namespace Nethermind.State.Pbt.Mirror;
 public class PbtMirrorScopeProvider(
     IWorldStateScopeProvider authoritative,
     IPbtDbManager manager,
-    IPbtResourcePool resourcePool) : IWorldStateScopeProvider
+    IPbtResourcePool resourcePool,
+    ILogManager? logManager = null) : IWorldStateScopeProvider
 {
     private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
 
@@ -48,7 +50,8 @@ public class PbtMirrorScopeProvider(
                 resourcePool,
                 PbtResourcePool.Usage.MainBlockProcessing,
                 isReadOnly: false,
-                _noopTrieWarmer);
+                _noopTrieWarmer,
+                logManager);
 
             return new Scope(authoritativeScope, pbtScope);
         }

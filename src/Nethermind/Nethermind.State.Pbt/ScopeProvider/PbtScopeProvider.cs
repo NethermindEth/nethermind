@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 
@@ -16,7 +17,8 @@ public class PbtScopeProvider(
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
     bool isReadOnly,
-    ITrieWarmer trieWarmer) : IWorldStateScopeProvider
+    ITrieWarmer trieWarmer,
+    ILogManager? logManager = null) : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
     private readonly ITrieWarmer _trieWarmer = isReadOnly ? new NoopTrieWarmer() : trieWarmer;
@@ -26,6 +28,6 @@ public class PbtScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId stateId = new(baseBlock);
-        return new PbtWorldStateScope(stateId, baseBlock, manager.GatherBundle(stateId, usage), _codeDb, manager, childHeaders, resourcePool, usage, isReadOnly, _trieWarmer);
+        return new PbtWorldStateScope(stateId, baseBlock, manager.GatherBundle(stateId, usage), _codeDb, manager, childHeaders, resourcePool, usage, isReadOnly, _trieWarmer, logManager);
     }
 }

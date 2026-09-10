@@ -6,6 +6,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Pbt;
 
@@ -14,8 +15,11 @@ public class PbtSnapshotCompactor(
     IPbtResourcePool resourcePool,
     PbtCompactionSchedule schedule,
     PbtSnapshotRepository repository,
-    IPbtConfig config)
+    IPbtConfig config,
+    ILogManager? logManager = null)
 {
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtSnapshotCompactor>();
+
     public bool DoCompactSnapshot(in StateId stateId)
     {
         ulong width = schedule.GetCompactSize(stateId.BlockNumber);
@@ -25,8 +29,11 @@ public class PbtSnapshotCompactor(
         using PbtSnapshotPooledList chain = new((int)width);
         long floor = checked((long)stateId.BlockNumber - (long)width);
         if (!repository.TryLeaseCompactionWindow(stateId, floor, chain)) return false;
+        if (_logger.IsDebug) _logger.Debug($"Compacting Pbt snapshots {chain[0].From} -> {stateId}: chainCount={chain.Count}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
         PbtSnapshot compacted = Compact(chain);
-        return repository.TryAddCompacted(compacted);
+        bool added = repository.TryAddCompacted(compacted);
+        if (_logger.IsDebug) _logger.Debug($"Completed Pbt compaction up to {stateId}: added={added}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
+        return added;
     }
 
     public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)
