@@ -550,7 +550,7 @@ public class BlockValidator(
             return header.WithdrawalsRoot is null;
         }
 
-        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(body.Withdrawals)) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)

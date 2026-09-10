@@ -71,27 +71,6 @@ public ref partial struct EvmStack
     private readonly CodeInfo? _codeInfo;
     private long[]? _jumpDestinations;
 
-    /// <summary>Validates a jump against the bitmap resolved on the first in-range jump and kept in the frame.</summary>
-    /// <remarks>
-    /// Kept on the stack so a jump validates against the frame it is executing without walking
-    /// <c>vm.VmState.Env.CodeInfo</c>. Resolving lazily keeps the analysis off the path of frames that
-    /// never jump. Only a stack built over no code may omit the code info; the empty bitmap then rejects
-    /// every destination.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool IsValidJumpDestination(int destination)
-    {
-        long[]? jumpDestinations = _jumpDestinations;
-        if (jumpDestinations is null)
-        {
-            if ((uint)destination >= (uint)CodeLength) return false;
-            Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
-            _jumpDestinations = jumpDestinations = _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
-        }
-
-        return JumpDestinationAnalyzer.IsJumpDestination(jumpDestinations, destination);
-    }
-
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
     /// callers must check with <see cref="Unsafe.IsNullRef{T}"/> before writing.
