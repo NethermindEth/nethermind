@@ -1326,6 +1326,59 @@ public class ArchiveProofTests
         }
     }
 
+    [Test]
+    public void A_zero_valued_storage_row_is_a_tombstone_for_the_proof_scope_as_it_is_for_the_walk()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        Address contract = TestItem.AddressC;
+        HistoryColumnsWriter.RecordStorage(columns, contract, 1, block: 1, [0x11]);
+        HistoryColumnsWriter.RecordStorage(columns, contract, 2, block: 1, [0x00]);
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        using CommitmentMetadata metadata = new(columns, TestPolicy);
+        StorageHistoryScope scope = new(
+            (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            rowFormat,
+            new CommitmentStore(columns.GetColumnDb(FlatHistoryColumns.StorageCommitments), TestPolicy, CommitmentKeyLayout.IdentityLength),
+            metadata,
+            TestPolicy,
+            new StorageClearStore(columns.GetColumnDb(FlatHistoryColumns.StorageClears)),
+            Keccak.Compute(contract.Bytes).ValueHash256,
+            rlpWrapSlots: true);
+
+        List<TrieLeaf> leaves = [];
+        scope.EnumerateLeaves(TreePath.Empty, block: 5, new ResolutionBudget(64), leaves);
+
+        Assert.That(leaves, Has.Count.EqualTo(1),
+            "a stored zero is not a slot: the walk drops it when it rebuilds the storage trie, so the proof scope must drop it too or the two compute different storage roots and every proof of the contract is refused");
+    }
+
+    [Test]
+    public void A_node_that_rebuilt_during_resolution_and_still_mismatched_is_not_rebuilt_a_second_time()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TreePath parent = TreePath.FromHexString("abc");
+        Address[] accounts = AddressesUnderPrefix(0xab, 0xc, count: 32);
+        for (int i = 0; i < accounts.Length; i++) HistoryColumnsWriter.RecordAccount(columns, accounts[i], block: 1, new Account((ulong)(i + 1), (UInt256)(1000 + i)));
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        ISortedKeyValueStore accountRows = (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        CommitmentStore commitments = new(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), CommitmentDepthPolicy.Default, 0);
+        RawScopedTrieStore store = new(new MemDb());
+        StateTree tree = new(store, LimboLogs.Instance);
+        for (int i = 0; i < accounts.Length; i++) tree.Set(accounts[i], new Account((ulong)(i + 1), (UInt256)(1000 + i)));
+        tree.UpdateRootHash();
+        NodeView parentView = NodeViews.FromRoot(tree.RootRef, parent.Length, store);
+        Hash256 expected = parentView.Hash.ToCommitment();
+        parentView.Release();
+        ResolutionBudget oneRebuild = new(maxScannedRows: 0);
+        new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, oneRebuild, fanOut: 1, cache: null).LoadRlp(parent, expected);
+
+        ResolutionBudget budget = new(maxScannedRows: oneRebuild.ScannedRows + oneRebuild.ScannedRows / 2 + 1);
+        HistoricalTrieNodeBuilder builder = new(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, budget, fanOut: 1, cache: null);
+
+        Assert.That(() => builder.LoadRlp(parent, TestItem.KeccakA), Throws.InstanceOf<StateUnavailableException>().With.Message.Contains("instead of the"),
+            "the checkpoint path already rebuilt this node from rows before the hash check failed; rebuilding it again reads the same rows a second time and turns a real mismatch into a misleading budget refusal");
+    }
+
     private static Address[] AddressesUnderPrefix(byte firstByte, int thirdNibble, int count)
     {
         List<Address> found = [];

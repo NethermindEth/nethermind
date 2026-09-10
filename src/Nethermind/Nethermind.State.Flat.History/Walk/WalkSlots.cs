@@ -25,7 +25,7 @@ internal sealed class BorrowedWork(WalkSlots slots)
 
     public bool TryStart(Action work)
     {
-        _live.RemoveAll(static task => task.IsCompleted);
+        _live.RemoveAll(static task => task.IsCompletedSuccessfully);
         if (!slots.TryBorrow()) return false;
 
         Task started;

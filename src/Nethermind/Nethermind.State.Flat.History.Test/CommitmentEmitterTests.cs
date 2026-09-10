@@ -184,8 +184,13 @@ public class CommitmentEmitterTests
         valued[18] = 0x7F;
         ChildVector children = ChildVector.Rent();
 
-        Assert.That(() => BranchRlp.ReadChildren(valued, children), Throws.InstanceOf<InvalidDataException>(),
-            "state and storage tries key by fixed-width hashes, so no branch can carry a value; one that does is not a node of these tries and must not round-trip to a different node");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => BranchRlp.ReadChildren(valued, children), Throws.InstanceOf<InvalidDataException>(),
+                "state and storage tries key by fixed-width hashes, so no branch can carry a value; one that does is not a node of these tries and must not round-trip to a different node");
+            Assert.That(BranchRlp.TryReadChildren(valued, children), Is.False, "the Try form reports the same node as not a branch, so the emitter falls through to a whole-node row instead of aborting the block");
+        }
+
         ChildVector.Return(children);
     }
 

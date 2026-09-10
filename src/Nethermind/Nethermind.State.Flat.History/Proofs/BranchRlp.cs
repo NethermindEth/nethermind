@@ -54,8 +54,7 @@ internal static class BranchRlp
         (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength();
         if (reader.Position + prefixLength + contentLength != end) return false;
 
-        RequireNoValue(ref reader);
-        return true;
+        return contentLength == 0;
     }
 
     public static int EncodedLength(ChildVector children) => Rlp.LengthOfSequence(ContentLength(children));

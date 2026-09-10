@@ -538,6 +538,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     public void Dispose()
     {
         _disposed = true;
+        _reclaimTurn.Wait();
         _reclaimTurn.Dispose();
     }
 }

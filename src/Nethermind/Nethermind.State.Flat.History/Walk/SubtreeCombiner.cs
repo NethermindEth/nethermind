@@ -46,7 +46,11 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 nextEpochStart = PublishEpochStarts(publisher, current, emitter, nextEpochStart, block, to);
                 if (observing && observer!.ObservesEveryBlock)
                 {
-                    for (ulong quiet = observed + 1; quiet < block && observing; quiet++) observing = observer.OnBlock(quiet, current);
+                    for (ulong quiet = observed + 1; quiet < block && observing; quiet++)
+                    {
+                        if ((quiet & (QuietBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+                        observing = observer.OnBlock(quiet, current);
+                    }
                 }
 
                 NodeView previous = current;
@@ -68,7 +72,11 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             PublishEpochStarts(publisher, current, emitter, nextEpochStart, ulong.MaxValue, to);
             if (observing && observer!.ObservesEveryBlock)
             {
-                for (ulong quiet = observed + 1; quiet <= to && observing; quiet++) observing = observer.OnBlock(quiet, current);
+                for (ulong quiet = observed + 1; quiet <= to && observing; quiet++)
+                {
+                    if ((quiet & (QuietBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+                    observing = observer.OnBlock(quiet, current);
+                }
             }
         }
         finally

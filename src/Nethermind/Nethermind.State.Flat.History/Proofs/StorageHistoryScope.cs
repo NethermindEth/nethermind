@@ -79,16 +79,12 @@ internal sealed class StorageHistoryScope(
 
     protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)
     {
-        if (!rlpWrapSlots)
-        {
-            ReadOnlySpan<byte> stripped = storedValue.WithoutLeadingZeros();
-            return stripped.IsEmpty ? null : Rlp.Encode(stripped).Bytes;
-        }
+        if (!rlpWrapSlots) return storedValue.IsZero() ? null : Rlp.Encode(storedValue.WithoutLeadingZeros()).Bytes;
 
         try
         {
             RlpReader reader = new(storedValue);
-            return reader.DecodeByteArraySpan().WithoutLeadingZeros().IsEmpty ? null : storedValue.ToArray();
+            return reader.DecodeByteArraySpan().IsZero() ? null : storedValue.ToArray();
         }
         catch (Exception e) when (e is RlpException or InvalidDataException)
         {

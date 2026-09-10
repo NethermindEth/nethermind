@@ -152,6 +152,30 @@ public class ForwardCommitmentCaptureTests
     }
 
     [Test]
+    public void Recapturing_a_buffered_block_near_the_byte_bound_replaces_it_instead_of_dropping_the_round()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        ForwardCommitmentCapture capture = Track(new ForwardCommitmentCapture(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes: 100));
+        Snapshot first = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        first.Content.StateNodes[PerChangePath] = new TrieNode(NodeType.Leaf, LeafRlp(0));
+        Snapshot again = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
+        again.Content.StateNodes[PerChangePath] = new TrieNode(NodeType.Leaf, LeafRlp(1));
+
+        capture.Capture(0, first);
+        capture.Capture(0, again);
+        capture.Complete();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start == 0 && frontier == 0, Is.True,
+                "capturing a block number that is already buffered replaces it; the bound must be judged on the bytes the buffer would actually hold, not on the old and new copy added together");
+            Assert.That(AccountRowAtOrBelow(PerChangePath, 0, exact: true), Is.EqualTo(LeafRlp(1)), "the later capture of the block is the one that is kept");
+        }
+    }
+
+    [Test]
     public void A_capture_round_that_reaches_the_large_trie_depth_writes_exact_rows_at_the_tries_top()
     {
         TreePath deep = TreePath.FromHexString("7abcde");

@@ -189,6 +189,12 @@ public sealed class ForwardCommitmentCapture : IDisposable
 
     private void Buffer(ulong block, CapturedBlock captured)
     {
+        if (_buffered.Remove(block, out CapturedBlock? replaced))
+        {
+            _bufferedBytes -= replaced.Bytes;
+            Recycle(replaced);
+        }
+
         if (_buffered.Count >= MaxBufferedBlocks || _bufferedBytes + captured.Bytes > _maxBufferedBytes)
         {
             Recycle(captured);
@@ -197,12 +203,6 @@ public sealed class ForwardCommitmentCapture : IDisposable
             if (_logger.IsWarn) _logger.Warn(
                 $"Archive proof commitment capture skipped a round spanning more than {MaxBufferedBlocks} blocks or {_maxBufferedBytes} bytes of trie nodes; the tip series restarts at the next round and the gap is left to the retrofit walk.");
             return;
-        }
-
-        if (_buffered.Remove(block, out CapturedBlock? replaced))
-        {
-            _bufferedBytes -= replaced.Bytes;
-            Recycle(replaced);
         }
 
         if (_buffered.Count == 0 || block < _firstBuffered) _firstBuffered = block;

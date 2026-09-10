@@ -62,7 +62,7 @@ internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availabl
 
     private void CheckMarker(ulong block, in ValueHash256 expected)
     {
-        if (_markers is null || (_hasMarker && _markerBlock > block)) OpenMarkers(block);
+        if (_markers is null) OpenMarkers(block);
         while (_hasMarker && _markerBlock < block) Advance();
 
         if (_hasMarker && _markerBlock == block)

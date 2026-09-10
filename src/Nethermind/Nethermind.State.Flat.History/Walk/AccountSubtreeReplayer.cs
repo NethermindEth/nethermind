@@ -135,9 +135,9 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
                 }
             }
 
-            while (nextEpochStart <= to)
+            while (nextEpochStart <= to && emitter is not null)
             {
-                Snapshot(emitter!, changes!, publisher, state, store, prefix.Length, nextEpochStart);
+                Snapshot(emitter, changes!, publisher, state, store, prefix.Length, nextEpochStart);
                 nextEpochStart += emitter!.Policy.EpochBlocks;
             }
         }
