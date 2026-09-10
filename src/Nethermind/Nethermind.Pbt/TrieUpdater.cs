@@ -102,9 +102,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         finally { reader.Dispose(); }
     }
 
+    /// <summary>Consumes a subtree and applies its mutation range, returning the canonical replacement.</summary>
+    /// <remarks>
+    /// Mutations sharing a prefix share traversal through four-bit groups (16 boundary slots).
+    /// Shared prefixes skip intermediate groups; boundary folding recursively updates touched slots and recomposes them.
+    /// </remarks>
     private static Subtree FoldMutations(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter ownerWriter, IRefCountingMemoryProvider memoryProvider,
         ref Subtree input, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan)
     {
+        // Own the input lease for this frame; returning via Move transfers it past the finally cleanup.
         Subtree current = Subtree.Move(ref input);
         try
         {
@@ -112,6 +118,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             ownerReader.Resolve(ownerWriter, ref current);
             if (operations.IsEmpty) return Subtree.Move(ref current);
 
+            // At an empty subtree or leaf, a single update needs no partition unless it inserts a different key beside the leaf.
+            // A default value denotes deletion, including a no-op when the key is absent.
             if (current.IsEmpty)
             {
                 if (operations.Length == 1)
@@ -128,6 +136,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
             }
 
+            // Byte-length keys can end here rather than enter a next-nibble bucket. Fold that terminal separately
+            // so a batch can delete a prefix key and insert descendants, or delete descendants and insert their prefix.
             if (depth > 0 && (depth & 7) == 0)
             {
                 int terminalIndex = -1;
@@ -167,6 +177,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
             }
 
+            // Retain operation-only prefix/sortedness knowledge so child frames avoid rescanning the same range.
             plan = plan.EstablishRangeKnowledge(current.IsEmpty || current.IsLeaf, operations, metrics);
             Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length)];
             bool hasComputedPartition = false;
@@ -178,6 +189,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                 plan = new(default, depth, partition.Plan.BranchDepth, partition.Plan.IsSorted, partition.Plan.PrefixesValidated);
                 hasComputedPartition = true;
             }
+            // The existing subtree may diverge before the mutations do. Stop at the four-bit group containing
+            // that divergence rather than jumping solely by the mutations' shared prefix.
             int branchDepth = FindBranchDepth(current, operations[0].Key, plan);
             int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
             if (groupDepth != depth)
@@ -193,11 +206,14 @@ internal static partial class TrieUpdater<TKey, TPath>
                 return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan.AfterJump(groupDepth));
             }
 
+            // Reuse the owner frame when traversal has reached its group; its caller will flush the accumulated output.
             if (ownerReader.BitDepth == depth)
                 return hasComputedPartition
                     ? FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, partition)
                     : FoldBoundary(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan);
 
+            // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
+            // is left for the caller to place, allowing composition to promote it through a compressed path.
             GroupFrameReader<TKey, TPath> reader = new(store, PbtPathOperations.FromKey<TPath>(operations[0].Key.Bytes, depth), metrics);
             try
             {
