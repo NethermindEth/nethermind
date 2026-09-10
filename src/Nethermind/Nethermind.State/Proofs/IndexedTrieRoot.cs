@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
@@ -30,6 +31,7 @@ internal static class IndexedTrieRoot
     {
         private const int LeafBatchSize = 16;
         private const int BranchPrefixLength = 3;
+        private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
         private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
@@ -84,7 +86,7 @@ internal static class IndexedTrieRoot
             Key last = GetKey(end - 1);
             int commonDepth = CommonPrefix(first, last, depth);
 
-            Span<byte> encoded = stackalloc byte[BranchPrefixLength + 16 * Rlp.LengthOfKeccakRlp + 1];
+            Span<byte> encoded = stackalloc byte[BranchPrefixLength + MaxBranchContentLength];
             if (commonDepth != depth)
             {
                 Span<byte> path = stackalloc byte[6];
@@ -116,6 +118,8 @@ internal static class IndexedTrieRoot
             encoded[offset++] = Rlp.EmptyByteArrayByte;
             int branchLength = offset - BranchPrefixLength;
             int prefixLength = Rlp.StartSequence(encoded, 0, branchLength);
+            Debug.Assert(branchLength <= MaxBranchContentLength);
+            Debug.Assert(prefixLength <= BranchPrefixLength);
             encoded.Slice(BranchPrefixLength, branchLength).CopyTo(encoded[prefixLength..]);
             return NodeReference.FromRlp(encoded[..(prefixLength + branchLength)]);
         }
@@ -127,6 +131,7 @@ internal static class IndexedTrieRoot
             int pathLength = EncodePath(key, depth, key.Length - depth, isLeaf: true, path);
             ReadOnlySpan<byte> encodedValue = encoder.GetEncodedValue(item);
             int valueLength = encodedValue.IsEmpty ? encoder.GetLength(item) : encodedValue.Length;
+            Debug.Assert(valueLength > 0, "Empty encodings require trie deletion semantics.");
             Span<byte> shortValue = stackalloc byte[1];
             if (valueLength == 1)
             {
