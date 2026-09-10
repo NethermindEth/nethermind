@@ -57,8 +57,8 @@ public static partial class TrieUpdater
         using ArrayPoolListRef<PbtNodeGroupWriter?> sharedWriters = new(16, 16);
         int initializedReaders = 0;
         memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
-        using ArrayPoolListRef<ArrayPoolList<Subtree>?> zoneBoundaries = new(16, 16);
-        using ArrayPoolListRef<Subtree> rootBoundaries = new(PbtFourLevelGroupGeometry.PositionCount, PbtFourLevelGroupGeometry.PositionCount);
+        using ArrayPoolListRef<ArrayPoolList<DecompositionEntry>?> zoneBoundaries = new(16, 16);
+        using ArrayPoolListRef<DecompositionEntry> rootBoundaries = new(PbtFourLevelGroupGeometry.PositionCount, PbtFourLevelGroupGeometry.PositionCount);
         Span<int> touchedZoneMasks = stackalloc int[16];
         touchedZoneMasks.Clear();
         try
@@ -92,32 +92,32 @@ public static partial class TrieUpdater
                         sharedWriter = new(sharedReader.GroupKey, memoryProvider);
                         sharedWriters[slot] = sharedWriter;
                         zoneBoundaries[slot] = new(PbtFourLevelGroupGeometry.PositionCount, PbtFourLevelGroupGeometry.PositionCount);
-                        rootReader.Resolve(rootWriter, ref rootBoundaries.AsSpan()[BoundaryPosition(slot)]);
-                        Decompose(ref sharedReader, sharedWriter, ref rootBoundaries.AsSpan()[BoundaryPosition(slot)], 4, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
+                        Subtree boundary = rootBoundaries.AsSpan()[BoundaryPosition(slot)].TakeSubtree(ref rootReader, rootWriter);
+                        try { Decompose(ref sharedReader, sharedWriter, ref boundary, 4, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]); }
+                        finally { boundary.Dispose(); }
                     }
-                    sharedReader.Resolve(sharedWriter, ref zoneBoundaries[slot]!.AsSpan()[BoundaryPosition(worker.Zone & 15)]);
-                    worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[BoundaryPosition(worker.Zone & 15)]);
+                    worker.Current = zoneBoundaries[slot]!.AsSpan()[BoundaryPosition(worker.Zone & 15)].TakeSubtree(ref sharedReader, sharedWriter);
                 }
 
                 Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
 
                 foreach (PartitionFold worker in workers)
                 {
-                    zoneBoundaries[worker.Zone >> 4]![BoundaryPosition(worker.Zone & 15)] = Subtree.Move(ref worker.Result);
+                    zoneBoundaries[worker.Zone >> 4]![BoundaryPosition(worker.Zone & 15)] = new(ref worker.Result);
                     if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
                 }
                 for (int slot = 0; slot < sharedReaders.Count; slot++)
                 {
                     if (sharedWriters[slot] is not { } sharedWriter) continue;
                     ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
-                    rootBoundaries[BoundaryPosition(slot)] = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan());
+                    Subtree composed = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan());
+                    rootBoundaries[BoundaryPosition(slot)] = new(ref composed);
                     using RefCountingMemory? payload = sharedWriter.Detach();
                     store.SetNodeGroup(sharedReader.GroupKey, payload);
                 }
                 Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan());
                 try
                 {
-                    rootReader.Resolve(rootWriter, ref result);
                     ValueHash256 hash = rootWriter.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
                     using (RefCountingMemory? payload = rootWriter.Detach())
                         store.SetNodeGroup(RootPath, payload);
@@ -136,7 +136,7 @@ public static partial class TrieUpdater
                 sharedWriters[slot]?.Dispose();
                 if ((initializedReaders & (1 << slot)) != 0) sharedReaders.AsSpan()[slot].Dispose();
             }
-            foreach (ArrayPoolList<Subtree>? boundaries in zoneBoundaries)
+            foreach (ArrayPoolList<DecompositionEntry>? boundaries in zoneBoundaries)
             {
                 if (boundaries is null) continue;
                 Dispose(boundaries.AsSpan());

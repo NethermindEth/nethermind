@@ -238,6 +238,73 @@ public class PbtNodeGroupTests
     }
 
     [Test]
+    public void Decomposition_entries_transfer_or_release_owned_nodes(
+        [Values(0, 1, 2, 3)] int scenario, [Values] bool consume)
+    {
+        TrackingMemoryProvider provider = new();
+        using PbtNodeGroupStore store = new(provider);
+        PbtStorageNodePath rootPath = new([], 0);
+        if (scenario != 3) store.SetNode(rootPath, LeafEncoding(0x00, 1), provider);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
+        using PbtNodeGroupWriter writer = new(rootPath, provider);
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree original = default;
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry entry = default;
+        try
+        {
+            if (scenario == 2)
+            {
+                original = reader.Take(writer, rootPath);
+                entry = new(ref original);
+                Assert.That(original.IsEmpty, Is.True, "entry takes ownership rather than copying the lease");
+            }
+            else if (scenario != 0)
+                entry = new(new ValueHash256(Value(1)), rootPath);
+
+            if (consume)
+            {
+                if (scenario == 3)
+                {
+                    Assert.Throws<InvalidDataException>(() => entry.TakeSubtree(ref reader, writer));
+                    Assert.That(entry.SourcePath, Is.SameAs(rootPath), "failed acquisition retains the reference");
+                }
+                else
+                {
+                    result = entry.TakeSubtree(ref reader, writer);
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(entry.IsEmpty, Is.True);
+                        Assert.That(entry.SourcePath, Is.Null);
+                        Assert.That(result.IsEmpty, Is.EqualTo(scenario == 0));
+                        Assert.That(reader.Taken, Is.EqualTo(scenario == 0 ? 0u : 1u << 30));
+                    }
+                    using TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree second = entry.TakeSubtree(ref reader, writer);
+                    Assert.That(second.IsEmpty, Is.True, "consumption clears ownership and deferred paths");
+                    if (!result.IsEmpty) Assert.That(result.IsLeaf, Is.True);
+                }
+            }
+
+            reader.Dispose();
+            reader = default;
+            store.Dispose();
+            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented),
+                Is.EqualTo(scenario == 2 || (consume && scenario == 1) ? 1 : 0), "only materialized nodes retain leases");
+            entry.Dispose();
+            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented),
+                Is.EqualTo(consume && scenario is 1 or 2 ? 1 : 0), "disposing the entry does not release a transferred node");
+            result.Dispose();
+            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
+        }
+        finally
+        {
+            original.Dispose();
+            result.Dispose();
+            entry.Dispose();
+            reader.Dispose();
+        }
+    }
+
+    [Test]
     public void Decomposition_acquires_only_touched_paths_and_composition_keeps_siblings_opaque(
         [Values(0, 1, 0x8000, 0x8101, 0xFFFF)] int touchedMask,
         [Values] bool boundaryBranches,
@@ -257,7 +324,7 @@ public class PbtNodeGroupTests
         PbtStorageNodePath rootPath = new([], 0);
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
         using PbtNodeGroupWriter writer = new(rootPath, new TrackingMemoryProvider());
-        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree[31];
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[31];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree root = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
         try
@@ -269,12 +336,17 @@ public class PbtNodeGroupTests
             uint deferredTaken = 0;
             Visit(0, 16, 30);
             uint actualFrontier = 0;
+            uint actualReferences = 0;
             for (int position = 0; position < frontier.Length; position++)
+            {
                 if (!frontier[position].IsEmpty) actualFrontier |= 1u << position;
+                if (frontier[position].SourcePath is not null) actualReferences |= 1u << position;
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.Taken, Is.EqualTo(expectedTaken), "decomposition must not acquire untouched siblings");
                 Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
+                Assert.That(actualReferences, Is.EqualTo(deferredTaken & ~expectedTaken), "only unacquired nodes retain source references");
             }
             result = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier);
             ValueHash256 hash = writer.Write(30, 0, ref result);
