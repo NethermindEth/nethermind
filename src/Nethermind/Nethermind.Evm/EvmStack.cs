@@ -86,9 +86,17 @@ public ref partial struct EvmStack
         get
         {
             Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
+#if ZK_EVM
+            return _jumpDestinations ??= _codeInfo?.IncrementalJumpBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+#else
             return _jumpDestinations ??= _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+#endif
         }
     }
+
+#if ZK_EVM
+    internal bool AnalyzeJump(int destination) => _codeInfo!.AnalyzeJump(destination);
+#endif
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;

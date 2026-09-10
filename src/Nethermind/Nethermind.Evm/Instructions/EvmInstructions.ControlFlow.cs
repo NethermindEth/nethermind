@@ -378,7 +378,11 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
         (uint)jumpDestination < (uint)stack.CodeLength
-            && JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination)
+            && (JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination)
+#if ZK_EVM
+                || stack.AnalyzeJump(jumpDestination)
+#endif
+                )
             ? jumpDestination
             : -1;
 

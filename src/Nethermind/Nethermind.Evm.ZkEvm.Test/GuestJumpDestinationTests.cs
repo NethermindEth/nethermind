@@ -122,6 +122,15 @@ public class GuestJumpDestinationTests
             JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
+        CodeInfo incremental = new(code);
+        for (int i = 0; i < code.Length; i++)
+        {
+            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
+        }
+        for (int i = code.Length - 1; i >= 0; i--)
+        {
+            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
+        }
     }
 
     /// <summary>Walks byte by byte, marking every JUMPDEST and skipping PUSH immediates.</summary>
