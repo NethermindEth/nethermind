@@ -135,21 +135,24 @@ internal class XdcTransactionProcessorTests
     /// carries a non-zero gas price — which stays invisible while the premium happens to be zero.
     /// </remarks>
     [Test]
-    public void PayFees_SpecialTransaction_PaysNobody([Values] bool tipTrc21FeeEnabled)
+    public void PayFees_SpecialTransaction_PaysNobody([Values] bool tipTrc21FeeEnabled, [Values] bool toBlockSigner)
     {
-        _spec.IsTipTrc21FeeEnabled.Returns(tipTrc21FeeEnabled);
-        _spec.IsEip1559Enabled.Returns(true);
-        _spec.RandomizeSMCBinary.Returns(TestItem.AddressC);
-        _spec.BlockSignerContract.Returns(TestItem.AddressB);
-
+        Address blockSigner = TestItem.AddressE;
+        Address randomize = TestItem.AddressC;
         Address beneficiary = TestItem.AddressB;
         Address owner = TestItem.AddressD;
+
+        _spec.IsTipTrc21FeeEnabled.Returns(tipTrc21FeeEnabled);
+        _spec.IsEip1559Enabled.Returns(true);
+        _spec.RandomizeSMCBinary.Returns(randomize);
+        _spec.BlockSignerContract.Returns(blockSigner);
+
         _stateProvider!.CreateAccount(beneficiary, AccountBalance);
         _stateProvider.CreateAccount(owner, UInt256.Zero);
         _masternodeVotingContract.GetCandidateOwner(Arg.Any<IWorldState>(), beneficiary).Returns(owner);
 
         Transaction tx = Build.A.Transaction
-            .WithTo(TestItem.AddressC)
+            .WithTo(toBlockSigner ? blockSigner : randomize)
             .WithGasPrice(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)
             .WithGasLimit(100000)
             .WithType(TxType.Legacy)
@@ -180,9 +183,13 @@ internal class XdcTransactionProcessorTests
     /// runs <c>buyGas</c>, so a client that skips the charge computes a different state root and forks.
     /// </remarks>
     [TestCase(true, true, 0L, true, TestName = "Special transaction below the base fee is exempt from the floor")]
+    [TestCase(true, true, 1000000000L, true, TestName = "Special transaction below the base fee but non-zero is charged at its own price")]
     [TestCase(true, true, XdcBaseFeeCalculator.BaseFee, true, TestName = "Special transaction at the base fee is charged")]
+    [TestCase(true, true, 2 * XdcBaseFeeCalculator.BaseFee, true, TestName = "Special transaction above the base fee is charged")]
     [TestCase(true, false, 0L, false, TestName = "Ordinary transaction below the base fee is rejected")]
+    [TestCase(true, false, 1000000000L, false, TestName = "Ordinary transaction below the base fee but non-zero is rejected")]
     [TestCase(true, false, XdcBaseFeeCalculator.BaseFee, true, TestName = "Ordinary transaction at the base fee is charged")]
+    [TestCase(true, false, 2 * XdcBaseFeeCalculator.BaseFee, true, TestName = "Ordinary transaction above the base fee is charged")]
     // Before EIP-1559 there is no floor to waive, so a special transaction is charged like any other.
     [TestCase(false, true, 0L, true, TestName = "Pre-1559 special transaction with no gas price is free")]
     [TestCase(false, true, XdcBaseFeeCalculator.BaseFee, true, TestName = "Pre-1559 special transaction is charged")]
@@ -241,6 +248,51 @@ internal class XdcTransactionProcessorTests
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
             Assert.That(charged, Is.EqualTo(UInt256.Zero));
         }
+    }
+
+    /// <remarks>
+    /// The floor waiver does not change how much a special transaction pays: the charge still follows
+    /// the ordinary rule, <c>min(maxFeePerGas, maxPriorityFeePerGas + baseFee)</c>.
+    /// </remarks>
+    [Test]
+    public void BuyGas_SpecialEip1559Transaction_ChargesTheEffectiveGasPrice()
+    {
+        const long gasLimit = 100000;
+        Address randomizeContract = TestItem.AddressC;
+
+        XdcReleaseSpec spec = new()
+        {
+            IsEip1559Enabled = true,
+            BlockSignerContract = TestItem.AddressB,
+            RandomizeSMCBinary = randomizeContract,
+            BlackListedAddresses = [],
+        };
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(randomizeContract)
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)          // 25 gwei
+            .WithMaxPriorityFeePerGas((UInt256)XdcBaseFeeCalculator.BaseFee / 5)  // 2.5 gwei
+            .WithGasLimit(gasLimit)
+            .TestObject;
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithBaseFee((UInt256)XdcBaseFeeCalculator.BaseFee)                   // 12.5 gwei
+            .TestObject;
+
+        _transactionProcessor!.SetBlockExecutionContext(header);
+
+        UInt256 balanceBefore = _stateProvider!.GetBalance(TestItem.AddressA);
+        TransactionResult result = _transactionProcessor.TestBuyGas(tx, spec, out UInt256 effectiveGasPrice);
+
+        // min(25, 2.5 + 12.5) = 15 gwei, i.e. the tip is capped by the fee cap, not by the waiver.
+        Assert.That(effectiveGasPrice, Is.EqualTo((UInt256)XdcBaseFeeCalculator.BaseFee * 6 / 5));
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        Assert.That(balanceBefore - _stateProvider.GetBalance(TestItem.AddressA),
+            Is.EqualTo(effectiveGasPrice * gasLimit));
     }
 
     private class TestXdcTransactionProcessor(
