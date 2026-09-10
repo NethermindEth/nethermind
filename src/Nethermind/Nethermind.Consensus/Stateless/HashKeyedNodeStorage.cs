@@ -17,7 +17,14 @@ namespace Nethermind.Consensus.Stateless;
 /// The alternative is a <c>MemDb</c> behind <see cref="NodeStorage"/>, which keys a dictionary by
 /// <c>byte[]</c>: every witness node pays a key-array allocation on load, and every read builds a
 /// key span, hashes its bytes and compares them against the stored array. Here the keccak is the key,
-/// so reads compare the keccak word-wise.
+/// so witness-bucket reads compare the keccak word-wise. After the first write, reads first probe the
+/// seeded write dictionary, whose null tombstones must override the original witness.
+/// <para>
+/// The masked leading bytes are unseeded, so an offline grind can crowd the same bucket across payloads.
+/// Buckets larger than eight entries use the seeded overflow dictionary instead of scanning; a crowded
+/// witness therefore loses the bucket optimization but cannot make the array scan unbounded. Duplicate
+/// witness entries consume separate slots, and overflow entries remain retained in both representations.
+/// </para>
 /// <para>
 /// Only the zkEVM guest uses this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
 /// the host commits storage tries in parallel — <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>
