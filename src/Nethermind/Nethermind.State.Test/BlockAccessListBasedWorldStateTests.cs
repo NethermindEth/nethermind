@@ -112,6 +112,71 @@ public class BlockAccessListBasedWorldStateTests
     private sealed class ParentDecorator(IWorldState state) : WorldStateDecorator(state);
 
     [Test]
+    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader)
+    {
+        StorageCell[] cells = [new(TestItem.AddressA, 1), new(TestItem.AddressA, 2), new(TestItem.AddressB, 1)];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(1).TestObject).TestObject;
+        CountingParentReader parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.CreateAccount(TestItem.AddressB, 100);
+                ws.Set(cells[1], [42]);
+                ws.Set(cells[2], [77]);
+            }, ws => parent = new CountingParentReader(ws));
+        using (scope)
+        {
+            Snapshot snapshot = parent.TakeSnapshot();
+            ReadAlternatingSlots(0);
+            bws.Restore(snapshot);
+            bws.SetBlockAccessIndex(2);
+            ReadAlternatingSlots(0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parent.StorageReads, Is.EqualTo(cells.Length));
+                Assert.That(parent.TakeSnapshot(), Is.EqualTo(snapshot), "pure reads must not journal");
+            }
+
+            if (replaceReader) bws.ClearParentReader();
+            parent.Set(cells[0], [99]);
+            parent.Commit(Spec);
+            parent.CommitTree(1);
+            if (replaceReader) bws.SetParentReader(parent);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+            ReadAlternatingSlots(99);
+            Assert.That(parent.StorageReads, Is.EqualTo(2 * cells.Length));
+        }
+
+        void ReadAlternatingSlots(uint firstValue)
+        {
+            uint[] expected = [firstValue, 42, 77];
+            for (int repeat = 0; repeat < 4; repeat++)
+            {
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    ReadOnlySpan<byte> value = repeat % 2 == 0 ? bws.Get(cells[i]) : bws.GetOriginal(cells[i]);
+                    Assert.That(new UInt256(value, isBigEndian: true), Is.EqualTo((UInt256)expected[i]));
+                }
+            }
+        }
+    }
+
+    private sealed class CountingParentReader(IWorldState state) : WorldStateDecorator(state), IWorldState
+    {
+        public int StorageReads { get; private set; }
+
+        bool IWorldState.TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
+        {
+            StorageReads++;
+            return State.TryGetPureReadStorage(cell, out value);
+        }
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList

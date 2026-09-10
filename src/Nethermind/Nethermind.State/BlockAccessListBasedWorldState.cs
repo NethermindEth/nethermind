@@ -30,6 +30,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
+    private readonly Dictionary<StorageCell, byte[]> _pureReadValues = [];
     private StorageCell _lastPureRead;
     private byte[]? _lastPureReadValue;
     private bool _hasPureRead;
@@ -49,6 +50,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
+        _pureReadValues.ClearAndTrim();
         _hasPureRead = false;
         _lastPureReadValue = null;
     }
@@ -69,6 +71,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
         _codeChangesByHash = null;
+        _pureReadValues.ClearAndTrim();
         _hasPureRead = false;
         _lastPureReadValue = null;
     }
@@ -137,7 +140,11 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             value = _lastPureReadValue;
             return true;
         }
-        if (!parentReader.TryGetPureReadStorage(cell, out value)) return false;
+        if (!_pureReadValues.TryGetValue(cell, out value))
+        {
+            if (!parentReader.TryGetPureReadStorage(cell, out value)) return false;
+            _pureReadValues.Add(cell, value!);
+        }
         _lastPureRead = cell;
         _lastPureReadValue = value;
         _hasPureRead = true;
