@@ -29,6 +29,8 @@ static class Program
         int repeat = args.Length > 1 ? int.Parse(args[1]) : 1;
         string[] inputs = Directory.GetFiles(dir, "*.in").OrderBy(f => f, StringComparer.Ordinal).ToArray();
         int matched = 0, failed = 0;
+        string? timesPath = Environment.GetEnvironmentVariable("NETHERMIND_CHECK_TIMES");
+        using StreamWriter? times = timesPath is null ? null : new StreamWriter(timesPath);
         Stopwatch clock = Stopwatch.StartNew();
         foreach (string input in inputs)
         {
@@ -41,6 +43,7 @@ static class Program
                 actual = StatelessExecutor.Execute(bytes).ToArray();
             }
             TimeSpan took = Stopwatch.GetElapsedTime(started);
+            times?.WriteLine($"{Path.GetFileNameWithoutExtension(input)} {took.TotalMilliseconds:F2}");
             if (took.TotalMilliseconds > 100)
             {
                 Console.WriteLine($"slow {Path.GetFileNameWithoutExtension(input)}: {took.TotalMilliseconds:F0} ms");

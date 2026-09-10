@@ -3,6 +3,7 @@
 
 #if RUST_EVM
 using System;
+using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -14,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -53,7 +55,15 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     private IWorldState? _worldState;
     private IReleaseSpec? _spec;
     private BlockHeader? _header;
-    private readonly List<GCHandle> _pinned = [];
+    // Bytes handed to the interpreter — a precompile's output, an account's code — go through one
+    // pinned buffer, grown as needed, which it copies from before the callback's caller returns.
+    private byte[] _scratch = GC.AllocateUninitializedArray<byte>(64 * 1024, pinned: true);
+    // The interpreter's call data, shown to a precompile in place: it reads the input during the
+    // call and holds no reference to it afterwards.
+    private readonly NativeMemory _precompileInput = new();
+    // The precompile a loop calls over and over, found once.
+    private Address? _lastPrecompileAddress;
+    private IPrecompile? _lastPrecompile;
     private GCHandle _self;
     // A record the world state refused — on a stateless run, a witness without the code it was
     // asked about. The frame then goes to the C# interpreter, which throws the exception the
@@ -268,8 +278,6 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         finally
         {
             RustEvmNative.Free(&result);
-            foreach (GCHandle handle in _pinned) handle.Free();
-            _pinned.Clear();
             _self.Free();
             _worldState = null;
             _spec = null;
@@ -462,16 +470,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                 // rejected for.
                 return -1;
             }
-            if (found.Length == 0)
-            {
-                *code = default;
-                return 1;
-            }
-            // The interpreter copies the bytes before this call's caller returns; the array is
-            // held still until the frame is done, which is later than that.
-            GCHandle handle = GCHandle.Alloc(found, GCHandleType.Pinned);
-            machine._pinned.Add(handle);
-            *code = new RustEvmNative.FfiBytes { Ptr = (byte*)handle.AddrOfPinnedObject(), Len = (nuint)found.Length };
+            *code = machine.Lend(found);
             return 1;
         }
         catch (Exception exception)
@@ -545,25 +544,26 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         try
         {
             RustVirtualMachine machine = Of(context);
-            if (machine._precompiles is null || !machine._precompiles.TryGetValue(FromFfi(in *address), out CodeInfo? info) || info.Precompile is null)
+            if (machine._precompiles is null)
                 return -1;
 
-            byte[] data = input.Len == 0 ? [] : new ReadOnlySpan<byte>(input.Ptr, (int)input.Len).ToArray();
-            Result<byte[]> result = info.Precompile.Run(data, machine._spec!);
+            ReadOnlySpan<byte> addressBytes = new(address->Bytes, 20);
+            IPrecompile? precompile = machine._lastPrecompile;
+            if (precompile is null || !machine._lastPrecompileAddress!.Bytes.SequenceEqual(addressBytes))
+            {
+                Address called = new(addressBytes);
+                if (!machine._precompiles.TryGetValue(called, out CodeInfo? info) || info.Precompile is null)
+                    return -1;
+                precompile = info.Precompile;
+                machine._lastPrecompileAddress = called;
+                machine._lastPrecompile = precompile;
+            }
+
+            Result<byte[]> result = precompile.Run(machine._precompileInput.Over(input.Ptr, (int)input.Len), machine._spec!);
             if (!result)
                 return 0;
 
-            byte[] bytes = result.Data ?? [];
-            if (bytes.Length == 0)
-            {
-                *output = default;
-                return 1;
-            }
-            // Copied by the interpreter before this call's caller returns; held still until the
-            // frame is done, which is later than that.
-            GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            machine._pinned.Add(handle);
-            *output = new RustEvmNative.FfiBytes { Ptr = (byte*)handle.AddrOfPinnedObject(), Len = (nuint)bytes.Length };
+            *output = machine.Lend(result.Data ?? []);
             return 1;
         }
         catch (Exception)
@@ -571,6 +571,41 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             // The interpreter's own implementation answers instead.
             return -1;
         }
+    }
+
+    /// <summary>Hands bytes to the interpreter through the pinned scratch buffer.</summary>
+    private RustEvmNative.FfiBytes Lend(byte[] bytes)
+    {
+        if (bytes.Length == 0)
+            return default;
+        if (_scratch.Length < bytes.Length)
+            _scratch = GC.AllocateUninitializedArray<byte>(Math.Max(bytes.Length, _scratch.Length * 2), pinned: true);
+        bytes.CopyTo(_scratch, 0);
+        return new RustEvmNative.FfiBytes { Ptr = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_scratch)), Len = (nuint)bytes.Length };
+    }
+
+    /// <summary>A window over unmanaged bytes, moved from call to call rather than allocated.</summary>
+    private sealed class NativeMemory : MemoryManager<byte>
+    {
+        private byte* _pointer;
+        private int _length;
+
+        public ReadOnlyMemory<byte> Over(byte* pointer, int length)
+        {
+            _pointer = pointer;
+            _length = length;
+            return length == 0 ? ReadOnlyMemory<byte>.Empty : Memory;
+        }
+
+        // Unsafe: the pointer comes from the interpreter and stays valid for the duration of the
+        // callback, which is the only time the memory is handed out.
+        public override Span<byte> GetSpan() => new(_pointer, _length);
+
+        public override MemoryHandle Pin(int elementIndex = 0) => new(_pointer + elementIndex);
+
+        public override void Unpin() { }
+
+        protected override void Dispose(bool disposing) { }
     }
 
     /* Conversions */
