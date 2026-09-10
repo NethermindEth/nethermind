@@ -63,6 +63,9 @@ internal static class InputGenerator
         return 0;
     }
 
+    /// <summary>Encodes a block and its witness as a stateless input, recovering missing execution requests.</summary>
+    /// <remarks>Recovery mutates the supplied block: it fills transaction senders, marks the header post-merge,
+    /// and attaches execution requests, generated access lists and account changes from replay.</remarks>
     internal static async Task<byte[]?> EncodeInput(
         Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken = default)
     {
@@ -111,11 +114,14 @@ internal static class InputGenerator
             return;
 
         cancellationToken.ThrowIfCancellationRequested();
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        if (!spec.RequestsEnabled)
+            throw new InvalidDataException($"Cannot recover execution requests for block {block.Number}: {spec.Name} does not enable execution requests. Check the configured fork schedule.");
+
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         if (headers.Count == 0 || headers[^1].Hash != block.ParentHash)
             throw new InvalidDataException("Witness is missing the block's parent header.");
 
-        IReleaseSpec spec = specProvider.GetSpec(block.Header);
         if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
             await KzgPolynomialCommitments.InitializeAsync().WaitAsync(cancellationToken);
 

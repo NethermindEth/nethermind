@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,6 +58,8 @@ public class StatelessInputGeneratorTests
             SszPublicKey[] publicKeys;
             byte[]? encoded = await InputGenerator.EncodeInput(rawBlock, witness, specProvider);
             Assert.That(encoded, Is.Not.Null);
+            Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded),
+                Is.EqualTo((amsterdam ? ProtocolFork.Amsterdam : ProtocolFork.Current).ToRevision1SchemaId()));
             if (amsterdam)
             {
                 StatelessInput<SszExecutionPayloadAmsterdam>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayloadAmsterdam> input);
@@ -91,6 +94,7 @@ public class StatelessInputGeneratorTests
         byte[]? encoded = await InputGenerator.EncodeInput(block, witness,
             new TestSpecProvider(requestsEnabled ? Osaka.Instance : Cancun.Instance));
         Assert.That(encoded, Is.Not.Null);
+        Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
         Assert.That(input.NewPayloadRequest.ToBlock(requestsEnabled)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
@@ -105,6 +109,18 @@ public class StatelessInputGeneratorTests
 
         Assert.That(async () => await InputGenerator.EncodeInput(block, witness,
             new TestSpecProvider(Osaka.Instance)), Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Recovery_rejects_requests_disabled_by_the_configured_fork()
+    {
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
+        block.Header.RequestsHash = TestItem.KeccakB;
+        using Witness witness = EmptyWitness();
+
+        Assert.That(async () => await InputGenerator.EncodeInput(block, witness,
+            new TestSpecProvider(Cancun.Instance)),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("Cancun does not enable execution requests"));
     }
 
     [Test]
