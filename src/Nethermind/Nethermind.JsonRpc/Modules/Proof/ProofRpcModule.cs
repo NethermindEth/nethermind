@@ -51,7 +51,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
-                return ResultWrapper<TransactionForRpcWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
+                // No block for this tx hash means it never made it into the chain, same as eth_getTransactionByHash.
+                return ResultWrapper<TransactionForRpcWithProof>.Success(null);
             }
 
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
@@ -61,8 +62,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = searchResult.Object;
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
             Transaction[] txs = block.Transactions;
+            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
+            if (receipt is null || receipt.Index >= txs.Length || txs[receipt.Index].Hash != txHash)
+            {
+                // The resolved block's receipt set no longer matches this tx (reorg onto a different
+                // canonical block at the same number, or receipts pruned) — not an error, mirrors eth_.
+                return ResultWrapper<TransactionForRpcWithProof>.Success(null);
+            }
+
             Transaction transaction = txs[receipt.Index];
 
             TransactionForRpcWithProof txWithProof = new();
@@ -89,7 +97,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
-                return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
+                // No block for this tx hash means it never made it into the chain, same as eth_getTransactionReceipt.
+                return ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
@@ -99,15 +108,22 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = searchResult.Object;
+            Transaction[] txs = block.Transactions;
+            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
+            if (receipt is null || receipt.Index >= txs.Length || txs[receipt.Index].Hash != txHash)
+            {
+                // The resolved block's receipt set no longer matches this tx (reorg onto a different
+                // canonical block at the same number, or receipts pruned) — not an error, mirrors eth_.
+                return ResultWrapper<ReceiptWithProof>.Success(null);
+            }
+
             using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
 
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             scope.Component.Trace(block, receiptsTracer);
 
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
-            Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);

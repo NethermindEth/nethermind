@@ -36,6 +36,8 @@ public class ProofRpcModuleTests
     private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
+    private IHeaderFinder _headerFinder = null!;
+    private IReceiptStorage _receiptStorage = null!;
     private IContainer _container;
 
     [SetUp]
@@ -55,19 +57,21 @@ public class ProofRpcModuleTests
         }
 
         InMemoryReceiptStorage receiptStorage = new();
+        _receiptStorage = receiptStorage;
         _specProvider = new TestSpecProvider(London.Instance);
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject, new BlockBody()), _specProvider)
             .WithTransactions(receiptStorage)
             .OfChainLength(10);
         _blockTree = blockTreeBuilder.TestObject;
+        _headerFinder = blockTreeBuilder.HeaderStore;
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
-            .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
-            .AddSingleton<IReceiptStorage>(receiptStorage)
+            .AddSingleton<IHeaderFinder>(_headerFinder)
+            .AddSingleton<IReceiptStorage>(_receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
             .Build();
         _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
@@ -97,19 +101,162 @@ public class ProofRpcModuleTests
     }
 
     [Test]
-    public async Task When_getting_non_existing_tx_correct_error_code_is_returned([Values] bool withHeader)
+    public async Task When_getting_non_existing_tx_null_result_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
+        Assert.That(txWithProof, Is.Null);
+
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, withHeader);
-        Assert.That(response.Contains($"{ErrorCodes.ResourceNotFound}"), Is.True);
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
     }
 
     [Test]
-    public async Task When_getting_non_existing_receipt_correct_error_code_is_returned([Values] bool withHeader)
+    public async Task When_getting_non_existing_receipt_null_result_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+        Assert.That(receiptWithProof, Is.Null);
+
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
-        Assert.That(response.Contains($"{ErrorCodes.ResourceNotFound}"), Is.True);
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+    }
+
+    [TestCase(true, TestName = "When_receipt_missing_for_resolved_block_transaction_by_hash_returns_null(receipts_pruned)")]
+    [TestCase(false, TestName = "When_receipt_missing_for_resolved_block_transaction_by_hash_returns_null(reorg_mismatched_receipts)")]
+    public void When_receipt_missing_for_resolved_block_transaction_by_hash_returns_null(bool receiptsPruned)
+    {
+        Hash256 txHash = ArrangeMismatchedReceiptSet(receiptsPruned);
+
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
+        Assert.That(txWithProof, Is.Null);
+    }
+
+    [TestCase(true, TestName = "When_receipt_missing_for_resolved_block_transaction_receipt_returns_null(receipts_pruned)")]
+    [TestCase(false, TestName = "When_receipt_missing_for_resolved_block_transaction_receipt_returns_null(reorg_mismatched_receipts)")]
+    public void When_receipt_missing_for_resolved_block_transaction_receipt_returns_null(bool receiptsPruned)
+    {
+        Hash256 txHash = ArrangeMismatchedReceiptSet(receiptsPruned);
+
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data;
+        Assert.That(receiptWithProof, Is.Null);
+    }
+
+    [Test]
+    public void When_receipt_index_beyond_block_transactions_transaction_by_hash_returns_null()
+    {
+        Hash256 txHash = ArrangeReceiptIndexBeyondBlockTransactions();
+
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
+        Assert.That(txWithProof, Is.Null);
+    }
+
+    [Test]
+    public void When_receipt_index_beyond_block_transactions_transaction_receipt_returns_null()
+    {
+        Hash256 txHash = ArrangeReceiptIndexBeyondBlockTransactions();
+
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data;
+        Assert.That(receiptWithProof, Is.Null);
+    }
+
+    [Test]
+    public void When_receipt_index_points_to_different_transaction_transaction_by_hash_returns_null()
+    {
+        Hash256 txHash = ArrangeReceiptIndexPointsToDifferentTransaction();
+
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
+        Assert.That(txWithProof, Is.Null);
+    }
+
+    [Test]
+    public void When_receipt_index_points_to_different_transaction_transaction_receipt_returns_null()
+    {
+        Hash256 txHash = ArrangeReceiptIndexPointsToDifferentTransaction();
+
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data;
+        Assert.That(receiptWithProof, Is.Null);
+    }
+
+    /// <remarks>
+    /// Builds a receipt finder whose receipt set for the resolved block doesn't contain a receipt
+    /// matching the transaction hash — either because receipts were pruned, or because a reorg
+    /// resolved the block-number key to a different canonical block with unrelated receipts.
+    /// </remarks>
+    private Hash256 ArrangeMismatchedReceiptSet(bool receiptsPruned)
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = block.Transactions[0].Hash!;
+        TxReceipt[] receipts = receiptsPruned
+            ? Array.Empty<TxReceipt>()
+            : new[] { new TxReceipt { TxHash = TestItem.KeccakH, Index = 0 } };
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
+        RebuildContainerWith(receiptFinder);
+
+        return txHash;
+    }
+
+    /// <remarks>
+    /// Builds a receipt finder that resolves the transaction to a receipt whose <c>Index</c> falls
+    /// outside the resolved block's transaction list — the same receipt/block desync as
+    /// <see cref="ArrangeMismatchedReceiptSet"/>, but via a stale index rather than a missing entry.
+    /// </remarks>
+    private Hash256 ArrangeReceiptIndexBeyondBlockTransactions()
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = block.Transactions[0].Hash!;
+        TxReceipt[] receipts = new[] { new TxReceipt { TxHash = txHash, Index = block.Transactions.Length } };
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
+        RebuildContainerWith(receiptFinder);
+
+        return txHash;
+    }
+
+    /// <remarks>
+    /// Builds a receipt finder that resolves the transaction to a receipt whose <c>Index</c> falls
+    /// within the resolved block's transaction list, but at a slot occupied by a different
+    /// transaction — a reorg that reordered transactions at the same block number leaves a stale
+    /// index that still lands in bounds, unlike <see cref="ArrangeReceiptIndexBeyondBlockTransactions"/>.
+    /// </remarks>
+    private Hash256 ArrangeReceiptIndexPointsToDifferentTransaction()
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = block.Transactions[0].Hash!;
+        TxReceipt[] receipts = new[] { new TxReceipt { TxHash = txHash, Index = 1 } };
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
+        RebuildContainerWith(receiptFinder);
+
+        return txHash;
+    }
+
+    /// <remarks>
+    /// Swaps in a substituted <see cref="IReceiptFinder"/> while keeping the real block tree, so
+    /// <c>FindBlockHash</c> and <c>Get(block)</c> can be driven independently — used to reproduce a
+    /// resolved block whose receipt set doesn't contain the tx.
+    /// </remarks>
+    private void RebuildContainerWith(IReceiptFinder receiptFinder)
+    {
+        _container.Dispose();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddSingleton<ISpecProvider>(_specProvider)
+            .AddSingleton<IBlockTree>(_blockTree)
+            .AddSingleton<IReceiptFinder>(receiptFinder)
+            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IHeaderFinder>(_headerFinder)
+            .AddSingleton<IReceiptStorage>(_receiptStorage)
+            .AddSingleton<IWorldStateManager>(_worldStateManager)
+            .Build();
+        _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
     }
 
     [TestCase]
@@ -198,16 +345,7 @@ public class ProofRpcModuleTests
         _receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
         _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
-        _container.Dispose();
-        _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ConfigProvider()))
-            .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockTree>(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptFinder)
-            .AddSingleton<IDbProvider>(_dbProvider)
-            .AddSingleton<IWorldStateManager>(_worldStateManager)
-            .Build();
-        _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
+        RebuildContainerWith(_receiptFinder);
         ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
 
         if (withHeader)
