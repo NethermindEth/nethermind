@@ -188,7 +188,7 @@ public static partial class TrieUpdater
                 {
                     // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                     result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
-                        operations.AsSpan(), new(table.AsSpan(), 8, 8, false, false));
+                        operations.AsSpan(), 8, new(table.AsSpan(), 8, false, false));
                     TrieUpdater<TKey, TPath>.Flush(store, Metrics, ref reader, writer);
                     Result = Subtree.TakeFrom<TKey, TPath>(ref result);
                 }
@@ -222,11 +222,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
+        int depth,
         BucketPlan plan)
     {
-        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length)];
-        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, metrics);
-        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, partition);
+        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, depth)];
+        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, depth, metrics);
+        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, depth, partition);
     }
 
     private static Subtree FoldBoundaryFromPartition(
@@ -237,9 +238,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
+        int depth,
         PartitionOutcome partition)
     {
-        int depth = partition.Plan.Depth;
         RefList16<Subtree> boundaryBuffer = new(PbtFourLevelGroupGeometry.BoundarySlots);
         Span<Subtree> boundaries = boundaryBuffer.AsSpan();
         try
@@ -255,7 +256,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 Span<PbtWriteOperation<TKey>> bucket = operations.Slice(offset, count);
                 offset += count;
                 boundaries[slot] = FoldMutations(
-                    store, metrics, ref reader, writer, memoryProvider, ref boundaries[slot], bucket, partition.Plan.ForChild());
+                    store, metrics, ref reader, writer, memoryProvider, ref boundaries[slot], bucket, depth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
             }
 
             return Compose(ref reader, writer, metrics, boundaries, partition.UsedMask);
