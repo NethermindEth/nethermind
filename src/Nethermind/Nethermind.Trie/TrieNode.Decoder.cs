@@ -26,10 +26,10 @@ namespace Nethermind.Trie
     {
         // Used to create the nibble key from bytes, and threshold before using ArrayPool for the key
         private const int StackallocByteThreshold = 384;
+        private const int FullBranchRlpLength = 532;
 
         private class TrieNodeDecoder
         {
-            private const int FullBranchRlpLength = 532;
             private const int HashPairSize = 2;
 
             /// <summary>The children of a node already known to be a branch.</summary>
@@ -590,6 +590,12 @@ namespace Nethermind.Trie
             private static int WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 LiteRlpReader nodeRlp = new(item.FullRlp);
+                ReadOnlySpan<byte> nodeRlpData = nodeRlp.Data;
+                if (nodeRlpData.Length == FullBranchRlpLength && destination.Length >= BranchesCount * Rlp.LengthOfKeccakRlp
+                    && TryPatchFullBranch(tree, ref path, item, nodeRlpData, destination, bufferPool, canBeParallel))
+                {
+                    return BranchesCount * Rlp.LengthOfKeccakRlp;
+                }
                 int cursor = item.SeekChildPosition(nodeRlp, 0);
                 int position = 0;
                 // Unchanged children are consecutive bytes of the old RLP, so a run of them is one
@@ -658,6 +664,33 @@ namespace Nethermind.Trie
                 }
 
                 return position;
+            }
+
+            private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
+                ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
+                Debug.Assert(nodeRlp[^1] == 128);
+                nodeRlp.Slice(3, BranchesCount * Rlp.LengthOfKeccakRlp).CopyTo(destination);
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
+                {
+                    object? data = child;
+                    if (data is null) continue;
+                    if (ReferenceEquals(data, _nullNode)) return false;
+                    Hash256? hash = data as Hash256;
+                    if (hash is null)
+                    {
+                        TrieNode childNode = (TrieNode)data;
+                        path.AppendMut(i);
+                        childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        path.TruncateOne();
+                        hash = childNode.Keccak;
+                        if (hash is null) return false;
+                    }
+                    Rlp.Encode(destination, i * Rlp.LengthOfKeccakRlp, hash);
+                }
+                return true;
             }
         }
     }

@@ -125,7 +125,7 @@ public static class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 

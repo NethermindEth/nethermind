@@ -121,14 +121,16 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Hash256_32_byte_path()
+        public void Compute_WithUnalignedInput_MatchesUncachedHash(
+            [Values(20, 32, 63, 64, 65, 92)] int length,
+            [Values(0, 1, 7, 15)] int offset)
         {
-            // Tests the optimized 32-byte path (most common - Hash256/UInt256)
             Random random = new(42);
             for (int i = 0; i < 1000; i++)
             {
-                byte[] bytes = new byte[32];
-                random.NextBytes(bytes);
+                byte[] buffer = new byte[length + offset];
+                random.NextBytes(buffer);
+                ReadOnlySpan<byte> bytes = buffer.AsSpan(offset, length);
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
@@ -143,33 +145,11 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Address_20_byte_path()
-        {
-            // Tests the optimized 20-byte path (Address)
-            Random random = new(42);
-            for (int i = 0; i < 1000; i++)
-            {
-                byte[] bytes = new byte[20];
-                random.NextBytes(bytes);
-
-                ValueHash256 expected = ValueKeccak.Compute(bytes);
-                ValueHash256 actual = KeccakCache.Compute(bytes);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(actual, Is.EqualTo(expected));
-
-                    // Second call should hit cache
-                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
-                }
-            }
-        }
-
-        [Test]
-        public void Concurrent_read_write_stress()
+        public void Concurrent_read_write_stress([Values(32, 64)] int length)
         {
             // Stress test the seqlock pattern with concurrent readers and writers
             const int iterations = 100_000;
-            byte[] bytes = new byte[32];
+            byte[] bytes = new byte[length];
             new Random(123).NextBytes(bytes);
 
             // Prime the cache
@@ -183,7 +163,7 @@ namespace Nethermind.Core.Test
             int found = 1;
             while (found < 4)
             {
-                byte[] candidate = new byte[32];
+                byte[] candidate = new byte[length];
                 random.NextBytes(candidate);
                 if (KeccakCache.GetBucket(candidate) == bucket)
                 {

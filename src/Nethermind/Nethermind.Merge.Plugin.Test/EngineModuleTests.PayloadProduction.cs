@@ -606,7 +606,8 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         Assert.That(getPayloadResult.TryGetTransactions().Data, Has.Length.EqualTo(3));
-        Assert.That(cancelledContext?.Disposed, Is.True);
+        // The creation event can precede publication, so cleanup may finish after getPayload returns.
+        await ((DelayBlockImprovementContext)cancelledContext).DisposalCompleted.WaitAsync(chain.CancellationToken);
     }
 
     [Test]

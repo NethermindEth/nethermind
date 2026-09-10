@@ -17,6 +17,10 @@ public class ByteTests : VirtualMachineTestsBase
     [TestCase("0x1f", "0x1f")]
     [TestCase("0x20", "0x00")]
     [TestCase("0x0100", "0x00")]
+    [TestCase("0x8000000000000000", "0x00", Description = "Sign bit of the least significant limb")]
+    [TestCase("0xffffffffffffffff", "0x00", Description = "Least significant limb all ones")]
+    [TestCase("0x010000000000000000", "0x00", Description = "Limb 1 set")]
+    [TestCase("0x010000000000000000000000000000000000", "0x00", Description = "Limb 2 set")]
     [TestCase("0x0100000000000000000000000000000000000000000000000000000000000000", "0x00")]
     public void Extracts_big_endian_byte_or_zero_when_out_of_range(string position, string expected)
     {

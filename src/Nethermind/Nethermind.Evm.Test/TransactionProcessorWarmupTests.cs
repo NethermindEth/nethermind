@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -42,6 +44,140 @@ public class TransactionProcessorWarmupTests
 
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
+
+    [Test]
+    public void Unobserved_logs_preserve_warmup_gas_and_memory([Range(0, 4)] int topicCount, [Values] bool receiptTracer)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        Array.Fill(topics, TestItem.KeccakA);
+        byte[] code = Prepare.EvmCode.Log(128, 1024, topics)
+            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.SSTORE).Done;
+        (Transaction tx, Snapshot snapshot) = PrepareLogTransaction(code, 500_000);
+        using LogCaptureTracer tracer = new(receiptTracer);
+
+        _transactionProcessor.Warmup(tx, tracer);
+        UInt256 expectedBalance = _stateProvider.GetBalance(TestItem.AddressA);
+        _stateProvider.Restore(snapshot);
+        TransactionResult result = _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
+
+        Assert.That(tracer.Logs, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(expectedBalance));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 0)), isBigEndian: true), Is.EqualTo(new UInt256(1152)));
+            Assert.That(tracer.Logs[0].Topics, Is.EqualTo(topics));
+            Assert.That(tracer.Logs[0].Data, Is.EqualTo(new byte[128]));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> FailedLogs()
+    {
+        yield return new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.LOG4).Done, 500_000UL)
+            .SetName("Unobserved_log_checks_topic_stack_underflow");
+        yield return new TestCaseData(Prepare.EvmCode.PushData(1).PushData(UInt256.MaxValue).Op(Instruction.LOG0).Done, 500_000UL)
+            .SetName("Unobserved_log_checks_memory_overflow");
+        yield return new TestCaseData(Prepare.EvmCode.Log(1024, 0).Done, 22_000UL)
+            .SetName("Unobserved_log_checks_emission_gas");
+    }
+
+    [TestCaseSource(nameof(FailedLogs))]
+    public void Unobserved_logs_preserve_failure(byte[] code, ulong gasLimit)
+    {
+        (Transaction tx, Snapshot snapshot) = PrepareLogTransaction(code, gasLimit);
+        using LogCaptureTracer tracer = new(receiptTracer: true);
+        _transactionProcessor.Warmup(tx, tracer);
+        Assert.That(tracer.Failed, Is.True);
+        _stateProvider.Restore(snapshot);
+
+        TransactionResult result = _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether - gasLimit));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
+    public void Unobserved_logs_still_fail_in_static_calls()
+    {
+        _stateProvider.CreateAccount(TestItem.AddressC, 0);
+        _stateProvider.InsertCode(TestItem.AddressC, Prepare.EvmCode.Log(0, 0).Done, _specProvider.GenesisSpec);
+        byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000).Op(Instruction.ISZERO)
+            .PushData(0).Op(Instruction.SSTORE).Done;
+        (Transaction tx, _) = PrepareLogTransaction(code, 500_000);
+
+        _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
+
+        Assert.That(new UInt256(_stateProvider.Get(new StorageCell(TestItem.AddressB, 0)), isBigEndian: true), Is.EqualTo(UInt256.One));
+    }
+
+    private (Transaction, Snapshot) PrepareLogTransaction(byte[] code, ulong gasLimit)
+    {
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+        _stateProvider.CreateAccount(TestItem.AddressB, 0);
+        _stateProvider.InsertCode(TestItem.AddressB, code, _specProvider.GenesisSpec);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithGasLimit(gasLimit)
+            .WithGasPrice(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).WithBaseFee(0).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(header);
+        return (tx, snapshot);
+    }
+
+    [Test]
+    public void Warmup_preserves_memory_access_for_instruction_tracers()
+    {
+        byte[] code = Prepare.EvmCode.Log(32, 0x100800).Op(Instruction.STOP).Done;
+        (Transaction tx, _) = PrepareLogTransaction(code, 5_000_000);
+        using MemoryWordTracer tracer = new();
+
+        _transactionProcessor.Warmup(tx, tracer);
+
+        Assert.That(tracer.LastWord, Is.EqualTo(new byte[32]));
+    }
+
+    private sealed class MemoryWordTracer : TxTracer
+    {
+        public byte[]? LastWord { get; private set; }
+
+        public MemoryWordTracer()
+        {
+            IsTracingInstructions = true;
+            IsTracingMemory = true;
+        }
+
+        public override void SetOperationMemory(TraceMemory memoryTrace)
+        {
+            if (memoryTrace.Size != 0)
+                LastWord = memoryTrace.Slice((int)memoryTrace.Size - 32, 32).ToArray();
+        }
+    }
+
+    private sealed class LogCaptureTracer : TxTracer
+    {
+        public List<LogEntry> Logs { get; } = [];
+        public bool Failed { get; private set; }
+
+        public LogCaptureTracer(bool receiptTracer)
+        {
+            IsTracingReceipt = receiptTracer;
+            IsTracingLogs = !receiptTracer;
+        }
+
+        public override void ReportLog(LogEntry log) => Logs.Add(log);
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+            => Logs.AddRange(logs);
+
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+            => Failed = true;
+    }
 
     // Warmup must take the real execution path: no-op fee/nonce handling made same-sender
     // warm sequences run with undebited balances and unbumped nonces, so deploy chains
