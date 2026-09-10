@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/rbb.json",
+    "GenesisHash": "0xa7ce1b4328b704f45901db430f4b52eb1bc633cf78b8bde63c60e0ee84c431ed",
+    "BaseDbPath": "nethermind_db/rbb",
+    "LogFileName": "rbb.log"
+  },
+  "Network": {
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "JsonRpc": {
+    "EnabledModules": ["Eth", "Subscribe", "Trace", "TxPool", "Web3", "Proof", "Net", "Parity", "Health", "Rpc", "Qbft"]
+  },
+  "EthStats": {
+    "Name": "Nethermind RBB"
+  },
+  "Metrics": {
+    "NodeName": "RBB"
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

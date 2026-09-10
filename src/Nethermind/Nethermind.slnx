@@ -65,6 +65,7 @@
     <Project Path="Nethermind.Blockchain.Test/Nethermind.Blockchain.Test.csproj" />
     <Project Path="Nethermind.Clique.Test/Nethermind.Clique.Test.csproj" />
     <Project Path="Nethermind.Config.Test/Nethermind.Config.Test.csproj" />
+    <Project Path="Nethermind.Consensus.Qbft.Test/Nethermind.Consensus.Qbft.Test.csproj" />
     <Project Path="Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj" />
     <Project Path="Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
     <Project Path="Nethermind.Db.Test/Nethermind.Db.Test.csproj" />
@@ -115,6 +116,7 @@
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
   <Project Path="Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
+  <Project Path="Nethermind.Consensus.Qbft/Nethermind.Consensus.Qbft.csproj" />
   <Project Path="Nethermind.Consensus.Ethash/Nethermind.Consensus.Ethash.csproj" />
   <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
   <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
