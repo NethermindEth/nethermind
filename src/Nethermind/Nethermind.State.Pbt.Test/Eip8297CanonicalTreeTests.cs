@@ -910,7 +910,7 @@ public class Eip8297CanonicalTreeTests
         PbtFullKey account = Eip8297KeyDerivation.AccountKey(address32, 0);
         PbtStorageFullKey headerStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(63));
         PbtStorageFullKey overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
-        PbtFullKey headerCode = Eip8297KeyDerivation.CodeKey(address32, Value(9), 5);
+        PbtFullKey firstGroupCode = Eip8297KeyDerivation.CodeKey(address32, Value(9), 5);
         PbtFullKey code = Eip8297KeyDerivation.CodeKey(address32, Value(9), 300);
         byte[] expectedAddressHash = Hash(address32);
         using (Assert.EnterMultipleScope())
@@ -921,11 +921,12 @@ public class Eip8297CanonicalTreeTests
             Assert.That(headerStorage.Length, Is.EqualTo(34));
             Assert.That(overflowStorage.Length, Is.EqualTo(66));
             Assert.That(overflowStorage.Bytes[0], Is.EqualTo(0xFF));
-            Assert.That(headerCode.Length, Is.EqualTo(34));
-            Assert.That(headerCode.Bytes[^1], Is.EqualTo(133));
+            Assert.That(firstGroupCode.Length, Is.EqualTo(34));
+            Assert.That(firstGroupCode.Bytes[0], Is.EqualTo(1));
+            Assert.That(firstGroupCode.Bytes[^1], Is.EqualTo(5));
             Assert.That(code.Length, Is.EqualTo(34));
             Assert.That(code.Bytes[0], Is.EqualTo(1));
-            Assert.That(code.Bytes[^1], Is.EqualTo(172));
+            Assert.That(code.Bytes[^1], Is.EqualTo(44));
         }
     }
 

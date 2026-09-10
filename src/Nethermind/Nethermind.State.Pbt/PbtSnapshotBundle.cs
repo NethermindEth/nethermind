@@ -206,7 +206,7 @@ public sealed class PbtSnapshotBundle(
                 }
             }
 
-            WriteAccountLeaves(addressHash, account, code, previous, previousCode);
+            WriteAccountLeaves(addressHash, account, code);
 
             _accountsAwaitingCode.Remove(addressHash);
             WriteBuffer.Accounts[addressHash] = account;
@@ -221,12 +221,8 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code, Account? previous = null, CodeInfo? previousCode = null)
+    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code)
     {
-        if (previous is not null && previousCode is not null)
-            foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode, includeOverflowCode: false))
-                if (key.Bytes[^1] >= PbtKeyDerivation.CodeOffset) SetPbtLeaf(key, null);
-
         bool hasBasicData = false;
         if (account is not null && (!account.HasCode || code is not null))
         {

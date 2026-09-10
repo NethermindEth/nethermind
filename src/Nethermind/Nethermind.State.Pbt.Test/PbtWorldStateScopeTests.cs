@@ -237,7 +237,7 @@ public class PbtWorldStateScopeTests
     [TestCase(1000u, true)]
     public async Task RootUpdates_PreservePartitionLeavesThroughRepeatedFoldsAndCommit(uint updatedSlot, bool codeAfterAccount)
     {
-        byte[] code = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * PbtKeyDerivation.CodeChunkSize];
+        byte[] code = new byte[(PbtKeyDerivation.StemSubtreeWidth + 2) * PbtKeyDerivation.CodeChunkSize];
         Array.Fill(code, (byte)0x01);
         Hash256 codeHash = Keccak.Compute(code);
         await using PbtTestContext ctx = new();
@@ -265,7 +265,7 @@ public class PbtWorldStateScopeTests
             Assert.That(scope.Bundle.EnumerateLeaves(), Is.EquivalentTo(pending));
             Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
             Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
-            Assert.That(pending.ContainsKey((PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.HeaderCodeChunks)), Is.True);
+            Assert.That(pending.ContainsKey((PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.StemSubtreeWidth)), Is.True);
         }
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
