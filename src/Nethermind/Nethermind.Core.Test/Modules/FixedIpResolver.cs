@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,12 @@ namespace Nethermind.Core.Test.Modules;
 
 public class FixedIpResolver(INetworkConfig networkConfig) : IIPResolver
 {
+    public event EventHandler? Changed
+    {
+        add { }
+        remove { }
+    }
+
     public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
         new(new IIPResolver.NethermindIp(
             networkConfig.LocalIp is null ? IPAddress.Loopback : IPAddress.Parse(networkConfig.LocalIp),

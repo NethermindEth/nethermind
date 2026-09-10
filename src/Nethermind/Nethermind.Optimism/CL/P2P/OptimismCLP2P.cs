@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -304,8 +305,8 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string hostIp = _config.ClP2PHost ?? (await _ipResolver.Resolve(token)).ExternalIp.ToString();
-        string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
+        IPAddress hostIp = IPAddress.Parse(_config.ClP2PHost ?? (await _ipResolver.Resolve(token)).ExternalIp.ToString());
+        string address = NetworkHelper.ToTcpMultiaddress(hostIp, _config.ClP2PPort);
         _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;

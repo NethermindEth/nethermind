@@ -400,6 +400,34 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Ping_uses_the_current_resolved_source_after_address_rotation(CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            IPAddress firstAddress = IPAddress.Parse("2001:db8::10");
+            IPAddress secondAddress = IPAddress.Parse("2001:db8::20");
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
+                new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.IPv6Any, firstAddress)),
+                new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.IPv6Any, secondAddress)));
+            _receiver = new Node(TestItem.PublicKeyB, "2001:db8::2", 30303);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            List<IPEndPoint> sourceAddresses = [];
+            ConfigureBondCallback(onWirePing: ping => sourceAddresses.Add(ping.SourceAddress!));
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            Assert.That(sourceAddresses, Is.EqualTo(new[]
+            {
+                new IPEndPoint(firstAddress, _kademliaConfig.CurrentNodeId.DiscoveryPort),
+                new IPEndPoint(secondAddress, _kademliaConfig.CurrentNodeId.DiscoveryPort)
+            }));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task Ping_should_not_publish_tcp_endpoint_learned_from_neighbours(CancellationToken token)
         {
             ConfigureBondCallback();

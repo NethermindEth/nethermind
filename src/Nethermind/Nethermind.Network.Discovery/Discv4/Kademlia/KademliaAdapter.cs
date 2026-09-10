@@ -37,7 +37,7 @@ public class KademliaAdapter(
     IEcdsa ecdsa,
     ILogManager logManager,
     NetworkListenerState listenerState
-) : KademliaAdapterBase("discv4", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
+) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
     private const int MaxNodesPerNeighborsMsg = 12;
     private const int PeerCandidateChannelCapacity = 64;
@@ -60,6 +60,7 @@ public class KademliaAdapter(
     });
     private readonly ConcurrentDictionary<(ValueHash256, MsgType), IMessageHandler[]> _incomingMessageHandlers = new();
     private readonly LruCache<ValueHash256, NodeSession> _sessions = new(discoveryConfig.MaxNodeLifecycleManagersCount, "node_sessions");
+    private readonly IIPResolver _ipResolver = ipResolver;
 
     public IMsgSender? MsgSender { get; set; }
 
@@ -232,7 +233,8 @@ public class KademliaAdapter(
     {
         IPEndPoint endpoint = receiver.DiscoveryAddress;
         AddressFamily family = DiscoveryAddressSupport.GetFamily(endpoint.Address);
-        if (!TryGetSourceAddress(family, out IPEndPoint? sourceAddress))
+        IIPResolver.NethermindIp resolvedIp = await _ipResolver.Resolve(token);
+        if (!TryGetSourceAddress(family, resolvedIp, out IPEndPoint? sourceAddress))
         {
             return null;
         }
@@ -259,7 +261,10 @@ public class KademliaAdapter(
         }
     }
 
-    private bool TryGetSourceAddress(AddressFamily family, [NotNullWhen(true)] out IPEndPoint? sourceAddress)
+    private bool TryGetSourceAddress(
+        AddressFamily family,
+        IIPResolver.NethermindIp resolvedIp,
+        [NotNullWhen(true)] out IPEndPoint? sourceAddress)
     {
         Node currentNode = kademliaConfig.CurrentNodeId;
         if (ListenerState.DiscoveryAddress is not { } listenerAddress ||
@@ -271,8 +276,8 @@ public class KademliaAdapter(
 
         IPAddress? sourceIp = family switch
         {
-            AddressFamily.InterNetwork => ResolvedIp.ExternalIpV4,
-            AddressFamily.InterNetworkV6 => ResolvedIp.ExternalIpV6,
+            AddressFamily.InterNetwork => resolvedIp.ExternalIpV4,
+            AddressFamily.InterNetworkV6 => resolvedIp.ExternalIpV6,
             _ => null
         };
 
