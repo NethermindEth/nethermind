@@ -8,5 +8,8 @@ internal static unsafe partial class RustEvmNative
 {
     /// <summary>On a zkVM guest the interpreter is linked in with the runtime, and bflat binds <c>__Internal</c> to it.</summary>
     private const string Lib = "__Internal";
+
+    /// <summary>On a zkVM guest the interpreter hands precompiles to the machine's accelerators itself.</summary>
+    public const bool RunPrecompilesHere = false;
 }
 #endif

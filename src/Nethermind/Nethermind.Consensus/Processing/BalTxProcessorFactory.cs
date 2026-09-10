@@ -44,7 +44,7 @@ public class BalTxProcessorFactory(
     {
 #if RUST_EVM
         IVirtualMachine virtualMachine = Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable
-            ? new Nethermind.Evm.Rust.RustVirtualMachine(blockHashProvider, specProvider, logManager)
+            ? new Nethermind.Evm.Rust.RustVirtualMachine(blockHashProvider, specProvider, logManager, new EthereumPrecompileProvider())
             : new VirtualMachine(blockHashProvider, specProvider, logManager);
 #else
         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);

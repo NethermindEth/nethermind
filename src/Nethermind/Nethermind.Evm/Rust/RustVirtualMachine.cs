@@ -3,6 +3,7 @@
 
 #if RUST_EVM
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -11,6 +12,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -38,8 +40,10 @@ namespace Nethermind.Evm.Rust;
 /// answer is always there.
 /// </para>
 /// </remarks>
-public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager) : IVirtualMachine
+public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager, IPrecompileProvider? precompileProvider = null) : IVirtualMachine
 {
+    // The precompiles this client runs itself, when it does; see RustEvmNative.RunPrecompilesHere.
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo>? _precompiles = RustEvmNative.RunPrecompilesHere ? precompileProvider?.GetPrecompiles() : null;
     private readonly EthereumVirtualMachine _inner = new(blockHashProvider, specProvider, logManager);
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     private readonly ulong _chainId = specProvider?.ChainId ?? throw new ArgumentNullException(nameof(specProvider));
@@ -236,6 +240,7 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                     AccountRead = &AccountReadCallback,
                     BytecodeAccess = &BytecodeAccessCallback,
                     AccountAccess = &AccountReadCallback,
+                    Precompile = &PrecompileCallback,
                 };
 
                 long started = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -531,6 +536,40 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             RustVirtualMachine machine = Of(context);
             machine._readException ??= exception;
             machine._observerFailed = true;
+        }
+    }
+
+    [UnmanagedCallersOnly]
+    private static int PrecompileCallback(void* context, RustEvmNative.FfiAddress* address, RustEvmNative.FfiBytes input, RustEvmNative.FfiBytes* output)
+    {
+        try
+        {
+            RustVirtualMachine machine = Of(context);
+            if (machine._precompiles is null || !machine._precompiles.TryGetValue(FromFfi(in *address), out CodeInfo? info) || info.Precompile is null)
+                return -1;
+
+            byte[] data = input.Len == 0 ? [] : new ReadOnlySpan<byte>(input.Ptr, (int)input.Len).ToArray();
+            Result<byte[]> result = info.Precompile.Run(data, machine._spec!);
+            if (!result)
+                return 0;
+
+            byte[] bytes = result.Data ?? [];
+            if (bytes.Length == 0)
+            {
+                *output = default;
+                return 1;
+            }
+            // Copied by the interpreter before this call's caller returns; held still until the
+            // frame is done, which is later than that.
+            GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            machine._pinned.Add(handle);
+            *output = new RustEvmNative.FfiBytes { Ptr = (byte*)handle.AddrOfPinnedObject(), Len = (nuint)bytes.Length };
+            return 1;
+        }
+        catch (Exception)
+        {
+            // The interpreter's own implementation answers instead.
+            return -1;
         }
     }
 

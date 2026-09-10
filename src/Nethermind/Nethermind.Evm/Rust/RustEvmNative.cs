@@ -70,6 +70,7 @@ internal static unsafe partial class RustEvmNative
         public delegate* unmanaged<void*, FfiAddress*, void> AccountRead;
         public delegate* unmanaged<void*, FfiAddress*, void> BytecodeAccess;
         public delegate* unmanaged<void*, FfiAddress*, void> AccountAccess;
+        public delegate* unmanaged<void*, FfiAddress*, FfiBytes, FfiBytes*, int> Precompile;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -220,6 +221,6 @@ internal static unsafe partial class RustEvmNative
     public static extern void Free(FfiResult* result);
 
     /// <summary>The ABI this binding was written against.</summary>
-    public const uint ExpectedAbiVersion = 2;
+    public const uint ExpectedAbiVersion = 3;
 }
 #endif
