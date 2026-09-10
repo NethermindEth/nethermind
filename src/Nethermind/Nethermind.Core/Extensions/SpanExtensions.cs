@@ -704,37 +704,15 @@ namespace Nethermind.Core.Extensions
                 Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 24)), ref seeds);
         }
 
-#if ZK_EVM
-        // Keep a call boundary: the RISC-V backend can omit the int truncation after an inlined multiply-fold.
-        [MethodImpl(MethodImplOptions.NoInlining)]
-#else
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
-        private static ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
-        {
-            // Mix each seed limb into its key limb before any information is lost to folding.
-            ulong a = MultiplyFold(u0 ^ seeds, u1 ^ Unsafe.Add(ref seeds, 1));
-            ulong b = MultiplyFold(u2 ^ Unsafe.Add(ref seeds, 2), u3 ^ Unsafe.Add(ref seeds, 3));
-            return (ulong)MumFold(a, b);
-        }
+        /// <summary>Mixes four key words with their seed limbs into one 64-bit hash.</summary>
+        /// <remarks>The construction differs by build: see the <c>std</c> and <c>zkevm</c> partials.</remarks>
+        private static partial ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds);
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MultiplyFold(ulong a, ulong b)
-        {
-#if ZK_EVM
-            uint al = (uint)a, ah = (uint)(a >> 32);
-            uint bl = (uint)b, bh = (uint)(b >> 32);
-            ulong lower = (ulong)al * bl;
-            ulong middle = (ulong)ah * bl + (lower >> 32);
-            ulong carry = (ulong)al * bh + (uint)middle;
-            ulong low = (carry << 32) | (uint)lower;
-            ulong high = (ulong)ah * bh + (middle >> 32) + (carry >> 32);
-            return low ^ high;
-#else
-            ulong high = Math.BigMul(a, b, out ulong low);
-            return low ^ high;
-#endif
-        }
+        /// <summary>Multiplies two words to twice their width and folds the halves together.</summary>
+        /// <remarks>
+        /// The product is non-linear in both operands, so neither survives into the result on its own.
+        /// </remarks>
+        private static partial ulong MultiplyFold(ulong a, ulong b);
 
         private static ulong[] CreateShortHashSeeds(in UInt256 seed)
         {
