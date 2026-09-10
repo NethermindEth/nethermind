@@ -27,13 +27,17 @@ class ProfileValidationTests(unittest.TestCase):
                     names.add(name)
 
     def test_expb_failure_summary_preserves_cause_and_redacts_jwt(self):
-        log = "Routine progress\n\x1b[31mERROR: image was not found\x1b[0m\nFailed authorization: eyJabc.payload.signature\n"
+        log = ("Routine progress\n\x1b[31mERROR: image was not found\x1b[0m\n"
+               "Failed authorization: eyJabc.payload.signature\n"
+               "Container stopped exit_code=137 oom_killed=False\nCleanup completed\n")
         summary = summarize(log)
         self.assertIn("ERROR: image was not found", summary)
         self.assertIn("<redacted JWT>", summary)
         self.assertNotIn("eyJabc", summary)
         self.assertNotIn("Routine progress", summary)
         self.assertNotIn("\x1b", summary)
+        self.assertIn("Container stopped exit_code=137 oom_killed=False", summary)
+        self.assertIn("Cleanup completed", summary)
 
     def test_guest_requires_correct_output_and_rejects_cost_regressions(self):
         expected = bytes.fromhex("01020301")

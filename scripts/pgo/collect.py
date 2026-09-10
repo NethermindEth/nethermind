@@ -107,7 +107,11 @@ def collect(args):
                 print(summarize((output / "expb.log").read_text(errors="replace")), file=sys.stderr)
                 raise
         log_text = (output / "expb.log").read_text(errors="replace")
-        validate_expb_log(log_text)
+        try:
+            validate_expb_log(log_text)
+        except ValueError:
+            print(summarize(log_text), file=sys.stderr)
+            raise
     else:
         if args.corpus is None or args.db_source is None:
             raise ValueError("--corpus and --db-source are required for eth_call")

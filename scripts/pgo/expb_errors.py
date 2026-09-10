@@ -7,7 +7,8 @@ import sys
 def summarize(text):
     text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
     lines = [line for line in text.splitlines() if re.search(
-        r"error|exception|failed|traceback|exit code|not found|cannot|denied|invalid|caused by", line, re.IGNORECASE)]
+        r"error|exception|failed|traceback|exit[_ ]code|not found|cannot|denied|invalid|caused by|"
+        r"shut.?down|shutting down|container stopped|cleanup completed|cleaning up scenario|oom_killed", line, re.IGNORECASE)]
     text = "\n".join(line[:2000] for line in lines[-60:])
     text = re.sub(r"eyJ[\w-]+\.[\w-]+\.[\w-]+", "<redacted JWT>", text)
     return text or "No failure summary found; inspect the retained EXPB log on the runner."
