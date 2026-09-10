@@ -67,14 +67,14 @@ internal static class PbtStoreTestExtensions
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : IPbtNodePath
     {
         Span<byte> encoding = stackalloc byte[path.EncodedLength];
-        path.Write(encoding);
+        path.Encode(encoding);
         return encoding[4..].ToArray();
     }
 
     internal static byte[] ToEncodedArray(this IPbtNodePath path)
     {
         byte[] encoding = new byte[path.EncodedLength];
-        path.Write(encoding);
+        path.Encode(encoding);
         return encoding;
     }
 
@@ -118,7 +118,7 @@ internal static class PbtStoreTestExtensions
             if (node.IsLeaf || currentPath.BitDepth + node.PrefixBitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.PrefixBitCount;
             int direction = path.GetBit(directionBit);
-            currentPath = PbtPathOperations.Append<PbtStorageNodePath>(currentPath, node.Prefix, node.PrefixBitCount, direction);
+            currentPath = IPbtNodePath.Append<PbtStorageNodePath>(currentPath, node.Prefix, node.PrefixBitCount, direction);
             for (int bit = 0; bit < currentPath.BitDepth; bit++)
                 if (currentPath.GetBit(bit) != path.GetBit(bit)) return null;
         }
@@ -195,8 +195,8 @@ internal static class PbtStoreTestExtensions
             records.Add(new PbtNodeRecord(path, encoding));
             PbtNodeReader node = new(encoding);
             if (node.IsLeaf) continue;
-            pending.Push(PbtPathOperations.Append<PbtStorageNodePath>(path, node.Prefix, node.PrefixBitCount, 0));
-            pending.Push(PbtPathOperations.Append<PbtStorageNodePath>(path, node.Prefix, node.PrefixBitCount, 1));
+            pending.Push(IPbtNodePath.Append<PbtStorageNodePath>(path, node.Prefix, node.PrefixBitCount, 0));
+            pending.Push(IPbtNodePath.Append<PbtStorageNodePath>(path, node.Prefix, node.PrefixBitCount, 1));
         }
         records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
         return records;

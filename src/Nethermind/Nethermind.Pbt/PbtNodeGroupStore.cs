@@ -24,7 +24,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         {
             foreach (PbtPhysicalPayload payload in payloads)
             {
-                IPbtNodePath groupKey = PbtPathOperations.Decode(payload.Key.Span);
+                IPbtNodePath groupKey = IPbtNodePath.Decode(payload.Key.Span);
                 if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                     throw new InvalidDataException("A PBT node-group key depth must be a four-level boundary.");
                 if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
@@ -122,7 +122,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         for (int index = 0; index < keys.Length; index++)
         {
             IPbtNodePath key = keys[index];
-            key.Write(encodedKey);
+            key.Encode(encodedKey);
             payloads[index] = new PbtPhysicalPayload(encodedKey[..key.EncodedLength], _groups[key].GetSpan());
         }
         return payloads;

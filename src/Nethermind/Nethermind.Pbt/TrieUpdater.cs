@@ -234,7 +234,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
             // is left for the caller to place, allowing composition to promote it through a compressed path.
-            GroupFrameReader<TKey, TPath> reader = new(store, PbtPathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
+            GroupFrameReader<TKey, TPath> reader = new(store, IPbtNodePath.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
             try
             {
                 using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
@@ -435,8 +435,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             return;
         }
 
-        DecompositionEntry left = new(current.LeftHash, PbtPathOperations.Append<TPath>(current.Path!.Value, current.Prefix, current.PrefixBitCount, 0));
-        DecompositionEntry right = new(current.RightHash, PbtPathOperations.Append<TPath>(current.Path!.Value, current.Prefix, current.PrefixBitCount, 1));
+        DecompositionEntry left = new(current.LeftHash, IPbtNodePath.Append<TPath>(current.Path!.Value, current.Prefix, current.PrefixBitCount, 0));
+        DecompositionEntry right = new(current.RightHash, IPbtNodePath.Append<TPath>(current.Path!.Value, current.Prefix, current.PrefixBitCount, 1));
         current.Dispose();
         DecomposeChild(ref reader, writer, ref left, bitDepth, frontier, ref frontierMask, touchedMask);
         DecomposeChild(ref reader, writer, ref right, bitDepth, frontier, ref frontierMask, touchedMask);

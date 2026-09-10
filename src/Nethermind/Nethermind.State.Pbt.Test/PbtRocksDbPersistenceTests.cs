@@ -368,7 +368,7 @@ public class PbtRocksDbPersistenceTests
                     foreach (PbtPhysicalPayload physical in tree.PhysicalPayloads)
                     {
                         using RefCountingMemory payload = RefCountingMemory.Wrapping(physical.Payload.ToArray());
-                        content.SetNodeGroup(PbtPathOperations.Decode(physical.Key.Span), payload);
+                        content.SetNodeGroup(IPbtNodePath.Decode(physical.Key.Span), payload);
                     }
                     repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
                     compactor.DoCompactSnapshot(next);

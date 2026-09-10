@@ -102,7 +102,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         if (columnName == PbtColumns.Metadata)
                             ScanGroup(new PbtNodePath([], 0), view.CurrentValue, shard.NodeGroups);
                         else if (IsNodeGroupColumn(columnName))
-                            ScanGroup(PbtPathOperations.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
+                            ScanGroup(IPbtNodePath.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
                         if (++pending == ProgressPublishInterval)
                         {
                             Interlocked.Add(ref scanned, pending);

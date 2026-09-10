@@ -27,7 +27,7 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Path_write_preserves_encoding_and_destination_boundaries(
+    public void Path_encode_preserves_encoding_and_destination_boundaries(
         [Values] bool storage, [Values(0, 1, 4, 7, 8, 9, 272, -1)] int depth, [Values(-1, 0, 3)] int extraLength)
     {
         if (depth == -1) depth = storage ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
@@ -41,7 +41,7 @@ public class PbtNodeGroupTests
 
         if (extraLength < 0)
         {
-            Assert.Throws<ArgumentException>(() => path.Write(destination.AsSpan(1, destination.Length - 2)));
+            Assert.Throws<ArgumentException>(() => path.Encode(destination.AsSpan(1, destination.Length - 2)));
         }
         else
         {
@@ -50,7 +50,7 @@ public class PbtNodeGroupTests
             expected[3] = (byte)(depth >> 8);
             expected[4] = (byte)depth;
             bytes.CopyTo(expected, 5);
-            path.Write(destination.AsSpan(1, destination.Length - 2));
+            path.Encode(destination.AsSpan(1, destination.Length - 2));
         }
 
         using (Assert.EnterMultipleScope())
@@ -61,26 +61,26 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Path_write_does_not_allocate([Values] bool storage, [Values(0, 1, 8, 272, -1)] int depth)
+    public void Path_encode_does_not_allocate([Values] bool storage, [Values(0, 1, 8, 272, -1)] int depth)
     {
         if (depth == -1) depth = storage ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
         byte[] bytes = new byte[(depth + 7) >> 3];
-        if (storage) AssertWriteDoesNotAllocate(new PbtStorageNodePath(bytes, depth));
-        else AssertWriteDoesNotAllocate(new PbtNodePath(bytes, depth));
+        if (storage) AssertEncodeDoesNotAllocate(new PbtStorageNodePath(bytes, depth));
+        else AssertEncodeDoesNotAllocate(new PbtNodePath(bytes, depth));
     }
 
-    private static void AssertWriteDoesNotAllocate<TPath>(TPath path) where TPath : struct, IPbtNodePath
+    private static void AssertEncodeDoesNotAllocate<TPath>(TPath path) where TPath : struct, IPbtNodePath
     {
         Span<byte> destination = stackalloc byte[path.EncodedLength];
         IPbtNodePath boxedPath = path;
-        path.Write(destination);
-        boxedPath.Write(destination);
+        path.Encode(destination);
+        boxedPath.Encode(destination);
 
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         for (int index = 0; index < 1000; index++)
         {
-            path.Write(destination);
-            boxedPath.Write(destination);
+            path.Encode(destination);
+            boxedPath.Encode(destination);
         }
         long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
@@ -269,7 +269,7 @@ public class PbtNodeGroupTests
             byte[] expectedBytes = new byte[(groupDepth + bitCount + 7) >> 3];
             groupBytes.CopyTo(expectedBytes, 0);
             expectedBytes[groupDepth >> 3] |= (byte)(nibble << (8 - (groupDepth & 7) - bitCount));
-            IPbtNodePath expected = PbtPathOperations.Create(expectedBytes, groupDepth + bitCount);
+            IPbtNodePath expected = IPbtNodePath.Create(expectedBytes, groupDepth + bitCount);
             int position = PbtFourLevelGroupGeometry.PositionOf(expected);
             IPbtNodePath actual = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
             using (Assert.EnterMultipleScope())
@@ -292,7 +292,7 @@ public class PbtNodeGroupTests
         {
             int slot = prefix << (4 - length);
             NodeGroupPath path = new(slot, length);
-            PbtNodePath nodePath = PbtPathOperations.FromKey<PbtNodePath>([(byte)(slot << 4)], length);
+            PbtNodePath nodePath = IPbtNodePath.FromKey<PbtNodePath>([(byte)(slot << 4)], length);
 
             using (Assert.EnterMultipleScope())
             {
@@ -320,7 +320,7 @@ public class PbtNodeGroupTests
         byte[] keyBytes = new byte[PbtStorageFullKey.MaxLength];
         keyBytes[0] = Eip8297KeyDerivation.StorageZone;
         PbtStorageFullKey storageKey = new(keyBytes);
-        PbtNodePath smallPath = PbtPathOperations.FromKey<PbtNodePath>(keyBytes, depth);
+        PbtNodePath smallPath = IPbtNodePath.FromKey<PbtNodePath>(keyBytes, depth);
         PbtStorageNodePath storagePath = PbtStorageNodePath.FromKey(storageKey, depth);
         Dictionary<IPbtNodePath, int?> entries = new() { [smallPath] = 1 };
         entries[storagePath] = null;
@@ -1735,7 +1735,7 @@ public class PbtNodeGroupTests
         HashSet<IPbtNodePath> expectedGroups = [];
         foreach (PbtPhysicalPayload physical in before)
         {
-            IPbtNodePath groupKey = PbtPathOperations.Decode(physical.Key.Span);
+            IPbtNodePath groupKey = IPbtNodePath.Decode(physical.Key.Span);
             PbtNodeGroupReader group = new(groupKey, physical.Payload.Span);
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
@@ -1757,7 +1757,7 @@ public class PbtNodeGroupTests
             Assert.That(store.ExportPhysicalPayloads().Count, Is.EqualTo(before.Count));
             foreach (PbtPhysicalPayload physical in before)
             {
-                using RefCountingMemory payload = store.GetNodeGroup(PbtPathOperations.Decode(physical.Key.Span))!;
+                using RefCountingMemory payload = store.GetNodeGroup(IPbtNodePath.Decode(physical.Key.Span))!;
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(physical.Payload.ToArray()));
             }
             using PbtWriteBatchBuilder<PbtStorageFullKey> unchanged = new(0);

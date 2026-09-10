@@ -150,7 +150,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupStorageKey(IPbtNodePath groupKey, Span<byte> destination)
     {
         if (groupKey.BitDepth == 0) return RootNodeGroupKey;
-        groupKey.Write(destination);
+        groupKey.Encode(destination);
         return destination[..groupKey.EncodedLength];
     }
 
@@ -236,7 +236,7 @@ public class PbtRocksDbPersistence(
         public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys()
         {
             if (snapshot.GetColumn(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null)
-                yield return PbtPathOperations.Create([], 0);
+                yield return IPbtNodePath.Create([], 0);
 
             using ISortedView accounts = OpenGroups(PbtColumns.AccountNodeGroups);
             using ISortedView codes = OpenGroups(PbtColumns.CodeNodeGroups);
@@ -264,7 +264,7 @@ public class PbtRocksDbPersistence(
 
         private static IPbtNodePath DecodeGroupKey(ReadOnlySpan<byte> encoding)
         {
-            IPbtNodePath groupKey = PbtPathOperations.Decode(encoding);
+            IPbtNodePath groupKey = IPbtNodePath.Decode(encoding);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
             return groupKey;

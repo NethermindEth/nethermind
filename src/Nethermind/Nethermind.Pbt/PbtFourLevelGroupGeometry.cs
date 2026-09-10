@@ -69,7 +69,7 @@ public static class PbtFourLevelGroupGeometry
         ValidateGroupKey(groupKey);
         ValidatePosition(groupKey, position);
 
-        if (position == RootPosition) return PbtPathOperations.Create([], 0);
+        if (position == RootPosition) return IPbtNodePath.Create([], 0);
 
         int currentPosition = RootPosition;
         int width = BoundarySlots;
@@ -148,7 +148,7 @@ public static class PbtFourLevelGroupGeometry
         Span<byte> prefix = stackalloc byte[byteLength];
         prefix.Clear();
         path.CopyBitsTo(0, prefix, 0, depth);
-        return PbtPathOperations.Create(prefix, depth);
+        return IPbtNodePath.Create(prefix, depth);
     }
 
     private static void ValidateGroupKey(IPbtNodePath groupKey)
