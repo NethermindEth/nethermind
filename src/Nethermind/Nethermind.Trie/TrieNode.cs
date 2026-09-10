@@ -167,7 +167,7 @@ namespace Nethermind.Trie
         /// <remarks>Shared parent slots retain the hash of an unresolved warmer-owned child so live readers
         /// use their own snapshot lookup.</remarks>
         internal bool IsUnresolvedWarmerOwned =>
-            (ReadBlockAndFlags() & (_warmerOwnedMask | _warmerResolvedMask)) == _warmerOwnedMask;
+            (Volatile.Read(ref _blockAndFlags) & (_warmerOwnedMask | _warmerResolvedMask)) == _warmerOwnedMask;
 
         internal void MarkWarmerOwned()
         {

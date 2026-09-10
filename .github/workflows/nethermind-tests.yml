@@ -343,7 +343,7 @@ jobs:
           retention-days: 1
 
   tests-chunked:
-    name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20

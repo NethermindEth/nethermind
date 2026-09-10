@@ -68,28 +68,97 @@ public class SimpleDispatcherTests
     {
         ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
         peerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                SyncPeerAllocation allocation = new(AllocationContexts.State);
-                allocation.AllocatePeer(new PeerInfo(Substitute.For<ISyncPeer>()));
-                return Task.FromResult(allocation);
-            });
+            .Returns(_ => Task.FromResult(CreateAllocation()));
 
-        return new SimpleDispatcher<TestRequest>(
+        return CreateDispatcher(feed, Substitute.For<ISyncDownloader<TestRequest>>(), peerPool, new TestSyncConfig());
+    }
+
+    private static SyncPeerAllocation CreateAllocation()
+    {
+        SyncPeerAllocation allocation = new(AllocationContexts.State);
+        allocation.AllocatePeer(new PeerInfo(Substitute.For<ISyncPeer>()));
+        return allocation;
+    }
+
+    private static SimpleDispatcher<TestRequest> CreateDispatcher(
+        ISimpleSyncFeed<TestRequest> feed,
+        ISyncDownloader<TestRequest> downloader,
+        ISyncPeerPool peerPool,
+        TestSyncConfig syncConfig) =>
+        new(
             feed,
-            Substitute.For<ISyncDownloader<TestRequest>>(),
+            downloader,
             Substitute.For<IPeerAllocationStrategyFactory<TestRequest>>(),
             AllocationContexts.State,
             peerPool,
-            new TestSyncConfig(),
+            syncConfig,
             LimboLogs.Instance);
-    }
 
     /// <summary>
     /// How long the gated worker is held after the cancellation, i.e. how long Run is given to prove it does not
     /// return. Paid only when the assertion fails.
     /// </summary>
     private static readonly TimeSpan WorkerHold = TimeSpan.FromMilliseconds(500);
+
+    [Test, CancelAfter(30_000)]
+    public async Task Cancellation_while_waiting_for_a_permit_frees_the_undispatched_allocation(CancellationToken cancellationToken)
+    {
+        TestRequest firstRequest = new();
+        TestRequest secondRequest = new();
+        ISimpleSyncFeed<TestRequest> feed = Substitute.For<ISimpleSyncFeed<TestRequest>>();
+        feed.PrepareRequest(Arg.Any<CancellationToken>()).Returns(
+            Task.FromResult<TestRequest?>(firstRequest),
+            Task.FromResult<TestRequest?>(secondRequest),
+            Task.FromResult<TestRequest?>(null));
+
+        SyncPeerAllocation firstAllocation = CreateAllocation();
+        SyncPeerAllocation secondAllocation = CreateAllocation();
+        TaskCompletionSource secondAllocated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondFreed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
+        peerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ => Task.FromResult(firstAllocation),
+                _ =>
+                {
+                    secondAllocated.TrySetResult();
+                    return Task.FromResult(secondAllocation);
+                });
+        peerPool.When(pool => pool.Free(secondAllocation)).Do(_ => secondFreed.TrySetResult());
+
+        TaskCompletionSource firstDispatchStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirstDispatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISyncDownloader<TestRequest> downloader = Substitute.For<ISyncDownloader<TestRequest>>();
+        downloader.Dispatch(Arg.Any<PeerInfo>(), firstRequest, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            firstDispatchStarted.TrySetResult();
+            return releaseFirstDispatch.Task;
+        });
+        SimpleDispatcher<TestRequest> dispatcher = CreateDispatcher(feed, downloader, peerPool, new TestSyncConfig { MaxProcessingThreads = 1 });
+        using CancellationTokenSource cts = new();
+
+        Task runTask = dispatcher.Run(cts.Token);
+        try
+        {
+            await firstDispatchStarted.Task.WaitAsync(cancellationToken);
+            await secondAllocated.Task.WaitAsync(cancellationToken);
+
+            cts.Cancel();
+            await secondFreed.Task.WaitAsync(cancellationToken);
+
+            Assert.That(runTask.IsCompleted, Is.False, "the first worker still holds the only permit");
+        }
+        finally
+        {
+            cts.Cancel();
+            releaseFirstDispatch.TrySetResult();
+        }
+
+        Assert.That(async () => await runTask.WaitAsync(cancellationToken), Throws.InstanceOf<OperationCanceledException>());
+        peerPool.Received(1).Free(secondAllocation);
+        peerPool.Received(1).Free(firstAllocation);
+        _ = downloader.DidNotReceive().Dispatch(Arg.Any<PeerInfo>(), secondRequest, Arg.Any<CancellationToken>());
+    }
 
     [Test, CancelAfter(30_000)]
     public async Task Cancelled_run_waits_for_in_flight_handle_response(CancellationToken cancellationToken)
