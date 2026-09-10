@@ -94,7 +94,8 @@ must be new directories on a disk with enough room. The RPC replay uses the same
 `corpus_parity.py` workload as the existing GitHub RPC runs, at 100 rps for 25
 complete corpus passes. It is a training replay, not the k6 latency comparison.
 
-The workflow is manual, requires an immutable collection image, and uploads only
+The workflow is manual, builds the collection image from its commit on the runner
+unless an immutable image is supplied, and uploads only
 MIBC, callchain JSON and provenance. It neither commits binaries nor opens a PR.
 Raw traces, private requests, responses and node logs are not uploaded. The
 manifest records image/source identity, workload and trace checksums, and per-capture coverage.

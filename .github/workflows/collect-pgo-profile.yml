@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       collection_image:
-        description: Immutable image built from this commit with Dockerfile.pgo (repository@sha256:digest)
-        required: true
+        description: Optional immutable collection image; blank builds Dockerfile.pgo from this commit on the runner
+        required: false
         type: string
       corpus:
         description: eth_call corpus filename under /mnt/sda/expb-data/rpc-bench
@@ -39,17 +39,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$IMAGE" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]]
           [[ "$CORPUS" != */* && "$CORPUS" == eth-call-corpus*.jsonl.gz ]]
           [[ "$AMOUNT" =~ ^[1-9][0-9]*$ ]]
           echo "PGO_RUN=/mnt/sda/expb-data/pgo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
           echo "DOTNET_CLI_HOME=$GITHUB_WORKSPACE/.vs/dotnet-cli-home" >> "$GITHUB_ENV"
-          docker pull "$IMAGE"
+          if [[ -n "$IMAGE" ]]; then
+            [[ "$IMAGE" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]]
+            docker pull "$IMAGE"
+          else
+            iid_file="$RUNNER_TEMP/pgo-image-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.txt"
+            docker build -f Dockerfile.pgo --build-arg COMMIT_HASH="$GITHUB_SHA" \
+              --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" --iidfile "$iid_file" .
+            IMAGE=$(cat "$iid_file")
+          fi
+          echo "PGO_IMAGE=$IMAGE" >> "$GITHUB_ENV"
           uv tool install --force --from 'git+https://github.com/NethermindEth/execution-payloads-benchmarks@ec133a2871165fa039c5c12cec6b047fdce05572' expb
           uv tool dir --bin >> "$GITHUB_PATH"
       - name: Collect Fusaka
         env:
-          IMAGE: ${{ inputs.collection_image }}
+          IMAGE: ${{ env.PGO_IMAGE }}
           AMOUNT: ${{ inputs.amount }}
         run: |
           for mode in instrumentation sampling; do
@@ -59,7 +67,7 @@ jobs:
           done
       - name: Collect eth_call
         env:
-          IMAGE: ${{ inputs.collection_image }}
+          IMAGE: ${{ env.PGO_IMAGE }}
           CORPUS: ${{ inputs.corpus }}
         run: |
           for mode in instrumentation sampling; do
