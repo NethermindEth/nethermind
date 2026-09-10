@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus
@@ -29,7 +30,8 @@ namespace Nethermind.Blockchain.Test.Consensus
             Assert.That(engine.ValidateParams(null, null), Is.True);
             Assert.That(engine.ValidateSeal(null, true), Is.True);
             Assert.That(engine.ValidateSeal(null, false), Is.True);
-            Assert.That(engine.SealBlock(null, CancellationToken.None).Result, Is.EqualTo(null));
+            Block block = Build.A.Block.TestObject;
+            Assert.That(engine.SealBlock(block, CancellationToken.None).Result, Is.EqualTo(block));
         }
     }
 }

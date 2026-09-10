@@ -113,11 +113,8 @@ public class BloomFilterTests
         Assert.DoesNotThrow(() => bloom.Dispose());
     }
 
-    [TestCase(0UL)]
-    [TestCase(1UL)]
-    [TestCase(0xDEADBEEFCAFEBABEUL)]
-    [TestCase(ulong.MaxValue)]
-    public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue(ulong key)
+    [Test]
+    public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue([Values(0UL, 1UL, 0xDEADBEEFCAFEBABEUL, ulong.MaxValue)] ulong key)
     {
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
             Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
@@ -147,18 +144,12 @@ public class BloomFilterTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Constructor_RejectsNonPositiveCapacity(long capacity) =>
+    [Test]
+    public void Constructor_RejectsNonPositiveCapacity([Values(0, -1, long.MinValue)] long capacity) =>
         Assert.That(() => NewBloom(capacity: capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(0.0)]
-    [TestCase(-1.0)]
-    [TestCase(double.NaN)]
-    [TestCase(double.PositiveInfinity)]
-    [TestCase(double.NegativeInfinity)]
-    public void Constructor_RejectsInvalidBitsPerKey(double bitsPerKey) =>
+    [Test]
+    public void Constructor_RejectsInvalidBitsPerKey([Values(0.0, -1.0, double.NaN, double.PositiveInfinity, double.NegativeInfinity)] double bitsPerKey) =>
         Assert.That(() => NewBloom(bitsPerKey: bitsPerKey), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

@@ -208,7 +208,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_error is not null)
         {
             EvmExceptionType errorType = _error.Value;
-            firstCallFrame.Error = errorType.GetEvmExceptionDescription();
+            MarkFrameFailed(firstCallFrame, errorType);
             if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
             {
                 firstCallFrame.RevertReason = ValidateRevertReason(error);
@@ -247,15 +247,25 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
+    /// <summary>Records an EVM halt on a call frame, for the root frame and the nested ones alike.</summary>
+    /// <remarks>
+    /// A CREATE or CREATE2 frame that halted deployed no contract, so its <c>to</c> is dropped —
+    /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
+    /// </remarks>
+    private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
+    {
+        callFrame.Error = error.GetEvmExceptionDescription();
+        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
+        {
+            callFrame.To = null;
+        }
+    }
+
     private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
     {
         if (error is not null)
         {
-            callFrame.Error = error.Value.GetEvmExceptionDescription();
-            if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
-            {
-                callFrame.To = null;
-            }
+            MarkFrameFailed(callFrame, error.Value);
 
             if (error == EvmExceptionType.Revert && output?.Length != 0)
             {

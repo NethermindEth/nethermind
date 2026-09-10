@@ -1783,10 +1783,8 @@ public class BlockTreeTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(2ul)]
-    [TestCase(3ul)]
-    public void Loads_best_known_correctly_on_inserts_followed_by_suggests(ulong pivotNumber)
+    [Test]
+    public void Loads_best_known_correctly_on_inserts_followed_by_suggests([Values(1ul, 2ul, 3ul)] ulong pivotNumber)
     {
         SyncConfig syncConfig = new()
         {
@@ -2280,9 +2278,8 @@ public class BlockTreeTests
         Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void On_restart_loads_already_processed_genesis_block(bool wereProcessed)
+    [Test]
+    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();
@@ -2313,7 +2310,11 @@ public class BlockTreeTests
                 extraData: [])
             {
                 Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
-                Bloom = Core.Bloom.Empty
+                Bloom = Core.Bloom.Empty,
+                StateRoot = Keccak.EmptyTreeHash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             // Second block
@@ -2330,6 +2331,9 @@ public class BlockTreeTests
                 Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             // Third block
@@ -2346,6 +2350,9 @@ public class BlockTreeTests
                 Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             tree.SuggestBlock(genesis);
@@ -2406,7 +2413,7 @@ public class BlockTreeTests
         public bool PreventsAcceptingNewBlocks => true;
         public ulong StartLevelInclusive => 0;
         public ulong EndLevelExclusive => 3;
-        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
+        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             if (_wait)
             {
@@ -2426,7 +2433,7 @@ public class BlockTreeTests
             Task.FromResult(BlockVisitOutcome.None);
 
         public Task<LevelVisitOutcome> VisitLevelEnd(
-            ChainLevelInfo chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
+            ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
             Task.FromResult(LevelVisitOutcome.None);
     }
 

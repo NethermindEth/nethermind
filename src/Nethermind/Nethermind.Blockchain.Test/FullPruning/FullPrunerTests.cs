@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -347,7 +348,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public void ShouldCopyAllValues()
         {
-            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
+            foreach (KeyValuePair<byte[], byte[]> keyValuePair in TrieDb.GetAll())
             {
                 Assert.That(CopyDb[keyValuePair.Key], Is.EqualTo(keyValuePair.Value));
                 CopyDb.KeyWasWrittenWithFlags(keyValuePair.Key, WriteFlags.LowPriority | WriteFlags.DisableWAL);
@@ -373,7 +374,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             }
         }
 
-        public override bool TryStartPruning(bool duplicateReads, out IPruningContext context)
+        public override bool TryStartPruning(bool duplicateReads, [NotNullWhen(true)] out IPruningContext? context)
         {
             if (base.TryStartPruning(duplicateReads, out context))
             {

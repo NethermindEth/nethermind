@@ -59,16 +59,13 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Block? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int blockCheck = decoderContext.Position + sequenceLength;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int blockCheck = position + sequenceLength;
+            decoderContext.Position = position;
 
-            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
 
             Block block = new(header, body)
@@ -127,13 +124,14 @@ namespace Nethermind.Serialization.Rlp
                 _headerDecoder.Encode(ref writer, item.Uncles[i]);
             }
 
-            if (withdrawalsLength.HasValue)
+            if (item.Withdrawals is { } withdrawals)
             {
-                writer.StartSequence(withdrawalsLength.Value);
+                writer.StartSequence(withdrawalsLength
+                    ?? throw new RlpException("Withdrawal payload length is missing."));
 
-                for (int i = 0; i < item.Withdrawals.Length; i++)
+                for (int i = 0; i < withdrawals.Length; i++)
                 {
-                    _withdrawalDecoder.Encode(ref writer, item.Withdrawals[i]);
+                    _withdrawalDecoder.Encode(ref writer, withdrawals[i]);
                 }
             }
         }
@@ -151,7 +149,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);

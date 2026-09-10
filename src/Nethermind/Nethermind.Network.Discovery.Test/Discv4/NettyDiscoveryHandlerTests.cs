@@ -14,6 +14,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -168,7 +169,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             int? globalInboundMessageBurst = null,
             int? inboundMessageQueueCapacity = null,
             int? inboundMessageWorkerCount = null,
-            IMessageSerializationService? messageSerializationService = null)
+            IMessageSerializationService? messageSerializationService = null,
+            ILogManager? logManager = null)
         {
             IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
@@ -179,7 +181,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 channel,
                 service,
                 Timestamper.Default,
-                LimboLogs.Instance,
+                logManager ?? LimboLogs.Instance,
                 nodeFilter,
                 globalInboundMessageBurst,
                 inboundMessageQueueCapacity,
@@ -218,6 +220,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public void ForwardsDiscv5MinimumSizePacketWithoutDebugLogging()
+        {
+            TestLogger logger = new() { IsTrace = false };
+            (IKademliaAdapter _, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService _) =
+                CreateHandler(logManager: new OneLoggerLogManager(new ILogger(logger)));
+            byte[] data = new byte[63];
+            DatagramPacket packet = new(Unpooled.WrappedBuffer(data), _address2, _address);
+
+            handler.ChannelRead(ctx, packet);
+
+            ctx.Received().FireChannelRead(Arg.Any<DatagramPacket>());
+            Assert.That(logger.LogList, Is.Empty);
+        }
+
+        [Test]
         public async Task FarFutureMessagesAreRejected()
         {
             PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + (long)TimeSpan.FromHours(2).TotalSeconds, _address, _address2, new byte[32])
@@ -229,6 +246,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await SleepWhileWaiting();
 
             _ = _kademliaAdaptersMocks[1].DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [TestCase(-60, "has expired")]
+        [TestCase(7200, "expires too far in the future")]
+        public async Task InvalidExpirationIsLoggedAtTrace(long expirationOffsetSeconds, string expectedMessage)
+        {
+            TestLogger logger = new() { IsDebug = false };
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) =
+                CreateHandler(logManager: new OneLoggerLogManager(new ILogger(logger)));
+            byte[] data = SerializePing(service, expirationOffsetSeconds);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), _address2, _address));
+            await SleepWhileWaiting();
+
+            Assert.That(logger.LogList, Has.Some.Contains(expectedMessage));
+            _ = adapter.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
         [Test]
@@ -385,9 +418,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(() => Interlocked.CompareExchange(ref received, 0, 0), Is.EqualTo(2).After(5000, 10));
         }
 
-        private byte[] SerializePing(IMessageSerializationService service)
+        private byte[] SerializePing(IMessageSerializationService service, long expirationOffsetSeconds = 1200)
         {
-            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address2, _address, new byte[32])
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + expirationOffsetSeconds, _address2, _address, new byte[32])
             {
                 FarAddress = _address
             };

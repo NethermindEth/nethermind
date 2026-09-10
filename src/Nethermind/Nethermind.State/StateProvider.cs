@@ -41,7 +41,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // the lifetime of the durable storage, not the StateProvider — otherwise a transient
     // (overlay) codeDb could poison the hint with non-durable entries.
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
+    // Code staged for CodeDb by the current transaction, paired with the change-log position of the
+    // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
+    private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private List<AddressAsKey> _removedWithStorage = [];
+    // Handed back by a detached write-back once it is done with the list it took.
+    private List<AddressAsKey>? _spareRemovedWithStorage;
 
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -54,10 +60,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
 
-    // Invalidates the guest front cache when a restore/commit/reset recycles the change stacks; elided on
-    // mainline, which has no front cache (no implementing declaration).
-    partial void InvalidateFrontCache();
-#if ZK_EVM
+    private IWorldStateScopeProvider.IScope Tree =>
+        _tree ?? throw new InvalidOperationException("State can only be used within a world-state scope.");
+
+    private IWorldStateScopeProvider.ICodeDb CodeDb =>
+        _codeDb ?? throw new InvalidOperationException("Code storage can only be used within a world-state scope.");
+
+    // Invalidates the front cache when a restore/commit/reset recycles the change stacks.
+    private void InvalidateFrontCache() => _epoch++;
     // Single-entry cache in front of _intraTxCache: the EVM accesses the same
     // account many times in a row. Pushes write the new value through when the
     // cached address matches, so a hit needs no staleness probe. Invalidated
@@ -67,16 +77,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private int _cachedEpoch = -1;
     private int _epoch;
 
-    partial void InvalidateFrontCache() => _epoch++;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
         _cachedEpoch == _epoch && _cachedAddress is not null && _cachedAddress.Equals(address);
-#endif
 
     public void RecalculateStateRoot()
     {
-        _tree.UpdateRootHash();
+        Tree.UpdateRootHash();
         _needsStateRootUpdate = false;
     }
 
@@ -85,7 +92,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         get
         {
             if (_needsStateRootUpdate) ThrowStateRootNeedsToBeUpdated();
-            return _tree.RootHash;
+            return Tree.RootHash;
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowStateRootNeedsToBeUpdated() => throw new InvalidOperationException("State root needs to be updated");
@@ -131,11 +138,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         bool inserted = false;
+        bool journalCode = false;
 
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
         // or people copy and pasting popular contracts
-        if (!_blockCodeInsertFilter.Get(codeHash) && !(_codeDb?.ContainsCode(codeHash) == true))
+        if (!_blockCodeInsertFilter.Get(codeHash) && !CodeDb.ContainsCode(codeHash))
         {
             if (_codeBatch is null)
             {
@@ -143,11 +151,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
             }
 
+            // Only first-time additions are journaled; an entry staged by an already committed
+            // transaction must stay in the batch even if a later frame re-inserts and reverts.
+            journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
+
             if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                 && codeArray.Offset == 0
-                && codeArray.Count == code.Length)
+                && codeArray.Count == code.Length
+                && codeArray.Array is { } array)
             {
-                _codeBatchAlternate[codeHash] = codeArray.Array;
+                _codeBatchAlternate[codeHash] = array;
             }
             else
             {
@@ -165,10 +178,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (account.CodeHash.ValueHash256 != codeHash)
         {
             _needsStateRootUpdate = true;
-            if (_logger.IsDebug) Debug(address, codeHash, account);
+            if (_logger.IsTrace) TraceUpdate(address, codeHash, account);
             Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
             PushUpdate(address, changedAccount);
+            if (journalCode) _codeInsertJournal.Add((_changes.Count - 1, codeHash));
         }
         else if (spec.IsEip158Enabled && !isGenesis)
         {
@@ -182,8 +196,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         return inserted;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Debug(Address address, in ValueHash256 codeHash, Account account)
-            => _logger.Debug($"Update {address} C {account.CodeHash} -> {codeHash}");
+        void TraceUpdate(Address address, in ValueHash256 codeHash, Account account)
+            => _logger.Trace($"Update {address} C {account.CodeHash} -> {codeHash}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(Address address) => _logger.Trace($"Touch {address} (code hash)");
@@ -199,7 +213,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         Account GetThroughCacheCheckExists()
         {
-            Account result = GetThroughCache(address);
+            Account? result = GetThroughCache(address);
             if (result is null)
             {
                 ThrowNonExistingAccount();
@@ -326,7 +340,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         if (_codeBatch is null || !_codeBatchAlternate.TryGetValue(codeHash, out byte[]? code))
         {
-            code = _codeDb.GetCode(codeHash);
+            code = CodeDb.GetCode(codeHash);
         }
         return code ?? ThrowMissingCode(in codeHash);
 
@@ -381,6 +395,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
+        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -392,7 +407,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         for (int nextPosition = changes.Length - 1; nextPosition > snapshot; nextPosition--)
         {
             ref readonly Change change = ref changes[nextPosition];
-            ref int head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change!.Address);
+            ref int head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change.Address);
 
             if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(nextPosition, -1);
             if (head != nextPosition) ThrowUnexpectedPosition(nextPosition, head);
@@ -439,6 +454,33 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {expected}");
     }
 
+    /// <summary>
+    /// Drops code staged for CodeDb after the given snapshot, so that a reverted contract creation
+    /// leaves no runtime bytecode that committed state no longer references.
+    /// </summary>
+    /// <remarks>
+    /// An entry is anchored to the change-log position of the code-hash update referencing it, so
+    /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
+    /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
+    /// same code would be suppressed and lost.
+    /// </remarks>
+    private void RestoreCodeInserts(int snapshot)
+    {
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        int keep = entries.Length;
+        while (keep > 0)
+        {
+            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            if (entry.Position <= snapshot) break;
+
+            _codeBatchAlternate.Remove(entry.CodeHash);
+            _blockCodeInsertFilter.Delete(entry.CodeHash);
+            keep--;
+        }
+
+        CollectionsMarshal.SetCount(_codeInsertJournal, keep);
+    }
+
     public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         _needsStateRootUpdate = true;
@@ -461,7 +503,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
             Change lastChange = _changes[head];
             if (lastChange.ChangeType == ChangeType.Delete ||
-                (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
+                (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.RequiredAccount.IsEmpty))
             {
                 _needsStateRootUpdate = true;
                 if (_logger.IsTrace) Trace(address);
@@ -500,9 +542,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool commitRoots, bool isGenesis)
     {
+        // Committed code can no longer be reverted, and the change-log positions it was journaled
+        // against are about to be discarded.
+        _codeInsertJournal.Clear();
+
         Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
             ? Task.CompletedTask
-            : CommitCodeAsync(_codeDb);
+            : CommitCodeAsync(CodeDb);
 
         bool isTracing = _logger.IsTrace;
         int stepsBack = _changes.Count - 1;
@@ -510,7 +556,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             if (isTracing) TraceNoChanges();
 
-            codeFlushTask.GetAwaiter().GetResult();
+            AwaitCodeFlush(codeFlushTask);
             return;
         }
 
@@ -539,11 +585,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
 
-        codeFlushTask.GetAwaiter().GetResult();
+        AwaitCodeFlush(codeFlushTask);
+
+        // A single processor persists the batch inline, so its task is always the completed one and
+        // there is nothing to await; skipping the awaiter keeps the task machinery out of the guest.
+        static void AwaitCodeFlush(Task codeFlushTask)
+        {
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                Debug.Assert(codeFlushTask.IsCompletedSuccessfully, "A single processor persists the code batch inline.");
+                return;
+            }
+
+            codeFlushTask.GetAwaiter().GetResult();
+        }
 
         Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
         {
-            Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
+            Dictionary<Hash256AsKey, byte[]>? dict = Interlocked.Exchange(ref _codeBatch, null);
 
             if (dict is null)
                 return Task.CompletedTask;
@@ -572,14 +631,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 dict.Clear();
 
                 if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
-                    _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
+                    _codeBatchAlternate = dict.GetAlternateLookup<ValueHash256>();
             }
-#if ZK_EVM
-            PersistCodeBatch();
-            return Task.CompletedTask;
-#else
+            // A single processor gains nothing from the hop to the pool, and the guest folds it away.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                PersistCodeBatch();
+                return Task.CompletedTask;
+            }
+
             return Task.Run(PersistCodeBatch);
-#endif
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -605,7 +666,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         for (int i = changes.Length - 1; i >= 0; i--)
         {
             ref readonly Change change = ref changes[i];
-            if (!TStateTracing.IsActive && change!.ChangeType == ChangeType.JustCache)
+            if (!TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
             {
                 // Safe to skip without touching the head: JustCache is always the bottom of its chain.
                 Debug.Assert(change.PrevIdx == -1);
@@ -613,13 +674,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             }
 
             bool alreadyCommitted = TStateTracing.IsActive
-                ? _committedThisRound.Contains(change!.Address)
-                : !_committedThisRound.Add(change!.Address);
+                ? _committedThisRound.Contains(change.Address)
+                : !_committedThisRound.Add(change.Address);
             if (alreadyCommitted)
             {
                 if (TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
                 {
-                    trace!.UpdateTrace(change.Address, change.Account);
+                    RequireTrace(trace).UpdateTrace(change.Address, change.Account);
                 }
 
                 continue;
@@ -648,37 +709,40 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 case ChangeType.Touch:
                 case ChangeType.Update:
                     {
-                        if (removeEmptyAccounts && change.Account.IsEmpty)
+                        Account account = change.RequiredAccount;
+                        if (removeEmptyAccounts && account.IsEmpty)
                         {
                             if (isTracing) TraceRemoveEmpty(change);
                             SetState(change.Address, null);
-                            if (TStateTracing.IsActive) trace!.AddToTrace(change.Address, null);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, null);
                         }
                         else
                         {
                             if (isTracing) TraceUpdate(change);
-                            SetState(change.Address, change.Account);
-                            if (TStateTracing.IsActive) trace!.AddToTrace(change.Address, change.Account);
+                            SetState(change.Address, account);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, account);
                         }
 
                         break;
                     }
                 case ChangeType.New:
                     {
-                        if (!removeEmptyAccounts || !change.Account.IsEmpty)
+                        Account account = change.RequiredAccount;
+                        if (!removeEmptyAccounts || !account.IsEmpty)
                         {
                             if (isTracing) TraceCreate(change);
-                            SetState(change.Address, change.Account);
-                            if (TStateTracing.IsActive) trace!.AddToTrace(change.Address, change.Account);
+                            SetState(change.Address, account);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, account);
                         }
 
                         break;
                     }
                 case ChangeType.RecreateEmpty:
                     {
+                        Account account = change.RequiredAccount;
                         if (isTracing) TraceCreate(change);
-                        SetState(change.Address, change.Account);
-                        if (TStateTracing.IsActive) trace!.AddToTrace(change.Address, change.Account);
+                        SetState(change.Address, account);
+                        if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, account);
 
                         break;
                     }
@@ -698,7 +762,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                         if (!wasItCreatedNow)
                         {
                             SetState(change.Address, null);
-                            if (TStateTracing.IsActive) trace!.AddToTrace(change.Address, null);
+                            if (TStateTracing.IsActive) RequireTrace(trace).AddToTrace(change.Address, null);
                         }
 
                         break;
@@ -710,20 +774,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Dictionary<AddressAsKey, ChangeTrace> RequireTrace(Dictionary<AddressAsKey, ChangeTrace>? trace) =>
+        trace ?? throw new InvalidOperationException("State tracing is active without a trace accumulator.");
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceRemove(in Change change) => _logger.Trace($"Commit remove {change.Address}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceCreate(in Change change)
-        => _logger.Trace($"Commit create {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+        => _logger.Trace($"Commit create {change.Address} B = {change.RequiredAccount.Balance.ToHexString(skipLeadingZeros: true)} N = {change.RequiredAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceUpdate(in Change change)
-        => _logger.Trace($"Commit update {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.Account.CodeHash}");
+        => _logger.Trace($"Commit update {change.Address} B = {change.RequiredAccount.Balance.ToHexString(skipLeadingZeros: true)} N = {change.RequiredAccount.Nonce.ToHexString(skipLeadingZeros: true)} C = {change.RequiredAccount.CodeHash}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceRemoveEmpty(in Change change)
-        => _logger.Trace($"Commit remove empty {change.Address} B = {change.Account.Balance.ToHexString(skipLeadingZeros: true)} N = {change.Account.Nonce.ToHexString(skipLeadingZeros: true)}");
+        => _logger.Trace($"Commit remove empty {change.Address} B = {change.RequiredAccount.Balance.ToHexString(skipLeadingZeros: true)} N = {change.RequiredAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException("changeType", "Unknown change type.");
@@ -731,6 +799,53 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowUnexpectedCommitPosition(int expected, int actual)
         => throw new InvalidOperationException($"Expected checked value {actual} to be equal to {expected}");
+
+    /// <summary>Forgets the removals of the block just committed, so the next block in the scope reports only its own.</summary>
+    internal void ClearRemovedAccounts() => _removedWithStorage.Clear();
+
+    /// <summary>
+    /// Whether <paramref name="address"/> has an account at the end of the block, or <see langword="null"/> when the block
+    /// never loaded the account through this provider.
+    /// </summary>
+    internal bool? HasAccountAtBlockEnd(Address address) =>
+        _blockChanges.TryGetValue(address, out ChangeTrace change) ? change.After is not null : null;
+
+    /// <summary>
+    /// Copies the final value of every account the block touched, reads included, out of the block's change record.
+    /// </summary>
+    /// <remarks>
+    /// A copy rather than a handover: the record is the scope's account state and the next block keeps reading it.
+    /// </remarks>
+    /// <returns>The copied accounts; the caller owns the list.</returns>
+    internal ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> CopyAccountChanges()
+    {
+        ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> accounts = new(_blockChanges.Count);
+        foreach (KeyValuePair<AddressAsKey, ChangeTrace> change in _blockChanges)
+        {
+            accounts.Add(new KeyValuePair<AddressAsKey, Account?>(change.Key, change.Value.After));
+        }
+
+        return accounts;
+    }
+
+    /// <summary>
+    /// Hands over the accounts the block removed while they held storage, whether or not the block touched that
+    /// storage, leaving an empty list in their place.
+    /// </summary>
+    /// <returns>The removals; the caller owns the list and returns it with <see cref="ReturnRemovedAccounts"/>.</returns>
+    internal List<AddressAsKey> DetachRemovedAccountsWithStorage()
+    {
+        List<AddressAsKey> removed = _removedWithStorage;
+        _removedWithStorage = Interlocked.Exchange(ref _spareRemovedWithStorage, null) ?? [];
+        return removed;
+    }
+
+    /// <summary>Takes back a list from <see cref="DetachRemovedAccountsWithStorage"/>, to be reused by a later block.</summary>
+    internal void ReturnRemovedAccounts(List<AddressAsKey> removed)
+    {
+        removed.Clear();
+        Volatile.Write(ref _spareRemovedWithStorage, removed);
+    }
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
@@ -772,7 +887,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (!exists)
         {
             _metrics.IncrementStateTreeReads();
-            Account? account = _tree.Get(address);
+            Account? account = Tree.Get(address);
 
             accountChanges = new(account, account);
         }
@@ -792,6 +907,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
+        // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
+        if (account is null && accountChanges.After?.HasStorage == true) _removedWithStorage.Add(address);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
@@ -816,7 +933,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     internal Account? GetThroughCache(Address address)
     {
-#if ZK_EVM
         if (IsFrontCacheHit(address))
         {
             return _cachedAccount;
@@ -827,12 +943,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _cachedEpoch = _epoch;
             return _cachedAccount = _changes[head].Account;
         }
-        return GetAndAddToCache(address);
-#else
-        return _intraTxCache.TryGetValue(address, out int head)
-            ? _changes[head].Account
-            : GetAndAddToCache(address);
-#endif
+        Account? account = GetAndAddToCache(address);
+        _cachedAddress = address;
+        _cachedEpoch = _epoch;
+        return _cachedAccount = account;
     }
 
     private void PushJustCache(Address address, Account account)
@@ -862,14 +976,20 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return;
         }
 
+        // Only a change rewrites the account's leaf at commit, so only a change is worth warming its trie path
+        // for, and only the transaction's first change of an account needs to say so. No-op for backends
+        // without trie warm-up.
+        if (changeType != ChangeType.JustCache && (!exists || _changes[head].ChangeType == ChangeType.JustCache))
+        {
+            _tree?.HintWarmAccount(new ValueAddress(address.Bytes));
+        }
+
         int prevIdx = exists ? head : -1;
         head = _changes.Count;
         _changes.Add(new Change(address, touchedAccount, changeType, prevIdx));
-#if ZK_EVM
         // Keep the front cache coherent: a push almost always follows a read of the same account.
         if (IsFrontCacheHit(address))
             _cachedAccount = touchedAccount;
-#endif
     }
 
     public ArrayPoolList<AddressAsKey>? ChangedAddresses()
@@ -897,7 +1017,15 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
+            _removedWithStorage.Clear();
             _codeBatch?.Clear();
+            _codeInsertJournal.Clear();
+        }
+        else
+        {
+            // The batch survives this reset, but the changes being discarded are exactly the ones the
+            // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
+            if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
@@ -947,6 +1075,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         public readonly int PrevIdx = prevIdx;
 
         public bool IsNull => ChangeType == ChangeType.Null;
+        public Account RequiredAccount => Account ?? throw new InvalidOperationException($"{ChangeType} changes require an account value.");
     }
 
     internal struct ChangeTrace(Account? before, Account? after)
@@ -969,7 +1098,7 @@ internal static class Extensions
     public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
+    public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
     {
         foreach (Address nullRead in nullAccountReads)
         {
@@ -981,8 +1110,10 @@ internal static class Extensions
 
     private static void ReportChanges(Dictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
     {
-        foreach ((Address address, ChangeTrace change) in trace)
+        foreach (KeyValuePair<AddressAsKey, ChangeTrace> entry in trace)
         {
+            Address address = entry.Key;
+            ChangeTrace change = entry.Value;
             bool someChangeReported = false;
 
             Account? before = change.Before;

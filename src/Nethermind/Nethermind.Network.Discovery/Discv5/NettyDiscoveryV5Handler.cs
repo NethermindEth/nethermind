@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
@@ -60,11 +61,20 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
             await Channel.WriteAndFlushAsync(packet).WaitAsync(token);
             Interlocked.Add(ref Metrics.DiscoveryBytesSent, data.Length);
         }
+        catch (SocketException exception) when (exception.SocketErrorCode == SocketError.AddressNotAvailable)
+        {
+            if (_logger.IsTrace) TraceAddressNotAvailable(destination, exception);
+            throw;
+        }
         catch (SocketException exception)
         {
             _logger.DebugError("Error sending data", exception);
             throw;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceAddressNotAvailable(IPEndPoint failedDestination, SocketException exception) =>
+            _logger.TraceError($"Failed to send discv5 UDP packet to {failedDestination}", exception);
     }
 
     internal async IAsyncEnumerable<PooledUdpReceiveResult> ReadMessagesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)

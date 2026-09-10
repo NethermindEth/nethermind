@@ -35,7 +35,7 @@ public class ChainSpecFileLoader
 
         string resourceName = FileNameToResource(fileName);
         Assembly assembly = typeof(IConfig).Assembly;
-        using Stream stream = assembly.GetManifestResourceStream(resourceName);
+        using Stream? stream = assembly.GetManifestResourceStream(resourceName);
         if (stream is not null)
         {
             if (_logger.IsInfo) _logger.Info("Loading ChainSpec from embedded resources");
@@ -86,8 +86,9 @@ public class ChainSpecFileLoader
             try
             {
                 missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                string[] jsonFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
-                string[] zstdFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.zst");
+                string directoryName = Path.GetDirectoryName(filePath) ?? ".";
+                string[] jsonFiles = Directory.GetFiles(directoryName, "*.json");
+                string[] zstdFiles = Directory.GetFiles(directoryName, "*.zst");
 
                 foreach (string configFile in jsonFiles)
                 {

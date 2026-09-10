@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Json;
 /// span via <see cref="ByteArrayConverter.TryConvertToExactLength"/> and is wrapped into a single
 /// <see cref="Hash256"/> rather than allocating a fresh <c>byte[32]</c> per element.
 /// </remarks>
-public sealed class Hash256ArrayConverter : JsonConverter<Hash256?[]>
+public sealed class Hash256ArrayConverter : JsonConverter<Hash256?[]?>
 {
     private const int InitialEwma = 32;
 
@@ -76,7 +76,7 @@ public sealed class Hash256ArrayConverter : JsonConverter<Hash256?[]>
     }
 
     /// <inheritdoc/>
-    public override void Write(Utf8JsonWriter writer, Hash256?[] value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, Hash256?[]? value, JsonSerializerOptions options)
     {
         if (value is null) { writer.WriteNullValue(); return; }
 

@@ -25,7 +25,7 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 10);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, CreateIpResolver(), processExitSource, 10);
         TaskCompletionSource nodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => nodeAdded.TrySetResult());
 
@@ -44,7 +44,7 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 10);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, CreateIpResolver(), processExitSource, 10);
         TaskCompletionSource expectedNodesAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int addedNodes = 0;
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ =>
@@ -74,7 +74,7 @@ public class NodeSourceToDiscV4FeederTests
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
         source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 0);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, CreateIpResolver(), processExitSource, 0);
 
         await feeder.Run().WaitAsync(token);
 
@@ -89,7 +89,7 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 1);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, CreateIpResolver(), processExitSource, 1);
         TaskCompletionSource validNodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => validNodeAdded.TrySetResult());
         Task feederTask = feeder.Run();
@@ -105,12 +105,59 @@ public class NodeSourceToDiscV4FeederTests
         discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Is<Node>(node => ReferenceEquals(node, tcpOnlyNode)));
     }
 
-    private static NodeRecord CreateTcpOnlyRecord()
+    [Test]
+    [CancelAfter(1000)]
+    public async Task Test_ShouldForwardSignedEnrWhoseReachableDiscoveryEndpointNeedsFamilySelection(CancellationToken token)
     {
-        NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
-        nodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
-        nodeRecord.SetEntry(new TcpEntry(30303));
-        return nodeRecord;
+        TestNodeSource source = new();
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        NodeSourceToDiscV4Feeder feeder = new(
+            source,
+            discoveryApp,
+            CreateIpResolver(IPAddress.Parse("2001:db8::5")),
+            processExitSource,
+            1);
+        NodeRecord record = CreateAsymmetricDualStackRecord();
+        Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+        Assert.That(node!.HasDiscoveryEndpoint, Is.False);
+
+        Task feederTask = feeder.Run();
+        source.AddNode(node);
+        await feederTask.WaitAsync(token);
+
+        discoveryApp.Received(1).AddNodeToDiscovery(Arg.Is<Node>(added =>
+            added.Id.Equals(node.Id) &&
+            added.Host == "2001:db8::1" &&
+            added.Port == 30303 &&
+            added.DiscoveryPort == 30304));
     }
+
+    private static IIPResolver CreateIpResolver(IPAddress? localIp = null)
+    {
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(localIp ?? IPAddress.Any, IPAddress.Loopback)));
+        return ipResolver;
+    }
+
+    private static NodeRecord CreateTcpOnlyRecord() =>
+        TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("192.0.2.1"),
+            tcpPort: 30303,
+            udpPort: null);
+
+    private static NodeRecord CreateAsymmetricDualStackRecord() =>
+        TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("192.0.2.1"),
+            tcpPort: 30303,
+            udpPort: null,
+            configureExtras: record =>
+            {
+                record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                record.SetEntry(new Udp6Entry(30304));
+            });
 }

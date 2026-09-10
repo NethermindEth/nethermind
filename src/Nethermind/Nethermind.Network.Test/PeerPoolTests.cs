@@ -34,6 +34,8 @@ public class PeerPoolTests
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
         TestNodeSource nodeSource = new();
+        TestLogger logger = new();
+        FirstTwoDelaysImmediateTimeProvider timeProvider = new();
         PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -43,8 +45,9 @@ public class PeerPoolTests
                 MaxActivePeers = 5,
                 MaxCandidatePeerCount = 10
             },
-            LimboLogs.Instance,
-            trustedNodesManager);
+            new OneLoggerLogManager(new ILogger(logger)),
+            trustedNodesManager,
+            timeProvider);
 
         Random rand = new(0);
         PrivateKeyGenerator keyGen = new(new TestRandom((m) => rand.Next(m), (s) =>
@@ -71,9 +74,16 @@ public class PeerPoolTests
             nodeSource.AddNode(node);
         }
 
-        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
-
-        await pool.StopAsync();
+        try
+        {
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
+            await timeProvider.SecondDelayRequested.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(logger.LogList, Has.Exactly(1).EqualTo("Peer cleanup threshold reached. Throttling discovery."));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
     }
 
     [Test]
@@ -352,6 +362,43 @@ public class PeerPoolTests
         "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOo" +
         "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
         "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
+
+    private sealed class FirstTwoDelaysImmediateTimeProvider : TimeProvider
+    {
+        private readonly TaskCompletionSource _secondDelayRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _delayCount;
+
+        public Task SecondDelayRequested => _secondDelayRequested.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            int delayCount = Interlocked.Increment(ref _delayCount);
+            if (delayCount == 2) _secondDelayRequested.TrySetResult();
+            return delayCount <= 2
+                ? new ImmediateTimer(callback, state, dueTime, period)
+                : TimeProvider.System.CreateTimer(callback, state, dueTime, period);
+        }
+
+        private sealed class ImmediateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private readonly ITimer _timer =
+                TimeProvider.System.CreateTimer(callback, state, GetDueTime(dueTime), period);
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) =>
+                _timer.Change(GetDueTime(dueTime), period);
+
+            public void Dispose() => _timer.Dispose();
+
+            public ValueTask DisposeAsync() => _timer.DisposeAsync();
+
+            private static TimeSpan GetDueTime(TimeSpan dueTime) =>
+                dueTime == Timeout.InfiniteTimeSpan ? dueTime : TimeSpan.Zero;
+        }
+    }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,

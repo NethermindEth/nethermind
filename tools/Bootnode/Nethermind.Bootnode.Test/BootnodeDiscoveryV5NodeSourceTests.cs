@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -25,6 +26,7 @@ public class BootnodeDiscoveryV5NodeSourceTests
         using PrivateKey privateKey = generator.Generate();
         using PrivateKey currentPrivateKey = generator.Generate();
         (Node discoveryNode, NodeRecord nodeRecord) = await CreateDiscoveryNode(privateKey, "127.0.0.1", 30303);
+        discoveryNode.SetVerifiedEnr(nodeRecord);
         Node currentNode = new(currentPrivateKey.PublicKey, "127.0.0.2", 30303);
         BootnodeDiscoveryV5NodeSource nodeSource = new(
             new StaticKademlia([discoveryNode]),
@@ -48,6 +50,46 @@ public class BootnodeDiscoveryV5NodeSourceTests
             Assert.That(emitted.Port, Is.Zero);
             Assert.That(emitted.DiscoveryPort, Is.EqualTo(30303));
             Assert.That(emitted.Enr, Is.EqualTo(nodeRecord));
+            Assert.That(emitted.IsVerifiedEnr(nodeRecord), Is.True);
+            Assert.That(emitted.HighestObservedEnrSequence, Is.EqualTo(nodeRecord.EnrSequence));
+        }
+    }
+
+    [Test]
+    public async Task Dual_stack_enr_preserves_verified_discovery_address_family()
+    {
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        using PrivateKey currentPrivateKey = generator.Generate();
+        IPAddress ip6 = IPAddress.Parse("2001:db8::1");
+        (Node discoveryNode, NodeRecord nodeRecord) = await CreateDiscoveryNode(
+            privateKey,
+            ip6.ToString(),
+            30303,
+            ip6);
+        discoveryNode.SetVerifiedEnr(nodeRecord);
+        Node currentNode = new(currentPrivateKey.PublicKey, "127.0.0.2", 30303);
+        BootnodeDiscoveryV5NodeSource nodeSource = new(
+            new StaticKademlia([discoveryNode]),
+            EmptyDiscovery.Instance,
+            new DiscoveryConfig(),
+            new KademliaConfig<Node> { CurrentNodeId = currentNode },
+            LimboLogs.Instance);
+
+        Node? emitted = null;
+        await foreach (Node node in nodeSource.DiscoverNodes(CancellationToken.None))
+        {
+            emitted = node;
+            break;
+        }
+
+        Assert.That(emitted, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(emitted!.Host, Is.EqualTo(ip6.ToString()));
+            Assert.That(emitted.DiscoveryPort, Is.EqualTo(30303));
+            Assert.That(emitted.IsVerifiedEnr(nodeRecord), Is.True);
+            Assert.That(emitted.HighestObservedEnrSequence, Is.EqualTo(nodeRecord.EnrSequence));
         }
     }
 
@@ -91,7 +133,8 @@ public class BootnodeDiscoveryV5NodeSourceTests
     private static async Task<(Node Node, NodeRecord NodeRecord)> CreateDiscoveryNode(
         PrivateKey privateKey,
         string host,
-        int discoveryPort)
+        int discoveryPort,
+        IPAddress? externalIpV6 = null)
     {
         string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dataDir);
@@ -105,7 +148,10 @@ public class BootnodeDiscoveryV5NodeSourceTests
             protectedPrivateKey,
             new EthereumEcdsa(1),
             networkConfig,
-            new IIPResolver.NethermindIp(System.Net.IPAddress.Loopback, System.Net.IPAddress.Loopback),
+            externalIpV6 is null
+                ? new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)
+                : new IIPResolver.NethermindIp(IPAddress.IPv6Any, IPAddress.Loopback, externalIpV4: null, externalIpV6),
+            LimboLogs.Instance,
             dataDir);
         NodeRecord nodeRecord = await provider.GetCurrentAsync();
         Node discoveryNode = new(privateKey.PublicKey, host, discoveryPort)

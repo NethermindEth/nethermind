@@ -16,13 +16,13 @@ public class OptimismCompactReceiptStorageDecoder :
 {
     private static readonly CompactLogEntryDecoder LogEntryDecoder = CompactLogEntryDecoder.Instance;
 
-    protected override OptimismTxReceipt DecodeInternal(ref RlpReader decoderContext,
+    protected override OptimismTxReceipt? DecodeInternal(ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-            return null!;
+            return null;
         }
 
         OptimismTxReceipt txReceipt = new();
@@ -48,7 +48,13 @@ public class OptimismCompactReceiptStorageDecoder :
         using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / LengthOfAddressRlp);
         while (decoderContext.Position < logEntriesCheck)
         {
-            logEntries.Add(LogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes)!);
+            LogEntry? logEntry = LogEntryDecoder.Decode(
+                ref decoderContext,
+                RlpBehaviors.AllowExtraBytes);
+            if (logEntry is not null)
+            {
+                logEntries.Add(logEntry);
+            }
         }
 
         txReceipt.Logs = [.. logEntries];
@@ -163,7 +169,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
         writer.StartSequence(logsLength);
 
-        LogEntry[] logs = item.Logs ?? [];
+        LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {
             LogEntryDecoder.Encode(ref writer, logs[i]);
@@ -220,7 +226,7 @@ public class OptimismCompactReceiptStorageDecoder :
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        LogEntry[] logs = item.Logs ?? [];
+        LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {
             logsLength += LogEntryDecoder.GetLength(logs[i]);
@@ -229,7 +235,10 @@ public class OptimismCompactReceiptStorageDecoder :
         return logsLength;
     }
 
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    private static LogEntry[] GetLogs(TxReceipt item)
+        => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
+    public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         (int Total, _) = GetContentLength(item, rlpBehaviors);
         return LengthOfSequence(Total);

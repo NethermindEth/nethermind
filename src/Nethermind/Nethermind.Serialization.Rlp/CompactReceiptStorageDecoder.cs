@@ -21,16 +21,13 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            position = RlpHelpers.ReadSequenceLength(rlp, position, out int receiptLength);
+            int receiptEnd = position + receiptLength;
 
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -40,17 +37,24 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            txReceipt.Sender = decoderContext.DecodeAddressOrNull();
-            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
+            (position, txReceipt.Sender) = RlpHelpers.DecodeAddressOrNull(rlp, position);
+            (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
 
-            int sequenceLength = decoderContext.ReadSequenceLength();
-            int lastCheck = sequenceLength + decoderContext.Position;
+            int sequenceStart = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            int lastCheck = sequenceStart + sequenceLength;
+            decoderContext.Position = sequenceStart;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                LogEntry? logEntry = CompactLogEntryDecoder.Instance.Decode(
+                    ref decoderContext,
+                    RlpBehaviors.AllowExtraBytes);
+                if (logEntry is not null)
+                {
+                    logEntries.Add(logEntry);
+                }
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -58,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (!allowExtraBytes)
             {
-                decoderContext.Check(lastCheck);
+                RlpHelpers.Check(decoderContext.Position, lastCheck);
             }
 
             // Handle any remaining extra bytes
@@ -152,7 +156,7 @@ namespace Nethermind.Serialization.Rlp
 
             writer.StartSequence(logsLength);
 
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = GetLogs(item);
             for (int i = 0; i < logs.Length; i++)
             {
                 CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
@@ -189,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            LogEntry[] logs = item.Logs ?? [];
+            LogEntry[] logs = GetLogs(item);
             for (int i = 0; i < logs.Length; i++)
             {
                 logsLength += CompactLogEntryDecoder.Instance.GetLength(logs[i]);
@@ -198,7 +202,10 @@ namespace Nethermind.Serialization.Rlp
             return logsLength;
         }
 
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             return Rlp.LengthOfSequence(Total);

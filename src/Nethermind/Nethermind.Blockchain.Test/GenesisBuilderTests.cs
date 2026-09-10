@@ -5,6 +5,7 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -21,6 +22,32 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class GenesisBuilderTests
 {
+    [Test]
+    public void Missing_genesis_is_rejected()
+    {
+        (GenesisBuilder builder, _) = BuildGenesisBuilder(new ChainSpec());
+
+        Assert.That(() => builder.Build(), Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Can_build_again_after_allocations_are_released()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Genesis = Build.A.Block.Genesis.TestObject,
+            GenesisStateUnavailable = true,
+            Allocations = [],
+        };
+        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
+
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        Block first = builder.Build();
+        Block second = builder.Build();
+
+        Assert.That(second.Hash, Is.EqualTo(first.Hash));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_load_genesis_with_empty_accounts_and_storage() =>
         AssertBlockHash("0x61b2253366eab37849d21ac066b96c9de133b8c58a9a38652deae1dd7ec22e7b", "Specs/empty_accounts_and_storages.json");
