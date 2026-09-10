@@ -23,7 +23,6 @@
     <Project Path="../../src/Nethermind/Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Grpc/Nethermind.Grpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Hive/Nethermind.Hive.csproj" />

@@ -20,7 +20,6 @@
     <Project Path="../../src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Grpc/Nethermind.Grpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />

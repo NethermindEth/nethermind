@@ -22,7 +22,6 @@
   <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
-  <Project Path="../../src/Nethermind/Nethermind.Grpc/Nethermind.Grpc.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
