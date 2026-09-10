@@ -677,7 +677,7 @@ public class Eip8297CanonicalTreeTests
         constructorInput.AsSpan().Clear();
         source.AsSpan().Clear();
         PbtStorageNodePath decoded = PbtStorageNodePath.Decode(constructed.ToEncodedArray());
-        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(constructed);
+        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(constructed);
         byte[] copiedPath = constructed.ToPathArray();
 
         using (Assert.EnterMultipleScope())
@@ -2126,8 +2126,8 @@ public class Eip8297CanonicalTreeTests
 
     private sealed class FailingPublishStore(IPbtStore store, int failedDepth) : IPbtStore
     {
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => store.GetNodeGroup(groupKey);
-        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => store.GetNodeGroup(groupKey);
+        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             if (groupKey.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
             store.SetNodeGroup(groupKey, payload);
@@ -2194,10 +2194,10 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 root = ApplyTracked(store, default, changes, false, provider);
         IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
         Assert.That(payloads, Has.Count.EqualTo(1));
-        IPbtNodePath groupKey = new PbtStorageNodePath([], 0);
-        PbtNodeGroupReader reader = new(groupKey, payloads[0].Payload.Span);
+        PbtStorageNodePath groupKey = new([], 0);
+        PbtNodeGroupReader<PbtStorageNodePath> reader = new(groupKey, payloads[0].Payload.Span);
         List<PbtNodeRecord> records = [];
-        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
+        PbtNodeGroupReader<PbtStorageNodePath>.Enumerator nodes = reader.EnumerateNodes();
         while (nodes.MoveNext())
             records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[payloads[0].Payload.Length];
@@ -2229,10 +2229,10 @@ public class Eip8297CanonicalTreeTests
         using PbtNodeGroupStore store = new();
         byte[] left = Bytes.FromHexString(leftHex), right = Bytes.FromHexString(rightHex), sibling = Bytes.FromHexString(siblingHex);
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch((left, Value(1)), (right, Value(2)), (sibling, Value(3))));
-        IPbtNodePath groupKey = new PbtStorageNodePath([], 0);
+        PbtStorageNodePath groupKey = new([], 0);
         using (RefCountingMemory? original = store.GetNodeGroup(groupKey))
         {
-            PbtNodeGroupReader reader = new(groupKey, original!.GetSpan());
+            PbtNodeGroupReader<PbtStorageNodePath> reader = new(groupKey, original!.GetSpan());
             PbtNodeReader branch = new(reader[18]);
             Assert.That(branch.PrefixBitCount, Is.EqualTo(prefixBits - 4));
         }
@@ -2241,7 +2241,7 @@ public class Eip8297CanonicalTreeTests
         oracle.Insert(left, Value(1));
         oracle.Insert(right, Value(2));
         using RefCountingMemory? updated = store.GetNodeGroup(groupKey);
-        PbtNodeGroupReader updatedReader = new(groupKey, updated!.GetSpan());
+        PbtNodeGroupReader<PbtStorageNodePath> updatedReader = new(groupKey, updated!.GetSpan());
         PbtNodeReader promoted = new(updatedReader[30]);
         using (Assert.EnterMultipleScope())
         {
@@ -2257,7 +2257,7 @@ public class Eip8297CanonicalTreeTests
     private static void AssertOnlyPublishedRentalsRemain(PbtNodeGroupStore store, TrackingMemoryProvider provider, bool allPublishedAreTracked = true)
     {
         HashSet<RefCountingMemory> published = [];
-        foreach (IPbtNodePath groupKey in store.EnumerateNodeGroupKeys())
+        foreach (PbtStorageNodePath groupKey in store.EnumerateNodeGroupKeys())
         {
             using RefCountingMemory? payload = store.GetNodeGroup(groupKey);
             published.Add(payload!);
@@ -2388,19 +2388,20 @@ public class Eip8297CanonicalTreeTests
         internal int UnreleasedMemoryCount => TrackingMemoryProvider.CountUnreleased(MemoryProvider.Rented);
         internal int Reads { get; private set; }
         internal int Applies { get; private set; }
-        internal Dictionary<IPbtNodePath, int> GroupReads { get; } = [];
-        internal Func<IPbtNodePath, byte[]?>? OverrideNode { get; set; }
-        internal Func<IPbtNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
+        internal Dictionary<PbtStorageNodePath, int> GroupReads { get; } = [];
+        internal Func<PbtStorageNodePath, byte[]?>? OverrideNode { get; set; }
+        internal Func<PbtStorageNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
         internal bool ThrowOnApply { get; set; }
-        internal Action<IPbtNodePath>? OnApply { get; set; }
+        internal Action<PbtStorageNodePath>? OnApply { get; set; }
 
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             Reads++;
-            GroupReads[groupKey] = GroupReads.GetValueOrDefault(groupKey) + 1;
+            PbtStorageNodePath storageGroupKey = groupKey.ToPath<PbtStorageNodePath>();
+            GroupReads[storageGroupKey] = GroupReads.GetValueOrDefault(storageGroupKey) + 1;
             if (OverrideGroup is { } overrideGroup)
             {
-                RefCountingMemory? overriddenPayload = overrideGroup(groupKey);
+                RefCountingMemory? overriddenPayload = overrideGroup(storageGroupKey);
                 return overriddenPayload;
             }
             if (OverrideNode is { } overrideNode)
@@ -2409,7 +2410,7 @@ public class Eip8297CanonicalTreeTests
                 for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
                 {
                     if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                    IPbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+                    PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position).ToPath<PbtStorageNodePath>();
                     byte[]? encoding = overrideNode(path);
                     if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
                 }
@@ -2432,10 +2433,10 @@ public class Eip8297CanonicalTreeTests
             return innerPayload;
         }
 
-        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
+        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             Applies++;
-            OnApply?.Invoke(groupKey);
+            OnApply?.Invoke(groupKey.ToPath<PbtStorageNodePath>());
             if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
             Inner.SetNodeGroup(groupKey, payload);
         }

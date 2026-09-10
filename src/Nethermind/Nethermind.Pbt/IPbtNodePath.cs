@@ -6,8 +6,16 @@ using System.Buffers.Binary;
 namespace Nethermind.Pbt;
 
 /// <summary>A canonical node's structural identity, independent of its in-memory capacity.</summary>
-public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePath>
+public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> where TSelf : struct, IPbtNodePath<TSelf>
 {
+    /// <summary>Gets the maximum supported path depth.</summary>
+    static abstract int MaxBitDepth { get; }
+    /// <summary>Creates a path, validating its length and unused bits.</summary>
+    static abstract TSelf Create(ReadOnlySpan<byte> path, int bitDepth);
+    /// <summary>Compares canonical identities across path capacities.</summary>
+    int CompareTo<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther>;
+    /// <summary>Tests canonical identity across path capacities.</summary>
+    bool Equals<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther>;
     /// <summary>Gets the number of consumed key bits.</summary>
     int BitDepth { get; }
     /// <summary>Reads a logical path bit in MSB-first order.</summary>
@@ -22,22 +30,22 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
     /// <summary>Tests the first <paramref name="bitCount"/> bits against a key; insufficient path or key length is a mismatch.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The bit count is negative.</exception>
     bool MatchesPrefix(ReadOnlySpan<byte> key, int bitCount);
-    /// <summary>Returns a path with four bits appended, selecting the smallest supported capacity.</summary>
+    /// <summary>Returns the first <paramref name="depth"/> bits, preserving the path type and capacity.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The depth is negative or exceeds the current path depth.</exception>
+    TSelf Prefix(int depth);
+    /// <summary>Returns a path with four bits appended, preserving the path type and capacity.</summary>
     /// <param name="nibble">A value from zero to fifteen, appended most significant bit first.</param>
-    /// <exception cref="ArgumentOutOfRangeException">The nibble is outside zero to fifteen, or the resulting path exceeds the maximum capacity.</exception>
-    IPbtNodePath AppendNib(int nibble);
-    /// <summary>Appends zero to four right-aligned bits, selecting the smallest supported capacity.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The nibble is outside zero to fifteen, or the resulting path exceeds its capacity.</exception>
+    TSelf AppendNib(int nibble);
+    /// <summary>Appends zero to four right-aligned bits, preserving the path type and capacity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The count, bits, or resulting depth is outside its supported range.</exception>
-    IPbtNodePath AppendBits(int bits, int bitCount);
-    /// <summary>Appends zero to four right-aligned bits into the selected path capacity.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">The count, bits, or resulting depth is outside its supported range.</exception>
-    TPath AppendBits<TPath>(int bits, int bitCount) where TPath : struct, IPbtNodePath<TPath>;
+    TSelf AppendBits(int bits, int bitCount);
     /// <summary>Converts this path to the selected capacity without changing its identity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The path exceeds the selected capacity.</exception>
     TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath>;
     /// <summary>Tests the first bits against another path; insufficient length is a mismatch.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The bit count is negative.</exception>
-    bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : IPbtNodePath;
+    bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther>;
     /// <summary>Gets the encoded length of the four-byte depth and canonical path bytes.</summary>
     int EncodedLength { get; }
     /// <summary>Writes the big-endian depth and canonical path bytes, leaving excess destination bytes unchanged.</summary>
@@ -71,16 +79,6 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
         catch (ArgumentException exception) { throw new InvalidDataException("Invalid PBT node path padding.", exception); }
     }
 
-    internal static IPbtNodePath Decode(ReadOnlySpan<byte> encoding)
-    {
-        if (encoding.Length < 4) throw new InvalidDataException("Truncated PBT node path.");
-        return BinaryPrimitives.ReadUInt32BigEndian(encoding) <= PbtNodePath.MaxBitDepth
-            ? Decode<PbtNodePath>(encoding) : Decode<PbtStorageNodePath>(encoding);
-    }
-
-    internal static IPbtNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => bitDepth <= PbtNodePath.MaxBitDepth
-        ? new PbtNodePath(path, bitDepth) : new PbtStorageNodePath(path, bitDepth);
-
     internal static TPath FromKey<TPath>(ReadOnlySpan<byte> key, int bitDepth) where TPath : struct, IPbtNodePath<TPath>
     {
         if (key.IsEmpty) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
@@ -92,11 +90,13 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
         return TPath.Create(path, bitDepth);
     }
 
-    internal static IPbtNodePath AppendBits(ReadOnlySpan<byte> source, int bitDepth, int bits, int bitCount)
+    internal static TSelf Prefix(TSelf path, int depth)
     {
-        Span<byte> path = stackalloc byte[PbtStorageFullKey.MaxLength];
-        int depth = AppendBits(source, bitDepth, bits, bitCount, path);
-        return Create(path[..((depth + 7) >> 3)], depth);
+        if ((uint)depth > (uint)path.BitDepth) throw new ArgumentOutOfRangeException(nameof(depth));
+        Span<byte> prefix = stackalloc byte[(depth + 7) >> 3];
+        prefix.Clear();
+        path.CopyBitsTo(0, prefix, 0, depth);
+        return TSelf.Create(prefix, depth);
     }
 
     internal static TPath AppendBits<TPath>(ReadOnlySpan<byte> source, int bitDepth, int bits, int bitCount)
@@ -123,15 +123,8 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
         return depth;
     }
 
-    internal static TPath Append<TPath>(TPath source, ReadOnlySpan<byte> prefix, int bitCount, int direction) where TPath : struct, IPbtNodePath<TPath> =>
-        Append<TPath, TPath>(source, prefix, bitCount, direction);
-
-    internal static TPath Append<TPath>(IPbtNodePath source, ReadOnlySpan<byte> prefix, int bitCount, int direction) where TPath : struct, IPbtNodePath<TPath> =>
-        Append<TPath, IPbtNodePath>(source, prefix, bitCount, direction);
-
-    private static TPath Append<TPath, TSource>(TSource source, ReadOnlySpan<byte> prefix, int bitCount, int direction)
+    internal static TPath Append<TPath>(TPath source, ReadOnlySpan<byte> prefix, int bitCount, int direction)
         where TPath : struct, IPbtNodePath<TPath>
-        where TSource : IPbtNodePath
     {
         if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
         int depth = checked(source.BitDepth + bitCount + 1);
@@ -148,11 +141,10 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
         return TPath.Create(path, depth);
     }
 
-    internal static int Compare<TPath, TOther>(TPath path, TOther? other)
-        where TPath : IPbtNodePath
-        where TOther : IPbtNodePath
+    internal static int Compare<TPath, TOther>(TPath path, TOther other)
+        where TPath : struct, IPbtNodePath<TPath>
+        where TOther : struct, IPbtNodePath<TOther>
     {
-        if (other is null) return 1;
         int depthComparison = path.BitDepth.CompareTo(other.BitDepth);
         if (depthComparison != 0) return depthComparison;
         for (int index = 0; index < (path.BitDepth + 7) >> 3; index++)
@@ -163,14 +155,14 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
         return 0;
     }
 
-    internal static bool Equal<TPath, TOther>(TPath path, TOther? other)
-        where TPath : IPbtNodePath
-        where TOther : IPbtNodePath =>
-        other is not null && path.BitDepth == other.BitDepth && MatchesPrefix(path, other, path.BitDepth);
+    internal static bool Equal<TPath, TOther>(TPath path, TOther other)
+        where TPath : struct, IPbtNodePath<TPath>
+        where TOther : struct, IPbtNodePath<TOther> =>
+        path.BitDepth == other.BitDepth && MatchesPrefix(path, other, path.BitDepth);
 
     internal static bool MatchesPrefix<TPath, TOther>(TPath path, TOther other, int bitCount)
-        where TPath : IPbtNodePath
-        where TOther : IPbtNodePath
+        where TPath : struct, IPbtNodePath<TPath>
+        where TOther : struct, IPbtNodePath<TOther>
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
         if (path.BitDepth < bitCount || other.BitDepth < bitCount) return false;
@@ -215,13 +207,4 @@ public interface IPbtNodePath : IEquatable<IPbtNodePath>, IComparable<IPbtNodePa
         hash.AddBytes(path);
         return hash.ToHashCode();
     }
-}
-
-/// <summary>Constructs paths with a statically selected inline capacity.</summary>
-public interface IPbtNodePath<TSelf> : IPbtNodePath where TSelf : struct, IPbtNodePath<TSelf>
-{
-    /// <summary>Gets the maximum supported path depth.</summary>
-    static abstract int MaxBitDepth { get; }
-    /// <summary>Creates a path, validating its length and unused bits.</summary>
-    new static abstract TSelf Create(ReadOnlySpan<byte> path, int bitDepth);
 }

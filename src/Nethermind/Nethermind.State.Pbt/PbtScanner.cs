@@ -102,7 +102,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         if (columnName == PbtColumns.Metadata)
                             ScanGroup(new PbtNodePath([], 0), view.CurrentValue, shard.NodeGroups);
                         else if (IsNodeGroupColumn(columnName))
-                            ScanGroup(IPbtNodePath.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
+                            ScanGroup(PbtStorageNodePath.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
                         if (++pending == ProgressPublishInterval)
                         {
                             Interlocked.Add(ref scanned, pending);
@@ -146,13 +146,13 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     private static bool IsNodeGroupColumn(PbtColumns column) =>
         column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups;
 
-    private static void ScanGroup(IPbtNodePath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats)
+    private static void ScanGroup<TPath>(TPath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupReader reader = new(groupPath, value);
+        PbtNodeGroupReader<TPath> reader = new(groupPath, value);
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
         stats.GroupsByOccupancy[reader.Count]++;
-        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
+        PbtNodeGroupReader<TPath>.Enumerator nodes = reader.EnumerateNodes();
         while (nodes.MoveNext())
         {
             stats.NodeCount++;
@@ -166,7 +166,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     private static int[] CreatePositionDepths()
     {
         int[] depths = new int[PbtFourLevelGroupGeometry.PositionCount];
-        IPbtNodePath root = new PbtNodePath([], 0);
+        PbtNodePath root = new([], 0);
         for (int position = 0; position < depths.Length; position++)
             depths[position] = PbtFourLevelGroupGeometry.PathOf(root, position).BitDepth;
         return depths;

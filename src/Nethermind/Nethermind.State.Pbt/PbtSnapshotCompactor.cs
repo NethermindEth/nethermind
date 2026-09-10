@@ -49,7 +49,7 @@ public class PbtSnapshotCompactor(
                 foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) merged.Accounts[addressHash] = account;
                 foreach ((PbtStorageFullKey key, EvmWord value) in content.Storages) merged.Storages[key] = value;
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
-                foreach ((IPbtNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) merged.SetNodeGroup(groupKey, payload);
+                foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) merged.SetNodeGroup(groupKey, payload);
                 foreach ((ValueHash256 hash, ulong? count) in content.CodeReferences) merged.SetCodeReference(hash, count);
             }
 

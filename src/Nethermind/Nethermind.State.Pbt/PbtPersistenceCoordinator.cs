@@ -178,7 +178,7 @@ public class PbtPersistenceCoordinator(
         foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) batch.SetAccount(addressHash, account);
         foreach ((PbtStorageFullKey key, EvmWord value) in content.Storages) batch.SetSlot(key, value);
         foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
-        foreach ((IPbtNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) batch.SetNodeGroup(groupKey, payload);
+        foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((ValueHash256 codeHash, ulong? count) in content.CodeReferences) batch.SetCodeReference(codeHash, count);
         batch.Commit();
     }

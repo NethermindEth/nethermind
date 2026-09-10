@@ -242,7 +242,7 @@ public class PbtCachedReaderPersistenceTests
             payload.AcquireLease();
             return payload;
         });
-        ctx.Reader.EnumerateNodeGroupKeys().Returns(new IPbtNodePath[] { groupKey });
+        ctx.Reader.EnumerateNodeGroupKeys().Returns(new PbtStorageNodePath[] { groupKey.ToPath<PbtStorageNodePath>() });
         await using PbtCachedReaderPersistence persistence = ctx.Build();
         using IPbtPersistence.IReader reader = persistence.CreateReader();
         using RefCountingMemory lease = reader.GetNodeGroup(groupKey)!;
@@ -255,7 +255,7 @@ public class PbtCachedReaderPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(lease, Is.SameAs(payload));
-            Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey }));
+            Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
         }
         ctx.Batch.Received(1).SetNodeGroup(groupKey, payload);
         ctx.Batch.Received(1).SetNodeGroup(groupKey, null);

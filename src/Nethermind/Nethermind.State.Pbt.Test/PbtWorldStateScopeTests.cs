@@ -796,7 +796,7 @@ public class PbtWorldStateScopeTests
         ? warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence)
         : warmer.StorageWarmer!.WarmUpStorageTrie((UInt256)(uint)slot, warmer.SlotSequence);
 
-    private static byte[] ReadGroup(IPbtStore store, IPbtNodePath path)
+    private static byte[] ReadGroup<TPath>(IPbtStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         using RefCountingMemory? payload = store.GetNodeGroup(path);
         Assert.That(payload, Is.Not.Null);
@@ -827,8 +827,8 @@ public class PbtWorldStateScopeTests
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
         public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => [];
         public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => [];
-        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys() => _store.EnumerateNodeGroupKeys();
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys() => _store.EnumerateNodeGroupKeys();
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             BeforeRead?.Invoke();
             GroupReads++;

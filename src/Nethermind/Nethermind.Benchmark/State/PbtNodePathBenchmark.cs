@@ -43,9 +43,9 @@ public class PbtNodePathBenchmark
     }
 
     [Benchmark]
-    public IPbtNodePath LocateAndReconstruct()
+    public PbtStorageNodePath LocateAndReconstruct()
     {
-        PbtNodeGroupLocation location = PbtFourLevelGroupGeometry.Locate(_path);
+        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(_path);
         return PbtFourLevelGroupGeometry.Reconstruct(location.GroupKey, location.Position);
     }
 }

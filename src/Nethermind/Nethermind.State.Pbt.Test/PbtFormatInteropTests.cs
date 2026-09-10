@@ -203,7 +203,7 @@ public class PbtFormatInteropTests
         copied.Clear();
         path.CopyBitsTo(0, copied, 0, path.BitDepth);
         TPath converted = path.ToPath<TPath>();
-        TPath appended = path.AppendBits<TPath>(0, 0);
+        TPath appended = path.AppendBits(0, 0);
         if (path.GetBit(0) != 0 || path.GetByte(0) != 0 || !path.MatchesPrefix(bytes, path.BitDepth)
             || !converted.MatchesPrefix(appended, path.BitDepth))
             throw new InvalidOperationException("Path operations changed the zero key.");

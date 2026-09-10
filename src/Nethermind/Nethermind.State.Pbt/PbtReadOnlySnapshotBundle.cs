@@ -48,10 +48,9 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    internal RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         GuardDispose();
-        ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         ValueHash256 root = TreeRoot;

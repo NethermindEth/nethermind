@@ -39,7 +39,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         try
         {
             _metrics?.IncrementGroupParses();
-            PbtNodeGroupReader reader = new(GroupKey, _lease.GetSpan());
+            PbtNodeGroupReader<TPath> reader = new(GroupKey, _lease.GetSpan());
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
                 if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;

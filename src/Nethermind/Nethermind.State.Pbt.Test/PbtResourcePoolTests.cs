@@ -385,7 +385,7 @@ public class PbtResourcePoolTests
         BufferWriter writer = new(memoryProvider);
         try
         {
-            PbtNodeGroupCodec.Encode(ref writer, groupKey, [new PbtNodeRecord(groupKey, encoding)]);
+            PbtNodeGroupCodec.Encode(ref writer, groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), encoding)]);
             return writer.Detach()!;
         }
         finally

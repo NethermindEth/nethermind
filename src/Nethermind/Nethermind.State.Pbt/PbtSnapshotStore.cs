@@ -9,7 +9,7 @@ namespace Nethermind.State.Pbt;
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore
 {
-    public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => bundle.GetNodeGroup(groupKey);
+    public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => bundle.GetNodeGroup(groupKey);
 
-    public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload) => bundle.SetNodeGroup(groupKey, payload);
+    public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => bundle.SetNodeGroup(groupKey, payload);
 }

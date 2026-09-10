@@ -21,7 +21,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal readonly ConcurrentDictionary<PbtStorageFullKey, EvmWord> Storages = new();
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
-    internal readonly ConcurrentDictionary<IPbtNodePath, RefCountingMemory?> NodeGroups = new();
+    internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> NodeGroups = new();
     internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void ClearStorage(in ValueHash256 addressHash)
@@ -32,19 +32,19 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
-    internal void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
+    internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
+        if (payload is not null) _ = new PbtNodeGroupReader<TPath>(groupKey, payload.GetSpan());
+        PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
         lock (_treeLock)
         {
-            NodeGroups.TryGetValue(groupKey, out RefCountingMemory? previous);
+            NodeGroups.TryGetValue(storagePath, out RefCountingMemory? previous);
             payload?.AcquireLease();
             try
             {
-                NodeGroups[groupKey] = payload;
+                NodeGroups[storagePath] = payload;
             }
             catch
             {
@@ -56,14 +56,13 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
-    internal bool TryGetNodeGroup(IPbtNodePath groupKey, out RefCountingMemory? payload)
+    internal bool TryGetNodeGroup<TPath>(TPath groupKey, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         lock (_treeLock)
         {
-            bool found = NodeGroups.TryGetValue(groupKey, out payload);
+            bool found = NodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload);
             payload?.AcquireLease();
             return found;
         }
@@ -98,7 +97,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
         lock (_treeLock)
         {
-            foreach ((IPbtNodePath path, RefCountingMemory? payload) in NodeGroups)
+            foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)
                 nodeBytes += path.EncodedLength + (payload?.Memory.Length ?? 0);
         }
 

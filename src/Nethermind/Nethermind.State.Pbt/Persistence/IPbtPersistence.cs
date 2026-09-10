@@ -41,12 +41,11 @@ public interface IPbtPersistence
         /// </remarks>
         /// <param name="groupKey">The four-level-boundary key identifying the group.</param>
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="groupKey"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
-        RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey);
+        RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
 
-        /// <summary>Enumerates group keys in ascending <see cref="IPbtNodePath.CompareTo"/> order.</summary>
-        IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys();
+        /// <summary>Enumerates group keys in ascending <see cref="PbtStorageNodePath.CompareTo"/> order.</summary>
+        IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys();
 
         ulong GetCodeReference(in ValueHash256 codeHash);
     }
@@ -63,7 +62,7 @@ public interface IPbtPersistence
         /// its reference; an implementation retaining the payload must acquire an independent reference.
         /// Validates the boundary key and complete payload before staging the write.
         /// </remarks>
-        void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload);
+        void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>;
         void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
         void Commit();
     }

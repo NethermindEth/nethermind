@@ -113,14 +113,14 @@ internal sealed class PbtTrieWarmupSession(
     private void ExitOperation() => RefCountingLease.ReleaseOnce(ref _operations);
 
     // Only frozen, independently leased layers participate; live write buffers and growing snapshot lists never do.
-    RefCountingMemory? IPbtStore.GetNodeGroup(IPbtNodePath groupKey)
+    RefCountingMemory? IPbtStore.GetNodeGroup<TPath>(TPath groupKey) where TPath : struct
     {
         for (int index = initialSnapshots.Count - 1; index >= 0; index--)
             if (initialSnapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         return readOnlyBundle.GetNodeGroup(groupKey);
     }
 
-    void IPbtStore.SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload) => throw new NotSupportedException();
+    void IPbtStore.SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct => throw new NotSupportedException();
 
     public void Dispose()
     {

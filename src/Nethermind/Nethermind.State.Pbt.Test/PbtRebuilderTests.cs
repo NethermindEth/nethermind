@@ -119,10 +119,10 @@ public class PbtRebuilderTests
         }
 
         int physicalNodeCount = 0;
-        foreach (IPbtNodePath groupKey in reader.EnumerateNodeGroupKeys())
+        foreach (PbtStorageNodePath groupKey in reader.EnumerateNodeGroupKeys())
         {
             using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-            PbtNodeGroupReader group = new(groupKey, payload.GetSpan());
+            PbtNodeGroupReader<PbtStorageNodePath> group = new(groupKey, payload.GetSpan());
             physicalNodeCount += group.Count;
             if (groupKey.BitDepth != 0)
                 Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
@@ -359,10 +359,10 @@ public class PbtRebuilderTests
             source.WaitToReadAsync(cancellationToken);
     }
 
-    private static string[] CanonicalGroups(IEnumerable<IPbtNodePath> groupKeys, Func<IPbtNodePath, RefCountingMemory?> getNodeGroup)
+    private static string[] CanonicalGroups(IEnumerable<PbtStorageNodePath> groupKeys, Func<PbtStorageNodePath, RefCountingMemory?> getNodeGroup)
     {
         List<string> result = [];
-        foreach (IPbtNodePath groupKey in groupKeys)
+        foreach (PbtStorageNodePath groupKey in groupKeys)
         {
             using RefCountingMemory? payload = getNodeGroup(groupKey);
             result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(payload!.GetSpan())}");

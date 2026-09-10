@@ -507,8 +507,8 @@ public class ImportPbtFromPreimageFlatTests
             Array.Fill(pathBytes, byte.MaxValue);
             if (pathBytes.Length != 0) pathBytes[0] = prefix;
             if (depth % 8 != 0) pathBytes[^1] &= 0xF0;
-            IPbtNodePath group = IPbtNodePath.Create(pathBytes, depth);
-            IPbtNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
+            PbtStorageNodePath group = PbtStorageNodePath.Create(pathBytes, depth);
+            PbtStorageNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
             byte[] keyBytes = new byte[PbtStorageFullKey.MaxLength];
             node.CopyBitsTo(0, keyBytes, 0, node.BitDepth);
             byte[] encoding = depth == 0

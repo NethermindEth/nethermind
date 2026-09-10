@@ -42,72 +42,30 @@ public static class PbtFourLevelGroupGeometry
     }
 
     /// <summary>Returns the group key and position for <paramref name="path"/>.</summary>
-    public static PbtNodeGroupLocation Locate(IPbtNodePath path)
+    public static PbtNodeGroupLocation<TPath> Locate<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        ArgumentNullException.ThrowIfNull(path);
-
         int groupDepth = GroupDepthOf(path.BitDepth);
-        IPbtNodePath groupKey = Prefix(path, groupDepth);
+        TPath groupKey = path.Prefix(groupDepth);
         int position = PositionOf(path, groupDepth);
-        return new PbtNodeGroupLocation(groupKey, position);
+        return new PbtNodeGroupLocation<TPath>(groupKey, position);
     }
 
     /// <summary>Returns the group key owning <paramref name="path"/>.</summary>
-    public static IPbtNodePath GroupKeyOf(IPbtNodePath path) => Locate(path).GroupKey;
+    public static TPath GroupKeyOf<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => Locate(path).GroupKey;
 
     /// <summary>Returns the position of <paramref name="path"/> in its owning group.</summary>
-    public static int PositionOf(IPbtNodePath path)
-    {
-        ArgumentNullException.ThrowIfNull(path);
-        return PositionOf(path, GroupDepthOf(path.BitDepth));
-    }
+    public static int PositionOf<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => PositionOf(path, GroupDepthOf(path.BitDepth));
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
-    public static IPbtNodePath PathOf(IPbtNodePath groupKey, int position)
+    public static TPath PathOf<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {
-        ArgumentNullException.ThrowIfNull(groupKey);
         ValidateGroupKey(groupKey);
         ValidatePosition(groupKey, position);
 
-        if (position == RootPosition) return IPbtNodePath.Create([], 0);
+        if (position == RootPosition) return TPath.Create([], 0);
 
-        int currentPosition = RootPosition;
-        int width = BoundarySlots;
-        int nibble = 0;
-        int relativeDepth = 0;
-        while (relativeDepth < LevelsPerGroup)
-        {
-            if (position == currentPosition) break;
-
-            int halfWidth = width / 2;
-            int leftPosition = currentPosition - width;
-            int rightPosition = currentPosition - 1;
-            int leftFirst = leftPosition - 2 * halfWidth + 2;
-            int rightFirst = rightPosition - 2 * halfWidth + 2;
-            if (position >= leftFirst && position <= leftPosition)
-            {
-                nibble <<= 1;
-                relativeDepth++;
-                currentPosition = leftPosition;
-                width = halfWidth;
-            }
-            else if (position >= rightFirst && position <= rightPosition)
-            {
-                nibble = (nibble << 1) | 1;
-                relativeDepth++;
-                currentPosition = rightPosition;
-                width = halfWidth;
-            }
-            else
-            {
-                throw new ArgumentOutOfRangeException(nameof(position), "Position is not in the four-level post-order tree.");
-            }
-        }
-
-        if (position != currentPosition || relativeDepth == 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(position), "Position is not in the four-level post-order tree.");
-        }
+        int nibble = PositionNibbles[position];
+        int relativeDepth = PositionDepths[position];
 
         if (relativeDepth == LevelsPerGroup) return groupKey.AppendNib(nibble);
 
@@ -115,7 +73,7 @@ public static class PbtFourLevelGroupGeometry
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
-    public static IPbtNodePath Reconstruct(IPbtNodePath groupKey, int position) => PathOf(groupKey, position);
+    public static TPath Reconstruct<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath> => PathOf(groupKey, position);
 
     internal static int WidthOf(int position) => position switch
     {
@@ -126,7 +84,11 @@ public static class PbtFourLevelGroupGeometry
         _ => 1
     };
 
-    private static int PositionOf(IPbtNodePath path, int groupDepth)
+    private static ReadOnlySpan<byte> PositionNibbles => [0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 6, 7, 3, 1, 0, 8, 9, 4, 10, 11, 5, 2, 12, 13, 6, 14, 15, 7, 3, 1, 0];
+
+    private static ReadOnlySpan<byte> PositionDepths => [4, 4, 3, 4, 4, 3, 2, 4, 4, 3, 4, 4, 3, 2, 1, 4, 4, 3, 4, 4, 3, 2, 4, 4, 3, 4, 4, 3, 2, 1, 0];
+
+    private static int PositionOf<TPath>(TPath path, int groupDepth) where TPath : struct, IPbtNodePath<TPath>
     {
         int relativeDepth = path.BitDepth - groupDepth;
         int position = RootPosition;
@@ -142,16 +104,7 @@ public static class PbtFourLevelGroupGeometry
         return position;
     }
 
-    private static IPbtNodePath Prefix(IPbtNodePath path, int depth)
-    {
-        int byteLength = (depth + 7) >> 3;
-        Span<byte> prefix = stackalloc byte[byteLength];
-        prefix.Clear();
-        path.CopyBitsTo(0, prefix, 0, depth);
-        return IPbtNodePath.Create(prefix, depth);
-    }
-
-    private static void ValidateGroupKey(IPbtNodePath groupKey)
+    private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (!IsGroupDepth(groupKey.BitDepth))
         {
@@ -159,7 +112,7 @@ public static class PbtFourLevelGroupGeometry
         }
     }
 
-    private static void ValidatePosition(IPbtNodePath groupKey, int position)
+    private static void ValidatePosition<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {
         if ((uint)position >= PositionCount)
         {
@@ -174,4 +127,4 @@ public static class PbtFourLevelGroupGeometry
 }
 
 /// <summary>Identifies one node's group key and post-order position.</summary>
-public readonly record struct PbtNodeGroupLocation(IPbtNodePath GroupKey, int Position);
+public readonly record struct PbtNodeGroupLocation<TPath>(TPath GroupKey, int Position) where TPath : struct, IPbtNodePath<TPath>;

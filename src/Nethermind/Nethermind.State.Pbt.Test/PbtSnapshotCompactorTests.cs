@@ -23,9 +23,15 @@ public class PbtSnapshotCompactorTests
     [TestCase(true, true)]
     public void Compact_PreservesNewestCanonicalLeafAndGroupAfterSourcesAreDisposed(bool tombstone, bool storagePathFirst)
     {
+        if (storagePathFirst) AssertCompactedCanonicalPaths(tombstone, new PbtStorageNodePath([], 0), new PbtNodePath([], 0));
+        else AssertCompactedCanonicalPaths(tombstone, new PbtNodePath([], 0), new PbtStorageNodePath([], 0));
+    }
+
+    private void AssertCompactedCanonicalPaths<TPath, TAlternatePath>(bool tombstone, TPath groupKey, TAlternatePath alternateGroupKey)
+        where TPath : struct, IPbtNodePath<TPath>
+        where TAlternatePath : struct, IPbtNodePath<TAlternatePath>
+    {
         PbtStorageFullKey key = PbtStateKey.Storage(TestItem.AddressA, 64);
-        IPbtNodePath groupKey = storagePathFirst ? new PbtStorageNodePath([], 0) : new PbtNodePath([], 0);
-        IPbtNodePath alternateGroupKey = storagePathFirst ? new PbtNodePath([], 0) : new PbtStorageNodePath([], 0);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
@@ -78,13 +84,9 @@ public class PbtSnapshotCompactorTests
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
 
-        RefCountingMemory CreateStorageLeafGroup(ValueHash256 value) => groupKey is PbtStorageNodePath storagePath
-            ? CreateLeafGroup(storagePath, value)
-            : CreateLeafGroup((PbtNodePath)groupKey, value);
-
-        RefCountingMemory CreateLeafGroup<TPath>(TPath path, ValueHash256 value) where TPath : struct, IPbtNodePath<TPath>
+        RefCountingMemory CreateStorageLeafGroup(ValueHash256 value)
         {
-            using PbtNodeGroupWriter<TPath> writer = new(path, memoryProvider);
+            using PbtNodeGroupWriter<TPath> writer = new(groupKey, memoryProvider);
             writer.Write(PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));
             return writer.Detach()!;
         }

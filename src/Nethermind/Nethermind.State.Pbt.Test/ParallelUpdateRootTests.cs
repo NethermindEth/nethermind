@@ -300,7 +300,7 @@ public class ParallelUpdateRootTests
     private sealed class CoordinatedStore : IPbtStore, IDisposable
     {
         private readonly Barrier _barrier = new(3);
-        private readonly HashSet<IPbtNodePath> _writtenGroups = [];
+        private readonly HashSet<PbtStorageNodePath> _writtenGroups = [];
         private int _arrivedWorkers;
         private int _activeReads;
         internal PbtNodeGroupStore Inner { get; } = new();
@@ -311,7 +311,7 @@ public class ParallelUpdateRootTests
         internal int ActiveReads => _activeReads;
         internal bool DuplicateWrites { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             Interlocked.Increment(ref _activeReads);
             try
@@ -332,12 +332,12 @@ public class ParallelUpdateRootTests
             }
         }
 
-        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload)
+        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             lock (_writtenGroups)
             {
                 if (Writes == 0) _writtenGroups.Clear();
-                DuplicateWrites |= !_writtenGroups.Add(groupKey);
+                DuplicateWrites |= !_writtenGroups.Add(groupKey.ToPath<PbtStorageNodePath>());
                 Writes++;
                 Inner.SetNodeGroup(groupKey, payload);
             }

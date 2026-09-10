@@ -129,8 +129,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
         public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => inner.EnumerateStorage(prefix);
-        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey) => inner.GetNodeGroup(groupKey);
-        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
+        public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
         public ulong GetCodeReference(in ValueHash256 codeHash) => inner.GetCodeReference(codeHash);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
@@ -146,7 +146,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public void SetSlot(PbtStorageFullKey key, in EvmWord value) => inner.SetSlot(key, value);
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
         public void ClearStorage(in ValueHash256 addressHash) => inner.ClearStorage(addressHash);
-        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload) => inner.SetNodeGroup(groupKey, payload);
+        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
         public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => inner.SetCodeReference(codeHash, referenceCount);
 
         public void Commit()
