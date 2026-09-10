@@ -146,7 +146,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // but complete keys end on byte boundaries. A key ending here has no next nibble to bucket by.
             // Fold it separately from longer keys: deleting 0xAB and inserting 0xABCD must be allowed,
             // while keeping both would violate EIP-8297 prefix freedom.
-            if (bitDepth > 0 && (bitDepth & 7) == 0)
+            if (!TKey.IsFixedLength && bitDepth > 0 && (bitDepth & 7) == 0)
             {
                 int terminalIndex = -1;
                 for (int index = 0; index < operations.Length; index++)
@@ -156,22 +156,19 @@ internal static partial class TrieUpdater<TKey, TPath>
                     break;
                 }
                 bool hasTerminalLeaf = current.IsLeaf && current.Key.BitLength == bitDepth;
-                if (terminalIndex >= 0 || hasTerminalLeaf)
+                if (terminalIndex >= 0)
                 {
                     // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
                     Subtree terminal = hasTerminalLeaf ? Subtree.Move(ref current) : default;
                     Subtree descendants = default;
                     try
                     {
-                        if (terminalIndex >= 0)
-                        {
-                            PbtWriteOperation<TKey> operation = operations[terminalIndex];
-                            operations[..terminalIndex].CopyTo(operations[1..]);
-                            operations[0] = operation;
-                            terminal = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref terminal, operations[..1], bitDepth, plan);
-                            operations = operations[1..];
-                            plan = plan.AfterFiltering(preservesOrder: true);
-                        }
+                        PbtWriteOperation<TKey> operation = operations[terminalIndex];
+                        operations[..terminalIndex].CopyTo(operations[1..]);
+                        operations[0] = operation;
+                        terminal = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref terminal, operations[..1], bitDepth, plan);
+                        operations = operations[1..];
+                        plan = plan.AfterFiltering(preservesOrder: true);
                         descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, plan);
                         if (terminal.IsEmpty) return Subtree.Move(ref descendants);
                         if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
@@ -182,6 +179,17 @@ internal static partial class TrieUpdater<TKey, TPath>
                         terminal.Dispose();
                         descendants.Dispose();
                     }
+                }
+                if (hasTerminalLeaf)
+                {
+                    Subtree descendants = default;
+                    try
+                    {
+                        descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref descendants, operations, bitDepth, plan);
+                        if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+                        return Subtree.Move(ref current);
+                    }
+                    finally { descendants.Dispose(); }
                 }
             }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -17,19 +18,22 @@ namespace Nethermind.State.Pbt.Test;
 public class Eip8297CanonicalTreeTests
 {
     [Test]
-    public void Small_and_wide_generic_folds_match_oracle_for_identical_34_byte_inputs(
+    public void Small_wide_and_fixed_length_generic_folds_match_oracle_for_identical_34_byte_inputs(
         [Values(false, true)] bool prepared,
         [Values(false, true)] bool zeroDeletes)
     {
         using PbtNodeGroupStore smallStore = new();
         using PbtNodeGroupStore wideStore = new();
+        using PbtNodeGroupStore fixedStore = new();
         EipReferenceTree oracle = new();
         ValueHash256 smallRoot = default;
         ValueHash256 wideRoot = default;
+        ValueHash256 fixedRoot = default;
         for (int round = -1; round < 3; round++)
         {
             using PbtWriteBatchBuilder<PbtFullKey> small = new(0);
             using PbtWriteBatchBuilder<PbtStorageFullKey> wide = new(0);
+            using PbtWriteBatchBuilder<FixedLengthKey> fixedLength = new(0);
             for (int index = 0; index < 64; index++)
             {
                 byte[] key = new byte[34];
@@ -40,20 +44,24 @@ public class Eip8297CanonicalTreeTests
                 ValueHash256? leaf = value is null ? null : new ValueHash256(value);
                 small.Set(new PbtFullKey(key), new ValueHash256(Value(1)));
                 wide.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
+                fixedLength.Set(FixedLengthKey.Create(key), new ValueHash256(Value(1)));
                 if (zeroDeletes)
                 {
                     small.Set(new PbtFullKey(key), default);
                     wide.Set(new PbtStorageFullKey(key), default);
+                    fixedLength.Set(FixedLengthKey.Create(key), default);
                 }
                 else
                 {
                     small.Delete(new PbtFullKey(key));
                     wide.Delete(new PbtStorageFullKey(key));
+                    fixedLength.Delete(FixedLengthKey.Create(key));
                 }
                 if (leaf is { } nonzeroValue)
                 {
                     small.Set(new PbtFullKey(key), nonzeroValue);
                     wide.Set(new PbtStorageFullKey(key), nonzeroValue);
+                    fixedLength.Set(FixedLengthKey.Create(key), nonzeroValue);
                 }
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
@@ -64,9 +72,14 @@ public class Eip8297CanonicalTreeTests
             wideRoot = prepared
                 ? TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.UpdateRoot(wideStore, wideRoot, PbtWriteBatchSet<PbtStorageFullKey>.Create(wide.Build()))
                 : TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.UpdateRoot(wideStore, wideRoot, wide.Build());
+            fixedRoot = prepared
+                ? TrieUpdater<FixedLengthKey, PbtNodePath>.UpdateRoot(fixedStore, fixedRoot, PbtWriteBatchSet<FixedLengthKey>.Create(fixedLength.Build()))
+                : TrieUpdater<FixedLengthKey, PbtNodePath>.UpdateRoot(fixedStore, fixedRoot, fixedLength.Build());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(smallRoot, Is.EqualTo(wideRoot), $"round {round}");
+                Assert.That(fixedRoot, Is.EqualTo(smallRoot), $"round {round}");
+                Assert.That(CanonicalRecords(fixedStore), Is.EqualTo(CanonicalRecords(smallStore)), $"round {round}");
                 Assert.That(smallRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), $"round {round}");
                 IReadOnlyList<PbtNodeRecord> smallRecords = smallStore.EnumerateRecords();
                 IReadOnlyList<PbtNodeRecord> wideRecords = wideStore.EnumerateRecords();
@@ -78,6 +91,29 @@ public class Eip8297CanonicalTreeTests
                 }
             }
         }
+    }
+
+    private readonly struct FixedLengthKey(PbtFullKey key) : IPbtKey<FixedLengthKey>
+    {
+        private readonly PbtFullKey _key = key;
+        public static bool IsFixedLength => true;
+        public static int Capacity => PbtFullKey.Capacity;
+        public static FixedLengthKey Create(ReadOnlySpan<byte> bytes)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, Capacity);
+            return new(new PbtFullKey(bytes));
+        }
+        [UnscopedRef]
+        public ReadOnlySpan<byte> Bytes => _key.Bytes;
+        public int Length => _key.Length;
+        public int BitLength => _key.BitLength;
+        public int GetBit(int bitIndex) => _key.GetBit(bitIndex);
+        public bool IsPrefixOf(FixedLengthKey other) => _key.IsPrefixOf(other._key);
+        public int FirstDifferingBit(FixedLengthKey other, int startBit = 0) => _key.FirstDifferingBit(other._key, startBit);
+        public int CompareTo(FixedLengthKey other) => _key.CompareTo(other._key);
+        public bool Equals(FixedLengthKey other) => _key.Equals(other._key);
+        public override bool Equals(object? obj) => obj is FixedLengthKey other && Equals(other);
+        public override int GetHashCode() => _key.GetHashCode();
     }
 
     [TestCase(0)]

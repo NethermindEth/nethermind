@@ -8,6 +8,8 @@ namespace Nethermind.Pbt;
 /// <summary>A complete inline tree key supporting allocation-free specialized mutation processing.</summary>
 public interface IPbtKey<TSelf> : IEquatable<TSelf>, IComparable<TSelf> where TSelf : struct, IPbtKey<TSelf>
 {
+    /// <summary>Gets whether all valid keys have the same logical length.</summary>
+    static virtual bool IsFixedLength => false;
     /// <summary>Gets the maximum supported byte length.</summary>
     static abstract int Capacity { get; }
     /// <summary>Creates a key from its exact bytes.</summary>
