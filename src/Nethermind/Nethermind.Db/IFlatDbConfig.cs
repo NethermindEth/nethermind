@@ -16,7 +16,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
-    [ConfigItem(Description = "Enabled", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]

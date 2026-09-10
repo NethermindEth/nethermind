@@ -77,8 +77,6 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            // Patricia by default (the production default); opt into the flat state layout with
-            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
             flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
             // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
