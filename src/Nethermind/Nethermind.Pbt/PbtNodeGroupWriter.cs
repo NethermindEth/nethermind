@@ -34,6 +34,8 @@ internal sealed class PbtNodeGroupWriter : IDisposable
 
     internal int WrittenCount => _written;
     internal uint Availability => _availability;
+    internal int NextPosition { get; set; }
+    internal int ChangedNodes { get; set; }
 
     /// <summary>Reserves the exact encoding length for the next position without committing it.</summary>
     internal Span<byte> GetSpan(int position, int encodingLength)

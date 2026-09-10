@@ -51,7 +51,10 @@ public static partial class TrieUpdater
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
         using ArrayPoolList<PartitionFold> workers = new(3);
-        using ArrayPoolListRef<GroupMutationFrame?> sharedGroups = new(16, 16);
+        using ArrayPoolListRef<GroupFrameReader> sharedReaders = new(16, 16);
+        using ArrayPoolListRef<PbtNodeGroupWriter?> sharedWriters = new(16, 16);
+        int initializedReaders = 0;
+        memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
         using ArrayPoolListRef<ArrayPoolList<Subtree>?> zoneBoundaries = new(16, 16);
         using ArrayPoolListRef<Subtree> rootBoundaries = new(16, 16);
         Span<int> touchedZoneMasks = stackalloc int[16];
@@ -63,58 +66,71 @@ public static partial class TrieUpdater
             AddWorker<PbtStorageFullKey, PbtStorageNodePath>(changes.Storage, Eip8297KeyDerivation.StorageZone);
             if (workers.Count == 0) return currentRoot;
 
-            using GroupMutationFrame rootGroup = new(store, RootPath, metrics, memoryProvider);
-            int touchedRootMask = 0;
-            foreach (PartitionFold worker in workers)
-            {
-                touchedRootMask |= 1 << (worker.Zone >> 4);
-                touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
-            }
-            Subtree root = rootGroup.Take(RootPath, allowAbsent: true);
-            try { Decompose(rootGroup, ref root, 0, rootBoundaries.AsSpan()); }
-            finally { root.Dispose(); }
-            foreach (PartitionFold worker in workers)
-            {
-                int slot = worker.Zone >> 4;
-                if (sharedGroups[slot] is not { } sharedGroup)
-                {
-                    sharedGroup = new(store, new PbtStorageNodePath([(byte)(slot << 4)], 4), metrics, memoryProvider);
-                    sharedGroups[slot] = sharedGroup;
-                    zoneBoundaries[slot] = new(16, 16);
-                    rootGroup.Resolve(ref rootBoundaries.AsSpan()[slot]);
-                    Decompose(sharedGroup, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan());
-                }
-                sharedGroup.Resolve(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
-                worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
-            }
-
-            Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
-
-            foreach (PartitionFold worker in workers)
-            {
-                zoneBoundaries[worker.Zone >> 4]![worker.Zone & 15] = Subtree.Move(ref worker.Result);
-                if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
-            }
-            for (int slot = 0; slot < sharedGroups.Count; slot++)
-            {
-                if (sharedGroups[slot] is not { } sharedGroup) continue;
-                rootBoundaries[slot] = Compose(sharedGroup, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
-                sharedGroup.Flush();
-            }
-            Subtree result = Compose(rootGroup, rootBoundaries.AsSpan(), touchedRootMask);
+            GroupFrameReader rootReader = new(store, RootPath, metrics);
             try
             {
-                ValueHash256 hash = rootGroup.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
-                rootGroup.Flush();
-                return hash;
+                using PbtNodeGroupWriter rootWriter = new(RootPath, memoryProvider);
+                int touchedRootMask = 0;
+                foreach (PartitionFold worker in workers)
+                {
+                    touchedRootMask |= 1 << (worker.Zone >> 4);
+                    touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
+                }
+                Subtree root = Take(ref rootReader, rootWriter, RootPath, allowAbsent: true);
+                try { Decompose(ref rootReader, rootWriter, ref root, 0, rootBoundaries.AsSpan()); }
+                finally { root.Dispose(); }
+                foreach (PartitionFold worker in workers)
+                {
+                    int slot = worker.Zone >> 4;
+                    ref GroupFrameReader sharedReader = ref sharedReaders.AsSpan()[slot];
+                    if (sharedWriters[slot] is not { } sharedWriter)
+                    {
+                        sharedReader = new(store, new PbtStorageNodePath([(byte)(slot << 4)], 4), metrics);
+                        initializedReaders |= 1 << slot;
+                        sharedWriter = new(sharedReader.GroupKey, memoryProvider);
+                        sharedWriters[slot] = sharedWriter;
+                        zoneBoundaries[slot] = new(16, 16);
+                        Resolve(ref rootReader, rootWriter, ref rootBoundaries.AsSpan()[slot]);
+                        Decompose(ref sharedReader, sharedWriter, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan());
+                    }
+                    Resolve(ref sharedReader, sharedWriter, ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
+                    worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
+                }
+
+                Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
+
+                foreach (PartitionFold worker in workers)
+                {
+                    zoneBoundaries[worker.Zone >> 4]![worker.Zone & 15] = Subtree.Move(ref worker.Result);
+                    if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
+                }
+                for (int slot = 0; slot < sharedReaders.Count; slot++)
+                {
+                    if (sharedWriters[slot] is not { } sharedWriter) continue;
+                    ref GroupFrameReader sharedReader = ref sharedReaders.AsSpan()[slot];
+                    rootBoundaries[slot] = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
+                    Flush(store, metrics, ref sharedReader, sharedWriter);
+                }
+                Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan(), touchedRootMask);
+                try
+                {
+                    ValueHash256 hash = Write(ref rootReader, rootWriter, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                    Flush(store, metrics, ref rootReader, rootWriter);
+                    return hash;
+                }
+                finally { result.Dispose(); }
             }
-            finally { result.Dispose(); }
+            finally { rootReader.Dispose(); }
         }
         finally
         {
             foreach (PartitionFold worker in workers) worker.Dispose();
             Dispose(rootBoundaries.AsSpan());
-            foreach (GroupMutationFrame? sharedGroup in sharedGroups) sharedGroup?.Dispose();
+            for (int slot = 0; slot < sharedReaders.Count; slot++)
+            {
+                sharedWriters[slot]?.Dispose();
+                if ((initializedReaders & (1 << slot)) != 0) sharedReaders.AsSpan()[slot].Dispose();
+            }
             foreach (ArrayPoolList<Subtree>? boundaries in zoneBoundaries)
             {
                 if (boundaries is null) continue;
@@ -154,28 +170,33 @@ public static partial class TrieUpdater
 
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
-        bool collectMetrics, IRefCountingMemoryProvider? memoryProvider) : PartitionFold(zone, collectMetrics)
+        bool collectMetrics, IRefCountingMemoryProvider memoryProvider) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
         where TPath : class, IPbtNodePath<TPath>
     {
         internal override void Fold()
         {
-            using TrieUpdater<TKey, TPath>.GroupMutationFrame group = new(store, TPath.Create([Zone], 8), Metrics, memoryProvider);
-            TrieUpdater<TKey, TPath>.Subtree current = TrieUpdater<TKey, TPath>.Subtree.TakeFrom<PbtStorageFullKey, PbtStorageNodePath>(ref Current);
-            TrieUpdater<TKey, TPath>.Subtree result = default;
+            TrieUpdater<TKey, TPath>.GroupFrameReader reader = new(store, TPath.Create([Zone], 8), Metrics);
             try
             {
-                // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
-                result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, group, ref current,
-                    operations.AsSpan(), new(table.AsSpan(), 8, 8, false, false));
-                group.Flush();
-                Result = Subtree.TakeFrom<TKey, TPath>(ref result);
+                using PbtNodeGroupWriter writer = new(reader.GroupKey, memoryProvider);
+                TrieUpdater<TKey, TPath>.Subtree current = TrieUpdater<TKey, TPath>.Subtree.TakeFrom<PbtStorageFullKey, PbtStorageNodePath>(ref Current);
+                TrieUpdater<TKey, TPath>.Subtree result = default;
+                try
+                {
+                    // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
+                    result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
+                        operations.AsSpan(), new(table.AsSpan(), 8, 8, false, false));
+                    TrieUpdater<TKey, TPath>.Flush(store, Metrics, ref reader, writer);
+                    Result = Subtree.TakeFrom<TKey, TPath>(ref result);
+                }
+                finally
+                {
+                    current.Dispose();
+                    result.Dispose();
+                }
             }
-            finally
-            {
-                current.Dispose();
-                result.Dispose();
-            }
+            finally { reader.Dispose(); }
         }
 
         public override void Dispose()

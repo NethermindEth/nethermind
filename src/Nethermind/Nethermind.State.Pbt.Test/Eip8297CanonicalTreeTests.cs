@@ -2071,8 +2071,10 @@ public class Eip8297CanonicalTreeTests
     }
 
     [TestCase(false, 0)]
+    [TestCase(false, 4)]
     [TestCase(false, 8)]
     [TestCase(true, 0)]
+    [TestCase(true, 4)]
     [TestCase(true, 8)]
     public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails(bool parallel, int failedDepth)
     {
