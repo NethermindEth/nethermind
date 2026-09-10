@@ -52,8 +52,23 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Nethermind.TxPool.dll \
   -r $(BIN_DIR)/Nethermind.Zkvm.Abstractions.dll
 
+# RUST_EVM=1 runs the EVM's frames on nethermind-rust's interpreter: the guest is built with the
+# binding compiled in and linked against libnmffi (ziskos plus nm-ffi in one static library, built
+# by nethermind-rust's zkvm/zisk/libnmffi tooling) in place of libziskos.
+RUST_EVM ?= 0
+NMFFI_MANIFEST ?= /root/nmffi-out/libnmffi.bflat.manifest
+ifeq ($(RUST_EVM),1)
+EXTLIB := $(NMFFI_MANIFEST)
+RUST_EVM_PROP := -p:EnableRustEvm=true
+# The Rust library carries atomic instructions, which ziskemu 1.2 runs.
+ISA_GATES := --error-on-float --error-on-float-binary --error-on-compressed
+else
+EXTLIB := $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest
+RUST_EVM_PROP :=
+endif
+
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
+	dotnet build -c release -p:EnableZkEvm=true $(RUST_EVM_PROP) $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
 
 # ILC embeds every manifest resource of every input assembly and the guest reads none, so resource
 # bytes in the image are dead weight (6.9 MB of chainspecs once rode along) - fail the build instead.
@@ -75,7 +90,7 @@ build: dotnet-build
 		--substitution $(SRC_DIR)/substitutions.xml \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
+		--extlib $(EXTLIB) \
 		$(ISA_GATES) \
 		$(SRC_DIR)/Program.cs
 	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
