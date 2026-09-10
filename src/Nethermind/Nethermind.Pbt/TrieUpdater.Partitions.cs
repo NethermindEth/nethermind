@@ -58,7 +58,7 @@ public static partial class TrieUpdater
         int initializedReaders = 0;
         memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
         using ArrayPoolListRef<ArrayPoolList<Subtree>?> zoneBoundaries = new(16, 16);
-        using ArrayPoolListRef<Subtree> rootBoundaries = new(16, 16);
+        using ArrayPoolListRef<Subtree> rootBoundaries = new(PbtFourLevelGroupGeometry.PositionCount, PbtFourLevelGroupGeometry.PositionCount);
         Span<int> touchedZoneMasks = stackalloc int[16];
         touchedZoneMasks.Clear();
         try
@@ -79,7 +79,7 @@ public static partial class TrieUpdater
                     touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
                 }
                 Subtree root = rootReader.Take(rootWriter, RootPath, allowAbsent: true);
-                try { Decompose(ref rootReader, rootWriter, ref root, 0, rootBoundaries.AsSpan()); }
+                try { Decompose(ref rootReader, rootWriter, ref root, 0, rootBoundaries.AsSpan(), touchedRootMask); }
                 finally { root.Dispose(); }
                 foreach (PartitionFold worker in workers)
                 {
@@ -91,30 +91,30 @@ public static partial class TrieUpdater
                         initializedReaders |= 1 << slot;
                         sharedWriter = new(sharedReader.GroupKey, memoryProvider);
                         sharedWriters[slot] = sharedWriter;
-                        zoneBoundaries[slot] = new(16, 16);
-                        rootReader.Resolve(rootWriter, ref rootBoundaries.AsSpan()[slot]);
-                        Decompose(ref sharedReader, sharedWriter, ref rootBoundaries.AsSpan()[slot], 4, zoneBoundaries[slot]!.AsSpan());
+                        zoneBoundaries[slot] = new(PbtFourLevelGroupGeometry.PositionCount, PbtFourLevelGroupGeometry.PositionCount);
+                        rootReader.Resolve(rootWriter, ref rootBoundaries.AsSpan()[BoundaryPosition(slot)]);
+                        Decompose(ref sharedReader, sharedWriter, ref rootBoundaries.AsSpan()[BoundaryPosition(slot)], 4, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
                     }
-                    sharedReader.Resolve(sharedWriter, ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
-                    worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[worker.Zone & 15]);
+                    sharedReader.Resolve(sharedWriter, ref zoneBoundaries[slot]!.AsSpan()[BoundaryPosition(worker.Zone & 15)]);
+                    worker.Current = Subtree.Move(ref zoneBoundaries[slot]!.AsSpan()[BoundaryPosition(worker.Zone & 15)]);
                 }
 
                 Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
 
                 foreach (PartitionFold worker in workers)
                 {
-                    zoneBoundaries[worker.Zone >> 4]![worker.Zone & 15] = Subtree.Move(ref worker.Result);
+                    zoneBoundaries[worker.Zone >> 4]![BoundaryPosition(worker.Zone & 15)] = Subtree.Move(ref worker.Result);
                     if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
                 }
                 for (int slot = 0; slot < sharedReaders.Count; slot++)
                 {
                     if (sharedWriters[slot] is not { } sharedWriter) continue;
                     ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
-                    rootBoundaries[slot] = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
+                    rootBoundaries[BoundaryPosition(slot)] = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan());
                     using RefCountingMemory? payload = sharedWriter.Detach();
                     store.SetNodeGroup(sharedReader.GroupKey, payload);
                 }
-                Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan(), touchedRootMask);
+                Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan());
                 try
                 {
                     rootReader.Resolve(rootWriter, ref result);

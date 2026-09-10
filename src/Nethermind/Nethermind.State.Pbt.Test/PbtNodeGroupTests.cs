@@ -238,9 +238,91 @@ public class PbtNodeGroupTests
     }
 
     [Test]
+    public void Decomposition_acquires_only_touched_paths_and_composition_keeps_siblings_opaque(
+        [Values(0, 1, 0x8000, 0x8101, 0xFFFF)] int touchedMask,
+        [Values] bool boundaryBranches,
+        [Values] bool compressedSiblings)
+    {
+        using PbtTreeHarness tree = new();
+        List<(byte[] Key, byte[]? Value)> entries = [];
+        for (int slot = 0; slot < 16; slot++)
+        {
+            if (compressedSiblings && (slot & 7) > 1) continue;
+            entries.Add((Bytes.FromHexString($"{slot << 4:X2}00"), Value((byte)(slot + 1))));
+            if (boundaryBranches)
+                entries.Add((Bytes.FromHexString($"{slot << 4:X2}01"), Value((byte)(slot + 17))));
+        }
+        tree.ApplyBatch(entries);
+        using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads(tree.PhysicalPayloads);
+        PbtStorageNodePath rootPath = new([], 0);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
+        using PbtNodeGroupWriter writer = new(rootPath, new TrackingMemoryProvider());
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree[31];
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree root = default;
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
+        try
+        {
+            root = reader.Take(writer, rootPath);
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Decompose(ref reader, writer, ref root, 0, frontier, touchedMask);
+            uint expectedTaken = 1u << 30;
+            uint expectedFrontier = 0;
+            uint deferredTaken = 0;
+            Visit(0, 16, 30);
+            uint actualFrontier = 0;
+            for (int position = 0; position < frontier.Length; position++)
+                if (!frontier[position].IsEmpty) actualFrontier |= 1u << position;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.Taken, Is.EqualTo(expectedTaken), "decomposition must not acquire untouched siblings");
+                Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
+            }
+            result = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier);
+            ValueHash256 hash = writer.Write(30, 0, ref result);
+            using RefCountingMemory? payload = writer.Detach();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.Taken, Is.EqualTo(expectedTaken | deferredTaken), "composition acquires retained roots, not their descendants");
+                Assert.That(hash, Is.EqualTo(tree.RootHash));
+                Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(Payloads(tree)[Convert.ToHexString(rootPath.Encode())]));
+            }
+
+            void Visit(int slot, int width, int position)
+            {
+                if (width == 1 || (touchedMask & (((1 << width) - 1) << slot)) == 0)
+                {
+                    expectedFrontier |= 1u << position;
+                    deferredTaken |= 1u << position;
+                    return;
+                }
+                expectedTaken |= 1u << position;
+                if (compressedSiblings && width == 8)
+                {
+                    width = 2;
+                    position = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.BoundaryPosition(slot + 1) + 1;
+                    if ((touchedMask & (3 << slot)) == 0)
+                    {
+                        expectedFrontier |= 1u << position;
+                        return;
+                    }
+                }
+                Visit(slot, width / 2, position - width);
+                Visit(slot + width / 2, width / 2, position - 1);
+            }
+        }
+        finally
+        {
+            root.Dispose();
+            result.Dispose();
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Dispose(frontier);
+            reader.Dispose();
+        }
+    }
+
+    [Test]
     public void Dense_group_mutations_preserve_unchanged_subtrees_and_canonical_payloads(
         [Values(0, 2, 3, 4, 8, 13)] int prefixBits,
-        [Values(false, true)] bool promoteSibling)
+        [Values(false, true)] bool promoteSibling,
+        [Values] bool rightSide)
     {
         using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
@@ -266,8 +348,9 @@ public class PbtNodeGroupTests
 
         List<(byte[] Key, byte[]? Value)> changes = [];
         int changedCount = promoteSibling ? entries.Length / 2 : 1;
-        for (int index = 0; index < changedCount; index++)
+        for (int offset = 0; offset < changedCount; offset++)
         {
+            int index = rightSide ? entries.Length - 1 - offset : offset;
             entries[index].Value = promoteSibling ? null : Value(0xF0);
             changes.Add(entries[index]);
             if (promoteSibling) oracle.Delete(entries[index].Key);

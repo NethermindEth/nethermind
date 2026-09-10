@@ -150,6 +150,11 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return node;
     }
 
+    /// <summary>Replaces a lazy path reference with its node from this group; leaves resolved subtrees unchanged.</summary>
+    /// <remarks>
+    /// Decompose retains untouched siblings without reading their encodings. Resolve a retained root only when
+    /// its contents are needed for mutation or composition, before the writer passes its source position.
+    /// </remarks>
     internal void Resolve(PbtNodeGroupWriter writer, ref TrieUpdater<TKey, TPath>.Subtree subtree)
     {
         if (subtree.IsReference)

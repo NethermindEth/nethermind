@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -114,6 +115,10 @@ public class ParallelUpdateRootTests
         ApplyAndCompare(Changes(entries));
         // Code-only work leaves Account's shared ancestor and the entire Storage zone intact.
         ApplyAndCompare(ZoneEntries(2, compressed)[..1]);
+        byte[] insertedKey = Bytes.FromHexString("01ABCD");
+        ApplyAndCompare([(insertedKey, null)]);
+        ApplyAndCompare([(insertedKey, Value(0xA5))]);
+        ApplyAndCompare([(insertedKey, null)]);
         List<(byte[] Key, byte[]? Value)> deletes = [];
         foreach ((byte[] key, _) in entries) deletes.Add((key, null));
         foreach ((byte[] key, _) in ZoneEntries(2, compressed)[..1]) deletes.Add((key, null));
