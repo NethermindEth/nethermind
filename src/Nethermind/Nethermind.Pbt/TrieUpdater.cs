@@ -106,125 +106,115 @@ internal static partial class TrieUpdater<TKey, TPath>
         ref Subtree input, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan)
     {
         Subtree current = Subtree.Move(ref input);
-        try { return FoldMutationsCore(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan); }
-        finally { current.Dispose(); }
-    }
-
-    private static Subtree FoldMutationsCore(
-        IPbtStore store,
-        TrieUpdaterMetrics? metrics,
-        ref GroupFrameReader<TKey, TPath> ownerReader,
-        PbtNodeGroupWriter ownerWriter,
-        IRefCountingMemoryProvider memoryProvider,
-        ref Subtree current,
-        Span<PbtWriteOperation<TKey>> operations,
-        BucketPlan plan)
-    {
-        int depth = plan.Depth;
-        ownerReader.Resolve(ownerWriter, ref current);
-        if (operations.IsEmpty) return Subtree.Move(ref current);
-
-        if (current.IsEmpty)
-        {
-            if (operations.Length == 1)
-                return operations[0].Value == default ? default : new Subtree(operations[0]);
-        }
-        else if (current.IsLeaf)
-        {
-            if (operations.Length == 1)
-            {
-                PbtWriteOperation<TKey> operation = operations[0];
-                if (operation.Key.Equals(current.Key))
-                    return operation.Value == default ? default : new Subtree(operation, current.Path);
-                if (operation.Value == default) return Subtree.Move(ref current);
-            }
-        }
-
-        if (depth > 0 && (depth & 7) == 0)
-        {
-            int terminalIndex = -1;
-            for (int index = 0; index < operations.Length; index++)
-            {
-                if (operations[index].Key.BitLength != depth) continue;
-                terminalIndex = index;
-                break;
-            }
-            bool hasTerminalLeaf = current.IsLeaf && current.Key.BitLength == depth;
-            if (terminalIndex >= 0 || hasTerminalLeaf)
-            {
-                // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
-                Subtree terminal = hasTerminalLeaf ? Subtree.Move(ref current) : default;
-                Subtree descendants = default;
-                try
-                {
-                    if (terminalIndex >= 0)
-                    {
-                        PbtWriteOperation<TKey> operation = operations[terminalIndex];
-                        operations[..terminalIndex].CopyTo(operations[1..]);
-                        operations[0] = operation;
-                        terminal = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref terminal, operations[..1], plan);
-                        operations = operations[1..];
-                        plan = plan.AfterFiltering(preservesOrder: true);
-                    }
-                    descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan);
-                    if (terminal.IsEmpty) return Subtree.Move(ref descendants);
-                    if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                    return Subtree.Move(ref terminal);
-                }
-                finally
-                {
-                    terminal.Dispose();
-                    descendants.Dispose();
-                }
-            }
-        }
-
-        plan = plan.EstablishRangeKnowledge(current.IsEmpty || current.IsLeaf, operations, metrics);
-        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length)];
-        bool hasComputedPartition = false;
-        scoped PartitionOutcome partition = default;
-        // Partitioning can discover a shared prefix that lets traversal skip groups; reuse the partition if no jump is possible.
-        if (plan.Precalculated.IsEmpty && plan.BranchDepth <= depth)
-        {
-            partition = plan.WithBuffer(buffer).BucketSort(operations, metrics);
-            plan = new(default, depth, partition.Plan.BranchDepth, partition.Plan.IsSorted, partition.Plan.PrefixesValidated);
-            hasComputedPartition = true;
-        }
-        int branchDepth = FindBranchDepth(current, operations[0].Key, plan);
-        int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
-        if (groupDepth != depth)
-        {
-            if (!plan.Precalculated.IsEmpty && BitOperations.IsPow2(plan.Precalculated[0]))
-            {
-                metrics?.IncrementPrecalculatedLevels();
-                return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations,
-                    plan.ForChild());
-            }
-
-            // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
-            return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan.AfterJump(groupDepth));
-        }
-
-        if (ownerReader.BitDepth == depth)
-            return hasComputedPartition
-                ? FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, partition)
-                : FoldBoundary(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan);
-
-        GroupFrameReader<TKey, TPath> reader = new(store, PbtPathOperations.FromKey<TPath>(operations[0].Key.Bytes, depth), metrics);
         try
         {
-            using PbtNodeGroupWriter writer = new(reader.GroupKey, memoryProvider);
-            Subtree result = hasComputedPartition
-                ? FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, partition)
-                : FoldBoundary(store, metrics, ref reader, writer, memoryProvider, ref current, operations, plan);
+            int depth = plan.Depth;
+            ownerReader.Resolve(ownerWriter, ref current);
+            if (operations.IsEmpty) return Subtree.Move(ref current);
+
+            if (current.IsEmpty)
+            {
+                if (operations.Length == 1)
+                    return operations[0].Value == default ? default : new Subtree(operations[0]);
+            }
+            else if (current.IsLeaf)
+            {
+                if (operations.Length == 1)
+                {
+                    PbtWriteOperation<TKey> operation = operations[0];
+                    if (operation.Key.Equals(current.Key))
+                        return operation.Value == default ? default : new Subtree(operation, current.Path);
+                    if (operation.Value == default) return Subtree.Move(ref current);
+                }
+            }
+
+            if (depth > 0 && (depth & 7) == 0)
+            {
+                int terminalIndex = -1;
+                for (int index = 0; index < operations.Length; index++)
+                {
+                    if (operations[index].Key.BitLength != depth) continue;
+                    terminalIndex = index;
+                    break;
+                }
+                bool hasTerminalLeaf = current.IsLeaf && current.Key.BitLength == depth;
+                if (terminalIndex >= 0 || hasTerminalLeaf)
+                {
+                    // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
+                    Subtree terminal = hasTerminalLeaf ? Subtree.Move(ref current) : default;
+                    Subtree descendants = default;
+                    try
+                    {
+                        if (terminalIndex >= 0)
+                        {
+                            PbtWriteOperation<TKey> operation = operations[terminalIndex];
+                            operations[..terminalIndex].CopyTo(operations[1..]);
+                            operations[0] = operation;
+                            terminal = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref terminal, operations[..1], plan);
+                            operations = operations[1..];
+                            plan = plan.AfterFiltering(preservesOrder: true);
+                        }
+                        descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan);
+                        if (terminal.IsEmpty) return Subtree.Move(ref descendants);
+                        if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+                        return Subtree.Move(ref terminal);
+                    }
+                    finally
+                    {
+                        terminal.Dispose();
+                        descendants.Dispose();
+                    }
+                }
+            }
+
+            plan = plan.EstablishRangeKnowledge(current.IsEmpty || current.IsLeaf, operations, metrics);
+            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length)];
+            bool hasComputedPartition = false;
+            scoped PartitionOutcome partition = default;
+            // Partitioning can discover a shared prefix that lets traversal skip groups; reuse the partition if no jump is possible.
+            if (plan.Precalculated.IsEmpty && plan.BranchDepth <= depth)
+            {
+                partition = plan.WithBuffer(buffer).BucketSort(operations, metrics);
+                plan = new(default, depth, partition.Plan.BranchDepth, partition.Plan.IsSorted, partition.Plan.PrefixesValidated);
+                hasComputedPartition = true;
+            }
+            int branchDepth = FindBranchDepth(current, operations[0].Key, plan);
+            int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
+            if (groupDepth != depth)
+            {
+                if (!plan.Precalculated.IsEmpty && BitOperations.IsPow2(plan.Precalculated[0]))
+                {
+                    metrics?.IncrementPrecalculatedLevels();
+                    return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations,
+                        plan.ForChild());
+                }
+
+                // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
+                return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan.AfterJump(groupDepth));
+            }
+
+            if (ownerReader.BitDepth == depth)
+                return hasComputedPartition
+                    ? FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, partition)
+                    : FoldBoundary(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, plan);
+
+            GroupFrameReader<TKey, TPath> reader = new(store, PbtPathOperations.FromKey<TPath>(operations[0].Key.Bytes, depth), metrics);
             try
             {
-                Flush(store, metrics, ref reader, writer);
-                return Subtree.Move(ref result);
+                using PbtNodeGroupWriter writer = new(reader.GroupKey, memoryProvider);
+                Subtree result = hasComputedPartition
+                    ? FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, partition)
+                    : FoldBoundary(store, metrics, ref reader, writer, memoryProvider, ref current, operations, plan);
+                try
+                {
+                    Flush(store, metrics, ref reader, writer);
+                    return Subtree.Move(ref result);
+                }
+                finally { result.Dispose(); }
             }
-            finally { result.Dispose(); }
+            finally { reader.Dispose(); }
         }
-        finally { reader.Dispose(); }
+        finally { current.Dispose(); }
     }
 
     internal static Subtree Compose(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, TrieUpdaterMetrics? metrics, Span<Subtree> boundaries, int touchedMask)
