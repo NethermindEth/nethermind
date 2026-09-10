@@ -778,7 +778,7 @@ public class PbtSnapshotBundleTests
 
     private static byte[] EncodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)
     {
-        int length = PbtNodeGroupCodec.TrailerLength;
+        int length = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.TrailerLength;
         foreach (PbtNodeRecord record in records) length += record.Encoding.Length;
         byte[] payload = new byte[length];
         BufferWriter writer = new(payload);

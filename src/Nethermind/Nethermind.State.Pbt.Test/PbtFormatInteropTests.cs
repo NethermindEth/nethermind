@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -43,6 +44,20 @@ public class PbtFormatInteropTests
             Assert.That(sourceRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(CanonicalRecords(reopened), Is.EqualTo(CanonicalRecords(source)));
         }
+    }
+
+    [Test]
+    public void Physical_import_rejects_unsupported_group_formats([Values] bool unversioned)
+    {
+        using PbtTreeHarness tree = new();
+        tree.ApplyBatch([(Bytes.FromHexString("00"), Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000001"))]);
+        PbtPhysicalPayload physical = tree.PhysicalPayloads[0];
+        byte[] payload = physical.Payload.ToArray();
+        if (unversioned) payload = payload[PbtNodeGroupCodec.HeaderLength..];
+        else payload[PbtNodeGroupCodec.HeaderLength - 1] = 2;
+        PbtPhysicalPayload invalid = new(physical.Key.Span, payload);
+
+        Assert.That(() => PbtNodeGroupStore.FromPhysicalPayloads([invalid]), Throws.TypeOf<InvalidDataException>());
     }
 
     [Test]
@@ -96,9 +111,9 @@ public class PbtFormatInteropTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mixedRoot, Is.EqualTo("0x6ef7fc2feef4df37f1f41f9f06063227c5b1969ae452c9556fa75e8b8809c393"));
-            Assert.That(mixedPayload, Is.EqualTo("0x1e122606bb97d729b0c0e2a2aed5d4b062d8a16b29f2a6908f76413019969272"));
+            Assert.That(mixedPayload, Is.EqualTo("0xcdd906e28ded04b747d4c84b1891c6f3e251de13130798adab863d18899a7410"));
             Assert.That(singletonRoot, Is.EqualTo("0x3039f167d1d69a8b3739e88307abc9c4e71193e29f330c06a5b1edae10cafde7"));
-            Assert.That(singletonPayload, Is.EqualTo("0x5eac780994b7eab32eede25517cbeb9f958487b4fdc3717018325c596fd0c676"));
+            Assert.That(singletonPayload, Is.EqualTo("0xf191461eba6f9808d12bbee47d0835563041ef572866a1ef5b05a0fe71099d8a"));
             Assert.That(tree.RootHash.ToString(), Is.EqualTo(mixedRoot));
             Assert.That(tree.CanonicalRecords(), Is.EqualTo(mixedRecords));
             Assert.That(PhysicalDigest(tree), Is.EqualTo(mixedPayload));
