@@ -1209,6 +1209,58 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [Test]
+    public void Load32BytesAfterGas_OnDirtyReusedMemory_PreservesPrefixAndZeroesTail(
+        [Values(false, true)] bool inline,
+        [Values(0, 16, 1000, 32760)] int offset)
+    {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
+        using EvmFrameMemory owner = new();
+        owner.GetSpan().Fill(0xa7);
+        EvmPooledMemory memory = inline ? new(owner) : default;
+        byte[] prefix = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+        byte[] expected = new byte[AlignToWord(offset + EvmPooledMemory.WordSize)];
+        prefix.CopyTo(expected, 0);
+
+        try
+        {
+            UInt256 start = UInt256.Zero;
+            memory.CalculateMemoryCost(in start, EvmPooledMemory.WordSize, out _);
+            memory.SaveAfterGas(in start, prefix);
+            Assert.That(GetInitializedSize(ref memory), Is.EqualTo((ulong)prefix.Length),
+                "precondition: only the written prefix is initialized");
+            if (!inline)
+            {
+                AssertDirtyTailWasReused(ref memory);
+            }
+
+            UInt256 location = (UInt256)offset;
+            memory.CalculateMemoryCost(in location, EvmPooledMemory.WordSize, out bool outOfGas);
+            Assert.That(outOfGas, Is.False, "the requested read fits the EVM memory limit");
+
+            byte[] actual = MemoryMarshal.CreateReadOnlySpan(
+                ref memory.Load32BytesAfterGas(in location), EvmPooledMemory.WordSize).ToArray();
+            byte[] repeated = MemoryMarshal.CreateReadOnlySpan(
+                ref memory.Load32BytesAfterGas(in location), EvmPooledMemory.WordSize).ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected.AsSpan(offset, EvmPooledMemory.WordSize).ToArray()),
+                    "unwritten bytes must be zero even across a spill or buffer growth");
+                Assert.That(repeated, Is.EqualTo(actual), "the initialized fast path must return identical bytes");
+                Assert.That(GetInitializedSize(ref memory),
+                    Is.LessThanOrEqualTo((ulong)(memory.BackingArray?.Length ?? EvmPooledMemory.InlineCapacity)),
+                    "the initialized prefix must fit its backing storage");
+                Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected),
+                    "materializing a read must preserve the written prefix and logical memory size");
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     private static ThreadCacheReservation PrimeDirtyBuffer()
     {
         ThreadCacheReservation cacheReservation = new();

@@ -17,7 +17,7 @@ public class TransactionRootBenchmark
     private Transaction[] _cachedTransactions = null!;
     private byte[][] _encoded = null!;
 
-    [Params(1, 128, 4096)]
+    [Params(1, 128, 200, 400, 4096)]
     public int Count { get; set; }
 
     [Params(0, 1024)]

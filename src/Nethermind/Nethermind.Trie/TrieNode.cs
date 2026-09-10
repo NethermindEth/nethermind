@@ -1402,6 +1402,10 @@ namespace Nethermind.Trie
         private int SeekChildPosition(ReadOnlySpan<byte> nodeRlp, int index)
         {
             Debug.Assert(!nodeRlp.IsEmpty, "Seeking a child of a node with no RLP");
+            if (nodeRlp.Length == FullBranchRlpLength && IsBranch)
+            {
+                return 3 + index * Rlp.LengthOfKeccakRlp;
+            }
             if (index == 0 && IsExtension)
             {
                 // Corner case, index is zero, but we are an extension

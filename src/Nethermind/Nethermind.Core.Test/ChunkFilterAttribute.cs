@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Test;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 
-[assembly: Nethermind.Synchronization.Test.ChunkFilterAttribute]
-
-namespace Nethermind.Synchronization.Test;
+namespace Nethermind.Core.Test;
 
 /// <summary>
 /// Assembly-scoped <see cref="ITestAction"/> that partitions tests by stable
