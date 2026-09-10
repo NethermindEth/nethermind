@@ -7,6 +7,9 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+
+from expb_errors import summarize
 
 
 def run(*args, **kwargs):
@@ -87,8 +90,13 @@ def collect(args):
                 source = args.expb_config.resolve().parent / source
             metadata[key + "_sha256"] = sha256(source)
         with (output / "expb.log").open("w") as log:
-            run("expb", "execute-scenarios", "--config-file", str(rendered), "--per-payload-metrics",
-                "--print-logs", cwd=args.expb_config.resolve().parent, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                run("expb", "execute-scenarios", "--config-file", str(rendered), "--per-payload-metrics",
+                    "--print-logs", cwd=args.expb_config.resolve().parent, stdout=log, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError:
+                log.flush()
+                print(summarize((output / "expb.log").read_text(errors="replace")), file=sys.stderr)
+                raise
         log_text = (output / "expb.log").read_text(errors="replace")
         validate_expb_log(log_text)
     else:

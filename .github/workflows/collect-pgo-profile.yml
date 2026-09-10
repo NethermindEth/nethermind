@@ -3,6 +3,9 @@ name: Collect PGO Profile
 on:
   workflow_dispatch:
     inputs:
+      inspect_run:
+        description: Optional failed run ID and attempt (e.g. 12345-1); report its retained Fusaka errors without collecting
+        type: string
       collection_image:
         description: Optional immutable collection image; blank builds Dockerfile.pgo from this commit on the runner
         required: false
@@ -20,7 +23,19 @@ permissions:
   contents: read
 
 jobs:
+  inspect:
+    if: inputs.inspect_run != ''
+    runs-on: [self-hosted, reproducible-benchmarks]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Report retained Fusaka errors
+        env:
+          INSPECT_RUN: ${{ inputs.inspect_run }}
+        run: |
+          [[ "$INSPECT_RUN" =~ ^[0-9]+-[0-9]+$ ]]
+          python3 scripts/pgo/expb_errors.py "/mnt/sda/expb-data/pgo-$INSPECT_RUN"/fusaka-*/expb.log
   collect:
+    if: inputs.inspect_run == ''
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 120
     env:
