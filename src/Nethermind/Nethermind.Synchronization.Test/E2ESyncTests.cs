@@ -110,9 +110,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
-    // Both attempts of a retried timeout have to fit inside the CI hang dump timeout (8m of
-    // inactivity), which kills the whole run with a dump and no test report. A normal run of
-    // either block-access-list test is well under a minute.
     private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(3);
     private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
