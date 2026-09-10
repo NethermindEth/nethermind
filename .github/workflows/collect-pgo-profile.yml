@@ -68,7 +68,7 @@ jobs:
             IMAGE=$(cat "$iid_file")
           fi
           echo "PGO_IMAGE=$IMAGE" >> "$GITHUB_ENV"
-          uv tool install --force --from 'git+https://github.com/NethermindEth/execution-payloads-benchmarks@ec133a2871165fa039c5c12cec6b047fdce05572' expb
+          uv tool install --force --from 'git+https://github.com/NethermindEth/execution-payloads-benchmarks@9609a1b66aba5b67c6accc1930cb3e50748ca72f' expb
           uv tool dir --bin >> "$GITHUB_PATH"
       - name: Collect Fusaka
         env:
