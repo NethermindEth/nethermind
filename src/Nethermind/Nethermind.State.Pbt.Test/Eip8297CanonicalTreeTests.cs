@@ -151,7 +151,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(plan.Precalculated.Length, Is.EqualTo(17));
             Assert.That(plan.KnownCommonPrefixLength, Is.EqualTo(bitDepth));
             Assert.That(plan.IsSorted, Is.False);
-            Assert.That(plan.PrefixesValidated, Is.False);
             Assert.That(plan.Precalculated[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
             Assert.That(plan.Precalculated.Slice(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
             Assert.That(buffer, Is.Empty);
@@ -984,7 +983,7 @@ public class Eip8297CanonicalTreeTests
         int[] table = new int[17];
         table[0] = count == 0 ? 0 : 1 << 10;
         table[1] = count;
-        BucketPlan plan = new(precomputed ? table : default, knownCommonPrefixLength, sorted, false);
+        BucketPlan plan = new(precomputed ? table : default, knownCommonPrefixLength, sorted);
         int expectedSize = precomputed || count == 0 ? 0 : sizeof(int) * (knownCommonPrefixLength >= 4 ? 1 : Math.Min(count, 16));
         byte[] buffer = new byte[plan.GetBufferSize(count, 0)];
         Array.Fill(buffer, (byte)0xFF);
@@ -1027,7 +1026,7 @@ public class Eip8297CanonicalTreeTests
         }
         PbtWriteOperation<PbtStorageFullKey>[] original = (PbtWriteOperation<PbtStorageFullKey>[])operations.Clone();
 
-        BucketPlan plan = new(default, 0, false, false);
+        BucketPlan plan = new(default, 0, false);
         byte[] buffer = new byte[plan.GetBufferSize(count, groupDepth)];
         Array.Fill(buffer, (byte)0xFF);
         TrieUpdater.PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, groupDepth, null);
@@ -1355,19 +1354,18 @@ public class Eip8297CanonicalTreeTests
         int[] table = new int[17];
         table[0] = 1 << 3;
         table[1] = 2;
-        BucketPlan plan = new(table, 4, true, true);
-        BucketPlan known = plan.WithRangeKnowledge(7, true);
+        BucketPlan plan = new(table, 4, true);
+        BucketPlan known = plan.WithRangeKnowledge(7);
         BucketPlan child = known.ForChild();
         BucketPlan filtered = known.AfterFiltering(preservesOrder);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(child.Precalculated.IsEmpty, Is.True);
             Assert.That(child.KnownCommonPrefixLength, Is.EqualTo(7));
-            Assert.That(child.IsSorted && child.PrefixesValidated, Is.True);
+            Assert.That(child.IsSorted, Is.True);
             Assert.That(filtered.Precalculated.IsEmpty, Is.True);
             Assert.That(filtered.KnownCommonPrefixLength, Is.EqualTo(7));
             Assert.That(filtered.IsSorted, Is.EqualTo(preservesOrder));
-            Assert.That(filtered.PrefixesValidated, Is.True);
         }
     }
 
@@ -1385,7 +1383,7 @@ public class Eip8297CanonicalTreeTests
             operations[index] = PbtWriteOperation<PbtStorageFullKey>.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
         }
         TrieUpdaterMetrics metrics = new();
-        BucketPlan plan = new(default, bitDepth, sorted, false);
+        BucketPlan plan = new(default, bitDepth, sorted);
         byte[] buffer = new byte[plan.GetBufferSize(count, bitDepth)];
         TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
         int branchDepth = operations[0].Key.BitLength;
@@ -1492,9 +1490,9 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Variable_length_prefix_conflict_is_not_hidden_by_parent_validation(bool reverse)
+    [Test]
+    public void Variable_length_prefix_conflict_is_not_hidden_by_parent_bucketing(
+        [Values] bool reverse, [Values(3, 16, 17, 33)] int count)
     {
         List<(byte[] Key, byte[]? Value)> writes =
         [
@@ -1502,6 +1500,8 @@ public class Eip8297CanonicalTreeTests
             (Bytes.FromHexString("0x80"), Value(2)),
             (Bytes.FromHexString("0x8000"), Value(3)),
         ];
+        for (int index = 3; index < count; index++)
+            writes.Add((Bytes.FromHexString($"0x80{index - 2:X2}"), Value((byte)index)));
         if (reverse) writes.Reverse();
         using PbtTreeHarness tree = new();
         Assert.Throws<ArgumentException>(() => tree.ApplyBatch(writes));
@@ -1801,7 +1801,7 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(bulk.RootHash));
-            Assert.That(metrics.OperationPrefixComparisons, Is.EqualTo(persisted && divergenceBit < 8 ? 0 : 1));
+            Assert.That(metrics.OperationPrefixComparisons, Is.EqualTo(divergenceBit < 8 ? 0 : 1));
             Assert.That(metrics.SynthesizedSingleBuckets, Is.Zero);
             Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(1));
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(store.Reads));

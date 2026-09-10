@@ -73,7 +73,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> precalculated);
         using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = precalculated;
-        return UpdateRoot(store, currentRoot, operations.AsSpan(), new(precalculated.AsSpan(), 0, false, false), metrics, memoryProvider);
+        return UpdateRoot(store, currentRoot, operations.AsSpan(), new(precalculated.AsSpan(), 0, false), metrics, memoryProvider);
     }
 
     private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
@@ -148,6 +148,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // while keeping both would violate EIP-8297 prefix freedom.
             if (!TKey.IsFixedLength && bitDepth > 0 && (bitDepth & 7) == 0)
             {
+                // Variable-length keys incur an extra linear scan here; fixed-length keys skip this cost.
                 int terminalIndex = -1;
                 for (int index = 0; index < operations.Length; index++)
                 {
@@ -194,7 +195,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
 
             // Retain operation-only prefix/sortedness knowledge so child frames avoid rescanning the same range.
-            plan = plan.EstablishRangeKnowledge(current.IsEmpty || current.IsLeaf, operations, bitDepth, metrics);
+            plan = plan.EstablishRangeKnowledge(operations.Length, operations[0].Key.BitLength, bitDepth);
             Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
             bool hasComputedPartition = false;
             scoped PartitionOutcome partition = default;
@@ -202,7 +203,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (plan.Precalculated.IsEmpty && plan.KnownCommonPrefixLength <= bitDepth)
             {
                 partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
-                plan = new(default, partition.Plan.KnownCommonPrefixLength, partition.Plan.IsSorted, partition.Plan.PrefixesValidated);
+                plan = new(default, partition.Plan.KnownCommonPrefixLength, partition.Plan.IsSorted);
                 hasComputedPartition = true;
             }
             // The existing subtree may diverge before the mutations do. Stop at the four-bit group containing

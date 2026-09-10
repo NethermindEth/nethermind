@@ -8,18 +8,17 @@ using static Nethermind.Pbt.TrieUpdater;
 namespace Nethermind.Pbt;
 
 /// <summary>Range knowledge and producer buckets carried through one traversal frame.</summary>
-internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int knownCommonPrefixLength, bool isSorted, bool prefixesValidated, Span<byte> buffer = default)
+internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int knownCommonPrefixLength, bool isSorted, Span<byte> buffer = default)
 {
     private readonly Span<byte> _buffer = buffer;
 
     internal BucketPlan WithBuffer(Span<byte> buffer) =>
-        new(Precalculated, KnownCommonPrefixLength, IsSorted, PrefixesValidated, buffer);
+        new(Precalculated, KnownCommonPrefixLength, IsSorted, buffer);
 
     internal ReadOnlySpan<int> Precalculated { get; } = precalculated;
     /// <summary>Gets the known lower bound, in bits, on the operation range's common-prefix length.</summary>
     internal int KnownCommonPrefixLength { get; } = knownCommonPrefixLength;
     internal bool IsSorted { get; } = isSorted;
-    internal bool PrefixesValidated { get; } = prefixesValidated;
 
     /// <summary>Gets the scratch buffer size in bytes required by this plan.</summary>
     internal int GetBufferSize(int operationCount, int bitDepth) => !Precalculated.IsEmpty
@@ -34,13 +33,13 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
             metrics?.IncrementPrecalculatedLevels();
             int mask = Precalculated[0];
             int bound = BitOperations.IsPow2(mask) ? bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup : bitDepth;
-            return new(mask, Precalculated.Slice(1, BitOperations.PopCount((uint)mask)), WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bound), PrefixesValidated));
+            return new(mask, Precalculated.Slice(1, BitOperations.PopCount((uint)mask)), WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bound)));
         }
 
         Span<int> counts = MemoryMarshal.Cast<byte, int>(_buffer);
         int branchDepth = operations.Length == 1 ? operations[0].Key.BitLength : KnownCommonPrefixLength;
         branchDepth = Math.Max(branchDepth, bitDepth);
-        BucketPlan plan = WithRangeKnowledge(branchDepth, PrefixesValidated);
+        BucketPlan plan = WithRangeKnowledge(branchDepth);
         if (!operations.IsEmpty && branchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup)
         {
             metrics?.IncrementSynthesizedSingleBuckets();
@@ -59,13 +58,13 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
                 if (operations.Length <= 3) SortTiny(operations);
                 else operations.Sort(OperationKeyComparer<TKey>.Instance);
             }
-            plan = new(default, branchDepth, true, PrefixesValidated, _buffer);
+            plan = new(default, branchDepth, true, _buffer);
         }
         else
         {
             metrics?.IncrementRadixPartitions();
             int mask = BucketizeLarge(operations, bitDepth, counts, metrics, out branchDepth);
-            return new(mask, counts[..BitOperations.PopCount((uint)mask)], plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
+            return new(mask, counts[..BitOperations.PopCount((uint)mask)], plan.WithRangeKnowledge(branchDepth));
         }
 
         int usedMask = 0;
@@ -87,16 +86,16 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
             metrics?.IncrementOperationPrefixComparisons();
             branchDepth = operations[0].Key.FirstDifferingBit(operations[^1].Key, bitDepth);
         }
-        return new(usedMask, counts[..(countIndex + 1)], plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
+        return new(usedMask, counts[..(countIndex + 1)], plan.WithRangeKnowledge(branchDepth));
     }
 
-    internal BucketPlan WithRangeKnowledge(int knownCommonPrefixLength, bool prefixesValidated) =>
-        new(Precalculated, knownCommonPrefixLength, IsSorted, prefixesValidated, _buffer);
+    internal BucketPlan WithRangeKnowledge(int knownCommonPrefixLength) =>
+        new(Precalculated, knownCommonPrefixLength, IsSorted, _buffer);
 
     internal BucketPlan ForChild() =>
-        new(default, KnownCommonPrefixLength, IsSorted, PrefixesValidated);
+        new(default, KnownCommonPrefixLength, IsSorted);
 
-    internal BucketPlan AfterFiltering(bool preservesOrder) => new(default, KnownCommonPrefixLength, IsSorted && preservesOrder, PrefixesValidated);
+    internal BucketPlan AfterFiltering(bool preservesOrder) => new(default, KnownCommonPrefixLength, IsSorted && preservesOrder);
 
     private const int FullSortThreshold = PbtFourLevelGroupGeometry.BoundarySlots;
 
@@ -174,53 +173,12 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
         return usedMask;
     }
 
-    /// <summary>Establishes a shared-prefix bound and prefix-validation status for the operation range.</summary>
-    /// <remarks>
-    /// Reuses inherited knowledge or producer buckets to avoid rescanning keys. At an empty subtree or leaf,
-    /// an unvalidated range is scanned for prefix relationships, also determining its common-prefix depth.
-    /// The existing subtree limits traversal jumps separately, without weakening this operation-only bound.
-    /// </remarks>
-    internal BucketPlan EstablishRangeKnowledge<TKey>(bool isEmptyOrLeaf, Span<PbtWriteOperation<TKey>> operations, int bitDepth, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
+    /// <summary>Reuses inherited or producer knowledge without scanning the operation range.</summary>
+    internal BucketPlan EstablishRangeKnowledge(int operationCount, int firstKeyBitLength, int bitDepth)
     {
-        bool validatePrefixes = isEmptyOrLeaf && !PrefixesValidated;
-        if (!validatePrefixes && !Precalculated.IsEmpty)
-        {
-            int mask = Precalculated[0];
-            int bound = BitOperations.IsPow2(mask) ? bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup : bitDepth;
-            return WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bound), PrefixesValidated);
-        }
-        if (!validatePrefixes) return WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bitDepth), PrefixesValidated);
-
-        int branchDepth = FindOperationsBranchDepth(operations, bitDepth, validatePrefixes, IsSorted, metrics, out bool prefixesValidated);
-        return WithRangeKnowledge(branchDepth, PrefixesValidated || prefixesValidated);
-    }
-
-    private static int FindOperationsBranchDepth<TKey>(Span<PbtWriteOperation<TKey>> operations, int bitDepth, bool validatePrefixes, bool isSorted, TrieUpdaterMetrics? metrics, out bool prefixesValidated) where TKey : struct, IPbtKey<TKey>
-    {
-        prefixesValidated = false;
-        if (operations.IsEmpty) return bitDepth;
-        TKey firstKey = operations[0].Key;
-        int branchDepth = firstKey.BitLength;
-        bool equalLengths = true;
-        bool hasPrefix = false;
-        if (isSorted && !validatePrefixes && operations.Length > 1)
-        {
-            metrics?.IncrementOperationPrefixComparisons();
-            return firstKey.FirstDifferingBit(operations[^1].Key, bitDepth);
-        }
-        for (int index = 1; index < operations.Length; index++)
-        {
-            TKey key = operations[index].Key;
-            TKey reference = isSorted ? operations[index - 1].Key : firstKey;
-            metrics?.IncrementOperationPrefixComparisons();
-            int difference = reference.FirstDifferingBit(key, bitDepth);
-            hasPrefix |= difference == Math.Min(reference.BitLength, key.BitLength);
-            branchDepth = Math.Min(branchDepth, difference);
-            equalLengths &= key.BitLength == firstKey.BitLength;
-        }
-
-        // A single reference does not prove prefix freedom for a variable-length child subset.
-        prefixesValidated = validatePrefixes && !hasPrefix && (isSorted || equalLengths || operations.Length <= 2);
-        return branchDepth;
+        int bound = operationCount == 1 ? firstKeyBitLength : bitDepth;
+        if (!Precalculated.IsEmpty && BitOperations.IsPow2(Precalculated[0]))
+            bound = Math.Max(bound, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup);
+        return WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bound));
     }
 }

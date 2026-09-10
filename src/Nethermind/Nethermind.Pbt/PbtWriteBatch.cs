@@ -30,7 +30,7 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
         {
             _ = Operations;
             int bitDepth = ShardNibbleIndex * PbtFourLevelGroupGeometry.LevelsPerGroup;
-            return new(_table!.AsSpan(), bitDepth, false, false);
+            return new(_table!.AsSpan(), bitDepth, false);
         }
     }
 

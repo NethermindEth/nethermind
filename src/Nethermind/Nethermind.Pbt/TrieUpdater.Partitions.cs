@@ -188,7 +188,7 @@ public static partial class TrieUpdater
                 {
                     // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                     result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
-                        operations.AsSpan(), 8, new(table.AsSpan(), 8, false, false));
+                        operations.AsSpan(), 8, new(table.AsSpan(), 8, false));
                     TrieUpdater<TKey, TPath>.Flush(store, Metrics, ref reader, writer);
                     Result = Subtree.TakeFrom<TKey, TPath>(ref result);
                 }
