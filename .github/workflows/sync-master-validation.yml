@@ -209,9 +209,11 @@ jobs:
              | .[] | select(.runner_label as $r | $preempted | index($r))
              | "Sync \(.network) (\(.mode))"' <<<"$MATRIX")
 
+          listed=0
           unexplained=""
           while IFS= read -r job; do
             [ -n "$job" ] || continue
+            listed=$((listed + 1))
             explained=false
             while IFS= read -r prefix; do
               [ -n "$prefix" ] || continue
@@ -225,7 +227,9 @@ jobs:
           done <<<"$jobs"
           unexplained="${unexplained%, }"
 
-          if [ -z "$unexplained" ] && [ -n "$prefixes" ]; then
+          # An empty list means the lookup told us nothing, not that every failure was a
+          # reclaim, so it must still page.
+          if [ "$listed" -gt 0 ] && [ -z "$unexplained" ]; then
             echo "every failure was a preemption, not paging" >> "$GITHUB_STEP_SUMMARY"
             echo "should_page=false" >> "$GITHUB_OUTPUT"
             exit 0

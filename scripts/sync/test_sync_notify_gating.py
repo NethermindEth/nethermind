@@ -137,6 +137,13 @@ class NotifyGatingTest(unittest.TestCase):
         self.assertEqual(out["should_page"], "true")
         self.assertEqual(out["failed_jobs"], "(check run for details)")
 
+    def test_an_empty_list_pages_even_when_another_cell_was_preempted(self):
+        # The job only runs because something failed, so an unreadable list plus a reclaim
+        # elsewhere must not be taken as "every failure was a reclaim".
+        out = self.collect([], ["f-1-master-mainnet"])
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "(check run for details)")
+
     def test_long_job_names_are_truncated_for_slack(self):
         name = "Sync gnosis (Flat) / " + "x" * 100
         out = self.collect([name], [])
