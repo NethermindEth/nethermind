@@ -40,6 +40,8 @@ def main() -> int:
     parser.add_argument("--log", required=True, type=pathlib.Path, help="Captured ziskemu output.")
     parser.add_argument("--into", required=True, type=pathlib.Path, help="JSON array to append to.")
     args = parser.parse_args()
+    if re.fullmatch(r"[0-9]+\.ssz", args.input) is None:
+        raise SystemExit("input must be a numeric block filename ending in .ssz")
 
     log = args.log.read_text(encoding="utf-8", errors="replace")
 

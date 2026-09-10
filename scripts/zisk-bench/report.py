@@ -12,6 +12,7 @@ non-zero delta means the guest really does execute differently.
 import argparse
 import json
 import pathlib
+import secrets
 import sys
 
 MARKER = "<!-- zisk-guest-benchmark-report -->"
@@ -56,10 +57,18 @@ def render(
     lines = [MARKER, "## Stateless guest cost", ""]
     regressed = False
 
+    mismatch = baseline is not None and bool(base_commit) and baseline_commit != base_commit
+    if mismatch:
+        lines += ["⚠️ **Baseline does not match this pull request's base; deltas are suppressed.**", ""]
+        lines += [f"Restored from `{baseline_commit[:12] or 'unrecorded'}`, not this pull request's base (`{base_commit[:12]}`).", ""]
+        baseline = None
+        regressed = True
+
     if baseline is None:
         lines += [
+            "Only absolute measurements are shown." if mismatch else
             "No baseline was restored, so this run only records where the guest stands. Pull requests "
-            "compare against the baseline stored by the most recent `master` run that completed one.",
+            "compare against a baseline measured at their base commit.",
             "",
             "| block | steps | prover cost |",
             "|---|---:|---:|",
@@ -100,7 +109,7 @@ def render(
 
             # The buckets are the point of tracking cost as well as steps: steps track MAIN and
             # OPCODES closely and say nothing at all about PRECOMPILES or MEMORY.
-            lines += ["", "<details><summary>Cost by bucket, summed over all blocks</summary>", ""]
+            lines += ["", "<details><summary>Variable cost by bucket, summed over shared blocks (excludes BASE)</summary>", ""]
             lines += ["| bucket | before | after | Δ |", "|---|---:|---:|---:|"]
             for bucket in ("main", "opcodes", "precompiles", "memory"):
                 was = sum(before[bucket] for _, before in shared)
@@ -111,6 +120,7 @@ def render(
         if missing:
             lines += ["", f"Blocks absent from the baseline: {', '.join(block(n) for n in missing)}."]
         if removed:
+            regressed = True
             lines += [
                 "",
                 "Blocks the baseline measured but this run did not: "
@@ -124,19 +134,11 @@ def render(
     ]
 
     if baseline is not None:
-        # A delta is only interpretable once the report names what it is a delta against:
-        # `restore-keys` will hand a pull request an older master's cache when its own base never
-        # stored one, and that difference is invisible in the numbers.
         against = f"`{baseline_commit[:12]}`" if baseline_commit else "an unrecorded master commit"
         lines += ["", f"Compared against {against}."]
-        if base_commit and baseline_commit and baseline_commit != base_commit:
-            lines[-1] += (
-                f" That is not this pull request's base (`{base_commit[:12]}`), so part of any delta "
-                "may belong to master commits in between."
-            )
 
-    if regressed:
-        lines.insert(2, "⚠️ **Prover cost is up against the baseline.**")
+    if regressed and not mismatch:
+        lines.insert(2, "⚠️ **Prover cost is up against the baseline or benchmark coverage decreased.**")
 
     return "\n".join(lines) + "\n", regressed
 
@@ -174,9 +176,12 @@ def main() -> int:
         with args.summary.open("a", encoding="utf-8") as handle:
             handle.write(report)
     if args.github_output:
+        delimiter = "ZISK_REPORT_" + secrets.token_hex(16)
+        while delimiter in report:
+            delimiter = "ZISK_REPORT_" + secrets.token_hex(16)
         with args.github_output.open("a", encoding="utf-8") as handle:
             handle.write(f"regressed={str(regressed).lower()}\n")
-            handle.write(f"report<<ZISK_REPORT_EOF\n{report}\nZISK_REPORT_EOF\n")
+            handle.write(f"report<<{delimiter}\n{report}\n{delimiter}\n")
     return 0
 
 

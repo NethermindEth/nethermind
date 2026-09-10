@@ -25,7 +25,8 @@ permissions:
 env:
   GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
   # Bumping this invalidates every stored baseline, which is what you want if the parsed shape changes.
-  CACHE_VERSION: v2
+  CACHE_VERSION: v3
+  DOTNET_VERSION: 10.0.300
 
 jobs:
   measure:
@@ -36,9 +37,43 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Pin resolved SDK
+        id: sdk
+        run: |
+          set -euo pipefail
+          jq --arg version "$DOTNET_VERSION" '.sdk.version = $version | .sdk.rollForward = "disable"' global.json > "$RUNNER_TEMP/global.json"
+          cp "$RUNNER_TEMP/global.json" global.json
+          version=$(dotnet --version)
+          [[ "$version" == "$DOTNET_VERSION" ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Select measurement definitions
+        id: definitions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          definitions="$RUNNER_TEMP/zisk-bench-definitions"
+          mkdir -p "$definitions"
+          if [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null; then
+            git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
+            echo "trusted=true" >> "$GITHUB_OUTPUT"
+          else
+            # Initial introduction has no base-owned instrument and cannot claim a comparison.
+            git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
+            echo "trusted=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No base-owned measurement definitions; recording absolute values only."
+          fi
+          echo "BENCH_DEFINITIONS=$definitions" >> "$GITHUB_ENV"
+          jq -e 'length == 9 and all(.[]; (.input | test("^[0-9]+\\.ssz$")) and (.hash | test("^[0-9a-f]{64}$")) and (.output | test("^[0-9a-f]{64}$")))' "$definitions/$GUEST_DIR/inputs.json"
 
       - name: Build guest
         working-directory: ${{ env.GUEST_DIR }}
@@ -48,8 +83,8 @@ jobs:
         working-directory: ${{ env.GUEST_DIR }}
         run: |
           set -euo pipefail
-          jq -r '.[] | "\(.input) \(.hash)"' inputs.json | while read -r input hash; do
-            curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${input}" -o "bin/${input}"
+          jq -r '.[] | "\(.input) \(.hash)"' "$BENCH_DEFINITIONS/$GUEST_DIR/inputs.json" | while read -r input hash; do
+            curl --retry 3 -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${input}" -o "bin/${input}"
             echo "${hash}  bin/${input}" | sha256sum --status -c - \
               || { echo "::error::Checksum failed for ${input}"; exit 1; }
           done
@@ -68,7 +103,7 @@ jobs:
           # ziskemu prints the guest's output hash followed by its own fixed trailer.
           suffix=0101000000000000000100
           echo '[]' > "$RUNNER_TEMP/current.json"
-          jq -r '.[] | "\(.input) \(.output)"' inputs.json | while read -r input output; do
+          jq -r '.[] | "\(.input) \(.output)"' "$BENCH_DEFINITIONS/$GUEST_DIR/inputs.json" | while read -r input output; do
             echo "::group::${input}"
             make stats INPUT="${input}" 2>&1 | tee "$RUNNER_TEMP/stats.log"
             echo "::endgroup::"
@@ -83,54 +118,57 @@ jobs:
               exit 1
             fi
 
-            python3 "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
+            python3 "$BENCH_DEFINITIONS/scripts/zisk-bench/parse-stats.py" \
               --input "${input}" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
           done
 
       - name: Restore master baseline
         id: baseline
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.definitions.outputs.trusted == 'true'
         uses: actions/cache/restore@v4
         with:
-          path: /tmp/zisk-bench-baseline
-          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ github.event.pull_request.base.sha }}
+          path: ${{ runner.temp }}/zisk-bench-baseline
+          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            zisk-bench-${{ env.CACHE_VERSION }}-
+            zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-
 
       - name: Compare and report
         id: report
+        env:
+          TRUSTED_DEFINITIONS: ${{ steps.definitions.outputs.trusted }}
         run: |
           set -euo pipefail
-          baseline=/tmp/zisk-bench-baseline/baseline.json
+          baseline="$RUNNER_TEMP/zisk-bench-baseline/baseline.json"
           [[ -f "$baseline" ]] || baseline=""
-          python3 scripts/zisk-bench/report.py \
+          [[ "$TRUSTED_DEFINITIONS" == true ]] || baseline=""
+          python3 "$BENCH_DEFINITIONS/scripts/zisk-bench/report.py" \
             --current "$RUNNER_TEMP/current.json" \
             ${baseline:+--baseline "$baseline"} \
-            --commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --commit "${{ github.sha }}" \
             --base-commit "${{ github.event.pull_request.base.sha }}" \
             --summary "$GITHUB_STEP_SUMMARY" \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Flag cost regression
         if: steps.report.outputs.regressed == 'true'
-        run: echo "::warning::Guest prover cost rose against the master baseline — see the job summary."
+        run: echo "::warning::Guest cost comparison needs review (cost, coverage, or baseline provenance) — see the job summary."
 
       - name: Stage baseline
         if: github.event_name == 'push' && github.ref_name == 'master'
         run: |
           set -euo pipefail
-          mkdir -p /tmp/zisk-bench-baseline
+          mkdir -p "$RUNNER_TEMP/zisk-bench-baseline"
           # The commit travels with the rows so the report can name what it compared against: a pull
           # request whose own base never stored a cache is served an older master's by `restore-keys`.
           jq --arg commit "$GITHUB_SHA" '{commit: $commit, rows: .}' \
-            "$RUNNER_TEMP/current.json" > /tmp/zisk-bench-baseline/baseline.json
+            "$RUNNER_TEMP/current.json" > "$RUNNER_TEMP/zisk-bench-baseline/baseline.json"
 
       - name: Save master baseline
         if: github.event_name == 'push' && github.ref_name == 'master'
         uses: actions/cache/save@v4
         with:
-          path: /tmp/zisk-bench-baseline
-          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ github.sha }}
+          path: ${{ runner.temp }}/zisk-bench-baseline
+          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-${{ github.sha }}
 
   # Separated so the measuring job keeps `contents: read` and never holds write scope while it runs
   # a downloaded binary. Skipped for forks, whose tokens cannot comment anyway.
@@ -162,7 +200,8 @@ jobs:
             });
 
             const existing = comments.find((comment) =>
-              comment.body && comment.body.includes(marker),
+              comment.user?.type === 'Bot' && comment.user?.login === 'github-actions[bot]' &&
+              comment.body && comment.body.startsWith(marker),
             );
 
             if (existing) {
