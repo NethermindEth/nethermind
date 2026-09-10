@@ -128,11 +128,12 @@ jobs:
                     + $run_id + "-master-" + $config.network
                   ),
                   machine_type: (if $machine_type == "" then $config.machine_type else $machine_type end),
-                  # This is the path that pages people on Slack, and a reclaimed Spot VM is
-                  # indistinguishable from a real regression in that alert. Default to
-                  # STANDARD regardless of the matrix flag; Spot stays available on demand.
                   provisioning_model: (
-                    if $model == "Spot" then "SPOT" else "STANDARD" end
+                    if $model == "Spot" then "SPOT"
+                    elif $model == "Standard" then "STANDARD"
+                    elif $config.spot then "SPOT"
+                    else "STANDARD"
+                    end
                   ),
                   timeout: (
                     if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
@@ -198,16 +199,50 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          MATRIX: ${{ needs.setup-matrix.outputs.matrix }}
         run: |
-          failed=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
-            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name' \
-            | cut -c1-60 | tr '\n' ', ' | sed 's/,$//')
-          if [ -z "$failed" ]; then
-            failed="(check run for details)"
+          jobs=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name')
+
+          # Cells whose Spot VM was reclaimed leave a marker artifact. Their jobs failed for
+          # infrastructure reasons, so they must not page; a real regression alongside one
+          # still has to.
+          labels=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
+            --paginate -q '.artifacts[].name | select(startswith("preempted-")) | ltrimstr("preempted-")')
+          prefixes=$(jq -r --arg labels "$labels" \
+            '($labels | split("\n") | map(select(length > 0))) as $preempted
+             | .[] | select(.runner_label as $r | $preempted | index($r))
+             | "Sync \(.network) (\(.mode))"' <<<"$MATRIX")
+
+          unexplained=""
+          while IFS= read -r job; do
+            [ -n "$job" ] || continue
+            explained=false
+            while IFS= read -r prefix; do
+              [ -n "$prefix" ] || continue
+              case "$job" in "${prefix}"*) explained=true; break ;; esac
+            done <<<"$prefixes"
+            if [ "$explained" = true ]; then
+              echo "ignoring ${job}: its runner was preempted"
+            else
+              unexplained="${unexplained}$(cut -c1-60 <<<"$job"), "
+            fi
+          done <<<"$jobs"
+          unexplained="${unexplained%, }"
+
+          if [ -z "$unexplained" ] && [ -n "$prefixes" ]; then
+            echo "every failure was a preemption, not paging" >> "$GITHUB_STEP_SUMMARY"
+            echo "should_page=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          echo "failed_jobs=$failed" >> "$GITHUB_OUTPUT"
+          if [ -z "$unexplained" ]; then
+            unexplained="(check run for details)"
+          fi
+          echo "should_page=true" >> "$GITHUB_OUTPUT"
+          echo "failed_jobs=$unexplained" >> "$GITHUB_OUTPUT"
 
       - name: Send Slack notification
+        if: ${{ steps.failures.outputs.should_page == 'true' }}
         uses: slackapi/slack-github-action@v2
         env:
           FAILED_JOBS: ${{ steps.failures.outputs.failed_jobs }}

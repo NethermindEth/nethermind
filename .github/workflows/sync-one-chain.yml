@@ -203,4 +203,20 @@ jobs:
         env:
           TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
           PREEMPTED: ${{ steps.destroy.outputs.preempted }}
-        run: echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: |
+          echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
+          if [ "$PREEMPTED" = true ]; then
+            printf '%s' "$RUNNER_LABEL" > preempted.txt
+          fi
+
+      # A reclaimed Spot VM fails the sync job exactly like a real regression, and the matrix
+      # boundary hides the difference from the caller. A marker artifact is the only per-cell
+      # channel out of a reusable workflow, because a matrix clobbers job outputs.
+      - name: Publish the preemption marker
+        if: ${{ always() && steps.destroy.outputs.preempted == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preempted-${{ inputs.runner_label }}
+          path: preempted.txt
+          retention-days: 1
