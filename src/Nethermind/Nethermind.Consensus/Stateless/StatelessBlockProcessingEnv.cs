@@ -6,6 +6,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -38,6 +39,9 @@ public class StatelessBlockProcessingEnv(
     // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
     private const int CodeCacheCapacity = 512;
 
+    /// <summary>Controls whether replay records derived requests or preserves the supplied requests hash.</summary>
+    public IExecutionRequestsProcessorFactory ExecutionRequestsProcessorFactory { get; init; } = StatelessExecutionRequestsProcessorFactory.Instance;
+
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
     public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
@@ -66,7 +70,7 @@ public class StatelessBlockProcessingEnv(
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
+            executionRequestsProcessorFactory: ExecutionRequestsProcessorFactory
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -99,7 +103,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new StatelessExecutionRequestsProcessor(txProcessor),
+            ExecutionRequestsProcessorFactory.Create(txProcessor),
             blockAccessListManager
         );
     }
