@@ -18,6 +18,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         config: [release, debug]
@@ -42,4 +43,23 @@ jobs:
         run: dotnet restore src/Nethermind/${{ matrix.solution }}.slnx --locked-mode
 
       - name: Build ${{ matrix.solution }}.slnx
-        run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
+        env:
+          DIAG_DIR: ${{ runner.temp }}/stall-diagnostics
+          MSBUILDDEBUGPATH: ${{ runner.temp }}/msbuild-debug
+          # Names the build requests each node is blocked on, which is what identifies a scheduler
+          # deadlock. Costs no measurable build time but writes ~0.5 GB, so it is limited to the
+          # solution that has deadlocked; the binary log covers the others.
+          MSBUILDDEBUGSCHEDULER: ${{ matrix.solution == 'EthereumTests' && 1 || '' }}
+        run: >
+          bash scripts/ci/run-with-stall-watchdog.sh
+          dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
+          -bl:${{ runner.temp }}/stall-diagnostics/build.binlog
+
+      - name: Upload stall diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stall-diagnostics-${{ matrix.config }}-${{ matrix.solution }}
+          path: ${{ runner.temp }}/stall-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
