@@ -22,7 +22,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -179,6 +178,8 @@ public class StatelessInputGeneratorTests
         ISpecProvider specProvider = new TestSpecProvider(spec);
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(spec))
+            // The witness is assembled from trie nodes persisted in StateDb.
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = false })
             .AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None })
             .Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
