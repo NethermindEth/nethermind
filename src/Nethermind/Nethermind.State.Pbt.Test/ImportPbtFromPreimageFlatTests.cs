@@ -45,6 +45,11 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Imports_preimage_flat_state_into_pbt_and_exits(int windowSize)
     {
         PbtConfig config = new() { ImportWindowSize = windowSize };
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger progressLogger = new(logger);
+        logs.GetClassLogger<ProgressLogger>().Returns(progressLogger);
 
         // More than 128 chunks exercises the overflow-code zone end-to-end.
         byte[] bigCode = new byte[5000];
@@ -80,7 +85,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         // Both phases need the same column database; otherwise phase two scans nothing.
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, logs);
 
         await step.Execute(CancellationToken.None);
 
@@ -89,6 +94,11 @@ public class ImportPbtFromPreimageFlatTests
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
+        foreach (string partitionName in new[] { "accounts/code", "header storage", "overflow storage" })
+        {
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 0.00 % ")));
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 100.00 % ")));
+        }
         Assert.That(reader.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(2), "shared code references survive later account changes");
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(scan.Accounts.RecordCount, Is.EqualTo(3), scan.Format());
@@ -99,6 +109,71 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
         Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
+    }
+
+    [Test]
+    public async Task Phase_two_progress_tracks_scanned_paths_before_partition_completion(
+        [Values(0, 1, 2)] int zone,
+        [Values(0, 15)] int partition,
+        [Values(1, 2)] int pages)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None)) { }
+        using MemDb codes = new();
+        using RecordingColumnsDb db = new();
+        PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
+        PbtRocksDbPersistence target = new(db, config);
+        using CancellationTokenSource cancellation = new();
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger progressLogger = new(logger);
+        logs.GetClassLogger<ProgressLogger>().Returns(progressLogger);
+        int prefixOffset = zone == 0 ? 0 : 1;
+        PbtColumns column = zone == 0 ? PbtColumns.Accounts : PbtColumns.Storages;
+        byte zoneByte = zone == 2 ? (byte)0xFF : (byte)0;
+        db.AfterCopy = () =>
+        {
+            for (int page = 1; page <= 2; page++)
+            {
+                byte[] key = new byte[zone == 0 ? 32 : zone == 1 ? 34 : 66];
+                if (zone != 0) key[0] = zoneByte;
+                key[prefixOffset] = (byte)(partition * 16 + page * 4);
+                key[prefixOffset + 1] = 3;
+                key[prefixOffset + 2] = 0xFF;
+                if (zone != 0) key[^1] = PbtKeyDerivation.HeaderStorageOffset;
+                byte[] value = zone == 0
+                    ? Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100)).Bytes
+                    : TestItem.KeccakA.Bytes.ToArray();
+                db.GetColumnDb(column).Set(key, value);
+            }
+        };
+        int resumedPages = 0;
+        db.ViewOpened = (scannedColumn, start, _) =>
+        {
+            if (scannedColumn == column && start.Length > prefixOffset + 2 &&
+                (zone == 0 || start[0] == zoneByte) && ++resumedPages == pages)
+                cancellation.Cancel();
+        };
+        RecordingExitSource exit = new();
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, LimboLogs.Instance), target, config, exit, logs) { EntryChunkSize = 1 };
+
+        await step.Execute(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(30));
+
+        string zoneName = zone switch { 0 => "accounts/code", 1 => "header storage", _ => "overflow storage" };
+        double scanned = (partition * 16 + pages * 4 + 3 / 256.0 + 0xFF / 65536.0) / 256;
+        string percentage = scanned.ToString("P2", System.Globalization.CultureInfo.InvariantCulture);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumedPages, Is.EqualTo(pages));
+            Assert.That(exit.ExitCode, Is.EqualTo(1));
+            Assert.That(db.ActiveViews, Is.Zero);
+            Assert.That(target.IsValid, Is.False);
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: 0.00 % ")));
+            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: {percentage} ")));
+            logger.DidNotReceive().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: 100.00 % ")));
+        }
     }
 
     [TestCase(1, 101)]
