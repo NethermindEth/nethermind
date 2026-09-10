@@ -129,6 +129,75 @@ internal class XdcTransactionProcessorTests
         }
     }
 
+    /// <remarks>
+    /// XDPoSChain waives only the EIP-1559 fee floor for the special contracts
+    /// (<c>!types.IsSpecialTx(msg.To)</c> in <c>core/state_transition.go</c> <c>preCheck</c>) and still
+    /// runs <c>buyGas</c>, so a client that skips the charge computes a different state root and forks.
+    /// </remarks>
+    [TestCase(true, true, 0L, true, TestName = "Special transaction below the base fee is exempt from the floor")]
+    [TestCase(true, true, XdcBaseFeeCalculator.BaseFee, true, TestName = "Special transaction at the base fee is charged")]
+    [TestCase(true, false, 0L, false, TestName = "Ordinary transaction below the base fee is rejected")]
+    [TestCase(true, false, XdcBaseFeeCalculator.BaseFee, true, TestName = "Ordinary transaction at the base fee is charged")]
+    // Before EIP-1559 there is no floor to waive, so a special transaction is charged like any other.
+    [TestCase(false, true, 0L, true, TestName = "Pre-1559 special transaction with no gas price is free")]
+    [TestCase(false, true, XdcBaseFeeCalculator.BaseFee, true, TestName = "Pre-1559 special transaction is charged")]
+    [TestCase(false, false, XdcBaseFeeCalculator.BaseFee, true, TestName = "Pre-1559 ordinary transaction is charged")]
+    public void BuyGas_SpecialTransaction_IsExemptFromTheFeeFloorButStillPaysForGas(
+        bool eip1559Enabled,
+        bool toRandomizeContract,
+        long gasPrice,
+        bool expectedToBeCharged)
+    {
+        const long gasLimit = 100000;
+        Address randomizeContract = TestItem.AddressC;
+
+        // A concrete spec rather than a substitute: the processor casts to XdcReleaseSpec in places.
+        XdcReleaseSpec spec = new()
+        {
+            IsEip1559Enabled = eip1559Enabled,
+            BlockSignerContract = TestItem.AddressB,
+            RandomizeSMCBinary = randomizeContract,
+            BlackListedAddresses = [],
+        };
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(toRandomizeContract ? randomizeContract : TestItem.AddressD)
+            .WithGasPrice((UInt256)gasPrice)
+            .WithGasLimit(gasLimit)
+            .WithType(TxType.Legacy)
+            .TestObject;
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithBaseFee(eip1559Enabled ? (UInt256)XdcBaseFeeCalculator.BaseFee : UInt256.Zero)
+            .TestObject;
+
+        _transactionProcessor!.SetBlockExecutionContext(header);
+
+        UInt256 balanceBefore = _stateProvider!.GetBalance(TestItem.AddressA);
+
+        TransactionResult result = _transactionProcessor.TestBuyGas(tx, spec, out UInt256 effectiveGasPrice);
+
+        UInt256 charged = balanceBefore - _stateProvider.GetBalance(TestItem.AddressA);
+
+        // A legacy transaction's effective gas price is its gas price; asserting it keeps the charge
+        // below from passing vacuously if the price were zeroed out for these contracts.
+        Assert.That(effectiveGasPrice, Is.EqualTo((UInt256)gasPrice));
+
+        if (expectedToBeCharged)
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(charged, Is.EqualTo(effectiveGasPrice * gasLimit));
+        }
+        else
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
+            Assert.That(charged, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
     private class TestXdcTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
@@ -138,6 +207,16 @@ internal class XdcTransactionProcessorTests
         ILogManager? logManager,
         IMasternodeVotingContract masternodeVotingContract) : XdcTransactionProcessor(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, masternodeVotingContract)
     {
+        /// <summary>
+        /// Prices and buys gas the way <c>Execute</c> does, so that an override of either step is exercised.
+        /// </summary>
+        public TransactionResult TestBuyGas(Transaction tx, IReleaseSpec spec, out UInt256 effectiveGasPrice)
+        {
+            effectiveGasPrice = CalculateEffectiveGasPrice(
+                tx, spec.IsEip1559Enabled, VirtualMachine.BlockExecutionContext.Header.BaseFeePerGas, out _);
+            return BuyGas(tx, spec, NullTxTracer.Instance, ExecutionOptions.None, in effectiveGasPrice, out _, out _, out _);
+        }
+
         public void TestPayFees(
             Transaction tx,
             XdcBlockHeader header,

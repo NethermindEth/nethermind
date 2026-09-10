@@ -49,8 +49,6 @@ internal class XdcTransactionProcessor(
     {
         IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
 
-        if (tx.IsSpecialTransaction(xdcSpec)) return;
-
         if (!xdcSpec.IsTipTrc21FeeEnabled)
         {
             base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
@@ -71,19 +69,18 @@ internal class XdcTransactionProcessor(
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
-        out UInt256 blobBaseFee)
-    {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
-        {
-            premiumPerGas = 0;
-            senderReservedGasPayment = 0;
-            blobBaseFee = 0;
-            return TransactionResult.Ok;
-        }
-        return base.BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
-    }
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Transactions to the block-signer and randomize contracts are exempt from the EIP-1559 fee
+    /// floor, mirroring the <c>!types.IsSpecialTx(msg.To)</c> guard in XDPoSChain's
+    /// <c>core/state_transition.go</c> <c>preCheck</c>. The exemption covers the floor only: gas is
+    /// still bought, refunded and paid out for them, so skipping the charge forks the chain against
+    /// the reference client. The premium itself is left to the base calculation, which already
+    /// clamps it to zero for the zero-gas-price transactions the consensus engine generates.
+    /// </remarks>
+    protected override bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
+        base.TryCalculatePremiumPerGas(tx, in baseFee, out premiumPerGas)
+        || tx.IsSpecialTransaction((IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec);
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -151,24 +148,6 @@ internal class XdcTransactionProcessor(
             return TransactionResult.Ok;
         }
         return base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate);
-    }
-
-    protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
-    {
-        // IMPORTANT: if we override the effective gas price to 0, we must also set opcodeGasPrice to 0.
-        // TxExecutionContext is created with opcodeGasPrice and is later used for refunding, tracing, etc.
-        //
-        // Also: IsSpecialTransaction requires the IXdcReleaseSpec to decide Randomize vs BlockSigner, so
-        // we need the current block spec here.
-        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec;
-
-        if (tx.IsSpecialTransaction(xdcSpec))
-        {
-            opcodeGasPrice = UInt256.Zero;
-            return UInt256.Zero;
-        }
-
-        return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
     protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit) =>
