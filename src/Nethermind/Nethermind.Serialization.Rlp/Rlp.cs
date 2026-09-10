@@ -499,6 +499,7 @@ namespace Nethermind.Serialization.Rlp
             return 1 + lengthOfLength + length;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SerializeLength(int value, Span<byte> destination)
         {
             // We assume 0 <= value <= int.MaxValue
@@ -816,6 +817,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(ReadOnlySpan<byte> array) => array.Length == 0 ? 1 : LengthOfByteString(array.Length, array[0]);
 
         // Assumes that length is greater then 0
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfByteString(int length, byte firstByte)
         {
             if (length == 0)
