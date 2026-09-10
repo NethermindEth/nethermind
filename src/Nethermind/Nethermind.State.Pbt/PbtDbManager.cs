@@ -100,7 +100,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 ReportBundleMetrics(chain);
 
                 // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics, _trieNodeCache);
+                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics);
 
                 // lease before publishing, never after: a sweep landing between the publish and the
                 // lease would release the only lease and hand back a dead bundle
@@ -155,7 +155,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         try
         {
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage);
+            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage, _trieNodeCache);
         }
         catch
         {

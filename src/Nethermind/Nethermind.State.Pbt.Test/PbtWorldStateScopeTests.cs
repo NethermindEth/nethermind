@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
+using Nethermind.Core.Test.Modules;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +28,48 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtWorldStateScopeTests
 {
+    [Test]
+    public async Task Override_bundles_use_the_production_cache_without_changing_canonical_state([Values] bool delete)
+    {
+        PbtConfig config = new() { Enabled = true };
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddModule(new PbtModule(config))
+            .AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance)
+            .Build();
+        PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
+        PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
+        Hash256 canonicalRoot;
+        using (IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
+        {
+            Write(scope, 1);
+            scope.Commit(1);
+            canonicalRoot = scope.RootHash;
+        }
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(canonicalRoot).TestObject;
+        cache.Clear();
+        using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
+        using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
+        {
+            PbtNodePath rootPath = new([], 0);
+            using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath);
+            Assert.That(group, Is.Not.Null);
+            using RefCountingMemory? cached = cache.TryGet(canonicalRoot.ValueHash256, rootPath, out RefCountingMemory? payload) ? payload : null;
+            Assert.That(cached, Is.Not.Null, "the override bundle must populate the injected singleton cache");
+            Assert.That(cached!.Memory.ToArray(), Is.EqualTo(group!.Memory.ToArray()));
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+                batch.Set(TestItem.AddressA, delete ? null : Build.An.Account.WithBalance(2).TestObject);
+            scope.Commit(2);
+            Assert.That(scope.RootHash, Is.Not.EqualTo(canonicalRoot));
+        }
+        using IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(parent, new LocalMetrics());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canonical.RootHash, Is.EqualTo(canonicalRoot));
+            Assert.That(canonical.Get(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)1));
+        }
+    }
+
     [Test]
     public async Task Storage_emptiness_is_unknown_and_slot_reads_work([Values] bool hasStorage)
     {
@@ -812,8 +856,8 @@ public class PbtWorldStateScopeTests
     private static PbtWorldStateScope CreateCountingScope(CountingWarmupReader reader, PbtTrieNodeCache? cache, ITrieWarmer warmer)
     {
         PbtResourcePool pool = new(new PbtConfig());
-        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, trieNodeCache: cache);
-        PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader);
+        PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         return new PbtWorldStateScope(reader.CurrentState, null, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(),
             Substitute.For<IPbtCommitTarget>(), NullPbtChildHeaderSource.Instance, pool, PbtResourcePool.Usage.MainBlockProcessing,
             true, warmer);

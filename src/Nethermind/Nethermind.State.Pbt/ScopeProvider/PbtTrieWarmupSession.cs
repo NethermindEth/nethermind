@@ -18,7 +18,8 @@ internal sealed class PbtTrieWarmupSession(
     PbtReadOnlySnapshotBundle readOnlyBundle,
     PbtTransientResource transientResource,
     ITrieWarmer trieWarmer,
-    int sequenceId) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
+    int sequenceId,
+    PbtTrieNodeCache? trieNodeCache) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
 {
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer> _storageWarmers = [];
     private long _leases = RefCountingLease.Single;
@@ -117,7 +118,11 @@ internal sealed class PbtTrieWarmupSession(
     {
         for (int index = initialSnapshots.Count - 1; index >= 0; index--)
             if (initialSnapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
-        return readOnlyBundle.GetNodeGroup(groupKey);
+        ValueHash256 root = readOnlyBundle.TreeRoot;
+        if (trieNodeCache?.TryGet(root, groupKey, out RefCountingMemory? cached) == true) return cached;
+        RefCountingMemory? result = readOnlyBundle.GetNodeGroup(groupKey);
+        if (result is not null) trieNodeCache?.Add(root, groupKey, result);
+        return result;
     }
 
     void IPbtStore.SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct => throw new NotSupportedException();
