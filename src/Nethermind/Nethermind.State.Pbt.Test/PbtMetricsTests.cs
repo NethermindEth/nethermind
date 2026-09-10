@@ -4,9 +4,17 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Monitoring.Config;
+using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
+using NSubstitute;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
@@ -14,6 +22,8 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtMetricsTests
 {
+    private RecordingObserver _readOnlyBundleTime = null!;
+    private IMetricObserver _originalReadOnlyBundleTime = null!;
     private RecordingObserver _writeBatchTime = null!;
     private RecordingObserver _rootHashTime = null!;
     private IMetricObserver _originalWriteBatchTime = null!;
@@ -26,6 +36,8 @@ public class PbtMetricsTests
     [SetUp]
     public void Setup()
     {
+        _originalReadOnlyBundleTime = Metrics.PbtReadOnlySnapshotBundleTimes;
+        Metrics.PbtReadOnlySnapshotBundleTimes = _readOnlyBundleTime = new RecordingObserver();
         _originalWriteBatchTime = Metrics.PbtWriteBatchTime;
         _originalRootHashTime = Metrics.PbtRootHashTime;
         _originalPrepareLeafChangesTime = Metrics.PbtPrepareLeafChangesTime;
@@ -39,6 +51,7 @@ public class PbtMetricsTests
     [TearDown]
     public void TearDown()
     {
+        Metrics.PbtReadOnlySnapshotBundleTimes = _originalReadOnlyBundleTime;
         Metrics.PbtWriteBatchTime = _originalWriteBatchTime;
         Metrics.PbtRootHashTime = _originalRootHashTime;
         Metrics.PbtPrepareLeafChangesTime = _originalPrepareLeafChangesTime;
@@ -82,10 +95,107 @@ public class PbtMetricsTests
             Is.LessThanOrEqualTo(_rootHashTime.Observations[0]), "phase timings are contained in the total");
     }
 
+    [Test]
+    public void PointReads_ReportOnlyTheAnsweringTier(
+        [Values("snapshot", "tombstone", "selfdestruct", "persistence", "missing")] string scenario,
+        [Values] bool detailedMetrics)
+    {
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
+        PbtStorageFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtNodePath groupKey = new([], 0);
+        Account account = new(1, 100);
+        EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
+        CodeInfo code = new(Bytes.FromHexString("6001"));
+        using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(1);
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        if (scenario != "missing")
+        {
+            reader.GetAccount(addressHash).Returns(account);
+            reader.GetSlot(storageKey).Returns(slot);
+            reader.GetCode(codeHash).Returns(code);
+            reader.GetCodeReference(codeHash).Returns(1UL);
+            reader.GetNodeGroup(groupKey).Returns(_ => { payload.AcquireLease(); return payload; });
+        }
+
+        using PbtSnapshotContent content = new();
+        bool snapshotHit = scenario is "snapshot" or "tombstone" or "selfdestruct";
+        bool deleted = scenario is "tombstone" or "selfdestruct";
+        if (snapshotHit)
+        {
+            content.Accounts[addressHash] = deleted ? null : account;
+            if (scenario == "selfdestruct") content.ClearStorage(addressHash);
+            else content.Storages[storageKey] = deleted ? default : slot;
+            content.SetCodeReference(codeHash, deleted ? null : 1UL);
+            if (!deleted) payload.AcquireLease();
+            content.NodeGroups[groupKey] = deleted ? null : payload;
+            if (!deleted) content.Codes[codeHash] = code;
+        }
+        PbtSnapshotPooledList snapshots = new(2);
+        IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
+        snapshots.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(0, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
+        using PbtSnapshotContent emptyContent = new();
+        snapshots.Add(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, emptyContent, pool, PbtResourcePool.Usage.MainBlockProcessing));
+        using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
+
+        Account? actualAccount = bundle.GetAccount(TestItem.AddressA);
+        EvmWord actualSlot = bundle.GetSlot(TestItem.AddressA, 1);
+        using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey);
+        ulong actualReference = bundle.GetCodeReference(codeHash);
+        CodeInfo? actualCode = bundle.GetCode(codeHash);
+
+        string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";
+        string codeTier = deleted ? "persistence" : tier;
+        bool empty = deleted || scenario == "missing";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualAccount, Is.EqualTo(empty ? null : account));
+            Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
+            Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
+            Assert.That(actualReference, Is.EqualTo(empty ? 0UL : 1UL));
+            Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
+            Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
+                ? new[] { $"account_{tier}", $"storage_{tier}", $"node_group_{tier}", $"code_reference_{tier}", $"code_{codeTier}" }
+                : []));
+            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 5 : 0));
+            Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));
+        }
+    }
+
+    [Test]
+    public async Task Manager_PropagatesDetailedMetricsToBundles([Values] bool detailedMetrics, [Values] bool preGenesis)
+    {
+        await using PbtTestContext ctx = new(metricsConfig: new MetricsConfig { EnableDetailedMetric = detailedMetrics });
+        StateId state = StateId.PreGenesis;
+        if (!preGenesis)
+        {
+            state = new StateId(0, default);
+            PbtSnapshotContent content = ctx.ResourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+            content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)] = new Account(1, 100);
+            ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
+        }
+        using PbtReadOnlySnapshotBundle bundle = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(state);
+        bundle.GetAccount(TestItem.AddressA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
+                ? new[] { preGenesis ? "account_persistence_null" : "account_snapshot" }
+                : []));
+            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 1 : 0));
+            Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));
+        }
+    }
+
     private sealed class RecordingObserver : IMetricObserver
     {
         public List<double> Observations { get; } = [];
 
-        public void Observe(double value, IMetricLabels? labels = null) => Observations.Add(value);
+        public List<string> Labels { get; } = [];
+
+        public void Observe(double value, IMetricLabels? labels = null)
+        {
+            Observations.Add(value);
+            if (labels is not null) Labels.Add(labels.Labels[0]);
+        }
     }
 }

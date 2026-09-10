@@ -44,8 +44,9 @@ internal sealed class PbtTestContext : IAsyncDisposable
     /// <summary>Resolves nothing unless a test supplies one, so scopes report their own EIP-8297 root.</summary>
     public IPbtChildHeaderSource ChildHeaders { get; }
 
-    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null)
+    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null, IMetricsConfig? metricsConfig = null)
     {
+        metricsConfig ??= new MetricsConfig();
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         Config = config ?? new PbtConfig();
         ChildHeaders = childHeaders ?? NullPbtChildHeaderSource.Instance;
@@ -59,9 +60,9 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
         Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config);
+        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, new MetricsConfig()), TrieWarmer, CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig), TrieWarmer, CodeDb);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>

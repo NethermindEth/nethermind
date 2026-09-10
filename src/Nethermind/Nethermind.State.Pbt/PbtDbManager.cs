@@ -10,6 +10,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -32,6 +33,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly Lock _admissionLock = new();
     private readonly CancellationToken _processExitToken;
     private readonly bool _externallyDriven;
+    private readonly bool _recordDetailedMetrics;
     private int _isDisposed;
 
     private readonly Task _persistenceWorker;
@@ -54,7 +56,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
         ILogManager logManager,
-        IPbtConfig config)
+        IPbtConfig config,
+        IMetricsConfig metricsConfig)
     {
         _repository = repository;
         _coordinator = coordinator;
@@ -64,6 +67,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _processExitToken = processExitSource.Token;
         _externallyDriven = config.MirrorFlat;
+        _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _stopSource = new CancellationTokenSource();
         _persistenceWorker = Task.Run(RunPersistenceWorker);
         _compactionWorker = Task.Run(RunCompactionWorker);
@@ -74,7 +78,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     {
         // the pre-genesis state is empty by definition, whatever is on disk, and is never cached:
         // there is nothing to amortise and nothing to sweep
-        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance);
+        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics);
 
         // a sweep may have released the entry between the lookup and the lease, in which case fall
         // through and assemble; a failure here must not consume an assembly attempt, or a state that
@@ -93,7 +97,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 ReportBundleMetrics(chain);
 
                 // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader);
+                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics);
 
                 // lease before publishing, never after: a sweep landing between the publish and the
                 // lease would release the only lease and hand back a dead bundle

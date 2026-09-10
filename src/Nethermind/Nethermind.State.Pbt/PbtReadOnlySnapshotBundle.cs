@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
@@ -15,8 +17,25 @@ namespace Nethermind.State.Pbt;
 /// <summary>An immutable canonical state view composed from snapshot diffs over one persistence snapshot.</summary>
 public sealed class PbtReadOnlySnapshotBundle(
     PbtSnapshotPooledList snapshots,
-    IPbtPersistence.IReader reader) : RefCountingDisposable
+    IPbtPersistence.IReader reader,
+    bool recordDetailedMetrics = false) : RefCountingDisposable
 {
+    private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
+    private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
+    private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
+    private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
+    private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
+    private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
+    private static readonly StringLabel _readNodeGroupSnapshotLabel = new("node_group_snapshot");
+    private static readonly StringLabel _readNodeGroupPersistenceLabel = new("node_group_persistence");
+    private static readonly StringLabel _readNodeGroupPersistenceNullLabel = new("node_group_persistence_null");
+    private static readonly StringLabel _readCodeSnapshotLabel = new("code_snapshot");
+    private static readonly StringLabel _readCodePersistenceLabel = new("code_persistence");
+    private static readonly StringLabel _readCodePersistenceNullLabel = new("code_persistence_null");
+    private static readonly StringLabel _readCodeReferenceSnapshotLabel = new("code_reference_snapshot");
+    private static readonly StringLabel _readCodeReferencePersistenceLabel = new("code_reference_persistence");
+    private static readonly StringLabel _readCodeReferencePersistenceNullLabel = new("code_reference_persistence_null");
+
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot
@@ -34,20 +53,38 @@ public sealed class PbtReadOnlySnapshotBundle(
         ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
-        return reader.GetNodeGroup(groupKey);
+        {
+            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload))
+            {
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readNodeGroupSnapshotLabel);
+                return payload;
+            }
+        }
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        RefCountingMemory? result = reader.GetNodeGroup(groupKey);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readNodeGroupPersistenceNullLabel : _readNodeGroupPersistenceLabel);
+        return result;
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)
     {
         GuardDispose();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].Content.TryGetCodeReference(codeHash, out ulong? count)) return count ?? 0;
+            if (snapshots[i].Content.TryGetCodeReference(codeHash, out ulong? count))
+            {
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readCodeReferenceSnapshotLabel);
+                return count ?? 0;
+            }
         }
 
-        return reader.GetCodeReference(codeHash);
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        ulong result = reader.GetCodeReference(codeHash);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result == 0 ? _readCodeReferencePersistenceNullLabel : _readCodeReferencePersistenceLabel);
+        return result;
     }
 
     internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
@@ -98,9 +135,19 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal Account? GetAccount(in ValueHash256 addressHash)
     {
         GuardDispose();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out Account? account)) return account;
-        return reader.GetAccount(addressHash);
+        {
+            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out Account? account))
+            {
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
+                return account;
+            }
+        }
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        Account? result = reader.GetAccount(addressHash);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
+        return result;
     }
 
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(PbtStateKey.Storage(address, slot));
@@ -108,22 +155,40 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal EvmWord GetSlot(PbtStorageFullKey key)
     {
         GuardDispose();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
         for (int index = snapshots.Count - 1; index >= 0; index--)
         {
             PbtSnapshotContent content = snapshots[index].Content;
-            if (content.Storages.TryGetValue(key, out EvmWord value)) return value;
-            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
+            if (content.Storages.TryGetValue(key, out EvmWord value)
+                || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
+            {
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
+                return value;
+            }
         }
-        return reader.GetSlot(key);
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        EvmWord result = reader.GetSlot(key);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
+        return result;
     }
 
     internal CodeInfo? GetCode(in ValueHash256 codeHash)
     {
         GuardDispose();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.Codes.TryGetValue(codeHash, out CodeInfo? code)) return code;
-        return reader.GetCode(codeHash);
+        {
+            if (snapshots[index].Content.Codes.TryGetValue(codeHash, out CodeInfo? code))
+            {
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readCodeSnapshotLabel);
+                return code;
+            }
+        }
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        CodeInfo? result = reader.GetCode(codeHash);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readCodePersistenceNullLabel : _readCodePersistenceLabel);
+        return result;
     }
 
     public bool TryLease() => TryAcquireLease();

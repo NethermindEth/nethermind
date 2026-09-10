@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Trie.Pruning;
 
@@ -357,7 +358,7 @@ public class PbtDbManagerTests
         PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         PbtDbManager manager = new(repository, coordinator, persistence, pool,
-            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config);
+            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig());
         Task producer = Task.CompletedTask;
         try
         {
