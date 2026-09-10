@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/lacchain.json",
+    "GenesisHash": "0xf7c3c99a9ccb707bb8db98aa446f5158beb02eeeb04a7a08af2fa63f89b437aa",
+    "BaseDbPath": "nethermind_db/lacchain",
+    "LogFileName": "lacchain.log"
+  },
+  "Network": {
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "JsonRpc": {
+    "EnabledModules": ["Eth", "Subscribe", "Trace", "TxPool", "Web3", "Proof", "Net", "Parity", "Health", "Rpc", "Ibft"]
+  },
+  "EthStats": {
+    "Name": "Nethermind LACChain"
+  },
+  "Metrics": {
+    "NodeName": "LACChain"
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

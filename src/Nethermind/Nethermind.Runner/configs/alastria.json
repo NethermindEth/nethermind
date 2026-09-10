@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/alastria.json",
+    "GenesisHash": "0x43c3368fd903b2d1781177b37f596b946441a68562ac0929f7377c00fd2966a3",
+    "BaseDbPath": "nethermind_db/alastria",
+    "LogFileName": "alastria.log"
+  },
+  "Network": {
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "JsonRpc": {
+    "EnabledModules": ["Eth", "Subscribe", "Trace", "TxPool", "Web3", "Proof", "Net", "Parity", "Health", "Rpc", "Ibft"]
+  },
+  "EthStats": {
+    "Name": "Nethermind Alastria Red B"
+  },
+  "Metrics": {
+    "NodeName": "Alastria Red B"
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/kalychain.json",
+    "GenesisHash": "0x1358eef47fa2ef9d7703fb01589472779a627f342150a65bd0388bdb256ff654",
+    "BaseDbPath": "nethermind_db/kalychain",
+    "LogFileName": "kalychain.log"
+  },
+  "Network": {
+    "EnableEnrDiscovery": false,
+    "DisableDiscV4DnsFeeder": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": false,
+    "SnapSync": false
+  },
+  "JsonRpc": {
+    "EnabledModules": ["Eth", "Subscribe", "Trace", "TxPool", "Web3", "Proof", "Net", "Parity", "Health", "Rpc", "Qbft"]
+  },
+  "EthStats": {
+    "Name": "Nethermind KalyChain"
+  },
+  "Metrics": {
+    "NodeName": "KalyChain"
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

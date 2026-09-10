@@ -39,8 +39,12 @@ on:
           - volta
           - xdc
           - rbb
+          - kalychain
+          - alastria
+          - lacchain
+          - lacchain-protestnet
       cl_client:
-        description: "Select Consensus Layer Client to run node against (for Volta, Energyweb, XDC, RBB or Arbitrum just set any - it will be omitted)"
+        description: "Select Consensus Layer Client to run node against (for Volta, Energyweb, XDC, RBB, KalyChain, Alastria, LACChain or Arbitrum just set any - it will be omitted)"
         default: ""
         required: true
         type: choice
