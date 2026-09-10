@@ -52,10 +52,15 @@ public ref struct RlpReader
     /// <summary>Captures the decoder and cursor, consuming an empty sequence if it encodes a null item.</summary>
     /// <remarks>
     /// The ref-struct receiver is implicitly scoped ref, which lets the returned decoder borrow <see cref="Data"/>
-    /// without copying or allowing the span to escape its source. The returned cursor is meaningful only when the
-    /// decode completes successfully; a failure can leave it after the last field that was decoded, so a retrying
-    /// caller must reset it itself.
+    /// in the caller without copying while keeping the borrow within the source lifetime. The cursor is meaningful
+    /// only when the decode completes successfully; a failure can leave it after the last field that was decoded,
+    /// so a retrying caller must reset it itself.
     /// </remarks>
+    /// <returns>
+    /// <see langword="true"/> when the item at the original <see cref="Position"/> is an empty sequence;
+    /// <paramref name="position"/> is that original offset and <see cref="Position"/> has advanced by one.
+    /// Otherwise, returns <see langword="false"/> with both cursors unchanged.
+    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool TryConsumeNull(out LiteRlpReader reader, out int position)
     {

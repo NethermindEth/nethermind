@@ -125,14 +125,14 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
 
         int noncePosition = position;
-        rlp.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> nonceBytes, RlpLimit.DefaultLimit);
+        _ = RlpHelpers.DecodeByteArraySpan(rlp.Data, position, out ReadOnlySpan<byte> nonceBytes, RlpLimit.DefaultLimit);
         if (nonceBytes[0] == 0)
         {
             RlpHelpers.ThrowNonCanonicalInteger(noncePosition);
         }
 
-        nonce = RlpHelpers.ThrowNonceTooWide(noncePosition);
-        return position;
+        nonce = default;
+        return RlpHelpers.ThrowNonceTooWide(noncePosition);
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();

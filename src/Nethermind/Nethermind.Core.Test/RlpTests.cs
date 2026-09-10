@@ -64,6 +64,31 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Cursor_reader_distinguishes_null_from_empty_string()
+        {
+            byte[] nullValue = [Rlp.EmptyListByte, Rlp.EmptyByteArrayByte];
+            RlpReader nullContext = new(nullValue);
+            bool consumedNull = nullContext.TryConsumeNull(out LiteRlpReader nullReader, out int nullPosition);
+
+            byte[] emptyString = [Rlp.EmptyByteArrayByte];
+            RlpReader emptyContext = new(emptyString);
+            bool consumedEmptyString = emptyContext.TryConsumeNull(out LiteRlpReader emptyReader, out int emptyPosition);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(consumedNull, Is.True);
+                Assert.That(nullPosition, Is.Zero);
+                Assert.That(nullContext.Position, Is.EqualTo(1));
+                Assert.That(nullReader.Data.Length, Is.EqualTo(nullValue.Length));
+                Assert.That(nullReader.Data[0], Is.EqualTo(Rlp.EmptyListByte));
+                Assert.That(consumedEmptyString, Is.False);
+                Assert.That(emptyPosition, Is.Zero);
+                Assert.That(emptyContext.Position, Is.Zero);
+                Assert.That(emptyReader.Data[0], Is.EqualTo(Rlp.EmptyByteArrayByte));
+            }
+        }
+
+        [Test]
         public void Lite_reader_forwards_the_remaining_cursor_decoders()
         {
             byte[] integer = [0x82, 0x01, 0x00];
@@ -117,6 +142,23 @@ namespace Nethermind.Core.Test
             position = 0;
             reader.DecodeString(ref position, out string value);
             Assert.That((value, position), Is.EqualTo(("abc", stringRlp.Length)));
+        }
+
+        [Test]
+        public void Cursor_span_decoder_keeps_the_failing_item_position()
+        {
+            byte[] buffer = [0x01, 0x81, 0x01];
+            int position = 0;
+
+            void Decode()
+            {
+                LiteRlpReader reader = new(buffer);
+                reader.DecodeByteArraySpan(ref position, out _);
+                reader.DecodeByteArraySpan(ref position, out _);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            Assert.That(position, Is.EqualTo(1));
         }
 
         [Test]

@@ -12,8 +12,10 @@ namespace Nethermind.Serialization.Rlp;
 /// <summary>Decodes RLP from a borrowed span and advances an explicit cursor.</summary>
 /// <remarks>
 /// The small instance methods pass the span and cursor by value to static decoding helpers.
-/// Inlining can eliminate the wrapper's cursor reference. The cursor advances only after a helper
-/// returns successfully; no cursor or memory backing is retained.
+/// Every forwarder is aggressively inlined so the caller's cursor can remain enregistered. This
+/// is a readability refactor intended to preserve the existing helper cost, not a measured
+/// performance claim. The cursor advances only after a helper returns successfully; no cursor or
+/// memory backing is retained.
 /// </remarks>
 internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
 {
@@ -107,7 +109,7 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
 
     /// <inheritdoc cref="RlpHelpers.DecodeString(ReadOnlySpan{byte}, int, RlpLimit?)" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public string DecodeString(scoped ref int position, RlpLimit? limit)
+    public string DecodeString(scoped ref int position, RlpLimit limit)
     {
         (position, string value) = RlpHelpers.DecodeString(_data, position, limit);
         return value;

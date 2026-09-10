@@ -44,9 +44,8 @@ internal static partial class RlpHelpers
     public static int SkipLength(ReadOnlySpan<byte> data, int position)
         => position + GetPrefixLength(data[position]);
 
-    // Pair forms of the primitives below, for call sites whose decode target is a property and so
-    // cannot be an `out` argument. `(position, item.Field) = Decode…(data, position);` keeps the
-    // cursor threading on one line there instead of an `out` local plus an assignment.
+    // Pair forms back LiteRlpReader's return-value methods, which need the decoded value and the
+    // advanced cursor together when the destination cannot be an `out` argument.
 
     /// <inheritdoc cref="DecodeULong(ReadOnlySpan{byte}, int, out ulong)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
