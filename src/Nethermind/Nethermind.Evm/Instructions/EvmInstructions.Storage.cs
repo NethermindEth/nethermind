@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -140,7 +141,20 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
         // Single bounds check covering both the offset and the word.
-        if (!stack.PopMemoryPositionAndWord256(out UInt256 result, out Span<byte> bytes)) goto StackUnderflow;
+        UInt256 result;
+        Span<byte> bytes;
+        // Keep the established intrinsic path: fusion regresses AVX2 memory growth.
+        if (Vector128.IsHardwareAccelerated)
+        {
+            if (!stack.PopMemoryPositionAndWord256(out result, out bytes)) goto StackUnderflow;
+        }
+        else
+        {
+            if (!stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte slot = ref stack.Pop2BytesByRefUnchecked();
+            EvmStack.ReadMemoryPositionFromSlot(ref Unsafe.Add(ref slot, EvmStack.WordSize), out result);
+            bytes = MemoryMarshal.CreateSpan(ref slot, EvmStack.WordSize);
+        }
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
@@ -150,12 +164,21 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vmState.Memory.StoreWordAfterGas(in result, bytes);
+        if (Vector128.IsHardwareAccelerated)
+        {
+            vmState.Memory.StoreWordAfterGas(in result, bytes);
+        }
+        else
+        {
+            vmState.Memory.StoreNativeWordAfterGas(in result, bytes);
+        }
 
         // Report memory changes if tracing is active.
         if (TTracingInst.IsActive)
         {
-            vm.TxTracer.ReportMemoryChange((long)result.u0, bytes);
+            vm.TxTracer.ReportMemoryChange((long)result.u0, Vector128.IsHardwareAccelerated
+                ? bytes
+                : vmState.Memory.LoadSpanAfterGas(in result, EvmStack.WordSize));
         }
 
         return EvmExceptionType.None;
