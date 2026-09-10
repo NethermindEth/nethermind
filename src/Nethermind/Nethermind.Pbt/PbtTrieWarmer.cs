@@ -30,9 +30,9 @@ internal static class PbtTrieWarmer
 
                 int branchDepth = path.BitDepth + node.Prefix.BitCount;
                 if (branchDepth >= key.BitLength) return;
+                if (TrieUpdater<TKey, PbtStorageNodePath>.MatchingPrefixBits(node.Prefix, key, path.BitDepth) != node.Prefix.BitCount) return;
                 int direction = key.GetBit(branchDepth);
                 path = path.Append(node.Prefix, direction);
-                if (!path.MatchesPrefix(key.Bytes, branchDepth)) return;
                 location = PbtFourLevelGroupGeometry.Locate(path);
             } while (location.GroupKey.Equals(group.GroupKey));
         }
