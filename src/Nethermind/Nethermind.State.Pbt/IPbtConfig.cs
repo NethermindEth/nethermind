@@ -47,21 +47,18 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "RocksDB options of the pbt metadata column.", HiddenFromDocs = true)]
     string MetadataRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt account header zone leaf blob column.", HiddenFromDocs = true)]
-    string AccountLeavesRocksDbOptions { get; set; }
+    [ConfigItem(Description = "RocksDB options of the pbt whole accounts column, keyed by the PBT address hash.", HiddenFromDocs = true)]
+    string AccountsRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt code zone leaf blob column.", HiddenFromDocs = true)]
-    string CodeLeavesRocksDbOptions { get; set; }
+    [ConfigItem(Description = "RocksDB options of the pbt whole bytecode column, keyed by code hash.", HiddenFromDocs = true)]
+    string CodesRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt storage zone leaf blob column.", HiddenFromDocs = true)]
-    string StorageLeavesRocksDbOptions { get; set; }
+    [ConfigItem(Description = "RocksDB options of the pbt storage words column, keyed by complete EIP-8297 storage keys.", HiddenFromDocs = true)]
+    string StoragesRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt account header zone trie node column.", HiddenFromDocs = true)]
-    string AccountTrieNodesRocksDbOptions { get; set; }
+    [ConfigItem(Description = "RocksDB options of the pbt canonical four-level node groups column, keyed by boundary path.", HiddenFromDocs = true)]
+    string NodeGroupsRocksDbOptions { get; set; }
 
-    [ConfigItem(Description = "RocksDB options of the pbt code zone trie node column.", HiddenFromDocs = true)]
-    string CodeTrieNodesRocksDbOptions { get; set; }
-
-    [ConfigItem(Description = "RocksDB options of the pbt storage zone trie node column.", HiddenFromDocs = true)]
-    string StorageTrieNodesRocksDbOptions { get; set; }
+    [ConfigItem(Description = "RocksDB options of the pbt content-addressed overflow-code reference records column.", HiddenFromDocs = true)]
+    string CodeReferencesRocksDbOptions { get; set; }
 }

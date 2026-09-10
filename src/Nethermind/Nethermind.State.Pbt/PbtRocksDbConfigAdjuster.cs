@@ -35,19 +35,12 @@ internal sealed class PbtRocksDbConfigAdjuster(
 
     private string ColumnRocksDbOptions(string? columnName) => columnName switch
     {
-        nameof(PbtColumns.Accounts) => pbtConfig.AccountLeavesRocksDbOptions,
-        nameof(PbtColumns.Storages) => pbtConfig.StorageLeavesRocksDbOptions,
-        nameof(PbtColumns.Codes) => pbtConfig.CodeLeavesRocksDbOptions,
+        nameof(PbtColumns.Accounts) => pbtConfig.AccountsRocksDbOptions,
+        nameof(PbtColumns.Storages) => pbtConfig.StoragesRocksDbOptions,
+        nameof(PbtColumns.Codes) => pbtConfig.CodesRocksDbOptions,
         nameof(PbtColumns.Metadata) => pbtConfig.MetadataRocksDbOptions,
-        nameof(PbtColumns.FullLeaves) => pbtConfig.StorageLeavesRocksDbOptions,
-        nameof(PbtColumns.NodeGroups) => pbtConfig.StorageTrieNodesRocksDbOptions,
-        nameof(PbtColumns.CodeReferences) => pbtConfig.CodeLeavesRocksDbOptions,
-        nameof(PbtColumns.AccountLeaves) => pbtConfig.AccountLeavesRocksDbOptions,
-        nameof(PbtColumns.CodeLeaves) => pbtConfig.CodeLeavesRocksDbOptions,
-        nameof(PbtColumns.StorageLeaves) => pbtConfig.StorageLeavesRocksDbOptions,
-        nameof(PbtColumns.AccountTrieNodes) => pbtConfig.AccountTrieNodesRocksDbOptions,
-        nameof(PbtColumns.CodeTrieNodes) => pbtConfig.CodeTrieNodesRocksDbOptions,
-        nameof(PbtColumns.StorageTrieNodes) => pbtConfig.StorageTrieNodesRocksDbOptions,
+        nameof(PbtColumns.NodeGroups) => pbtConfig.NodeGroupsRocksDbOptions,
+        nameof(PbtColumns.CodeReferences) => pbtConfig.CodeReferencesRocksDbOptions,
         _ => "",
     };
 }

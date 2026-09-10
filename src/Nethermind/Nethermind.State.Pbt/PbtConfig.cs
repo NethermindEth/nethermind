@@ -54,57 +54,45 @@ public class PbtConfig : IPbtConfig
 
     public string MetadataRocksDbOptions { get; set; } = "max_bytes_for_level_base=1000000;";
 
-    // A blob is fetched whole on every stem the fold touches, and a stem absent from the tree is a
-    // miss that the last level filter has to answer, so the filters are kept.
-    private const string PbtCommonLeafOptions =
+    // Missing accounts, storage words and code records need last-level filters too.
+    private const string PbtCommonRecordOptions =
         "optimize_filters_for_hits=false;" +
         "target_file_size_base=64000000;" +
         "";
 
-    public string AccountLeavesRocksDbOptions { get; set; } =
-        PbtCommonLeafOptions +
+    public string AccountsRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
         "write_buffer_size=32000000;" +
         "max_write_buffer_number=4;" +
         "";
 
     // Code is written only on deployment, so this column is read-heavy.
-    public string CodeLeavesRocksDbOptions { get; set; } =
-        PbtCommonLeafOptions +
+    public string CodesRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
         "max_bytes_for_level_base=64000000;" +
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=2;" +
         "";
 
-    public string StorageLeavesRocksDbOptions { get; set; } =
-        PbtCommonLeafOptions +
+    public string StoragesRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
         "max_bytes_for_level_base=350000000;" +
         "write_buffer_size=64000000;" +
         "max_write_buffer_number=8;" +
         "";
 
-    private const string PbtCommonTrieOptions =
+    public string NodeGroupsRocksDbOptions { get; set; } =
         "level_compaction_dynamic_level_bytes=true;" +
         "block_based_table_factory.block_size=16000;" +
-        "";
-
-    // Rewritten from the root on every block, so it is write-heavy despite its small size.
-    public string AccountTrieNodesRocksDbOptions { get; set; } =
-        PbtCommonTrieOptions +
-        "write_buffer_size=64000000;" +
-        "max_write_buffer_number=4;" +
-        "";
-
-    public string CodeTrieNodesRocksDbOptions { get; set; } =
-        PbtCommonTrieOptions +
-        "max_bytes_for_level_base=64000000;" +
-        "write_buffer_size=16000000;" +
-        "max_write_buffer_number=2;" +
-        "";
-
-    public string StorageTrieNodesRocksDbOptions { get; set; } =
-        PbtCommonTrieOptions +
         "max_bytes_for_level_base=350000000;" +
         "write_buffer_size=64000000;" +
         "max_write_buffer_number=8;" +
+        "";
+
+    public string CodeReferencesRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
+        "max_bytes_for_level_base=64000000;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=2;" +
         "";
 }

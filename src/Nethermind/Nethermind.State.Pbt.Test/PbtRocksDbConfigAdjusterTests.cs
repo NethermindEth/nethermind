@@ -31,22 +31,17 @@ public class PbtRocksDbConfigAdjusterTests
     {
         RocksDbOptions = "shared=1;",
         MetadataRocksDbOptions = $"column={nameof(PbtColumns.Metadata)};",
-        AccountLeavesRocksDbOptions = $"column={nameof(PbtColumns.AccountLeaves)};",
-        CodeLeavesRocksDbOptions = $"column={nameof(PbtColumns.CodeLeaves)};",
-        StorageLeavesRocksDbOptions = $"column={nameof(PbtColumns.StorageLeaves)};",
-        AccountTrieNodesRocksDbOptions = $"column={nameof(PbtColumns.AccountTrieNodes)};",
-        CodeTrieNodesRocksDbOptions = $"column={nameof(PbtColumns.CodeTrieNodes)};",
-        StorageTrieNodesRocksDbOptions = $"column={nameof(PbtColumns.StorageTrieNodes)};",
+        AccountsRocksDbOptions = $"column={nameof(PbtColumns.Accounts)};",
+        CodesRocksDbOptions = $"column={nameof(PbtColumns.Codes)};",
+        StoragesRocksDbOptions = $"column={nameof(PbtColumns.Storages)};",
+        NodeGroupsRocksDbOptions = $"column={nameof(PbtColumns.NodeGroups)};",
+        CodeReferencesRocksDbOptions = $"column={nameof(PbtColumns.CodeReferences)};",
     };
 
-    [TestCase(PbtColumns.Metadata)]
-    [TestCase(PbtColumns.AccountLeaves)]
-    [TestCase(PbtColumns.CodeLeaves)]
-    [TestCase(PbtColumns.StorageLeaves)]
-    [TestCase(PbtColumns.AccountTrieNodes)]
-    [TestCase(PbtColumns.CodeTrieNodes)]
-    [TestCase(PbtColumns.StorageTrieNodes)]
-    public void EveryColumnGetsTheGlobalThenSharedThenItsOwnOptions(PbtColumns column)
+    [Test]
+    public void EveryActiveColumnGetsTheGlobalThenSharedThenItsOwnOptions(
+        [Values(PbtColumns.Metadata, PbtColumns.Accounts, PbtColumns.Codes, PbtColumns.Storages,
+            PbtColumns.NodeGroups, PbtColumns.CodeReferences)] PbtColumns column)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
             .GetForDatabase(nameof(DbNames.Pbt), column.ToString());
@@ -54,24 +49,14 @@ public class PbtRocksDbConfigAdjusterTests
         Assert.That(config.RocksDbOptions, Is.EqualTo($"global=1;shared=1;column={column};"));
     }
 
-    [TestCase(PbtColumns.Accounts, PbtColumns.AccountLeaves)]
-    [TestCase(PbtColumns.Storages, PbtColumns.StorageLeaves)]
-    [TestCase(PbtColumns.Codes, PbtColumns.CodeLeaves)]
-    [TestCase(PbtColumns.NodeGroups, PbtColumns.StorageTrieNodes)]
-    [TestCase(PbtColumns.CodeReferences, PbtColumns.CodeLeaves)]
-    public void TypedColumnsReuseTheirDomainOptions(PbtColumns column, PbtColumns optionsColumn)
-    {
-        IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
-            .GetForDatabase(nameof(DbNames.Pbt), column.ToString());
-
-        Assert.That(config.RocksDbOptions, Is.EqualTo($"global=1;shared=1;column={optionsColumn};"));
-    }
-
     [Test]
-    public void PbtDatabaseItselfGetsTheSharedOptionsOnly()
+    public void LegacyColumnsAndDatabaseItselfGetTheSharedOptionsOnly(
+        [Values(null, nameof(PbtColumns.FullLeaves), nameof(PbtColumns.AccountLeaves), nameof(PbtColumns.CodeLeaves),
+            nameof(PbtColumns.StorageLeaves), nameof(PbtColumns.AccountTrieNodes), nameof(PbtColumns.CodeTrieNodes),
+            nameof(PbtColumns.StorageTrieNodes))] string? columnName)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
-            .GetForDatabase(nameof(DbNames.Pbt), null);
+            .GetForDatabase(nameof(DbNames.Pbt), columnName);
 
         Assert.That(config.RocksDbOptions, Is.EqualTo("global=1;shared=1;"));
     }
