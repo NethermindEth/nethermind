@@ -52,6 +52,13 @@ internal static class FrameTxPayerResolver
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
             }
 
+            // The default code's mandatory charges have to be provably covered, or the frame halts on gas
+            // where the shortcut called it approved.
+            if (!DefaultCodeChargesAreCovered(verifyFrame, tx, in senderAccount))
+            {
+                return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
+            }
+
             // A non-matching signature shape is not proof of invalidity, so defer rather than drop.
             return DefaultCodeApproves(signatures, sender)
                 ? new FrameTxPayerResolution(FrameTxPayerOutcome.Resolved, sender)
@@ -83,6 +90,20 @@ internal static class FrameTxPayerResolver
         index >= frames.Length
         || (FrameTxValidation.IsOnlyVerifyFrame(frames[index], sender) && index + 1 >= frames.Length);
 
+
+    /// <summary>Whether a default-code <c>VERIFY</c> frame provably affords everything running it charges.</summary>
+    /// <remarks>
+    /// The frame pays its target's access before dispatch, warm because the transaction warms its sender, and
+    /// the default code itself draws no further execution gas — the boundary <c>Execute_DefaultCodeFrame_PaysItsTargetAccess</c>
+    /// and <c>Execute_DefaultCodeFrameGasBelowItsTargetAccess_InvalidatesTheTransaction</c> pin. The state dimension
+    /// is left to simulation instead of priced here: an approval creating the sender or consuming EIP-8250 nonce
+    /// keys owes state gas that depends on chain state this resolver is not given. Both arms only ever defer, so a
+    /// charge growing past what this knows costs a simulation rather than admitting what execution rejects.
+    /// </remarks>
+    private static bool DefaultCodeChargesAreCovered(TxFrame verifyFrame, Transaction tx, in AccountStruct senderAccount) =>
+        verifyFrame.ExecutionGasLimit >= Eip8038Constants.WarmAccess
+        && tx.NonceKeys is null
+        && !senderAccount.IsNull;
 
     /// <summary>Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature by the sender.</summary>
     /// <remarks>Cryptographic verification is a separate upstream gate.</remarks>

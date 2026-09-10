@@ -69,10 +69,37 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A never-seen sender still resolves: the zeroed account reads as default (empty) code.
-        yield return Case("SelfVerify_NonExistentSender_PayerIsSender",
+        // A never-seen sender reads as default (empty) code, but approving payment also creates the
+        // account, a state charge the frame's budget may not cover.
+        yield return Case("SelfVerify_NonExistentSender_RequiresSimulation",
             _ => FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]),
-            FrameTxPayerOutcome.Resolved, Sender);
+            FrameTxPayerOutcome.RequiresSimulation, null);
+
+        // The default code halts before it runs unless the frame can pay its target's warm access, so a
+        // budget under that charge is not the provable success the shortcut stands on.
+        yield return Case("SelfVerify_FrameBelowItsEntryCharge_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess - 1)], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        yield return Case("SelfVerify_FrameCoveringItsEntryCharge_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess)], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        // EIP-8250: a fresh key's slot is a state charge whose size depends on state the resolver is not given.
+        yield return Case("SelfVerify_NonceKeys_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                tx.NonceKeys = [UInt256.One];
+                return tx;
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("OnlyVerifyWithoutPay_NoPayer",
             state =>

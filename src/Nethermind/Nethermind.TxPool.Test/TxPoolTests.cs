@@ -3994,6 +3994,30 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The native shortcut skips simulation, so it may only name a payer for a frame that provably
+        // succeeds. One that cannot pay the access charge its own dispatch owes does not, and admitting
+        // it hands the pool a transaction execution rejects.
+        [TestCase(0UL, false, TestName = "SubmitTx_SelfVerifyFrameBelowItsEntryCharge_IsSimulated")]
+        [TestCase(Eip8038Constants.WarmAccess - 1, false, TestName = "SubmitTx_SelfVerifyFrameOneGasBelowItsEntryCharge_IsSimulated")]
+        [TestCase(Eip8038Constants.WarmAccess, true, TestName = "SubmitTx_SelfVerifyFrameCoveringItsEntryCharge_TakesTheNativeShortcut")]
+        public void SubmitTx_NativeSelfVerifyFrame_IsSimulatedUnlessItCanPayItsEntryCharge(ulong executionGasLimit, bool shortcut)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("validation prefix frame reverted"));
+            Transaction tx = SignedFrameTx([
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
+                Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            }
+        }
+
         [Test]
         public void SubmitTx_SponsoredFrameTx_IsAdmittedWithAnUnfundedSender()
         {
