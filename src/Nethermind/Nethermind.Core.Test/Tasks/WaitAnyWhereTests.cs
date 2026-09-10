@@ -5,6 +5,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Tasks;
+using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Tasks;
@@ -12,6 +14,44 @@ namespace Nethermind.Core.Test.Tasks;
 public class WaitAnyWhereTests
 {
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
+
+    [Test]
+    [NonParallelizable] // The static log manager is process-wide.
+    public async Task Abandoned_disposal_failure_is_logged()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        TaskCompletionSource<Exception> observed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        logger.When(log => log.Error(Arg.Any<string>(), Arg.Is<Exception>(e => e.Message == nameof(Abandoned_disposal_failure_is_logged))))
+            .Do(call => observed.TrySetResult(call.ArgAt<Exception>(1)));
+        ILogManager original = Static.LogManager;
+        Static.LogManager = new OneLoggerLogManager(new ILogger(logger));
+        try
+        {
+            Disposable winner = new();
+            TaskCompletionSource<IDisposable> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            IDisposable result = await Wait.AnyWhere<IDisposable>(_ => true, Task.FromResult<IDisposable>(winner), pending.Task);
+
+            pending.SetResult(new ThrowingDisposable());
+            Exception error = await observed.Task.WaitAsync(WaitTimeout);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error, Is.TypeOf<InvalidOperationException>());
+                Assert.That(result, Is.SameAs(winner));
+                Assert.That(winner.DisposeCount, Is.Zero);
+            }
+        }
+        finally
+        {
+            Static.LogManager = original;
+        }
+    }
+
+    private sealed class ThrowingDisposable : IDisposable
+    {
+        public void Dispose() => throw new InvalidOperationException(nameof(Abandoned_disposal_failure_is_logged));
+    }
 
     [Test]
     public async Task Single_result_is_forwarded_undisposed([Values] bool accepted)

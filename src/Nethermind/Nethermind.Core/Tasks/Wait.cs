@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Tasks;
 
@@ -61,7 +62,7 @@ public static class Wait
     {
         foreach (Task<T> task in tasks)
         {
-            _ = task.ContinueWith(static abandoned =>
+            Task cleanup = task.ContinueWith(static abandoned =>
             {
                 if (abandoned.IsCompletedSuccessfully)
                 {
@@ -69,16 +70,18 @@ public static class Wait
                     {
                         Discard(abandoned.Result);
                     }
-                    catch
+                    catch (Exception exception)
                     {
-                        // Swallowed rather than logged: this continuation is itself discarded, so a
-                        // throwing `Dispose` would surface as the UnobservedTaskException the branch
-                        // below exists to prevent, and there is no caller left to report it to.
+                        Static.LogManager.GetLogger(nameof(Wait)).Error("Failed to dispose an abandoned task result", exception);
                     }
                 }
                 // Observe a failure too, so abandoning it does not raise UnobservedTaskException.
                 else _ = abandoned.Exception;
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+            // Logging can fail too; the cleanup has no caller left to observe its exception.
+            _ = cleanup.ContinueWith(static completed => { _ = completed.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
     }
 }
