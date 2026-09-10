@@ -52,7 +52,7 @@ static class Program
         clock.Stop();
         Console.WriteLine($"{matched} of {inputs.Length} cases matched in {clock.Elapsed.TotalSeconds:F1}s");
 #if RUST_EVM
-        Console.WriteLine($"frames: rust {Nethermind.Evm.Rust.RustVirtualMachine.RustFrames}, csharp {Nethermind.Evm.Rust.RustVirtualMachine.CSharpFrames}, rust evm available: {Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable}");
+        Console.WriteLine($"frames: rust {Nethermind.Evm.Rust.RustVirtualMachine.RustFrames}, csharp {Nethermind.Evm.Rust.RustVirtualMachine.CSharpFrames}, rust evm available: {Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable}, inside {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.InsideTicks).TotalSeconds:F1}s write-back {Stopwatch.GetElapsedTime(0, Nethermind.Evm.Rust.RustVirtualMachine.WriteBackTicks).TotalSeconds:F1}s");
 #endif
         return failed == 0 ? 0 : 1;
     }

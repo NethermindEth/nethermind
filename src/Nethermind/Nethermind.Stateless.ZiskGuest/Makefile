@@ -55,10 +55,11 @@ BFLAT_REFS := \
 # RUST_EVM=1 runs the EVM's frames on nethermind-rust's interpreter: the guest is built with the
 # binding compiled in and linked against libnmffi (ziskos plus nm-ffi in one static library, built
 # by nethermind-rust's zkvm/zisk/libnmffi tooling) in place of libziskos.
+# The library and its manifest are copied into $(GUEST_DIR)/nmffi, which the build container sees
+# as $(SRC_DIR)/nmffi.
 RUST_EVM ?= 0
-NMFFI_MANIFEST ?= /root/nmffi-out/libnmffi.bflat.manifest
 ifeq ($(RUST_EVM),1)
-EXTLIB := $(NMFFI_MANIFEST)
+EXTLIB := $(SRC_DIR)/nmffi/libnmffi.bflat.manifest
 RUST_EVM_PROP := -p:EnableRustEvm=true
 # The Rust library carries atomic instructions, which ziskemu 1.2 runs.
 ISA_GATES := --error-on-float --error-on-float-binary --error-on-compressed

@@ -51,6 +51,14 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
     private BlockHeader? _header;
     private readonly List<GCHandle> _pinned = [];
     private GCHandle _self;
+    // A record the world state refused — on a stateless run, a witness without the code it was
+    // asked about. The frame then goes to the C# interpreter, which throws the exception the
+    // block is rejected for.
+    private bool _observerFailed;
+    // What the world state threw at a callback: on a stateless run, the witness missing what was
+    // asked for. It is thrown again once the interpreter has returned, as the C# interpreter's
+    // read would have thrown it, so the block is rejected for the same reason.
+    private Exception? _readException;
 
     /// <summary>Whether the interpreter is linked in and speaks the ABI this binding expects.</summary>
     public static bool IsAvailable { get; } = Probe();
@@ -60,6 +68,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
 
     /// <summary>How many frames went to the Rust interpreter, and how many the C# one took.</summary>
     public static long RustFrames, CSharpFrames;
+
+    /// <summary>Ticks spent inside the interpreter's call, and in the write-back after it.</summary>
+    public static long InsideTicks, WriteBackTicks;
 
     private static bool Probe()
     {
@@ -164,6 +175,8 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         _worldState = worldState;
         _spec = spec;
         _header = header;
+        _observerFailed = false;
+        _readException = null;
         _self = GCHandle.Alloc(this);
         RustEvmNative.FfiResult result = default;
         try
@@ -236,9 +249,16 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
                 };
 
                 if (Debug) Console.Error.WriteLine($"rust frame #{RustFrames}: type {state.ExecutionType} gas {state.Gas.Value} code {code.Length} input {input.Length} warm {addresses.Length}/{cells.Length} to {env.ExecutingAccount} state {state.Gas.StateGasUsed}/{state.Gas.StateReservoir}/{state.Gas.StateGasSpill} value {env.Value} balance {worldState.GetBalance(env.ExecutingAccount)} nonce {worldState.GetNonce(env.ExecutingAccount)} exists {worldState.AccountExists(env.ExecutingAccount)} codehex {Convert.ToHexStringLower(code.Span)}");
+                long started = System.Diagnostics.Stopwatch.GetTimestamp();
                 int status = RustEvmNative.Execute(&request, &callbacks, &result);
+                InsideTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
                 if (Debug) Console.Error.WriteLine($"  -> status {status} exception {result.Exception} revert {result.ShouldRevert} gas {result.Gas.Remaining} state {result.Gas.StateGasUsed}/{result.Gas.StateReservoir}/{result.Gas.StateGasSpill} out {result.Output.Len} refund {result.Refund} logs {result.LogCount} accounts {result.AccountCount} storage {result.StorageCount}");
-                if (status != RustEvmNative.StatusOk)
+                if (_readException is not null)
+                {
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(_readException);
+                }
+
+                if (status != RustEvmNative.StatusOk || _observerFailed)
                 {
                     // The interpreter could not run this frame; the C# one can. Nothing was
                     // written on this side, so the state is as the processor left it.
@@ -302,7 +322,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
 
         if (!shouldRevert)
         {
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             WriteBack(worldState, spec, resultPtr);
+            WriteBackTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
         }
 
         return new TransactionSubstate(output, result.Refund, destroyList, logs, shouldRevert, isTracerConnected)
@@ -405,8 +427,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             account->StorageRoot = ToFfi(in storageRoot);
             return 1;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Of(context)._readException ??= exception;
             return -1;
         }
     }
@@ -424,8 +447,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             *value = ToFfi(in read);
             return 1;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Of(context)._readException ??= exception;
             return -1;
         }
     }
@@ -439,7 +463,12 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             ValueHash256 hash = new(new ReadOnlySpan<byte>(codeHash->Bytes, 32));
             byte[]? found = machine._worldState!.GetCode(in hash);
             if (found is null)
-                return 0;
+            {
+                // Code the state cannot produce: on a stateless run, a witness that left it out.
+                // The C# interpreter is the one to say so, with the exception the block is
+                // rejected for.
+                return -1;
+            }
             if (found.Length == 0)
             {
                 *code = default;
@@ -452,8 +481,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             *code = new RustEvmNative.FfiBytes { Ptr = (byte*)handle.AddrOfPinnedObject(), Len = (nuint)found.Length };
             return 1;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Of(context)._readException ??= exception;
             return -1;
         }
     }
@@ -470,8 +500,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             *hash = ToFfi(found.Bytes);
             return 1;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Of(context)._readException ??= exception;
             return -1;
         }
     }
@@ -483,9 +514,11 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         {
             Of(context)._worldState!.AddAccountRead(FromFfi(in *address));
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // A record the block access list will miss; the block then fails its own check.
+            RustVirtualMachine machine = Of(context);
+            machine._readException ??= exception;
+            machine._observerFailed = true;
         }
     }
 
@@ -499,9 +532,11 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             worldState.AddAccountRead(read);
             worldState.RecordBytecodeAccess(read);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // As above.
+            RustVirtualMachine machine = Of(context);
+            machine._readException ??= exception;
+            machine._observerFailed = true;
         }
     }
 
