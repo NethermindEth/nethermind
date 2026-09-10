@@ -1,0 +1,228 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Numerics;
+using System.Runtime.InteropServices;
+using static Nethermind.Pbt.TrieUpdater;
+
+namespace Nethermind.Pbt;
+
+/// <summary>Range knowledge and producer buckets carried through one traversal frame.</summary>
+internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int depth, int branchDepth, bool isSorted, bool prefixesValidated, Span<byte> buffer = default)
+{
+    private readonly Span<byte> _buffer = buffer;
+
+    internal BucketPlan WithBuffer(Span<byte> buffer) =>
+        new(Precalculated, Depth, BranchDepth, IsSorted, PrefixesValidated, buffer);
+
+    internal ReadOnlySpan<int> Precalculated { get; } = precalculated;
+    internal int Depth { get; } = depth;
+    internal int BranchDepth { get; } = branchDepth;
+    internal bool IsSorted { get; } = isSorted;
+    internal bool PrefixesValidated { get; } = prefixesValidated;
+
+    /// <summary>Gets the scratch buffer size in bytes required by this plan.</summary>
+    internal int GetBufferSize(int operationCount) => !Precalculated.IsEmpty
+        ? 0
+        : sizeof(int) * Math.Min(operationCount, BranchDepth >= Depth + PbtFourLevelGroupGeometry.LevelsPerGroup
+            ? 1 : PbtFourLevelGroupGeometry.BoundarySlots);
+
+    internal PartitionOutcome BucketSort<TKey>(Span<PbtWriteOperation<TKey>> operations, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
+    {
+        if (!Precalculated.IsEmpty)
+        {
+            metrics?.IncrementPrecalculatedLevels();
+            int mask = Precalculated[0];
+            int bound = BitOperations.IsPow2(mask) ? Depth + PbtFourLevelGroupGeometry.LevelsPerGroup : Depth;
+            return new(mask, Precalculated.Slice(1, BitOperations.PopCount((uint)mask)), WithRangeKnowledge(Math.Max(BranchDepth, bound), PrefixesValidated));
+        }
+
+        Span<int> counts = MemoryMarshal.Cast<byte, int>(_buffer);
+        int branchDepth = operations.Length == 1 ? operations[0].Key.BitLength : BranchDepth;
+        branchDepth = Math.Max(branchDepth, Depth);
+        BucketPlan plan = WithRangeKnowledge(branchDepth, PrefixesValidated);
+        if (!operations.IsEmpty && branchDepth >= Depth + PbtFourLevelGroupGeometry.LevelsPerGroup)
+        {
+            metrics?.IncrementSynthesizedSingleBuckets();
+            int slot = BoundarySlot(operations[0].Key, Depth);
+            counts[0] = operations.Length;
+            return new(1 << slot, counts[..1], plan);
+        }
+
+        if (IsSorted)
+            metrics?.IncrementSortedLevels();
+        else if (operations.Length <= FullSortThreshold)
+        {
+            if (operations.Length > 1)
+            {
+                metrics?.IncrementFullKeySorts();
+                if (operations.Length <= 3) SortTiny(operations);
+                else operations.Sort(OperationKeyComparer<TKey>.Instance);
+            }
+            plan = new(default, Depth, branchDepth, true, PrefixesValidated, _buffer);
+        }
+        else
+        {
+            metrics?.IncrementRadixPartitions();
+            int mask = BucketizeLarge(operations, Depth, counts, metrics, out branchDepth);
+            return new(mask, counts[..BitOperations.PopCount((uint)mask)], plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
+        }
+
+        int usedMask = 0;
+        int countIndex = -1;
+        int previousSlot = -1;
+        foreach (PbtWriteOperation<TKey> operation in operations)
+        {
+            int slot = BoundarySlot(operation.Key, Depth);
+            if (slot != previousSlot)
+            {
+                counts[++countIndex] = 0;
+                previousSlot = slot;
+                usedMask |= 1 << slot;
+            }
+            counts[countIndex]++;
+        }
+        if (BitOperations.IsPow2(usedMask))
+        {
+            metrics?.IncrementOperationPrefixComparisons();
+            branchDepth = operations[0].Key.FirstDifferingBit(operations[^1].Key, Depth);
+        }
+        return new(usedMask, counts[..(countIndex + 1)], plan.WithRangeKnowledge(branchDepth, PrefixesValidated));
+    }
+
+    internal BucketPlan WithRangeKnowledge(int branchDepth, bool prefixesValidated) =>
+        new(Precalculated, Depth, branchDepth, IsSorted, prefixesValidated, _buffer);
+
+    internal BucketPlan ForChild() =>
+        new(default, Depth + PbtFourLevelGroupGeometry.LevelsPerGroup, BranchDepth, IsSorted, PrefixesValidated);
+
+    internal BucketPlan AfterJump(int depth) => new(default, depth, BranchDepth, IsSorted, PrefixesValidated);
+
+    internal BucketPlan AfterFiltering(bool preservesOrder) => new(default, Depth, BranchDepth, IsSorted && preservesOrder, PrefixesValidated);
+
+    private const int FullSortThreshold = PbtFourLevelGroupGeometry.BoundarySlots;
+
+    private static void SortTiny<TKey>(Span<PbtWriteOperation<TKey>> operations) where TKey : struct, IPbtKey<TKey>
+    {
+        CompareAndSwap(operations, 0, 1);
+        if (operations.Length == 2) return;
+        CompareAndSwap(operations, 1, 2);
+        CompareAndSwap(operations, 0, 1);
+    }
+
+    private static void CompareAndSwap<TKey>(Span<PbtWriteOperation<TKey>> operations, int first, int second) where TKey : struct, IPbtKey<TKey>
+    {
+        if (operations[first].Key.CompareTo(operations[second].Key) > 0)
+            (operations[first], operations[second]) = (operations[second], operations[first]);
+    }
+
+    private sealed class OperationKeyComparer<TKey> : IComparer<PbtWriteOperation<TKey>> where TKey : struct, IPbtKey<TKey>
+    {
+        internal static readonly OperationKeyComparer<TKey> Instance = new();
+        public int Compare(PbtWriteOperation<TKey> left, PbtWriteOperation<TKey> right) => left.Key.CompareTo(right.Key);
+    }
+
+    private static int BucketizeLarge<TKey>(Span<PbtWriteOperation<TKey>> operations, int groupDepth, Span<int> compactCounts, TrieUpdaterMetrics? metrics, out int branchDepth) where TKey : struct, IPbtKey<TKey>
+    {
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        counts.Clear();
+        int usedMask = 0;
+        TKey firstKey = operations[0].Key;
+        branchDepth = firstKey.BitLength;
+        for (int index = 0; index < operations.Length; index++)
+        {
+            TKey key = operations[index].Key;
+            if (index != 0 && branchDepth >= groupDepth + PbtFourLevelGroupGeometry.LevelsPerGroup)
+            {
+                metrics?.IncrementOperationPrefixComparisons();
+                branchDepth = Math.Min(branchDepth, firstKey.FirstDifferingBit(key, groupDepth));
+            }
+            int bucket = BoundarySlot(key, groupDepth);
+            counts[bucket]++;
+            usedMask |= 1 << bucket;
+        }
+        Span<int> offsets = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots + 1];
+        offsets[0] = 0;
+        for (int bucket = 0; bucket < PbtFourLevelGroupGeometry.BoundarySlots; bucket++)
+            offsets[bucket + 1] = offsets[bucket] + counts[bucket];
+        int countIndex = 0;
+        for (int mask = usedMask; mask != 0; mask &= mask - 1)
+            compactCounts[countIndex++] = counts[BitOperations.TrailingZeroCount(mask)];
+        if (BitOperations.IsPow2(usedMask)) return usedMask;
+
+        branchDepth = groupDepth;
+        Span<int> next = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        offsets[..PbtFourLevelGroupGeometry.BoundarySlots].CopyTo(next);
+
+        for (int mask = usedMask; mask != 0; mask &= mask - 1)
+        {
+            int bucket = BitOperations.TrailingZeroCount(mask);
+            int end = offsets[bucket + 1];
+            while (next[bucket] < end)
+            {
+                int index = next[bucket];
+                int destination = BoundarySlot(operations[index].Key, groupDepth);
+                if (destination == bucket)
+                {
+                    next[bucket]++;
+                    continue;
+                }
+
+                (operations[index], operations[next[destination]]) =
+                    (operations[next[destination]], operations[index]);
+                next[destination]++;
+            }
+        }
+        return usedMask;
+    }
+
+    /// <summary>Establishes a shared-prefix bound and prefix-validation status for the operation range.</summary>
+    /// <remarks>
+    /// Reuses inherited knowledge or producer buckets to avoid rescanning keys. At an empty subtree or leaf,
+    /// an unvalidated range is scanned for prefix relationships, also determining its common-prefix depth.
+    /// The existing subtree limits traversal jumps separately, without weakening this operation-only bound.
+    /// </remarks>
+    internal BucketPlan EstablishRangeKnowledge<TKey>(bool isEmptyOrLeaf, Span<PbtWriteOperation<TKey>> operations, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
+    {
+        bool validatePrefixes = isEmptyOrLeaf && !PrefixesValidated;
+        if (!validatePrefixes && !Precalculated.IsEmpty)
+        {
+            int mask = Precalculated[0];
+            int bound = BitOperations.IsPow2(mask) ? Depth + PbtFourLevelGroupGeometry.LevelsPerGroup : Depth;
+            return WithRangeKnowledge(Math.Max(BranchDepth, bound), PrefixesValidated);
+        }
+        if (!validatePrefixes) return WithRangeKnowledge(Math.Max(BranchDepth, Depth), PrefixesValidated);
+
+        int branchDepth = FindOperationsBranchDepth(operations, Depth, validatePrefixes, IsSorted, metrics, out bool prefixesValidated);
+        return WithRangeKnowledge(branchDepth, PrefixesValidated || prefixesValidated);
+    }
+
+    private static int FindOperationsBranchDepth<TKey>(Span<PbtWriteOperation<TKey>> operations, int depth, bool validatePrefixes, bool isSorted, TrieUpdaterMetrics? metrics, out bool prefixesValidated) where TKey : struct, IPbtKey<TKey>
+    {
+        prefixesValidated = false;
+        if (operations.IsEmpty) return depth;
+        TKey firstKey = operations[0].Key;
+        int branchDepth = firstKey.BitLength;
+        bool equalLengths = true;
+        bool hasPrefix = false;
+        if (isSorted && !validatePrefixes && operations.Length > 1)
+        {
+            metrics?.IncrementOperationPrefixComparisons();
+            return firstKey.FirstDifferingBit(operations[^1].Key, depth);
+        }
+        for (int index = 1; index < operations.Length; index++)
+        {
+            TKey key = operations[index].Key;
+            TKey reference = isSorted ? operations[index - 1].Key : firstKey;
+            metrics?.IncrementOperationPrefixComparisons();
+            int difference = reference.FirstDifferingBit(key, depth);
+            hasPrefix |= difference == Math.Min(reference.BitLength, key.BitLength);
+            branchDepth = Math.Min(branchDepth, difference);
+            equalLengths &= key.BitLength == firstKey.BitLength;
+        }
+
+        // A single reference does not prove prefix freedom for a variable-length child subset.
+        prefixesValidated = validatePrefixes && !hasPrefix && (isSorted || equalLengths || operations.Length <= 2);
+        return branchDepth;
+    }
+}

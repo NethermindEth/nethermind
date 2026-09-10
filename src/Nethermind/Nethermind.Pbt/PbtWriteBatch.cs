@@ -24,7 +24,7 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
 
     internal int ShardNibbleIndex { get; }
     internal ReadOnlySpan<PbtWriteOperation<TKey>> Entries => Operations.AsSpan();
-    internal TrieUpdater.BucketPlan Plan
+    internal BucketPlan Plan
     {
         get
         {

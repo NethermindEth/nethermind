@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
@@ -78,6 +79,38 @@ internal sealed class PbtNodeGroupWriter : IDisposable
     {
         encoding.CopyTo(GetSpan(position, encoding.Length));
         Commit();
+    }
+
+    internal ValueHash256 Write<TKey, TPath>(ref GroupFrameReader<TKey, TPath> reader, int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
+        where TKey : struct, IPbtKey<TKey>
+        where TPath : class, IPbtNodePath<TPath>
+    {
+        if (node.IsEmpty) return default;
+        reader.Resolve(this, ref node);
+        if (position < NextPosition) throw new InvalidOperationException("PBT nodes must be placed in increasing position order.");
+        CopyUntouchedBefore(ref reader, position);
+        Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
+        ValueHash256 hash = node.Encode(encoding, depth);
+        ReadOnlySpan<byte> storedEncoding = PbtNodeGroupCodec.ShouldOmit(position, encoding) ? [] : encoding;
+        if (!reader.GetEncoding(position).Span.SequenceEqual(storedEncoding)) ChangedNodes++;
+        Commit();
+        NextPosition = position + 1;
+        node.Dispose();
+        return hash;
+    }
+
+    internal void CopyUntouchedBefore<TKey, TPath>(ref GroupFrameReader<TKey, TPath> reader, int endPosition)
+        where TKey : struct, IPbtKey<TKey>
+        where TPath : class, IPbtNodePath<TPath>
+    {
+        while (NextPosition < endPosition)
+        {
+            int position = NextPosition++;
+            ReadOnlySpan<byte> previous = reader.GetEncoding(position).Span;
+            if (previous.IsEmpty) continue;
+            if ((reader.Taken & (1U << position)) != 0) ChangedNodes++;
+            else Write(position, previous);
+        }
     }
 
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>
