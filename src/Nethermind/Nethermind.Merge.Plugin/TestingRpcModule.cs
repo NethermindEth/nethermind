@@ -221,7 +221,7 @@ public class TestingRpcModule(
         {
             header.WithdrawalsRoot = payloadAttributes.Withdrawals is null || payloadAttributes.Withdrawals.Length == 0
                 ? Keccak.EmptyTreeHash
-                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
+                : WithdrawalTrie.CalculateRoot(payloadAttributes.Withdrawals);
         }
 
         return header;
