@@ -99,7 +99,9 @@ namespace Nethermind.Serialization.Rlp
 
             if (txReceipt.TxType == TxType.FrameTx && decoderContext.Position < receiptEnd)
             {
-                txReceipt.Payer = decoderContext.DecodeAddress();
+                // Null-tolerant like every other address here: an earlier build wrote a payer-less receipt,
+                // and refusing to parse it would take the whole block's receipt array with it.
+                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
                 txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, LogEntryDecoder.Instance);
             }
 
@@ -194,8 +196,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 // Repeats the logs the top-level union already holds: DecodeStructRef hands eth_getLogs one
                 // contiguous LogsRlp span, which N per-frame sequences cannot supply.
-                writer.Encode(item.Payer);
-                FrameReceiptRlp.EncodeFrames(ref writer, item.FrameReceipts ?? [], LogEntryDecoder.Instance);
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, LogEntryDecoder.Instance);
             }
         }
 
@@ -242,8 +243,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                contentLength += Rlp.LengthOf(item.Payer);
-                contentLength += Rlp.LengthOfSequence(FrameReceiptRlp.GetFramesLength(item.FrameReceipts ?? [], LogEntryDecoder.Instance));
+                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, LogEntryDecoder.Instance);
             }
 
             return (contentLength, logsLength);
@@ -341,24 +341,20 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (!allowExtraBytes)
+            if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
             {
-                if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
+                // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
+                if (decoderContext.PeekByte() == MarkTxHashByte)
                 {
-                    // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
-                    if (decoderContext.PeekByte() == MarkTxHashByte)
-                    {
-                        decoderContext.ReadByte();
-                        decoderContext.DecodeKeccakStructRef(out item.TxHash);
-                    }
+                    decoderContext.ReadByte();
+                    decoderContext.DecodeKeccakStructRef(out item.TxHash);
                 }
+            }
 
-                // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (decoderContext.Position < receiptEnd)
-                {
-                    item.Error = decoderContext.DecodeString();
-                }
+            // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
+            if (decoderContext.Position < receiptEnd)
+            {
+                item.Error = decoderContext.DecodeString();
             }
 
             // EIP-8141: realign to the receipt's end so the next receipt in an array stays aligned; for a frame tx

@@ -72,7 +72,9 @@ namespace Nethermind.Serialization.Rlp
             if (decoderContext.Position < receiptEnd)
             {
                 txReceipt.TxType = TxType.FrameTx;
-                txReceipt.Payer = decoderContext.DecodeAddress();
+                // Null-tolerant like the sender above: an earlier build wrote a payer-less receipt, and
+                // refusing to parse it would take the whole block's receipt array with it.
+                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
                 txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, CompactLogEntryDecoder.Instance);
             }
 
@@ -177,8 +179,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 // Repeats the logs the top-level union already holds, at the cost noted above: DecodeStructRef
                 // hands eth_getLogs one contiguous LogsRlp span, which N per-frame sequences cannot supply.
-                writer.Encode(item.Payer);
-                FrameReceiptRlp.EncodeFrames(ref writer, item.FrameReceipts ?? [], CompactLogEntryDecoder.Instance);
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, CompactLogEntryDecoder.Instance);
             }
         }
 
@@ -208,8 +209,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                contentLength += Rlp.LengthOf(item.Payer);
-                contentLength += Rlp.LengthOfSequence(FrameReceiptRlp.GetFramesLength(item.FrameReceipts ?? [], CompactLogEntryDecoder.Instance));
+                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, CompactLogEntryDecoder.Instance);
             }
 
             return (contentLength, logsLength);

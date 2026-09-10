@@ -476,6 +476,22 @@ public class DebugModuleTests
         _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
     }
 
+    // The payer is written null-tolerantly and read strictly, so a payer-less frame receipt would persist and
+    // then throw on every later read of its block's receipts. It is the same failure mode as a frames-less one.
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceiptWithoutPayer_IsRejectedAndNotStored()
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload(
+            [new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, ExecutionGasUsed = 21_000 }],
+            withPayer: false);
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
     // A null array entry is a caller error too: it otherwise dereferences into an internal error.
     [Test]
     public async Task DebugInsertReceipts_NullReceiptEntry_IsRejectedAndNotStored()
@@ -507,11 +523,11 @@ public class DebugModuleTests
             Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }));
     }
 
-    private static ReceiptForRpc FrameReceiptPayload(FrameReceiptForRpc[]? frameReceipts) => new()
+    private static ReceiptForRpc FrameReceiptPayload(FrameReceiptForRpc[]? frameReceipts, bool withPayer = true) => new()
     {
         Type = TxType.FrameTx,
         CumulativeGasUsed = 21_000,
-        Payer = TestItem.AddressA,
+        Payer = withPayer ? TestItem.AddressA : null,
         FrameReceipts = frameReceipts,
         Logs = []
     };
