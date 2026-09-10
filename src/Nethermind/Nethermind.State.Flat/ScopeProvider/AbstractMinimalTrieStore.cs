@@ -34,8 +34,13 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
         private const int InitialNodeBufferCapacity = 128;
+        // A large block's parallel commit fills more buffers than the default pool retains, so the
+        // dropped ones re-grew through LOH-sized doublings on every block; retain enough of them,
+        // bounded per buffer so an outlier block cannot pin memory.
+        private const int MaxRetainedNodeBuffers = 256;
+        private const int MaxRetainedNodeBufferCapacity = 1 << 16;
         private static readonly ObjectPool<NodeBuffer> NodeBufferPool =
-            new DefaultObjectPool<NodeBuffer>(new NodeBufferPoolPolicy());
+            new DefaultObjectPool<NodeBuffer>(new NodeBufferPoolPolicy(), MaxRetainedNodeBuffers);
 
         private ThreadLocal<NodeBuffer>? _parallelBuffers;
 
@@ -103,6 +108,8 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
             public bool Return(NodeBuffer buffer)
             {
+                if (buffer.Capacity > MaxRetainedNodeBufferCapacity) return false;
+
                 buffer.Clear();
                 return true;
             }
