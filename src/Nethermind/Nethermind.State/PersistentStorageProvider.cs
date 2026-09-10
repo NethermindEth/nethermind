@@ -43,7 +43,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
-    private readonly HashSet<StorageCell> _committedThisRound = [];
     private readonly List<StorageClearChange> _storageClearJournal = [];
 
     // Zero means never captured, which is what a default BlockChange entry carries.
@@ -71,7 +70,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _storageClearJournal.Clear();
         base.Reset();
         EndOriginalsRound();
-        _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
         if (resetBlockChanges)
         {
@@ -230,7 +228,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         base.CommitCore(tracer);
         EndOriginalsRound();
-        _committedThisRound.ClearAndTrim();
         _destroyedThisRound.ClearAndTrim();
         _storageClearJournal.Clear();
 
@@ -250,22 +247,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
 
-        for (int i = changes.Length - 1; i >= 0; i--)
+        foreach (HeadChange head in _intraBlockCache.Values)
         {
-            ref readonly Change change = ref changes[i];
-            if (change.ChangeType == StorageChangeType.StorageClear)
-            {
-                continue;
-            }
-
-            if (!_committedThisRound.Add(change.StorageCell))
-            {
-                continue;
-            }
-
-            // Debug-only: A broken index surfaces anyway as a storage-root mismatch on the block.
-            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == i,
-                $"Expected the cached index to equal {i}");
+            ref readonly Change change = ref changes[head.CurrentIdx];
 
             if (change.ChangeType == StorageChangeType.Update)
             {
