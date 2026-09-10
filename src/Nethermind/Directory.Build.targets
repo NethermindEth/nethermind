@@ -21,9 +21,11 @@
     <Using Include="Nethermind.Core.Attributes.NoopThreadStaticAttribute" Alias="ThreadStaticAttribute" />
   </ItemGroup>
 
+  <!-- OutputItemType carries the generator tool's path out of the reference. Obtaining it with a
+       nested <MSBuild> call instead deadlocked parallel solution builds. -->
   <ItemGroup Condition="'$(GenerateRpcJsonContext)' == 'true'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator\Nethermind.JsonRpc.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext;RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" UndefineProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" />
-    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext;RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" UndefineProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj" OutputItemType="_RpcJsonContextGeneratorTool" ReferenceOutputAssembly="false" PrivateAssets="all" GlobalPropertiesToRemove="GenerateRpcJsonContext;RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" UndefineProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract" />
   </ItemGroup>
 
   <Target Name="_GenerateRpcJsonSerializerContext"
@@ -32,38 +34,21 @@
     Condition="'$(GenerateRpcJsonContext)' == 'true'">
 
     <PropertyGroup>
-      <_RpcJsonContextGeneratorProject>$(MSBuildThisFileDirectory)Nethermind.JsonRpc.SourceGenerator.Build\Nethermind.JsonRpc.SourceGenerator.Build.csproj</_RpcJsonContextGeneratorProject>
       <_RpcJsonContextOutputDir>$(IntermediateOutputPath)RpcJsonSourceGeneration\</_RpcJsonContextOutputDir>
       <_RpcJsonContextOutputFile>$(_RpcJsonContextOutputDir)GeneratedRpcJsonContext.g.cs</_RpcJsonContextOutputFile>
       <_RpcJsonContextSourcesFile>$(_RpcJsonContextOutputDir)sources.txt</_RpcJsonContextSourcesFile>
       <_RpcJsonContextReferencesFile>$(_RpcJsonContextOutputDir)references.txt</_RpcJsonContextReferencesFile>
-      <_RpcJsonContextGeneratorConfiguration>$(Configuration)</_RpcJsonContextGeneratorConfiguration>
     </PropertyGroup>
 
     <MakeDir Directories="$(_RpcJsonContextOutputDir)" />
     <WriteLinesToFile File="$(_RpcJsonContextSourcesFile)" Lines="@(Compile->'%(FullPath)')" Overwrite="true" />
     <WriteLinesToFile File="$(_RpcJsonContextReferencesFile)" Lines="@(ReferencePath->'%(FullPath)')" Overwrite="true" />
 
-    <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
-      Targets="GetTargetPath"
-      Properties="Configuration=$(_RpcJsonContextGeneratorConfiguration);GenerateRpcJsonContext=false"
-      RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract"
-      BuildInParallel="false">
-      <Output TaskParameter="TargetOutputs" PropertyName="_RpcJsonContextGeneratorPath" />
-    </MSBuild>
-
-    <MSBuild Projects="$(_RpcJsonContextGeneratorProject)"
-      Targets="Build"
-      Properties="Configuration=$(_RpcJsonContextGeneratorConfiguration);GenerateRpcJsonContext=false"
-      RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;IncludeAllContentForSelfExtract"
-      BuildInParallel="false"
-      Condition="!Exists('$(_RpcJsonContextGeneratorPath)')" />
-
     <PropertyGroup>
       <_DotnetHost Condition="'$(_DotnetHost)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</_DotnetHost>
       <_DotnetHost Condition="'$(_DotnetHost)' == ''">dotnet</_DotnetHost>
     </PropertyGroup>
-    <Exec Command="&quot;$(_DotnetHost)&quot; &quot;$(_RpcJsonContextGeneratorPath)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
+    <Exec Command="&quot;$(_DotnetHost)&quot; &quot;@(_RpcJsonContextGeneratorTool)&quot; --output &quot;$(_RpcJsonContextOutputFile)&quot; --sources &quot;$(_RpcJsonContextSourcesFile)&quot; --references &quot;$(_RpcJsonContextReferencesFile)&quot; --assembly-name &quot;$(AssemblyName)&quot; --define-constants &quot;$(DefineConstants)&quot;" />
 
     <ItemGroup>
       <FileWrites Include="$(_RpcJsonContextSourcesFile)" />
