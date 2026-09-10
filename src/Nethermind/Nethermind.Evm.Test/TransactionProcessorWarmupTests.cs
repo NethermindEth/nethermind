@@ -125,9 +125,38 @@ public class TransactionProcessorWarmupTests
         Snapshot snapshot = _stateProvider.TakeSnapshot();
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithGasLimit(gasLimit)
             .WithGasPrice(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithBaseFee(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).WithBaseFee(0).TestObject;
         _transactionProcessor.SetBlockExecutionContext(header);
         return (tx, snapshot);
+    }
+
+    [Test]
+    public void Warmup_preserves_memory_access_for_instruction_tracers()
+    {
+        byte[] code = Prepare.EvmCode.Log(32, 0x100800).Op(Instruction.STOP).Done;
+        (Transaction tx, _) = PrepareLogTransaction(code, 5_000_000);
+        using MemoryWordTracer tracer = new();
+
+        _transactionProcessor.Warmup(tx, tracer);
+
+        Assert.That(tracer.LastWord, Is.EqualTo(new byte[32]));
+    }
+
+    private sealed class MemoryWordTracer : TxTracer
+    {
+        public byte[]? LastWord { get; private set; }
+
+        public MemoryWordTracer()
+        {
+            IsTracingInstructions = true;
+            IsTracingMemory = true;
+        }
+
+        public override void SetOperationMemory(TraceMemory memoryTrace)
+        {
+            if (memoryTrace.Size != 0)
+                LastWord = memoryTrace.Slice((int)memoryTrace.Size - 32, 32).ToArray();
+        }
     }
 
     private sealed class LogCaptureTracer : TxTracer
