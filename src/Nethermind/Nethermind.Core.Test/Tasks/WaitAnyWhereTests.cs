@@ -13,44 +13,114 @@ namespace Nethermind.Core.Test.Tasks;
 
 public class WaitAnyWhereTests
 {
-    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(5);
+    private ILogManager _originalLogManager = null!;
+
+    [SetUp]
+    public void SetUp() => _originalLogManager = Static.LogManager;
+
+    [TearDown]
+    public void TearDown() => Static.LogManager = _originalLogManager;
 
     [Test]
-    [NonParallelizable] // The static log manager is process-wide.
-    public async Task Abandoned_disposal_failure_is_logged()
+    public async Task Disposal_failure_is_logged_without_blocking_completion([Values] bool rejected)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsError.Returns(true);
         TaskCompletionSource<Exception> observed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        logger.When(log => log.Error(Arg.Any<string>(), Arg.Is<Exception>(e => e.Message == nameof(Abandoned_disposal_failure_is_logged))))
-            .Do(call => observed.TrySetResult(call.ArgAt<Exception>(1)));
-        ILogManager original = Static.LogManager;
-        Static.LogManager = new OneLoggerLogManager(new ILogger(logger));
+        using ManualResetEventSlim releaseLogger = new();
+        TaskCompletionSource logged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        logger.When(log => log.Error(Arg.Any<string>(), Arg.Any<Exception>()))
+            .Do(call =>
+            {
+                observed.TrySetResult(call.ArgAt<Exception>(1));
+                releaseLogger.Wait(WaitTimeout * 3);
+                logged.SetResult();
+            });
+        Static.LogManager = new WaitLogManager(_originalLogManager, () => new ILogger(logger));
+        Disposable winner = new();
+        ThrowingDisposable discarded = new();
+        // Inline continuations expose logging on the producer's completion thread.
+#pragma warning disable NETH006
+        TaskCompletionSource<IDisposable> pending = new();
+#pragma warning restore NETH006
+        TaskCompletionSource<IDisposable> accepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!rejected) accepted.SetResult(winner);
+        Task<IDisposable> operation = Task.Run(async () =>
+        {
+            if (rejected) pending.SetResult(discarded);
+            IDisposable result = await Wait.AnyWhere<IDisposable>(r =>
+            {
+                if (ReferenceEquals(r, discarded)) accepted.SetResult(winner);
+                return ReferenceEquals(r, winner);
+            }, pending.Task, accepted.Task);
+            if (!rejected) pending.SetResult(discarded);
+            return result;
+        });
         try
         {
-            Disposable winner = new();
-            TaskCompletionSource<IDisposable> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            IDisposable result = await Wait.AnyWhere<IDisposable>(_ => true, Task.FromResult<IDisposable>(winner), pending.Task);
-
-            pending.SetResult(new ThrowingDisposable());
-            Exception error = await observed.Task.WaitAsync(WaitTimeout);
+            await AssertCompleted(observed.Task, "the disposal failure was not logged");
+            await AssertCompleted(operation, "logging blocked result forwarding or the task completion thread");
+            IDisposable result = await operation;
+            Exception error = await observed.Task;
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(error, Is.TypeOf<InvalidOperationException>());
                 Assert.That(result, Is.SameAs(winner));
                 Assert.That(winner.DisposeCount, Is.Zero);
+                Assert.That(discarded.DisposeCount, Is.EqualTo(1));
             }
         }
         finally
         {
-            Static.LogManager = original;
+            releaseLogger.Set();
+            await AssertCompleted(logged.Task, "the logger did not finish");
         }
     }
 
+    [Test]
+    public async Task Logging_failures_are_observed([Values] bool managerThrows)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        logger.When(log => log.Error(Arg.Any<string>(), Arg.Any<Exception>()))
+            .Do(_ => throw new InvalidOperationException("logger failure"));
+        int requests = 0;
+        Static.LogManager = new WaitLogManager(_originalLogManager, () =>
+        {
+            Interlocked.Increment(ref requests);
+            return managerThrows ? throw new InvalidOperationException("manager failure") : new ILogger(logger);
+        });
+
+        Task reporting = Wait.ReportDiscardFailure(new InvalidOperationException("disposal failure"));
+        await reporting.WaitAsync(WaitTimeout);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reporting.IsCompletedSuccessfully, Is.True);
+            Assert.That(requests, Is.EqualTo(1));
+        }
+        if (!managerThrows) logger.Received(1).Error(Arg.Any<string>(), Arg.Any<Exception>());
+    }
+
+    private sealed class WaitLogManager(ILogManager original, Func<ILogger> getLogger) : ILogManager
+    {
+        public ILogger GetClassLogger<T>() => original.GetClassLogger<T>();
+        public ILogger GetLogger(string loggerName) => loggerName == nameof(Wait) ? getLogger() : original.GetLogger(loggerName);
+    }
+
+    private static async Task AssertCompleted(Task task, string message) =>
+        Assert.That(await Task.WhenAny(task, Task.Delay(WaitTimeout)), Is.SameAs(task), message);
+
     private sealed class ThrowingDisposable : IDisposable
     {
-        public void Dispose() => throw new InvalidOperationException(nameof(Abandoned_disposal_failure_is_logged));
+        public int DisposeCount { get; private set; }
+        public void Dispose()
+        {
+            DisposeCount++;
+            throw new InvalidOperationException("disposal failure");
+        }
     }
 
     [Test]
