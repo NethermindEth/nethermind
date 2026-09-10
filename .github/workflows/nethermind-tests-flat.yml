@@ -59,6 +59,10 @@ jobs:
           - Nethermind.Runner.Test
         chunk: ['']
         include:
+          - { project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - project: Ethereum.Legacy.Blockchain.Test
             chunk: 1of8
           - project: Ethereum.Legacy.Blockchain.Test

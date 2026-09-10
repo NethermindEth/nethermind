@@ -23,6 +23,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -74,7 +75,7 @@ public abstract class BlockchainTestBase
     /// Whether to run under the flat state layout instead of patricia (the production default).
     /// Driven by the <c>TEST_USE_FLAT=1</c> environment variable, mirroring TestBlockchain.UseFlatDb.
     /// </summary>
-    protected static bool UseFlatDb => Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+    protected static bool UseFlatDb => TestStateBackend.UseFlatDb;
 
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
