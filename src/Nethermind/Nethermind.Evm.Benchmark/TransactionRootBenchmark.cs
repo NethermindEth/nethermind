@@ -38,7 +38,7 @@ public class TransactionRootBenchmark
                 .WithData(data).WithSignature(signature).TestObject;
             _transactions[i] = transaction;
             _encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
-            Transaction cached = Rlp.Decode<Transaction>(new Rlp(_encoded[i]), RlpBehaviors.SkipTypedWrapping);
+            Transaction cached = Rlp.Decode<Transaction>(new Rlp(_encoded[i]), RlpBehaviors.SkipTypedWrapping | RlpBehaviors.ExcludeHashes);
             cached.SetPreHashMemoryNoLock(_encoded[i]);
             _cachedTransactions[i] = cached;
         }
