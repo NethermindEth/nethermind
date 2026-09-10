@@ -115,10 +115,10 @@ internal static class PbtStoreTestExtensions
             byte[]? encoding = GetLogicalNode(store, currentPath);
             if (encoding is null || currentPath.Equals(path)) return encoding;
             PbtNodeReader node = new(encoding);
-            if (node.IsLeaf || currentPath.BitDepth + node.PrefixBitCount >= path.BitDepth) return null;
-            int directionBit = currentPath.BitDepth + node.PrefixBitCount;
+            if (node.IsLeaf || currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
+            int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
             int direction = path.GetBit(directionBit);
-            currentPath = IPbtNodePath<PbtStorageNodePath>.Append<PbtStorageNodePath>(currentPath, node.Prefix, node.PrefixBitCount, direction);
+            currentPath = currentPath.Append(node.Prefix, direction);
             for (int bit = 0; bit < currentPath.BitDepth; bit++)
                 if (currentPath.GetBit(bit) != path.GetBit(bit)) return null;
         }
@@ -195,8 +195,8 @@ internal static class PbtStoreTestExtensions
             records.Add(new PbtNodeRecord(path, encoding));
             PbtNodeReader node = new(encoding);
             if (node.IsLeaf) continue;
-            pending.Push(IPbtNodePath<PbtStorageNodePath>.Append<PbtStorageNodePath>(path, node.Prefix, node.PrefixBitCount, 0));
-            pending.Push(IPbtNodePath<PbtStorageNodePath>.Append<PbtStorageNodePath>(path, node.Prefix, node.PrefixBitCount, 1));
+            pending.Push(path.Append(node.Prefix, 0));
+            pending.Push(path.Append(node.Prefix, 1));
         }
         records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
         return records;

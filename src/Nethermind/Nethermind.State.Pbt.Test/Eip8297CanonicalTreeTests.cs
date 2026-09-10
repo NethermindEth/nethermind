@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Core.Buffers;
@@ -346,7 +347,7 @@ public class Eip8297CanonicalTreeTests
         CopyBitsReference(expectedPrefix, 0, prefixLength, expectedPath, pathDepth);
         expectedPath[(resultDepth - 1) >> 3] |= (byte)(direction << (7 - ((resultDepth - 1) & 7)));
 
-        PbtStorageNodePath appended = path.Append(prefix, direction);
+        PbtStorageNodePath appended = path.Append(new CompressedPrefix(EncodePrefix(prefix.Bytes, prefix.BitCount)), direction);
         byte[] pathBytes = path.ToPathArray();
         PbtBitPrefix concatenated = PbtBitPrefix.Concat(new PbtBitPrefix(pathBytes, pathDepth), direction, prefix);
         byte[] expectedConcat = new byte[expectedPath.Length];
@@ -692,7 +693,7 @@ public class Eip8297CanonicalTreeTests
             if (bitDepth > 0)
             {
                 PbtStorageNodePath parent = PbtStorageNodePath.FromKey(key, bitDepth - 1);
-                Assert.That(parent.Append(new PbtBitPrefix([], 0), key.GetBit(bitDepth - 1)), Is.EqualTo(constructed));
+                Assert.That(parent.Append(default, key.GetBit(bitDepth - 1)), Is.EqualTo(constructed));
                 Assert.That(parent.CompareTo(constructed), Is.LessThan(0));
             }
         }
@@ -755,7 +756,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageNodePath(new byte[67], 529));
             Assert.Throws<InvalidDataException>(() => PbtStorageNodePath.Decode([0, 0, 2, 17, .. new byte[67]]));
-            Assert.Throws<ArgumentOutOfRangeException>(() => maximum.Append(new PbtBitPrefix([], 0), 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => maximum.Append(default, 0));
             Assert.Throws<ArgumentException>(() => new PbtStorageNodePath(Bytes.FromHexString("01"), 1));
             Assert.Throws<ArgumentException>(() => new PbtStorageNodePath([], 8));
             Assert.Throws<ArgumentException>(() => batch.Set(default, default));
@@ -855,13 +856,99 @@ public class Eip8297CanonicalTreeTests
             }
             else
             {
-                Assert.That(reader.PrefixBitCount, Is.EqualTo(length));
-                Assert.That(reader.Prefix.ToArray(), Is.EqualTo(field));
-                if (length != 0) Assert.That(reader.Prefix.Overlaps(backing.AsSpan()), Is.True);
+                Assert.That(reader.Prefix.BitCount, Is.EqualTo(length));
+                Assert.That(reader.Prefix.Bytes.ToArray(), Is.EqualTo(field));
+                if (length != 0) Assert.That(reader.Prefix.Bytes.Overlaps(backing.AsSpan()), Is.True);
                 Assert.That(reader.LeftHash, Is.EqualTo(left));
                 Assert.That(reader.RightHash, Is.EqualTo(right));
             }
         }
+    }
+
+    [Test]
+    public void Compressed_prefix_borrows_header_and_bytes(
+        [Values(0, 1, 7, 8, 9, 271, 272, 527, 528, ushort.MaxValue)] int bitCount)
+    {
+        byte[] bytes = new byte[(bitCount + 7) / 8];
+        bytes.AsSpan().Fill(0xA0);
+        if ((bitCount & 7) != 0) bytes[^1] &= (byte)(0xFF << (8 - (bitCount & 7)));
+        byte[] encoding = EncodePrefix(bytes, bitCount);
+        CompressedPrefix prefix = new(encoding);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefix.BitCount, Is.EqualTo(bitCount));
+            Assert.That(prefix.Bytes.ToArray(), Is.EqualTo(bytes));
+            if (bitCount != 0)
+            {
+                Assert.That(prefix.Bytes.Overlaps(encoding.AsSpan(), out int offset), Is.True);
+                Assert.That(offset, Is.EqualTo(-2));
+            }
+            else
+            {
+                CompressedPrefix empty = default;
+                Assert.That(empty.BitCount, Is.EqualTo(prefix.BitCount));
+                Assert.That(empty.Bytes.IsEmpty, Is.True);
+            }
+        }
+    }
+
+    [TestCase("")]
+    [TestCase("00")]
+    [TestCase("000080")]
+    [TestCase("0001")]
+    [TestCase("000181")]
+    [TestCase("000980")]
+    [TestCase("0009808000")]
+    public void Compressed_prefix_rejects_invalid_encoding(string hex) =>
+        Assert.Throws<InvalidDataException>(() => new CompressedPrefix(Bytes.FromHexString(hex)));
+
+    [Test]
+    public void Compressed_prefix_append_preserves_bits_and_capacity(
+        [Values] bool storage, [Values(0, 1, 7, 8, 9)] int bitCount, [Values(0, 3, 8)] int pathDepth, [Values(0, 1)] int direction)
+    {
+        if (storage) AssertCompressedAppend<PbtStorageNodePath>(bitCount, pathDepth, direction);
+        else AssertCompressedAppend<PbtNodePath>(bitCount, pathDepth, direction);
+    }
+
+    private static void AssertCompressedAppend<TPath>(int bitCount, int pathDepth, int direction)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        byte[] bytes = new byte[(bitCount + 7) / 8];
+        if (bitCount != 0) bytes[0] = 0x80;
+        byte[] encoding = EncodePrefix(bytes, bitCount);
+        CompressedPrefix prefix = new(encoding);
+        TPath path = TPath.Create(new byte[(pathDepth + 7) / 8], pathDepth);
+        int depth = pathDepth + bitCount + 1;
+        byte[] expected = new byte[(depth + 7) / 8];
+        CopyBitsReference(bytes, 0, bitCount, expected, pathDepth);
+        expected[(depth - 1) >> 3] |= (byte)(direction << (7 - ((depth - 1) & 7)));
+        Assert.That(path.Append(prefix, direction), Is.EqualTo(TPath.Create(expected, depth)));
+        if (bitCount == 0) Assert.That(path.Append(default, direction), Is.EqualTo(path.Append(prefix, direction)));
+        TPath maximum = TPath.Create(new byte[TPath.MaxBitDepth / 8], TPath.MaxBitDepth);
+        Assert.Throws<ArgumentOutOfRangeException>(() => maximum.Append(new CompressedPrefix(encoding), direction));
+        Assert.Throws<ArgumentOutOfRangeException>(() => path.Append(new CompressedPrefix(encoding), 2));
+        int boundaryDepth = TPath.MaxBitDepth - bitCount - 1;
+        TPath boundary = TPath.Create(new byte[(boundaryDepth + 7) / 8], boundaryDepth);
+        Assert.That(boundary.Append(prefix, direction).BitDepth, Is.EqualTo(TPath.MaxBitDepth));
+
+        for (int index = 0; index < 1000; index++) _ = path.Append(new CompressedPrefix(encoding), direction);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int checksum = 0;
+        for (int index = 0; index < 1000; index++) checksum += path.Append(new CompressedPrefix(encoding), direction).BitDepth;
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checksum, Is.EqualTo(depth * 1000));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    private static byte[] EncodePrefix(ReadOnlySpan<byte> bytes, int bitCount)
+    {
+        byte[] encoding = new byte[sizeof(ushort) + bytes.Length];
+        BinaryPrimitives.WriteUInt16BigEndian(encoding, (ushort)bitCount);
+        bytes.CopyTo(encoding.AsSpan(sizeof(ushort)));
+        return encoding;
     }
 
     [TestCaseSource(nameof(MalformedNodeEncodings))]
@@ -899,6 +986,7 @@ public class Eip8297CanonicalTreeTests
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
+    [TestCase(3)]
     public void Node_reader_rejects_default_and_wrong_kind_access(int kind)
     {
         byte[] encoding = kind == 1
@@ -906,9 +994,9 @@ public class Eip8297CanonicalTreeTests
             : PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
         Assert.Throws<InvalidOperationException>(() =>
         {
-            PbtNodeReader reader = kind == 0 ? default : new(encoding);
+            PbtNodeReader reader = kind is 0 or 3 ? default : new(encoding);
             if (kind == 0) _ = reader.Encoding.Length;
-            else if (kind == 1) _ = reader.PrefixBitCount;
+            else if (kind is 1 or 3) _ = reader.Prefix.BitCount;
             else _ = reader.Key.Length;
         });
     }
@@ -938,7 +1026,7 @@ public class Eip8297CanonicalTreeTests
         PbtNodeReader reader = new(encoding);
         return reader.Encoding.Length + (reader.IsLeaf
             ? reader.Key[0] + reader.Value[0]
-            : reader.PrefixBitCount + reader.Prefix[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0]);
+            : reader.Prefix.BitCount + reader.Prefix.Bytes[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0]);
     }
 
     [Test]
@@ -2234,7 +2322,7 @@ public class Eip8297CanonicalTreeTests
         {
             PbtNodeGroupReader<PbtStorageNodePath> reader = new(groupKey, original!.GetSpan());
             PbtNodeReader branch = new(reader[18]);
-            Assert.That(branch.PrefixBitCount, Is.EqualTo(prefixBits - 4));
+            Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 4));
         }
         root = TrieUpdater.UpdateRoot(store, root, Batch((sibling, null)));
         EipReferenceTree oracle = new();
@@ -2247,8 +2335,8 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(updatedReader.Availability, Is.EqualTo(1u << 30));
-            Assert.That(promoted.PrefixBitCount, Is.EqualTo(prefixBits));
-            Assert.That(promoted.Prefix.ToArray(), Is.EqualTo(Bytes.FromHexString(prefixHex)));
+            Assert.That(promoted.Prefix.BitCount, Is.EqualTo(prefixBits));
+            Assert.That(promoted.Prefix.Bytes.ToArray(), Is.EqualTo(Bytes.FromHexString(prefixHex)));
         }
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
         Assert.That(TrieUpdater.UpdateRoot(reopened, root, Batch((left, Value(1)))), Is.EqualTo(root));

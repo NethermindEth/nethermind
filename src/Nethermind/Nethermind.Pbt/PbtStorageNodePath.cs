@@ -56,9 +56,9 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
 
     internal static PbtStorageNodePath FromKey(PbtStorageFullKey key, int bitDepth) => IPbtNodePath<PbtStorageNodePath>.FromKey<PbtStorageNodePath>(key.Bytes, bitDepth);
 
-    internal PbtStorageNodePath Append(PbtBitPrefix prefix, int direction) => Append(prefix.Bytes, prefix.BitCount, direction);
-    internal PbtStorageNodePath Append(ReadOnlySpan<byte> prefix, int bitCount, int direction) =>
-        IPbtNodePath<PbtStorageNodePath>.Append<PbtStorageNodePath>(this, prefix, bitCount, direction);
+    /// <inheritdoc/>
+    public PbtStorageNodePath Append(CompressedPrefix prefix, int direction) =>
+        IPbtNodePath<PbtStorageNodePath>.Append(this, prefix, direction);
 
     public int CompareTo(PbtStorageNodePath other)
     {

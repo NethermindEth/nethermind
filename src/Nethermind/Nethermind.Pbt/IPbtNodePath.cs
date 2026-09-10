@@ -40,6 +40,9 @@ public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> whe
     /// <summary>Appends zero to four right-aligned bits, preserving the path type and capacity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The count, bits, or resulting depth is outside its supported range.</exception>
     TSelf AppendBits(int bits, int bitCount);
+    /// <summary>Appends a compressed prefix and one direction bit, preserving the path type and capacity.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The direction is not zero or one, or the resulting path exceeds its capacity.</exception>
+    TSelf Append(CompressedPrefix prefix, int direction);
     /// <summary>Converts this path to the selected capacity without changing its identity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The path exceeds the selected capacity.</exception>
     TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath>;
@@ -123,22 +126,21 @@ public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> whe
         return depth;
     }
 
-    internal static TPath Append<TPath>(TPath source, ReadOnlySpan<byte> prefix, int bitCount, int direction)
-        where TPath : struct, IPbtNodePath<TPath>
+    internal static TSelf Append(TSelf source, CompressedPrefix prefix, int direction)
     {
         if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
-        int depth = checked(source.BitDepth + bitCount + 1);
-        if (depth > TPath.MaxBitDepth) throw new ArgumentOutOfRangeException(nameof(prefix));
+        int depth = checked(source.BitDepth + prefix.BitCount + 1);
+        if (depth > TSelf.MaxBitDepth) throw new ArgumentOutOfRangeException(nameof(prefix));
         Span<byte> path = stackalloc byte[(depth + 7) >> 3];
         path.Clear();
         source.CopyBitsTo(0, path, 0, source.BitDepth);
-        PbtBitPrefix.CopyBits(prefix, 0, bitCount, path, source.BitDepth);
+        PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, path, source.BitDepth);
         if (direction != 0)
         {
             int bit = depth - 1;
             path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
         }
-        return TPath.Create(path, depth);
+        return TSelf.Create(path, depth);
     }
 
     internal static int Compare<TPath, TOther>(TPath path, TOther other)
