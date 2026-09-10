@@ -26,7 +26,9 @@
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
     <Project Path="Nethermind.Init\Nethermind.Init.csproj" />
     <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+    <Project Path="Nethermind.Kademlia/Nethermind.Kademlia.csproj" />
     <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+    <Project Path="Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
@@ -45,6 +47,7 @@
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="Nethermind.State/Nethermind.State.csproj" />
+    <Project Path="Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />
     <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
