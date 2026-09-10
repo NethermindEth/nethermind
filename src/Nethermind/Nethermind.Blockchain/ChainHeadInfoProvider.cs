@@ -42,6 +42,8 @@ namespace Nethermind.Blockchain
 
         public ulong HeadNumber { get; private set; }
 
+        public ulong HeadTimestamp { get; private set; }
+
         public ulong? BlockGasLimit { get; internal set; }
 
         public UInt256 CurrentBaseFee { get; private set; }
@@ -72,6 +74,7 @@ namespace Nethermind.Blockchain
         {
             IReleaseSpec spec = SpecProvider.GetSpec(e.Block.Header);
             HeadNumber = e.Block.Number;
+            HeadTimestamp = e.Block.Timestamp;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
             CurrentFeePerBlobGas =

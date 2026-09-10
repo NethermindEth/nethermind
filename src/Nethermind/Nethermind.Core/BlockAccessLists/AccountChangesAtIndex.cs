@@ -75,6 +75,14 @@ public class AccountChangesAtIndex(Address address)
         return slot;
     }
 
+    /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
+    public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
+    {
+        if (_preTxStorage is not null) return _preTxStorage.TryGetValue(key, out value);
+        value = default;
+        return false;
+    }
+
     public void ClearStorage()
     {
         _storageChanges.Clear();

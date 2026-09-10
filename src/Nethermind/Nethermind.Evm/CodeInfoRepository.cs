@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -82,11 +83,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             _worldState.AddAccountRead(codeSource);
             _worldState.RecordAccountAccess(codeSource);
-            int index = codeSource.PrecompileIndexOrNegative();
-            CodeInfo?[] byIndex = _localPrecompileArray;
-            return (uint)index < (uint)byIndex.Length && byIndex[index] is { } precompile
-                ? precompile
-                : _localPrecompiles[codeSource];
+            return PrecompileCodeInfo(codeSource);
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
@@ -100,6 +97,22 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         return codeInfo;
+    }
+
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
+
+    /// <summary>Resolves a precompile's <see cref="CodeInfo"/> from its number, then from the map.</summary>
+    /// <remarks>The map still has to answer for a number above <see cref="MaxIndexedNumber"/>, which the
+    /// index array deliberately leaves out.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private CodeInfo PrecompileCodeInfo(Address codeSource)
+    {
+        int index = codeSource.PrecompileIndexOrNegative();
+        CodeInfo?[] byIndex = _localPrecompileArray;
+        return (uint)index < (uint)byIndex.Length && byIndex[index] is { } precompile
+            ? precompile
+            : _localPrecompiles[codeSource];
     }
 
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)

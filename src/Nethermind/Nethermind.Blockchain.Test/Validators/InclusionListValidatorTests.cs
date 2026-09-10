@@ -20,6 +20,10 @@ namespace Nethermind.Blockchain.Test.Validators;
 public class InclusionListValidatorTests
 {
     private static readonly ISpecProvider _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
+    // Bogota carries inclusion lists alone; a chain wanting frame transactions too schedules their
+    // transition alongside it. That combination is what makes a frame transaction reachable as an entry.
+    private static readonly ISpecProvider _frameSpecProvider = new CustomSpecProvider(
+        ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
 
@@ -104,6 +108,40 @@ public class InclusionListValidatorTests
         // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
+
+    // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
+    // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
+    [Test]
+    public void Omitted_frame_transaction_is_not_judged()
+    {
+        Transaction frameTx = BuildFrameTx();
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithTransactions([])
+            .WithInclusionListTransactions([frameTx])
+            .TestObject;
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
+            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+        }
+    }
+
+    private static Transaction BuildFrameTx() => new()
+    {
+        Type = TxType.FrameTx,
+        ChainId = TestBlockchainIds.ChainId,
+        SenderAddress = TestItem.AddressA,
+        Nonce = 0,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        GasLimit = 100_000,
+        GasPrice = 1.GWei,
+        DecodedMaxFeePerGas = 10.GWei,
+    };
 
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()

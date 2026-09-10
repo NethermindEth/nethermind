@@ -15,7 +15,7 @@ public class PriorityFeeTooLowFilter(IChainHeadInfoProvider chainHeadInfoProvide
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
-        if (!tx.SupportsBlobs)
+        if (!tx.CarriesBlobs)
         {
             return AcceptTxResult.Accepted;
         }

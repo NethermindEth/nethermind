@@ -5,7 +5,11 @@ using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 
@@ -14,6 +18,7 @@ namespace Ethereum.Test.Base;
 public abstract class TransactionTestBase
 {
     private static readonly TxValidator s_mainnetTxValidator = new(MainnetSpecProvider.Instance.ChainId);
+    private static readonly EthereumEcdsa _mainnetEcdsa = new(MainnetSpecProvider.Instance.ChainId);
 
     protected static Result RunTest(TransactionTest test)
     {
@@ -29,7 +34,7 @@ public abstract class TransactionTestBase
         IReleaseSpec spec;
         try
         {
-            spec = SpecNameParser.Parse(test.Fork);
+            spec = SpecNameParser.Parse(ForkAliases.Resolve(test.Fork));
         }
         catch (Exception ex)
         {
@@ -37,7 +42,7 @@ public abstract class TransactionTestBase
         }
 
         bool decoded = TryDecode(test.TxBytes, out Transaction? tx, out string? decodeError);
-        string? observedError = decoded ? s_mainnetTxValidator.IsWellFormed(tx!, spec).Error : decodeError;
+        string? observedError = decoded ? ValidateRawTransaction(tx!, spec) : decodeError;
 
         bool expectFailure = !string.IsNullOrEmpty(test.ExpectedException);
         if (expectFailure)
@@ -57,6 +62,34 @@ public abstract class TransactionTestBase
         }
 
         return Result.Success;
+    }
+
+    /// <summary>
+    /// The stateless checks a raw transaction must clear before pool admission, as one error.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TxValidator.IsWellFormed"/> alone is not that set for EIP-8141: a frame transaction names
+    /// its sender explicitly, so it never goes through the sender recovery that rejects a bad signature on
+    /// every other type, and its <c>validate_signature</c> step lives in the pool's own ingress filter and
+    /// in the processor instead. Running the same static validator those two call keeps this harness's
+    /// notion of raw-transaction validity aligned with the client's, without a spec or processor context.
+    /// </remarks>
+    private static string? ValidateRawTransaction(Transaction tx, IReleaseSpec spec)
+    {
+        string? error = s_mainnetTxValidator.IsWellFormed(tx, spec).Error;
+        if (error is not null || !tx.SupportsFrames)
+        {
+            return error;
+        }
+
+        // Same availability test the pool's ingress filter makes; the processor resolves the same
+        // precompile through its code-info repository instead.
+        IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
+            ? SecP256r1Precompile.Instance
+            : null;
+        return FrameTxSignatureValidator.Validate(tx, _mainnetEcdsa, p256Precompile, spec, out string? signatureError)
+            ? null
+            : signatureError;
     }
 
     private static bool TryDecode(string txBytesHex, out Transaction? tx, out string? error)
@@ -168,5 +201,17 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["RLP data is truncated", "Unexpected length of integer value"],
         ["TransactionException.RLP_TOO_MANY_ELEMENTS"] = ["Data checkpoint failed"],
         ["TransactionException.VALUE_OVERFLOW"] = ["Collection count"],
+        // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
+        // signature failures, which the fixtures file under a separate label.
+        ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] = [.. FrameExceptionFragments.Format, .. FrameExceptionFragments.Decode],
+        ["TransactionException.TYPE_6_INVALID_SIGNATURE"] = [.. FrameExceptionFragments.Signature],
+        ["TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED"] = ["BlobTxGasLimitExceeded"],
+        ["TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS"] = [TxErrorMessages.InvalidMaxPriorityFeePerGas],
+        // A fee field wider than its type: the decoder's length guard names neither field nor type.
+        ["TransactionException.GASPRICE_OVERFLOW"] = [.. FrameExceptionFragments.FeeOverflow],
+        ["TransactionException.PRIORITY_OVERFLOW"] = [.. FrameExceptionFragments.FeeOverflow],
+        // EIP-7825's per-transaction gas cap under both wordings: a frame transaction reports it
+        // against its own budget, every other type against its envelope gas limit.
+        ["TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM"] = ["exceeds the transaction gas cap of", "TxGasLimitCapExceeded"],
     };
 }

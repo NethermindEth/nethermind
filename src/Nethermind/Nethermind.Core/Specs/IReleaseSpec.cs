@@ -9,6 +9,12 @@ namespace Nethermind.Core.Specs
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
+    /// <remarks>Fork flags carry no default implementations, because no single default is safe: a
+    /// root spec wants the new EIP off, while a forwarding one that inherited that default would
+    /// report it off on a chain enabling it — a silent consensus divergence. Derive from
+    /// <c>ReleaseSpec</c> (new flags off until set) or <see cref="ReleaseSpecDecorator"/> (new flags
+    /// forwarded) to absorb added flags; implementing this interface directly opts into a compile
+    /// error per added flag, which is the only signal that the choice was made deliberately.</remarks>
     public interface IReleaseSpec : IEip1559Spec, IReceiptSpec
     {
         public string Name { get; }
@@ -314,6 +320,26 @@ namespace Nethermind.Core.Specs
         /// EIP-8282: builder execution requests (builder deposit + builder exit predeploys).
         /// </summary>
         bool IsEip8282Enabled { get; }
+
+        /// <summary>
+        /// EIP-8141: frame transactions (abstract transaction validation, execution, and gas payment).
+        /// </summary>
+        bool IsEip8141Enabled { get; }
+
+        /// <summary>
+        /// EIP-8250: keyed nonces for frame transactions.
+        /// </summary>
+        bool IsEip8250Enabled { get; }
+
+        /// <summary>
+        /// EIP-8272: recent roots for frame transactions.
+        /// </summary>
+        bool IsEip8272Enabled { get; }
+
+        /// <summary>
+        /// EIP-7906: transaction outcome assertions.
+        /// </summary>
+        bool IsEip7906Enabled { get; }
 
         /// <summary>
         /// EIP-8038: State-access gas cost update

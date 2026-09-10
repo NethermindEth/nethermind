@@ -118,6 +118,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_config.OnlyTopCall && Depth > 0)
             return;
 
+        // A frame transaction running entirely through default code (an EOA sender's codeless
+        // SENDER transfer) emits a log without any ReportAction, so the call stack can be empty.
+        if (_callStack.Count == 0)
+            return;
+
         NativeCallTracerCallFrame callFrame = _callStack[^1];
 
         NativeCallTracerLogEntry callLog = new(

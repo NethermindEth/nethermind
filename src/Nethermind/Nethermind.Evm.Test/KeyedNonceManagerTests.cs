@@ -50,7 +50,7 @@ public class KeyedNonceManagerTests
     }
 
     [Test]
-    public void Batched_storage_indices_match_individual_slots([Values(8, Eip8250Constants.MaxNonceKeys)] int count)
+    public void Batched_storage_indices_match_individual_slots([Values(8, 9, 12, 15, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
         UInt256[] indices = new UInt256[count];
@@ -63,10 +63,27 @@ public class KeyedNonceManagerTests
         }
     }
 
+    // Gas estimation reaches payment approval with nonce validation skipped, so a set part fresh and part
+    // used is observable and the count is not just "all or nothing" on the shared sequence.
     [Test]
-    public void Batched_nonce_set_is_consumed_and_validated()
+    public void FirstUseCount_counts_only_the_unused_keys([Values(2, 8, Eip8250Constants.MaxNonceKeys)] int count)
     {
-        UInt256[] keys = StrictlyIncreasing(Eip8250Constants.MaxNonceKeys);
+        UInt256[] keys = StrictlyIncreasing(count);
+        int used = count / 2;
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, keys.AsSpan(0, used), nonceSeq: 0);
+
+        Assert.That(KeyedNonceManager.FirstUseCount(_state, TestItem.AddressA, keys), Is.EqualTo(count - used));
+    }
+
+    [Test]
+    public void FirstUseCount_for_the_legacy_key_set_is_zero() =>
+        Assert.That(KeyedNonceManager.FirstUseCount(_state, TestItem.AddressA, [UInt256.Zero]), Is.Zero,
+            "key 0 is the account nonce, which needs no NONCE_MANAGER slot");
+
+    [Test]
+    public void Batched_nonce_set_is_consumed_and_validated([Values(12, Eip8250Constants.MaxNonceKeys)] int count)
+    {
+        UInt256[] keys = StrictlyIncreasing(count);
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, keys, nonceSeq: 41);
 

@@ -9,6 +9,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
+    /// <remarks>
+    /// Extension contract: derive from <c>ChainHeadInfoProvider</c>, which is public and non-sealed, and added
+    /// head facts arrive tracked. Implementing this interface directly opts into a compile error per addition —
+    /// no member here carries a default body, because a stale or zero head fact is a silent wrong answer.
+    /// </remarks>
     public interface IChainHeadInfoProvider
     {
         IChainHeadSpecProvider SpecProvider { get; }
@@ -16,6 +21,9 @@ namespace Nethermind.TxPool
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
         ulong HeadNumber { get; }
+
+        /// <summary>Timestamp (Unix seconds) of the current chain head.</summary>
+        ulong HeadTimestamp { get; }
 
         ulong? BlockGasLimit { get; }
 

@@ -13,8 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpDecoder<TxReceipt>
 {
-    // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
+    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(FrameReceiptRlp.MaxReceiptLogs, nameof(TxReceipt.Logs));
 
     protected override TxReceipt? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -30,6 +29,12 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         int receiptEnd = ctx.Position + sequenceLength;
 
         txReceipt.TxType = (TxType)ctx.DecodeByte();
+
+        if (txReceipt.TxType == TxType.FrameTx)
+        {
+            FrameReceiptRlp.DecodePayload(ref ctx, txReceipt, receiptEnd, rlpBehaviors);
+            return txReceipt;
+        }
 
         byte[] firstItem = ctx.DecodeByteArray();
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
@@ -49,7 +54,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
+        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, LogsRlpLimit.Limit + 1);
         ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
@@ -57,6 +62,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
         }
 
+        ctx.Check(lastCheck);
         txReceipt.Logs = entries;
 
         // Handle any remaining extra bytes
@@ -80,11 +86,18 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             => throw new RlpException("Unexpected receipt field");
     }
 
-    private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+    /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
+    /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
+    private (int Total, int Inner) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
             return (0, 0);
+        }
+
+        if (item.TxType == TxType.FrameTx)
+        {
+            return (Rlp.LengthOf((byte)item.TxType) + FrameReceiptRlp.GetPayloadLength(item, out int framesLength), framesLength);
         }
 
         int contentLength = 0;
@@ -135,11 +148,17 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             return;
         }
 
-        (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+        (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
 
         writer.StartSequence(totalContentLength);
 
         writer.Encode((byte)item.TxType);
+
+        if (item.TxType == TxType.FrameTx)
+        {
+            FrameReceiptRlp.EncodePayload(ref writer, item, innerLength);
+            return;
+        }
 
         if (!skipStateAndStatus)
         {
@@ -155,7 +174,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         writer.Encode(item.GasUsedTotal);
 
-        writer.StartSequence(logsLength);
+        writer.StartSequence(innerLength);
         LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {

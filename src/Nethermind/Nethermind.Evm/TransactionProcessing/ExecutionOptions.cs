@@ -39,6 +39,18 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
+    /// EIP-8141 mempool admission: run only the validation prefix, halting once the payer is set.
+    /// </summary>
+    FrameValidationPrefixOnly = 32,
+
+    /// <summary>
+    /// Asserts the caller has already verified this transaction's frame signatures against the same spec.
+    /// Read only under <see cref="FrameValidationPrefixOnly"/>; signature verification everywhere else is
+    /// unconditional. Some paths compare these options by exact equality, so do not OR it into another mode.
+    /// </summary>
+    FrameSignaturesPreValidated = 64,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

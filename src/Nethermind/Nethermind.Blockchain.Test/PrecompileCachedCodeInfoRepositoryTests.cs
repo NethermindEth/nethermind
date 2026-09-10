@@ -52,7 +52,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     private static PrecompileCachedCodeInfoRepository BuildRepository(PrecompileCaches? caches, IPrecompileProvider provider) =>
-        new(Substitute.For<IWorldState>(), provider, Substitute.For<ICodeInfoRepository>(), caches);
+        BuildRepository(caches, provider, Substitute.For<IWorldState>());
+
+    private static PrecompileCachedCodeInfoRepository BuildRepository(PrecompileCaches? caches, IPrecompileProvider provider, IWorldState worldState) =>
+        new(worldState, provider, Substitute.For<ICodeInfoRepository>(), caches);
 
     private static IPrecompile Resolve(PrecompileCachedCodeInfoRepository repository, Address address, params Address[] otherPrecompiles) =>
         repository.GetCachedCodeInfo(address, false, CreateSpecWithPrecompiles([address, .. otherPrecompiles]), out _).Precompile!;
@@ -159,6 +162,21 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That(sha256, Is.Not.SameAs(Sha256Precompile.Instance), "sha256 supports caching and must be wrapped");
             Assert.That(identity, Is.SameAs(IdentityPrecompile.Instance), "identity does not support caching and must stay unwrapped");
         }
+    }
+
+    [Test]
+    public void GetPrecompile_ForPrecompileAddress_SharesCachedInstanceWithoutRecordingAccountRead()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        IPrecompileProvider provider = CreateProvider((PrecompileAddress, new TestPrecompile(supportsCaching: true)));
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(CreateCaches(provider), provider, worldState);
+        IReleaseSpec spec = CreateSpecWithPrecompiles(PrecompileAddress);
+
+        IPrecompile? resolved = repository.GetPrecompile(PrecompileAddress, spec);
+
+        worldState.DidNotReceive().AddAccountRead(Arg.Any<Address>());
+        Assert.That(resolved, Is.SameAs(repository.GetCachedCodeInfo(PrecompileAddress, false, spec, out _).Precompile),
+            "frame-tx signature validation must share the block-cache-decorated instance with EVM calls");
     }
 
     [TestCase(true, 1, 1, TestName = "Run_ForRepeatedInputWhenCaching_ComputesOnce")]

@@ -4,8 +4,11 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 
 [assembly: InternalsVisibleTo("Nethermind.TxPool.Test")]
 
@@ -20,9 +23,9 @@ namespace Nethermind.TxPool
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
-        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.SupportsBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
+        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.CarriesBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
 
-        public static bool CanBeBroadcast(this Transaction tx) => !tx.SupportsBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
+        public static bool CanBeBroadcast(this Transaction tx) => !tx.CarriesBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
         internal static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
         {
@@ -64,8 +67,91 @@ namespace Nethermind.TxPool
             return balance <= tx.Value ? default : tx.GasPrice;
         }
 
+        /// <summary>Whether the sender's balance is what a pooled <paramref name="tx"/>'s gas and blob fees are
+        /// measured against.</summary>
+        /// <remarks>An EIP-8141 frame transaction that resolved a third-party payer is measured against that payer
+        /// instead — by <see cref="Filters.FrameTxPayerExposureFilter"/> at admission, and against the same account
+        /// by the revalidation sweep. Charging it to the sender would evict a sponsored transaction whose sponsor
+        /// still covers it, and let it spend the sender's budget for its other transactions. One admitted with no
+        /// payer resolved names no other account, so it stays on the sender. Only meaningful once admission has
+        /// recorded a payer.</remarks>
+        internal static bool FeeChargedToSender(this Transaction tx) =>
+            !tx.SupportsFrames || tx.PayerAddress is null || tx.PayerAddress == tx.SenderAddress;
+
+        /// <summary>Whether <paramref name="balance"/> no longer covers <paramref name="tx"/> on top of the
+        /// bucket ahead of it.</summary>
+        /// <remarks>Priced the way admission priced it, so the retention sweep cannot retain a frame transaction
+        /// on a cheaper reading of the cost the admission bound already refused to grant.</remarks>
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
-            => tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
+            => tx.IsOverflowWhenAddingPricedCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
+
+        private struct SenderBucketState(Transaction tx, UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
+        {
+            public readonly Transaction Tx = tx;
+            public readonly UInt256 AccountNonce = accountNonce;
+            public readonly UInt256 TxNonce = tx.Nonce;
+            public readonly bool UnreservedOnly = unreservedOnly;
+            public readonly bool KeyedNoncesEnabled = keyedNoncesEnabled;
+            public UInt256 CumulativeCost = UInt256.Zero;
+            public bool Overflow = false;
+        }
+
+        /// <summary>Sums what the sender of <paramref name="tx"/> already owes across the pending transactions
+        /// it does not displace, so one balance cannot fund a whole bucket.</summary>
+        /// <remarks>An EIP-8141 frame transaction a third-party payer covers is never counted — its cost is that
+        /// payer's. <paramref name="unreservedOnly"/> additionally drops the self-paid ones, for a caller that
+        /// measures against <see cref="PayerExposureCache"/>, which already sums them. EIP-8250 sequences order
+        /// only within one nonce domain, so a pending transaction in another domain is an independent liability
+        /// however its sequence compares: with <paramref name="keyedNoncesEnabled"/> the whole bucket is walked
+        /// rather than stopped at a numeric match. Buckets are unbounded by default, so before activation — where
+        /// admission rejects a keyed transaction outright — the walk keeps the early exit ascending nonce order
+        /// allows.</remarks>
+        /// <returns><c>true</c> when the sum overflows, leaving <paramref name="cumulativeCost"/> unusable.</returns>
+        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, in UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled, out UInt256 cumulativeCost)
+        {
+            SenderBucketState bucket = new(tx, accountNonce, unreservedOnly, keyedNoncesEnabled);
+            // tx.SenderAddress! as unknownSenderFilter will run before either caller
+            pool.VisitBucket(tx.SenderAddress!, ref bucket, static (Transaction otherTx, ref SenderBucketState bucketState) =>
+            {
+                // An account nonce below the account's own is already mined; a keyed sequence is not
+                // comparable to it, and its domain's floor is not readable here.
+                if (!KeyedNonceManager.UsesKeyedNonce(otherTx) && otherTx.Nonce < bucketState.AccountNonce)
+                {
+                    return true;
+                }
+
+                // Within one domain, at or past the incoming sequence is the transaction it displaces, or one
+                // that only executes after it. Another domain runs independently, so its cost is owed either way —
+                // and where none can exist, ascending nonce order means nothing past this entry is owed.
+                if (otherTx.Nonce >= bucketState.TxNonce && CompetingTransactionEqualityComparer.SameNonceDomain(bucketState.Tx, otherTx))
+                {
+                    return bucketState.KeyedNoncesEnabled;
+                }
+
+                bool chargedElsewhere = bucketState.UnreservedOnly
+                    ? otherTx.PayerAddress is not null
+                    : !otherTx.FeeChargedToSender();
+                if (chargedElsewhere)
+                {
+                    return true;
+                }
+
+                bucketState.Overflow |= otherTx.IsOverflowWhenAddingPricedCostToCumulative(bucketState.CumulativeCost, out bucketState.CumulativeCost);
+                return true;
+            });
+
+            cumulativeCost = bucket.CumulativeCost;
+            return bucket.Overflow;
+        }
+
+        /// <summary>Adds what a pooled <paramref name="tx"/> costs the account that pays it, preferring the
+        /// figure admission priced over the gas-limit product.</summary>
+        /// <remarks>An EIP-8141 frame transaction is priced on its whole gas budget, of which
+        /// <see cref="Transaction.GasLimit"/> carries only the frame-gas sum, so the product understates it.</remarks>
+        private static bool IsOverflowWhenAddingPricedCostToCumulative(this Transaction tx, in UInt256 currentCost, out UInt256 cumulativeCost)
+            => tx.PayerExposure is { } priced
+                ? UInt256.AddOverflow(currentCost, priced, out cumulativeCost)
+                : tx.IsOverflowWhenAddingTxCostToCumulative(currentCost, out cumulativeCost);
 
         internal static bool IsOverflowWhenAddingTxCostToCumulative(this Transaction tx, UInt256 currentCost, out UInt256 cumulativeCost)
         {
@@ -75,10 +161,11 @@ namespace Nethermind.TxPool
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
             overflow |= UInt256.AddOverflow(cumulativeCost, (UInt256)tx.Value, out cumulativeCost);
 
-            if (tx.SupportsBlobs)
+            // EIP-8141: blob fee priced at max_fee_per_blob_gas, an upper bound on the processor's escrow,
+            // so mempool affordability never admits a tx the processor cannot charge.
+            if (tx.CarriesBlobs)
             {
-                // if tx.SupportsBlobs and has BlobVersionedHashes = null, it will throw on earlier step of validation, in TxValidator
-                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.GasPerBlob, (UInt256)tx.BlobVersionedHashes!.Length, out UInt256 blobGas);
+                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.GasPerBlob, (UInt256)tx.GetBlobCount(), out UInt256 blobGas);
                 overflow |= UInt256.MultiplyOverflow(blobGas, tx.MaxFeePerBlobGas ?? UInt256.MaxValue, out UInt256 blobGasCost);
                 overflow |= UInt256.AddOverflow(cumulativeCost, blobGasCost, out cumulativeCost);
             }

@@ -37,6 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private PooledTransactionSample _previousPooledTransactionSample = new(PooledTransactionRequestSampleCapacity);
         private DateTime _checkpoint;
         private long _notAcceptedSinceLastCheck;
+        private long _deferredSinceLastCheck;
         private int _unproductivePooledTransactionWindows;
         private bool _isLegacyDowngraded;
         private bool _isLegacyDisconnectRequested;
@@ -104,18 +105,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     else
                     {
                         _notAcceptedSinceLastCheck++;
+                        if (accepted == AcceptTxResult.FrameSimulationDeferred) _deferredSinceLastCheck++;
+
                         if (!_isLegacyDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
                         {
                             if (_logger.IsTrace) TraceDowngrading("tx flooding");
                             _isLegacyDowngraded = true;
                         }
+                        // Load this node shed itself is throttled by the downgrade above but never disconnects:
+                        // the subtraction is what keeps it out of the count, and the clause additionally keeps
+                        // a deferral from being the report a disconnect is attributed to.
                         else if (!_isLegacyDisconnectRequested
-                            && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
+                            && accepted != AcceptTxResult.FrameSimulationDeferred
+                            && (_notAcceptedSinceLastCheck - _deferredSinceLastCheck) / _checkInterval.TotalSeconds > 100)
                         {
                             _isLegacyDisconnectRequested = true;
                             disconnectRequest ??= new(
                                 DisconnectReason.TxFlooding,
-                                $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds}",
+                                $"tx flooding {_notAcceptedSinceLastCheck - _deferredSinceLastCheck}/{_checkInterval.TotalSeconds}",
                                 "tx flooding");
                         }
                     }
@@ -219,6 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 _checkpoint = now;
                 _notAcceptedSinceLastCheck = 0;
+                _deferredSinceLastCheck = 0;
                 _isLegacyDowngraded = false;
                 _isLegacyDisconnectRequested = false;
                 _isInvalidTransactionDisconnectRequested = false;

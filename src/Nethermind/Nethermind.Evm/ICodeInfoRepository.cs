@@ -7,14 +7,25 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 namespace Nethermind.Evm;
 
+/// <remarks>
+/// Extension contract: there is no base class to derive from, so an added member is a compile error for every
+/// implementation, deliberately. A wrapping repository has to answer for the one it wraps, and a default body
+/// would let a missing forward return the terminal answer silently — the reason <see cref="IsCodeOverridable"/>
+/// had its <c>=> false</c> default stripped again in #12282.
+/// </remarks>
 public interface ICodeInfoRepository
 {
     /// <summary>Whether account code may be overridden (e.g. <c>eth_call</c> state overrides), disabling the simple-transfer fast path.</summary>
     /// <remarks>Wrapping implementations must forward this, else the fast path is wrongly taken under overrides.</remarks>
     bool IsCodeOverridable { get; }
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
+
+    /// <summary>Resolves the precompile at <paramref name="codeSource"/>, or null when <paramref name="vmSpec"/> enables none there.</summary>
+    /// <remarks>Records no account access, so unlike <see cref="GetCachedCodeInfo"/> it creates no EIP-7928 entry.</remarks>
+    IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);

@@ -15,8 +15,7 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
     public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
-        // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
+        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(FrameReceiptRlp.MaxReceiptLogs, nameof(TxReceipt.Logs));
 
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -32,6 +31,14 @@ namespace Nethermind.Serialization.Rlp
 
             position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
             int receiptEnd = position + sequenceLength;
+
+            if (txReceipt.TxType == TxType.FrameTx)
+            {
+                ctx.Position = position;
+                FrameReceiptRlp.DecodePayload(ref ctx, txReceipt, receiptEnd, rlpBehaviors);
+                return txReceipt;
+            }
+
             position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
@@ -65,6 +72,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
             }
+
+            ctx.Check(lastCheck);
             txReceipt.Logs = entries;
 
             // Handle any remaining extra bytes
@@ -88,11 +97,18 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
+        /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
+        private (int Total, int Inner) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
                 return (0, 0);
+            }
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                return (FrameReceiptRlp.GetPayloadLength(item, out int framesLength), framesLength);
             }
 
             int contentLength = 0;
@@ -174,7 +190,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+            (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -190,6 +206,13 @@ namespace Nethermind.Serialization.Rlp
             }
 
             writer.StartSequence(totalContentLength);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                FrameReceiptRlp.EncodePayload(ref writer, item, innerLength);
+                return;
+            }
+
             if (!skipStateAndStatus)
             {
                 if (isEip658Receipts)
@@ -206,7 +229,7 @@ namespace Nethermind.Serialization.Rlp
             if (!skipBloom)
                 writer.Encode(item.Bloom);
 
-            writer.StartSequence(logsLength);
+            writer.StartSequence(innerLength);
             LogEntry[] logs = GetLogs(item);
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < logs.Length; i++)

@@ -71,6 +71,11 @@ public class PrecompileCachedCodeInfoRepository : ICodeInfoRepository
         return _cachedPrecompile.TryGetValue(codeSource, out cachedCodeInfo);
     }
 
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(codeSource) && TryGetCachedPrecompile(codeSource, out CodeInfo? cachedCodeInfo)
+            ? cachedCodeInfo.Precompile
+            : _baseCodeInfoRepository.GetPrecompile(codeSource, vmSpec);
+
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         _baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
 

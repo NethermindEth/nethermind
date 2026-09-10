@@ -36,9 +36,15 @@ public partial class BlockAccessListManager
     {
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Length > 0)
+            // Storage-only entries must not create; a predeploy installing code without a nonce is why the
+            // code branch alone can need this. TODO: remove once every predeploy declares a nonce.
+            if (accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+            }
+
+            if (accountChanges.BalanceChanges.Length > 0)
+            {
                 UInt256 oldBalance = stateProvider.GetBalance(accountChanges.Address);
                 UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
                 if (newBalance > oldBalance)
@@ -53,7 +59,6 @@ public partial class BlockAccessListManager
 
             if (accountChanges.NonceChanges.Length > 0)
             {
-                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
