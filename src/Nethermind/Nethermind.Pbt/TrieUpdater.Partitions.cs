@@ -54,7 +54,7 @@ public static partial class TrieUpdater
         ArgumentNullException.ThrowIfNull(changes);
         using ArrayPoolList<PartitionFold> workers = new(3);
         using ArrayPoolListRef<GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>> sharedReaders = new(16, 16);
-        using ArrayPoolListRef<PbtNodeGroupWriter?> sharedWriters = new(16, 16);
+        using ArrayPoolListRef<PbtNodeGroupWriter<PbtStorageNodePath>?> sharedWriters = new(16, 16);
         int initializedReaders = 0;
         memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
         using ArrayPoolListRef<ArrayPoolList<DecompositionEntry>?> zoneBoundaries = new(16, 16);
@@ -71,7 +71,7 @@ public static partial class TrieUpdater
             GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> rootReader = new(store, RootPath, metrics);
             try
             {
-                using PbtNodeGroupWriter rootWriter = new(RootPath, memoryProvider);
+                using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(RootPath, memoryProvider);
                 int touchedRootMask = 0;
                 foreach (PartitionFold worker in workers)
                 {
@@ -184,7 +184,7 @@ public static partial class TrieUpdater
             GroupFrameReader<TKey, TPath> reader = new(store, TPath.Create([Zone], 8), Metrics);
             try
             {
-                using PbtNodeGroupWriter writer = new(reader.GroupKey, memoryProvider);
+                using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
                 TrieUpdater<TKey, TPath>.Subtree current = TrieUpdater<TKey, TPath>.Subtree.TakeFrom<PbtStorageFullKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.Subtree result = default;
                 try
@@ -222,7 +222,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
         ref GroupFrameReader<TKey, TPath> reader,
-        PbtNodeGroupWriter writer,
+        PbtNodeGroupWriter<TPath> writer,
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,

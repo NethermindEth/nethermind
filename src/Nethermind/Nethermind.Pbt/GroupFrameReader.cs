@@ -64,7 +64,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return _lengths[position] == 0 ? default : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
     }
 
-    internal int CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition)
+    internal int CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
     {
         if (startPosition == endPosition) return 0;
         EnsureLoaded();
@@ -157,7 +157,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         private int _element;
     }
 
-    internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter writer, TPath path, bool allowAbsent = false)
+    internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter<TPath> writer, TPath path, bool allowAbsent = false)
     {
         int position = Position(path);
         if (position <= writer.LastPosition) throw new InvalidOperationException("Cannot take a PBT node after its output position has passed.");

@@ -9,10 +9,11 @@ namespace Nethermind.Pbt;
 
 /// <summary>Appends canonical nodes in position order to an owned, growable group payload.</summary>
 /// <remarks>Writable spans are borrowed until the next writer operation. Detach transfers the sole output lease.</remarks>
-internal sealed class PbtNodeGroupWriter : IDisposable
+internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
+    where TPath : class, IPbtNodePath<TPath>
 {
     private const int MaxEntriesLength = ushort.MaxValue;
-    private readonly IPbtNodePath _groupKey;
+    private readonly TPath _groupKey;
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
@@ -23,7 +24,7 @@ internal sealed class PbtNodeGroupWriter : IDisposable
     private int _pendingLength;
     private bool _disposed;
 
-    internal PbtNodeGroupWriter(IPbtNodePath groupKey, IRefCountingMemoryProvider memoryProvider)
+    internal PbtNodeGroupWriter(TPath groupKey, IRefCountingMemoryProvider memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(groupKey);
         ArgumentNullException.ThrowIfNull(memoryProvider);
@@ -81,9 +82,8 @@ internal sealed class PbtNodeGroupWriter : IDisposable
     }
 
     /// <summary>Emits the resolved subtree root at its final position and consumes its lease.</summary>
-    internal ValueHash256 Write<TKey, TPath>(int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
+    internal ValueHash256 Write<TKey>(int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
         where TKey : struct, IPbtKey<TKey>
-        where TPath : class, IPbtNodePath<TPath>
     {
         if (node.IsEmpty) return default;
         Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));

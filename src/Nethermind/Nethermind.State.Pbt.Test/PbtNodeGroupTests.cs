@@ -181,10 +181,11 @@ public class PbtNodeGroupTests
         Assert.That(() => ValidateLeafGroup(groupKey, 0, shortPayload, streamingWriter), Throws.TypeOf<InvalidDataException>());
     }
 
-    private static int ValidateLeafGroup(IPbtNodePath groupKey, int position, byte[] payload, bool streamingWriter)
+    private static int ValidateLeafGroup<TPath>(TPath groupKey, int position, byte[] payload, bool streamingWriter)
+        where TPath : class, IPbtNodePath<TPath>
     {
         if (!streamingWriter) return ReadGroupCount(groupKey, payload);
-        using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<TPath> writer = new(groupKey, new TrackingMemoryProvider());
         writer.Write(position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - 6));
         using RefCountingMemory writtenPayload = writer.Detach()!;
         Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
@@ -248,7 +249,7 @@ public class PbtNodeGroupTests
         WarmReadStore persistence = new(store);
         TrieUpdaterMetrics metrics = new();
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, rootPath, metrics);
-        using PbtNodeGroupWriter writer = new(rootPath, memory);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, memory);
         try
         {
             reader.Position(rootPath);
@@ -351,7 +352,7 @@ public class PbtNodeGroupTests
         PbtStorageNodePath rootPath = new([], 0);
         if (scenario != 3) store.SetNode(rootPath, LeafEncoding(0x00, 1), provider);
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
-        using PbtNodeGroupWriter writer = new(rootPath, provider);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, provider);
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree original = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry entry = default;
@@ -428,7 +429,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads(tree.PhysicalPayloads);
         PbtStorageNodePath rootPath = new([], 0);
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
-        using PbtNodeGroupWriter writer = new(rootPath, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, new TrackingMemoryProvider());
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[31];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree root = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
@@ -1025,7 +1026,7 @@ public class PbtNodeGroupTests
         List<PbtNodeRecord> records = [];
         ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtNodeGroupCodec.PositionCount];
         bool[] present = new bool[PbtNodeGroupCodec.PositionCount];
-        using PbtNodeGroupWriter streamingWriter = new(groupKey, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtStorageNodePath> streamingWriter = new(groupKey, new TrackingMemoryProvider());
         int fullLength = PbtNodeGroupCodec.HeaderLength + sizeof(uint);
         int omitted = 0;
         int positionCount = groupDepth == 0 ? 31 : 30;
@@ -1108,7 +1109,7 @@ public class PbtNodeGroupTests
         byte[] sourcePayload = EncodeGroup(groupKey, records);
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads([new(groupKey.Encode(), sourcePayload)]);
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
-        using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, new TrackingMemoryProvider());
         try
         {
             uint taken = markTaken ? 0x7FFFFFFFu : 0;
@@ -1161,7 +1162,7 @@ public class PbtNodeGroupTests
         [Values(0, 4, 8, 268, PbtFourLevelGroupGeometry.MaxGroupDepth)] int groupDepth)
     {
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
-        using PbtNodeGroupWriter writer = new(groupKey, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, new TrackingMemoryProvider());
         int positionCount = groupDepth == 0 ? PbtFourLevelGroupGeometry.PositionCount : PbtFourLevelGroupGeometry.RootPosition;
         for (int position = 0; position < positionCount; position++)
         {
@@ -1188,7 +1189,7 @@ public class PbtNodeGroupTests
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
         List<PbtNodeRecord> records = [];
-        using PbtNodeGroupWriter writer = new(groupKey, provider);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, provider);
         for (int index = 0; index < count; index++)
         {
             int position = count == 1 ? 30 : count == 3 ? 3 + index * 10 : index;
@@ -1258,7 +1259,7 @@ public class PbtNodeGroupTests
     public void Streaming_writer_rejects_invalid_appends_without_leaking(int scenario)
     {
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
-        using (PbtNodeGroupWriter writer = new(new PbtNodePath([], 0), provider))
+        using (PbtNodeGroupWriter<PbtNodePath> writer = new(new PbtNodePath([], 0), provider))
         {
             byte[] branch = PbtNodeCodec.EncodeBranch(Bytes.FromHexString("80"), 1, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
             writer.Write(2, branch);
@@ -1278,7 +1279,7 @@ public class PbtNodeGroupTests
             Assert.That(writer.WrittenCount, Is.EqualTo(branch.Length));
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
-        using PbtNodeGroupWriter nonRoot = new(new PbtNodePath(Bytes.FromHexString("A0"), 4), provider);
+        using PbtNodeGroupWriter<PbtNodePath> nonRoot = new(new PbtNodePath(Bytes.FromHexString("A0"), 4), provider);
         Assert.Throws<ArgumentOutOfRangeException>(() => nonRoot.GetSpan(30, 67));
     }
 
@@ -1287,7 +1288,7 @@ public class PbtNodeGroupTests
     public void Streaming_writer_releases_memory_after_rent_failure(int failedRent)
     {
         TrackingMemoryProvider provider = new() { ThrowOnRent = failedRent };
-        using (PbtNodeGroupWriter writer = new(new PbtNodePath([], 0), provider))
+        using (PbtNodeGroupWriter<PbtNodePath> writer = new(new PbtNodePath([], 0), provider))
         {
             byte[] branch = PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
             if (failedRent == 2) writer.Write(0, branch);
@@ -1300,7 +1301,7 @@ public class PbtNodeGroupTests
     public void Streaming_writer_accepts_exact_uint16_entries_limit()
     {
         TrackingMemoryProvider provider = new();
-        using PbtNodeGroupWriter writer = new(new PbtNodePath([], 0), provider);
+        using PbtNodeGroupWriter<PbtNodePath> writer = new(new PbtNodePath([], 0), provider);
         for (int position = 0; position < 8; position++)
         {
             int length = position == 7 ? 8191 : 8192;
@@ -1368,7 +1369,7 @@ public class PbtNodeGroupTests
     public void Empty_streaming_writer_detaches_without_renting()
     {
         TrackingMemoryProvider provider = new();
-        using PbtNodeGroupWriter writer = new(new PbtNodePath([], 0), provider);
+        using PbtNodeGroupWriter<PbtNodePath> writer = new(new PbtNodePath([], 0), provider);
         Assert.That(writer.Detach(), Is.Null);
         Assert.That(provider.RentCount, Is.Zero);
     }

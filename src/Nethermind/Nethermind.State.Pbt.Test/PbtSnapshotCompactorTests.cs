@@ -78,9 +78,13 @@ public class PbtSnapshotCompactorTests
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
 
-        RefCountingMemory CreateStorageLeafGroup(ValueHash256 value)
+        RefCountingMemory CreateStorageLeafGroup(ValueHash256 value) => groupKey is PbtStorageNodePath storagePath
+            ? CreateLeafGroup(storagePath, value)
+            : CreateLeafGroup((PbtNodePath)groupKey, value);
+
+        RefCountingMemory CreateLeafGroup<TPath>(TPath path, ValueHash256 value) where TPath : class, IPbtNodePath<TPath>
         {
-            using PbtNodeGroupWriter writer = new(groupKey, memoryProvider);
+            using PbtNodeGroupWriter<TPath> writer = new(path, memoryProvider);
             writer.Write(PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));
             return writer.Detach()!;
         }

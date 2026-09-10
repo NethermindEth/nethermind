@@ -83,7 +83,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         GroupFrameReader<TKey, TPath> reader = new(store, RootPath, metrics);
         try
         {
-            using PbtNodeGroupWriter writer = new(RootPath, memoryProvider);
+            using PbtNodeGroupWriter<TPath> writer = new(RootPath, memoryProvider);
             Subtree root = reader.Take(writer, RootPath, allowAbsent: true);
             Subtree result = default;
             try
@@ -113,7 +113,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// aligned to a four-bit group. The keys' already shared prefix may extend beyond this offset.
     /// This may be deeper than the owner group after skipping a shared prefix.
     /// </param>
-    private static Subtree FoldMutations(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter ownerWriter, IRefCountingMemoryProvider memoryProvider,
+    private static Subtree FoldMutations(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter, IRefCountingMemoryProvider memoryProvider,
         ref Subtree input, Span<PbtWriteOperation<TKey>> operations, int bitDepth, BucketPlan plan)
     {
         // Normally the subtree in a boundary slot of the parent group, whose reader/writer are passed here.
@@ -237,7 +237,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             GroupFrameReader<TKey, TPath> reader = new(store, PbtPathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
             try
             {
-                using PbtNodeGroupWriter writer = new(reader.GroupKey, memoryProvider);
+                using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
                 Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
                 try
                 {
@@ -256,7 +256,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
         ref GroupFrameReader<TKey, TPath> reader,
-        PbtNodeGroupWriter writer,
+        PbtNodeGroupWriter<TPath> writer,
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
@@ -300,54 +300,92 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
-    internal static Subtree Compose(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, TrieUpdaterMetrics? metrics, Span<DecompositionEntry> frontier) =>
-        ComposeRange(ref reader, writer, metrics, frontier, 0, PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.RootPosition, 0);
-
-    private static Subtree ComposeRange(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, TrieUpdaterMetrics? metrics,
-        Span<DecompositionEntry> frontier, int slot, int width, int position, int level)
+    internal static Subtree Compose(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, TrieUpdaterMetrics? metrics, Span<DecompositionEntry> frontier)
     {
-        if (!frontier[position].IsEmpty)
-        {
-            Subtree retained = frontier[position].TakeSubtree(ref reader, writer);
-            try
-            {
-                // An internal frontier entry is an unchanged subtree reached from the original input.
-                // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
-                if (width > 1 && !retained.IsLeaf)
-                {
-                    int copied = reader.CopyRange(writer, position - 2 * width + 2, position);
-                    if (copied != 0) metrics?.AddBulkCopy(copied);
-                }
-                return Subtree.Move(ref retained);
-            }
-            finally { retained.Dispose(); }
-        }
-        if (width == 1) return default;
-
-        int halfWidth = width / 2;
-        Subtree left = default;
-        Subtree right = default;
+        ComposeFrameBuffer frames = default;
+        int frameCount = 1;
+        Subtree result = default;
         try
         {
-            left = ComposeRange(ref reader, writer, metrics, frontier, slot, halfWidth, position - width, level + 1);
-            // Establish right occupancy without decoding it, so the left root can be emitted first.
-            bool hasRight = false;
-            for (int index = position - width + 1; index < position; index++)
-                hasRight |= !frontier[index].IsEmpty;
-            if (!hasRight) return Subtree.Move(ref left);
-            if (left.IsEmpty)
-                return ComposeRange(ref reader, writer, metrics, frontier, slot + halfWidth, halfWidth, position - 1, level + 1);
+            while (frameCount != 0)
+            {
+                ref ComposeFrame frame = ref frames[frameCount - 1];
+                int position = frame.Path.Position;
+                int width = frame.Path.Width;
+                if (frame.Stage == ComposeStage.LeftCompleted)
+                {
+                    // Establish right occupancy without decoding it, so the left root can be emitted first.
+                    bool hasRight = false;
+                    for (int index = position - width + 1; index < position; index++)
+                        hasRight |= !frontier[index].IsEmpty;
+                    if (!hasRight)
+                    {
+                        frameCount--;
+                        continue;
+                    }
 
-            ValueHash256 leftHash = writer.Write(position - width, reader.BitDepth + level + 1, ref left);
-            right = ComposeRange(ref reader, writer, metrics, frontier, slot + halfWidth, halfWidth, position - 1, level + 1);
-            ValueHash256 rightHash = writer.Write(position - 1, reader.BitDepth + level + 1, ref right);
-            return new Subtree(BoundaryPath(reader.GroupKey, slot, level), leftHash, rightHash);
+                    bool promoteRight = result.IsEmpty;
+                    if (!promoteRight)
+                    {
+                        frame.LeftHash = writer.Write(position - width, reader.BitDepth + frame.Path.Length + 1, ref result);
+                        frame.Stage = ComposeStage.RightCompleted;
+                    }
+                    if (width == 2)
+                    {
+                        result = frontier[position - 1].TakeSubtree(ref reader, writer);
+                        if (promoteRight) frameCount--;
+                    }
+                    else if (promoteRight)
+                        frame = new(frame.Path.Right);
+                    else
+                        frames[frameCount++] = new(frame.Path.Right);
+                    continue;
+                }
+                if (frame.Stage == ComposeStage.RightCompleted)
+                {
+                    ValueHash256 rightHash = writer.Write(position - 1, reader.BitDepth + frame.Path.Length + 1, ref result);
+                    result = new Subtree(BoundaryPath(reader.GroupKey, frame.Path.Slot, frame.Path.Length), frame.LeftHash, rightHash);
+                    frameCount--;
+                    continue;
+                }
+                if (!frontier[position].IsEmpty)
+                {
+                    result = frontier[position].TakeSubtree(ref reader, writer);
+                    // An internal frontier entry is an unchanged subtree reached from the original input.
+                    // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
+                    if (!result.IsLeaf)
+                    {
+                        int copied = reader.CopyRange(writer, position - 2 * width + 2, position);
+                        if (copied != 0) metrics?.AddBulkCopy(copied);
+                    }
+                    frameCount--;
+                    continue;
+                }
+
+                frame.Stage = ComposeStage.LeftCompleted;
+                if (width == 2)
+                    result = frontier[position - width].TakeSubtree(ref reader, writer);
+                else
+                    frames[frameCount++] = new(frame.Path.Left);
+            }
+            return Subtree.Move(ref result);
         }
-        finally
-        {
-            left.Dispose();
-            right.Dispose();
-        }
+        finally { result.Dispose(); }
+    }
+
+    private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
+
+    private struct ComposeFrame(NodeGroupPath path)
+    {
+        internal NodeGroupPath Path = path;
+        internal ComposeStage Stage;
+        internal ValueHash256 LeftHash;
+    }
+
+    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup)]
+    private struct ComposeFrameBuffer
+    {
+        private ComposeFrame _element;
     }
 
     /// <summary>Consumes the input into touched boundary nodes and opaque untouched siblings.</summary>
@@ -355,7 +393,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Frontier entries are indexed by group position, not boundary slot. Internal entries prove original
     /// subtree reachability and may be copied whole; only boundary entries are replaced by mutation results.
     /// </remarks>
-    internal static void Decompose(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, ref Subtree current,
+    internal static void Decompose(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, ref Subtree current,
         int bitDepth, Span<DecompositionEntry> frontier, int touchedMask)
     {
         if (current.IsEmpty) return;
@@ -387,7 +425,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         DecomposeChild(ref reader, writer, ref right, bitDepth, frontier, touchedMask);
     }
 
-    private static void DecomposeChild(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer,
+    private static void DecomposeChild(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         ref DecompositionEntry child, int bitDepth, Span<DecompositionEntry> frontier, int touchedMask)
     {
         if (child.IsEmpty) return;
@@ -419,7 +457,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal DecompositionEntry(ref Subtree subtree) => _subtree = Subtree.Move(ref subtree);
 
-        internal Subtree TakeSubtree(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer)
+        internal Subtree TakeSubtree(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer)
         {
             Subtree subtree = SourcePath is { } path ? reader.Take(writer, path) : Subtree.Move(ref _subtree);
             this = default;
