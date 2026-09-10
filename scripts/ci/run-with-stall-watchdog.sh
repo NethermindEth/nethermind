@@ -21,6 +21,7 @@ POLL_SECONDS="${POLL_SECONDS:-15}"
 DIAGNOSTIC_SECONDS="${DIAGNOSTIC_SECONDS:-120}"
 INSTALL_TIMEOUT_SECONDS="${INSTALL_TIMEOUT_SECONDS:-30}"
 STACK_TIMEOUT_SECONDS="${STACK_TIMEOUT_SECONDS:-10}"
+TERMINATION_SECONDS="${TERMINATION_SECONDS:-30}"
 
 mkdir -p "$DIAG_DIR"
 log="$DIAG_DIR/command.log"
@@ -48,7 +49,9 @@ collect_diagnostics() {
 
     # Managed stacks show which target or task each MSBuild node and the compiler server sit in.
     local deadline=$((SECONDS + DIAGNOSTIC_SECONDS))
-    timeout --kill-after=1s "${INSTALL_TIMEOUT_SECONDS}s" dotnet tool install --global dotnet-stack > "$DIAG_DIR/dotnet-stack-install.log" 2>&1 || true
+    local install_seconds=$INSTALL_TIMEOUT_SECONDS
+    ((install_seconds > DIAGNOSTIC_SECONDS)) && install_seconds=$DIAGNOSTIC_SECONDS
+    timeout --kill-after=1s "${install_seconds}s" dotnet tool install --global dotnet-stack > "$DIAG_DIR/dotnet-stack-install.log" 2>&1 || true
     export PATH="$PATH:$HOME/.dotnet/tools"
     if command -v dotnet-stack > /dev/null; then
         for pid in $(pgrep -x 'dotnet|VBCSCompiler'); do
@@ -68,12 +71,13 @@ collect_diagnostics() {
         done
     fi
 
-    # A stalled build's binlog may be truncated; stacks and scheduler logs are the primary evidence.
+    # Forced termination leaves the binlog's gzip stream unfinished; use stacks and scheduler logs.
     local command_group
-    command_group=$(cat "$DIAG_DIR/command.pid")
+    command_group=$(cat "$DIAG_DIR/command.pid" 2>/dev/null) || command_group=$command_pid
+    [[ "$command_group" =~ ^[1-9][0-9]*$ ]] || command_group=$command_pid
     kill -- "-$command_group" 2>/dev/null || kill "$command_pid" 2>/dev/null
-    for _ in $(seq 30); do
-        kill -0 "$command_pid" 2>/dev/null || return
+    for ((second=0; second<TERMINATION_SECONDS; second++)); do
+        kill -0 -- "-$command_group" 2>/dev/null || return
         sleep 1
     done
     kill -9 -- "-$command_group" 2>/dev/null || kill -9 "$command_pid" 2>/dev/null

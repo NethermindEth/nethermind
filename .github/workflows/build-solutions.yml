@@ -18,7 +18,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Leave room for a normal build, 15 minutes of silence, diagnostics, and artifact upload.
+    timeout-minutes: 60
     strategy:
       matrix:
         config: [release, debug]
@@ -47,15 +48,17 @@ jobs:
           DIAG_DIR: ${{ runner.temp }}/stall-diagnostics
           # A single project can legitimately compile silently for several minutes.
           STALL_SECONDS: 900
-          MSBUILDDEBUGPATH: ${{ runner.temp }}/msbuild-debug
+          MSBUILDDEBUGPATH: ${{ matrix.solution == 'EthereumTests' && format('{0}/msbuild-debug', runner.temp) || '' }}
           # Names the build requests each node is blocked on, which is what identifies a scheduler
           # deadlock. Costs no measurable build time but writes ~0.5 GB, so it is limited to the
-          # solution that has deadlocked. Remove scheduler tracing after the fix has proven stable.
+          # solution that has deadlocked. Remove scheduler tracing, its debug path, and binlogs
+          # after the fix has proven stable. Binlogs help ordinary failures; forced termination
+          # leaves an unfinished gzip stream, so stall investigations need stacks/scheduler logs.
           MSBUILDDEBUGSCHEDULER: ${{ matrix.solution == 'EthereumTests' && 1 || '' }}
         run: >
           bash scripts/ci/run-with-stall-watchdog.sh
           dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
-          -bl:${{ runner.temp }}/stall-diagnostics/build.binlog
+          ${{ matrix.solution == 'EthereumTests' && format('-bl:{0}/stall-diagnostics/build.binlog', runner.temp) || '' }}
 
       - name: Upload stall diagnostics
         if: failure()
