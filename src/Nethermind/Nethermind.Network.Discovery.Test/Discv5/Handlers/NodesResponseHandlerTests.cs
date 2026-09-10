@@ -49,7 +49,7 @@ public class NodesResponseHandlerTests
                 enr.SetEntry(new Ip6Entry(ip6));
                 enr.SetEntry(new Udp6Entry(30305));
             });
-        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
+        NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record, IPAddress.IPv6Any);
 
         using NodesMsg nodes = new([1], 1, [record]);
         handler.Handle(nodes);
@@ -100,7 +100,7 @@ public class NodesResponseHandlerTests
         NodeRecord third = CreateEnr(TestItem.PrivateKeyD, IPAddress.Loopback);
         NodeRecord fourth = CreateEnr(TestItem.PrivateKeyE, IPAddress.Loopback);
         using Distances distances = CreateDistances(receiver, first, second, third, fourth);
-        NodesResponseHandler handler = new(receiver, distances, ValueHash256KademliaDistance.Instance, IPAddress.IPv6Any);
+        NodesResponseHandler handler = new(receiver, distances, ValueHash256KademliaDistance.Instance, IPAddress.Any);
 
         using NodesMsg firstBatch = new([1], 2, [first, second, first]);
         using NodesMsg secondBatch = new([2], 2, [third, fourth, second]);
@@ -123,7 +123,7 @@ public class NodesResponseHandlerTests
             configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 
     private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record, IPAddress? localIp = null) =>
-        new(receiver, CreateDistances(receiver, record), ValueHash256KademliaDistance.Instance, localIp ?? IPAddress.IPv6Any);
+        new(receiver, CreateDistances(receiver, record), ValueHash256KademliaDistance.Instance, localIp ?? IPAddress.Any);
 
     private static Distances CreateDistances(Node receiver, params NodeRecord[] records)
     {

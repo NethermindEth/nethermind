@@ -127,7 +127,6 @@ public class NettyDiscoveryHandler(
         shouldForward = true;
 
         IByteBuffer content = packet.Content;
-        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint.
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
@@ -302,11 +301,6 @@ public class NettyDiscoveryHandler(
     // multi-packet exchanges are not dropped before signature verification.
     private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
         => _inboundMessageLimiter.TryAccept(remoteEndpoint.Address);
-
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
-        => endpoint.Address.IsIPv4MappedToIPv6
-            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
-            : endpoint;
 
     private async Task LogDisconnectFailureAsync(Task disconnectTask)
     {
