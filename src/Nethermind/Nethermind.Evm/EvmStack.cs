@@ -480,10 +480,10 @@ public ref partial struct EvmStack
     /// A position above <see cref="ulong.MaxValue"/> is unreachable, so every consumer reads a
     /// position as <c>IsUint64</c> plus <c>u0</c> and rejects the access when the first is false.
     /// Folding the three high limbs into a single non-zero marker keeps both of those exact while
-    /// byte-swapping one limb instead of the whole word. The word then never has to be written to
+    /// reading one limb instead of the whole word. The word then never has to be written to
     /// the frame as a vector and read straight back as scalars, which does not forward.
     /// </remarks>
-    /// <param name="slot">The stack slot, big-endian.</param>
+    /// <param name="slot">The stack slot, in limb layout.</param>
     /// <param name="position">The decoded position.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -494,7 +494,7 @@ public ref partial struct EvmStack
         position = new UInt256(limbs, 0, 0, unreachable);
     }
 
-    /// <summary>Pops a memory position written in big endian.</summary>
+    /// <summary>Pops a memory position.</summary>
     /// <remarks>See <see cref="ReadMemoryPositionFromSlot"/> for what the popped value preserves.</remarks>
     /// <param name="position">The popped position.</param>
     /// <returns><see langword="false"/> on stack underflow.</returns>
@@ -514,7 +514,7 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Writes a UInt256 value to a stack slot with big-endian conversion (no bounds check).
+    /// Writes a UInt256 value to a stack slot in its limb layout (no bounds check).
     /// Used when the slot was already validated by a previous pop operation.
     /// </summary>
     [SkipLocalsInit]
@@ -1357,8 +1357,8 @@ public ref partial struct EvmStack
 
     /// <summary>
     /// Fallback writer for truncated PUSH{n} where fewer than <paramref name="pushSize"/> immediate
-    /// bytes remain in code. Zero-fills the 32-byte word, then copies <paramref name="used"/> bytes
-    /// to the leading portion of the n-byte PUSH slot (high end in big-endian layout).
+    /// bytes remain in code. Zero-fills the 32-byte word, copies <paramref name="used"/> bytes
+    /// to the leading portion of the n-byte PUSH immediate, then reverses the word into limb layout.
     /// </summary>
     /// <param name="start">Reference to the first immediate byte in code.</param>
     /// <param name="used">Number of immediate bytes available in code (0 <= used <= pushSize).</param>
@@ -1562,7 +1562,7 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Pushes an Uint256 written in big endian.
+    /// Pushes an UInt256.
     /// </summary>
     /// <remarks>
     /// This method is a counterpart to <see cref="PopUInt256"/> and uses the same, raw data approach to write data back.
@@ -1612,11 +1612,11 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Pops an UInt256 written in big endian.
+    /// Pops an UInt256.
     /// </summary>
     /// <remarks>
     /// This method does its own calculations to create the <paramref name="result"/>. It knows that 32 bytes were popped with <see cref="PopBytesByRef"/>. It doesn't have to check the size of span or slice it.
-    /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
+    /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/>, as the slot already holds the limb layout of <paramref name="result"/>.
     /// </remarks>
     /// <param name="result">The returned value.</param>
     [SkipLocalsInit]
@@ -1639,7 +1639,7 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Pops two UInt256 values written in big endian, amortising bounds checking
+    /// Pops two UInt256 values, amortising bounds checking
     /// and offset calculation costs.
     /// </summary>
     /// <param name="a">First popped value (was at top of stack).</param>
@@ -1668,7 +1668,7 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Pops three UInt256 values written in big endian, amortising bounds checking
+    /// Pops three UInt256 values, amortising bounds checking
     /// and offset calculation costs.
     /// </summary>
     /// <param name="a">First popped value (was at top of stack).</param>
@@ -1700,7 +1700,7 @@ public ref partial struct EvmStack
     }
 
     /// <summary>
-    /// Pops four UInt256 values written in big endian, amortising bounds checking
+    /// Pops four UInt256 values, amortising bounds checking
     /// and offset calculation costs.
     /// </summary>
     /// <param name="a">First popped value (was at top of stack).</param>
@@ -1931,7 +1931,7 @@ public ref partial struct EvmStack
     /// underflow check and resolves the mismatched throw/try-pattern on the two reads.
     /// </summary>
     /// <param name="position">The top-of-stack value decoded by <see cref="ReadMemoryPositionFromSlot"/>.</param>
-    /// <param name="word">A span over the second slot, 32 bytes of raw stack-native (big-endian) data.</param>
+    /// <param name="word">A span over the second slot, its 32 bytes reversed into big-endian order.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopMemoryPositionAndWord256(out UInt256 position, out Span<byte> word)
@@ -1952,7 +1952,7 @@ public ref partial struct EvmStack
         return true;
     }
 
-    /// <summary>Pops a memory position and the value beneath it, both written in big endian.</summary>
+    /// <summary>Pops a memory position and the value beneath it.</summary>
     /// <remarks>
     /// Only the position is folded; the value beneath it keeps every limb because callers measure and
     /// compare it. See <see cref="ReadMemoryPositionFromSlot"/> for what the fold preserves.
@@ -1978,7 +1978,7 @@ public ref partial struct EvmStack
         return true;
     }
 
-    /// <summary>Pops a memory position and the two values beneath it, all written in big endian.</summary>
+    /// <summary>Pops a memory position and the two values beneath it.</summary>
     /// <remarks>
     /// Only the position is folded; a source offset and a length beneath it keep every limb because
     /// callers add and compare them. See <see cref="ReadMemoryPositionFromSlot"/>.

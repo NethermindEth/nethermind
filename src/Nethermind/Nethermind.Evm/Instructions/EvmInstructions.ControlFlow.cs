@@ -350,13 +350,13 @@ public static partial class EvmInstructions
     /// is not a jump marker.
     /// </summary>
     /// <remarks>
-    /// Only the last four bytes of the big-endian word can name a marker; every byte above them just has
-    /// to be zero. Testing the slot in place skips the full 256-bit endianness conversion that decoding
-    /// it as a <see cref="UInt256"/> would run first. The destination is returned rather than written
+    /// Only the low four bytes of the word can name a marker; every limb above them just has to be
+    /// zero. Testing the slot in place skips the frame round trip that decoding it as a
+    /// <see cref="UInt256"/> would take. The destination is returned rather than written
     /// through a reference so the caller's counter stays in a register: taking its address pins it to a
     /// stack slot for the whole of the calling instruction.
     /// </remarks>
-    /// <param name="slot">The stack slot holding the destination, big-endian.</param>
+    /// <param name="slot">The stack slot holding the destination, in limb layout.</param>
     /// <param name="stack">The current EVM stack, which carries the code length and jump-destination bitmap.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -68,11 +68,10 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        // ADD and SUB run on the stack's own big-endian limbs on every target. Going through UInt256
-        // costs three full-word endianness conversions around a vectorised carry chain that, on the
-        // 256-bit path, also has a data-dependent branch and a table lookup for the carry fix-up.
-        // Swapping each limb as it is read is cheaper than converting the words, and the carry chain
-        // is four dependent adds either way.
+        // ADD and SUB run on the stack's own limbs on every target. Going through UInt256 homes the
+        // operands and the result on the frame around a vectorised carry chain that, on the 256-bit
+        // path, also has a data-dependent branch and a table lookup for the carry fix-up. The carry
+        // chain is four dependent adds either way.
         if (typeof(TOpMath) == typeof(OpAdd))
         {
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;

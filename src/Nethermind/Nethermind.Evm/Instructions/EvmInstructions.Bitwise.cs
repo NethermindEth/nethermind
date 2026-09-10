@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
-    /// <summary>Writes a value below 2^64 into a stack slot, in the stack's big-endian layout.</summary>
+    /// <summary>Writes a value below 2^64 into a stack slot, in the stack's limb layout.</summary>
     /// <remarks>
     /// For targets with no 256-bit register, building the word as an <see cref="EvmWord"/> value and
     /// storing it makes the value address-taken, so it lands on the frame and is read back to be stored
@@ -227,7 +227,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseEq : IOpBitwise
     {
-        /// <summary>The word a true comparison pushes: one, in the stack's big-endian layout.</summary>
+        /// <summary>The word a true comparison pushes: one, in the stack's limb layout.</summary>
         /// <remarks>
         /// Property form so the JIT folds it to a PC-relative rodata load. As a static field it was a
         /// class-initialized test, a materialized absolute address and an indirect load on the taken path.

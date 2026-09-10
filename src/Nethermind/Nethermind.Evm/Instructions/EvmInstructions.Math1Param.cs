@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -197,25 +196,6 @@ public static partial class EvmInstructions
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
     }
-
-#if !ZK_EVM
-    /// <summary>
-    /// Set bytes followed by an equal run of clear ones, so loading a word at
-    /// <c>WordSize - position</c> yields a mask whose leading <c>position</c> bytes are set.
-    /// </summary>
-    /// <remarks>Spans of constants become a rodata blob, so this costs no allocation and no static field.</remarks>
-    private static ReadOnlySpan<byte> SignExtendPrefixMask =>
-    [
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    ];
-#endif
 
     /// <summary>
     /// Implements the SIGNEXTEND opcode.
