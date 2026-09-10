@@ -28,18 +28,17 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
 
     internal PartitionOutcome BucketSort<TKey>(Span<PbtWriteOperation<TKey>> operations, int bitDepth, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
     {
+        int branchDepth = Math.Max(KnownCommonPrefixLength, operations.Length == 1 ? operations[0].Key.BitLength : bitDepth);
+        BucketPlan plan = WithRangeKnowledge(branchDepth);
         if (!Precalculated.IsEmpty)
         {
             metrics?.IncrementPrecalculatedLevels();
             int mask = Precalculated[0];
             int bound = BitOperations.IsPow2(mask) ? bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup : bitDepth;
-            return new(mask, Precalculated.Slice(1, BitOperations.PopCount((uint)mask)), WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bound)));
+            return new(mask, Precalculated.Slice(1, BitOperations.PopCount((uint)mask)), plan.WithRangeKnowledge(Math.Max(branchDepth, bound)));
         }
 
         Span<int> counts = MemoryMarshal.Cast<byte, int>(_buffer);
-        int branchDepth = operations.Length == 1 ? operations[0].Key.BitLength : KnownCommonPrefixLength;
-        branchDepth = Math.Max(branchDepth, bitDepth);
-        BucketPlan plan = WithRangeKnowledge(branchDepth);
         if (!operations.IsEmpty && branchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup)
         {
             metrics?.IncrementSynthesizedSingleBuckets();
@@ -171,14 +170,5 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
             }
         }
         return usedMask;
-    }
-
-    /// <summary>Reuses inherited or producer knowledge without scanning the operation range.</summary>
-    internal BucketPlan EstablishRangeKnowledge(int operationCount, int firstKeyBitLength, int bitDepth)
-    {
-        int bound = operationCount == 1 ? firstKeyBitLength : bitDepth;
-        if (!Precalculated.IsEmpty && BitOperations.IsPow2(Precalculated[0]))
-            bound = Math.Max(bound, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup);
-        return WithRangeKnowledge(Math.Max(KnownCommonPrefixLength, bound));
     }
 }

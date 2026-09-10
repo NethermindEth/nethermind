@@ -194,40 +194,21 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
             }
 
-            // Retain operation-only prefix/sortedness knowledge so child frames avoid rescanning the same range.
-            plan = plan.EstablishRangeKnowledge(operations.Length, operations[0].Key.BitLength, bitDepth);
             Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
-            bool hasComputedPartition = false;
-            scoped PartitionOutcome partition = default;
-            // Partitioning can discover a shared prefix that lets traversal skip groups; reuse the partition if no jump is possible.
-            if (plan.Precalculated.IsEmpty && plan.KnownCommonPrefixLength <= bitDepth)
-            {
-                partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
-                plan = new(default, partition.Plan.KnownCommonPrefixLength, partition.Plan.IsSorted);
-                hasComputedPartition = true;
-            }
+            PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
             // The existing subtree may diverge before the mutations do. Stop at the four-bit group containing
             // that divergence rather than jumping solely by the mutations' shared prefix.
-            int branchDepth = FindBranchDepth(current, operations[0].Key, bitDepth, plan);
+            int branchDepth = FindBranchDepth(current, operations[0].Key, bitDepth, partition.Plan);
             int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
             if (groupDepth != bitDepth)
             {
-                if (!plan.Precalculated.IsEmpty && BitOperations.IsPow2(plan.Precalculated[0]))
-                {
-                    metrics?.IncrementPrecalculatedLevels();
-                    return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations,
-                        bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, plan.ForChild());
-                }
-
                 // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
-                return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, groupDepth, plan.ForChild());
+                return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, groupDepth, partition.Plan.ForChild());
             }
 
             // Reuse the owner frame when traversal has reached its group; its caller will flush the accumulated output.
             if (ownerReader.BitDepth == bitDepth)
-                return hasComputedPartition
-                    ? FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, partition)
-                    : FoldBoundary(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, plan);
+                return FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, partition);
 
             // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
             // is left for the caller to place, allowing composition to promote it through a compressed path.
@@ -235,9 +216,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             try
             {
                 using PbtNodeGroupWriter writer = new(reader.GroupKey, memoryProvider);
-                Subtree result = hasComputedPartition
-                    ? FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition)
-                    : FoldBoundary(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, plan);
+                Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
                 try
                 {
                     Flush(store, metrics, ref reader, writer);

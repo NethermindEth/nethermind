@@ -999,6 +999,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(outcome.Counts.ToArray(), Is.EqualTo(count == 0 ? Array.Empty<int>() : new[] { count }));
             Assert.That(operations, Is.EquivalentTo(original));
             Assert.That(metrics.PrecalculatedLevels, Is.EqualTo(precomputed ? 1 : 0));
+            Assert.That(metrics.SynthesizedSingleBuckets, Is.EqualTo(!precomputed && count > 0 && (count == 1 || knownCommonPrefixLength >= 4) ? 1 : 0));
+            if (count == 1) Assert.That(outcome.Plan.KnownCommonPrefixLength, Is.EqualTo(operations[0].Key.BitLength));
             if (precomputed) Assert.That(operations, Is.EqualTo(original));
         }
     }
