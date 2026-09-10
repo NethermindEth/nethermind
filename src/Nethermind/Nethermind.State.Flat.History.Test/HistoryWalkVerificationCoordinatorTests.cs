@@ -180,8 +180,13 @@ public class HistoryWalkVerificationCoordinatorTests
         coordinator.Start();
         await coordinator.VerificationLoop;
 
-        Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.LessThanOrEqualTo(3),
-            "the walk covered blocks 0 to 2 and the tip series already commits 3 to 8, so a second walk would scan the whole key space to find a handful of blocks it does not need to build");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.LessThanOrEqualTo(3),
+                "the walk covered blocks 0 to 2 and the tip series already commits 3 to 8, so a second walk would scan the whole key space to find a handful of blocks it does not need to build");
+            Assert.That(metadata.TryGetCoverage(out ulong coveredFrom, out ulong coveredTo) && coveredFrom == 0 && coveredTo == 8, Is.True,
+                "the walk's publish joins the tip series it touches, so blocks 3 to 8 serve now rather than after whatever capture happens next");
+        }
     }
 
     [Test]

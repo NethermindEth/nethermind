@@ -305,6 +305,12 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
                 coveredTo = Math.Max(to, toInclusive);
             }
 
+            if (TryReadRange(TipSeriesKey, out ulong tipStart, out ulong tipFrontier) && tipStart <= coveredTo + 1 && (coveredFrom == 0 || tipFrontier + 1 >= coveredFrom))
+            {
+                coveredFrom = Math.Min(coveredFrom, tipStart);
+                coveredTo = Math.Max(coveredTo, tipFrontier);
+            }
+
             ulong walkFrom = fromInclusive;
             ulong walkTo = toInclusive;
             if (TryReadRange(WalkVerifiedKey, out ulong knownFrom, out ulong knownTo))

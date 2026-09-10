@@ -1568,8 +1568,12 @@ public class ArchiveProofTests
         using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
         Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
         Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
-        Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
-        Assert.That(Metadata(EpochPolicy).DroppedThroughEpoch, Is.EqualTo(3ul), "the mirror is a cache of the persisted key, not a replacement for it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
+            Assert.That(Metadata(EpochPolicy).DroppedThroughEpoch, Is.EqualTo(3ul), "the mirror is a cache of the persisted key, not a replacement for it");
+        }
+
         metadata.TryRaiseDemotedThroughEpoch(5);
         metadata.LowerDemotedThroughEpoch(2);
         Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(2ul));
