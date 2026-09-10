@@ -10,7 +10,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
