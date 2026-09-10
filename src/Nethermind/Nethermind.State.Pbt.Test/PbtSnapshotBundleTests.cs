@@ -20,6 +20,35 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtSnapshotBundleTests
 {
     [Test]
+    public void SnapshotContent_ConcurrentSameGroupReplacementsReleasePreviousPayloads([Values] bool tombstones)
+    {
+        using PbtSnapshotContent content = new();
+        TrackingMemoryProvider memoryProvider = new();
+        PbtNodePath groupPath = new([], 0);
+        byte[] encoding = EncodeGroup(groupPath, [new PbtNodeRecord(groupPath.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+
+        System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
+        {
+            using RefCountingMemory payload = Memory(encoding, memoryProvider);
+            content.SetNodeGroup(groupPath, payload);
+            content.SetNodeGroup(groupPath, payload);
+            if (tombstones) content.SetNodeGroup(groupPath, null);
+        });
+
+        bool found = content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
+        using (current)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstones ? null : encoding));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(tombstones ? 0 : 1));
+        }
+
+        content.Reset();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+    }
+
+    [Test]
     public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 16)] int groupCount, [Values] bool tombstone)
     {
         using PbtSnapshotContent content = new();

@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>One immutable-at-seal diff layer of flat values, canonical node groups, and code references.</summary>
 /// <remarks>
-/// Concurrent mutable node-group operations must own disjoint paths; same-path reads and replacements require caller serialization.
+/// Concurrent node-group replacements are supported; reads concurrent with same-path replacements require caller serialization.
 /// Sealed content supports concurrent readers while its snapshot is leased. Reset requires exclusive ownership.
 /// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
@@ -40,11 +40,18 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         if (payload is not null) _ = new PbtNodeGroupReader<TPath>(groupKey, payload.GetSpan());
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        NodeGroups.TryGetValue(storagePath, out RefCountingMemory? previous);
         payload?.AcquireLease();
+        RefCountingMemory? previous;
         try
         {
-            NodeGroups[storagePath] = payload;
+            while (true)
+            {
+                if (NodeGroups.TryGetValue(storagePath, out previous))
+                {
+                    if (NodeGroups.TryUpdate(storagePath, payload, previous)) break;
+                }
+                else if (NodeGroups.TryAdd(storagePath, payload)) break;
+            }
         }
         catch
         {
