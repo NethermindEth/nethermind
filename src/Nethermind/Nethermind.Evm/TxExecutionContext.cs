@@ -17,5 +17,7 @@ namespace Nethermind.Evm
         public readonly ICodeInfoRepository CodeInfoRepository = codeInfoRepository;
         public readonly byte[]?[]? BlobVersionedHashes = blobVersionedHashes;
         public readonly UInt256 GasPrice = gasPrice;
+
+        internal bool SuppressLogs { get; init; }
     }
 }
