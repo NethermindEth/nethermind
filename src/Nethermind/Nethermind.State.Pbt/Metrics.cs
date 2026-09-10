@@ -15,6 +15,22 @@ public static class Metrics
     [Description("Estimated retained PBT trie-cache memory in bytes, including entry and bucket overhead")]
     public static long PbtTrieCacheMemory;
 
+    private static long _pbtTrieCacheHits;
+
+    [CounterMetric]
+    [Description("PBT trie-node cache lookups that returned a cached node group")]
+    public static long PbtTrieCacheHits => Volatile.Read(ref _pbtTrieCacheHits);
+
+    internal static void IncrementPbtTrieCacheHits() => Interlocked.Increment(ref _pbtTrieCacheHits);
+
+    private static long _pbtTrieCacheMisses;
+
+    [CounterMetric]
+    [Description("PBT trie-node cache lookups that did not return a cached node group")]
+    public static long PbtTrieCacheMisses => Volatile.Read(ref _pbtTrieCacheMisses);
+
+    internal static void IncrementPbtTrieCacheMisses() => Interlocked.Increment(ref _pbtTrieCacheMisses);
+
     internal static readonly PbtSnapshotMemoryLabel AccountLeafSnapshotMemory = new("account", "leaf");
     internal static readonly PbtSnapshotMemoryLabel AccountTrieSnapshotMemory = new("account", "trie");
     internal static readonly PbtSnapshotMemoryLabel CodeLeafSnapshotMemory = new("code", "leaf");

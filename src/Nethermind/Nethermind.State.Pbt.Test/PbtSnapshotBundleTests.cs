@@ -303,11 +303,14 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [NonParallelizable]
     [TestCase(0UL, 2)]
     [TestCase(1UL, 2)]
     [TestCase(1048576UL, 1)]
     public void Trie_cache_reuses_only_matching_immutable_views(ulong budget, int expectedReads)
     {
+        long initialHits = Metrics.PbtTrieCacheHits;
+        long initialMisses = Metrics.PbtTrieCacheMisses;
         TrackingMemoryProvider memory = new();
         PbtNodePath path = new([], 0);
         byte[] encoding = EncodeGroup(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
@@ -331,6 +334,11 @@ public class PbtSnapshotBundleTests
         Assert.That(forkReader.GroupReadCount, Is.EqualTo(1));
         Assert.That(cache.TryGet(default, new PbtNodePath([0], 4), out _), Is.False);
         Assert.That(cache.TryGet(default, new PbtStorageNodePath([], 0), out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.PbtTrieCacheHits - initialHits, Is.EqualTo(2 - expectedReads));
+            Assert.That(Metrics.PbtTrieCacheMisses - initialMisses, Is.EqualTo(expectedReads + 3));
+        }
     }
 
     [Test]

@@ -46,10 +46,12 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             {
                 entry.Payload.AcquireLease();
                 payload = entry.Payload;
+                Metrics.IncrementPbtTrieCacheHits();
                 return true;
             }
         }
         payload = null;
+        Metrics.IncrementPbtTrieCacheMisses();
         return false;
     }
 
