@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
@@ -21,10 +20,8 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsJumpDestination(int destination)
     {
-        Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
         long[] bitmap = _jumpDestinations ??= _codeInfo?.IncrementalJumpBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
-        // The caller has already bounded the destination by the code length, so the code info is present.
-        return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination) || _codeInfo!.AnalyzeJump(destination);
+        return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination) || (_codeInfo?.AnalyzeJump(destination) ?? false);
     }
 
     /// <summary>Writes <paramref name="value"/> as one big-endian 32-byte stack word.</summary>

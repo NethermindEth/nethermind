@@ -5,6 +5,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;
 
@@ -18,12 +19,12 @@ public sealed partial class CodeInfo
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <remarks>
     /// The guest pays for every byte it scans, and a frame typically jumps into a prefix of the code, so
-    /// the scan advances only to the furthest destination asked for rather than running to the end. A
-    /// destination the scan has already passed rescans nothing.
+    /// the scan stops at the first instruction boundary beyond the requested destination. A PUSH can
+    /// overshoot it, but the resume cursor never splits an immediate or rewinds for an earlier query.
     /// </remarks>
     internal bool AnalyzeJump(int destination)
     {
-        if (CodeSpan[destination] != (byte)Instruction.JUMPDEST) return false;
+        if (CodeSpan[0] == (byte)Instruction.STOP || CodeSpan[destination] != (byte)Instruction.JUMPDEST) return false;
         long[] bitmap = IncrementalJumpBitmap;
         _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, CodeSpan);
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
