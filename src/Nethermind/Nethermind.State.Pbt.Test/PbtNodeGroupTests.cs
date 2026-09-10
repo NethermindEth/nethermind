@@ -705,7 +705,7 @@ public class PbtNodeGroupTests
         TrieUpdaterMetrics metrics = new();
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, rootPath, metrics);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, memory);
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             Assert.That(reader.CopyRange(writer, 0, 0), Is.Zero);
             using (Assert.EnterMultipleScope())
@@ -720,12 +720,12 @@ public class PbtNodeGroupTests
                 case 0: reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition); break;
                 case 1: reader.CopyRange(writer, 0, PbtNodeGroupCodec.PositionCount); break;
                 case 2:
-                    using (reader.Acquire(PbtFourLevelGroupGeometry.RootPosition)) { }
+                    reader.Acquire(PbtFourLevelGroupGeometry.RootPosition);
                     break;
             }
             Assert.That(reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition).ToArray(), Is.EqualTo(present ? encoding : Array.Empty<byte>()));
-            using (TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition))
-                Assert.That(node.IsEmpty, Is.EqualTo(!present));
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition);
+            Assert.That(node.IsEmpty, Is.EqualTo(!present));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(persistence.Reads.Count, Is.EqualTo(1));
@@ -733,7 +733,7 @@ public class PbtNodeGroupTests
                 Assert.That(metrics.GroupParses, Is.EqualTo(present ? 1 : 0));
             }
         }
-        finally { reader.Dispose(); }
+
         writer.Dispose();
         store.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
@@ -755,11 +755,11 @@ public class PbtNodeGroupTests
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, PooledRefCountingMemoryProvider.Instance);
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = default;
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             node = reader.Take(writer, position);
             Assert.That(node.Path, Is.EqualTo(leaf ? (PbtStorageNodePath?)null : path));
-            using TrieUpdater<PbtFullKey, PbtNodePath>.Subtree converted = TrieUpdater<PbtFullKey, PbtNodePath>.Subtree.TakeFrom(ref node);
+            TrieUpdater<PbtFullKey, PbtNodePath>.Subtree converted = TrieUpdater<PbtFullKey, PbtNodePath>.Subtree.TakeFrom(ref node);
             byte[] actual = new byte[converted.EncodedLength(path.BitDepth)];
             converted.Encode(actual, path.BitDepth);
             using (Assert.EnterMultipleScope())
@@ -770,11 +770,30 @@ public class PbtNodeGroupTests
                 Assert.That(actual, Is.EqualTo(encoding));
             }
         }
-        finally
+    }
+
+    [Test]
+    public void Borrowed_subtree_materializes_before_its_using_scope_releases_memory([Values] bool leaf)
+    {
+        PbtStorageNodePath groupKey = new([], 0);
+        byte[] encoding = leaf
+            ? LeafEncoding(0, 1)
+            : PbtNodeCodec.EncodeBranch(Bytes.FromHexString("123450"), 20, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
+        using PbtNodeGroupStore stored = new();
+        stored.SetNode(groupKey, encoding);
+        using PoisoningStore store = new(stored);
+        TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree materialized;
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
-            node.Dispose();
-            reader.Dispose();
+            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree borrowed = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition);
+            materialized = borrowed.Materialize();
+            Assert.That(store.ReleasedGroupDepths, Is.Empty);
         }
+        Assert.That(store.ReleasedGroupDepths, Is.EqualTo(new[] { 0 }));
+        byte[] actual = new byte[materialized.EncodedLength(0)];
+        materialized.Encode(actual, 0);
+        Assert.That(actual, Is.EqualTo(encoding));
     }
 
     [Test]
@@ -786,11 +805,11 @@ public class PbtNodeGroupTests
         payload.GetSpan()[0] = 0xff;
         WarmReadStore persistence = new(store) { Payload = payload };
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, new([], 0), null);
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             if (access) Assert.Throws<InvalidDataException>(() => reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition));
         }
-        finally { reader.Dispose(); }
+
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "the caller still owns its payload lease");
         ((IDisposable)payload).Dispose();
         using (Assert.EnterMultipleScope())
@@ -836,7 +855,7 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Decomposition_entries_transfer_or_release_owned_nodes(
+    public void Decomposition_entries_borrow_nodes_from_the_frame(
         [Values(0, 1, 2, 3)] int scenario, [Values] bool consume)
     {
         TrackingMemoryProvider provider = new();
@@ -848,13 +867,13 @@ public class PbtNodeGroupTests
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree original = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry entry = default;
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             if (scenario == 2)
             {
                 original = reader.Take(writer, PbtFourLevelGroupGeometry.RootPosition);
                 entry = new(ref original);
-                Assert.That(original.IsEmpty, Is.True, "entry takes ownership rather than copying the lease");
+                Assert.That(original.IsEmpty, Is.True, "entry consumes the borrowed value");
             }
             else if (scenario != 0)
                 entry = new(new ValueHash256(Value(1)), PbtFourLevelGroupGeometry.RootPosition);
@@ -876,30 +895,15 @@ public class PbtNodeGroupTests
                         Assert.That(result.IsEmpty, Is.EqualTo(scenario == 0));
                         Assert.That(reader.Taken, Is.EqualTo(scenario == 0 ? 0u : 1u << 30));
                     }
-                    using TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree second = entry.TakeSubtree(ref reader, writer);
-                    Assert.That(second.IsEmpty, Is.True, "consumption clears ownership and deferred positions");
+                    TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree second = entry.TakeSubtree(ref reader, writer);
+                    Assert.That(second.IsEmpty, Is.True, "consumption clears borrowed values and deferred positions");
                     if (!result.IsEmpty) Assert.That(result.IsLeaf, Is.True);
                 }
             }
 
-            reader.Dispose();
-            reader = default;
-            store.Dispose();
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented),
-                Is.EqualTo(scenario == 2 || (consume && scenario == 1) ? 1 : 0), "only materialized nodes retain leases");
-            entry.Dispose();
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented),
-                Is.EqualTo(consume && scenario is 1 or 2 ? 1 : 0), "disposing the entry does not release a transferred node");
-            result.Dispose();
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
         }
-        finally
-        {
-            original.Dispose();
-            result.Dispose();
-            entry.Dispose();
-            reader.Dispose();
-        }
+        store.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
 
     [Test]
@@ -925,7 +929,7 @@ public class PbtNodeGroupTests
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[16];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree root = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             root = reader.Take(writer, PbtFourLevelGroupGeometry.RootPosition);
             uint frontierMask = 0;
@@ -988,13 +992,6 @@ public class PbtNodeGroupTests
                 Visit(slot + width / 2, width / 2, position - 1);
             }
         }
-        finally
-        {
-            root.Dispose();
-            result.Dispose();
-            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Dispose(frontier);
-            reader.Dispose();
-        }
     }
 
     [Test]
@@ -1009,7 +1006,7 @@ public class PbtNodeGroupTests
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[16];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree subtree = default;
         uint frontierMask = 0;
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Decompose(ref reader, writer, ref subtree, 0, frontier, ref frontierMask, 1 << slot);
             Assert.That(frontierMask, Is.Zero);
@@ -1021,7 +1018,6 @@ public class PbtNodeGroupTests
             Assert.That(frontierMask, Is.EqualTo(1u << TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.BoundaryPosition(slot)));
             subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.TakeBoundary(ref reader, writer, frontier, ref frontierMask, slot);
             Assert.That(frontierMask, Is.Zero);
-            subtree.Dispose();
             subtree = default;
             TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.SetBoundary(frontier, ref frontierMask, slot, ref subtree);
             subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier, frontierMask);
@@ -1035,12 +1031,6 @@ public class PbtNodeGroupTests
             TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.SetBoundary(frontier, ref frontierMask, slot, ref subtree);
             subtree = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Compose(ref reader, writer, null, frontier, frontierMask);
             Assert.That(writer.Write(30, 0, ref subtree), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
-        }
-        finally
-        {
-            subtree.Dispose();
-            TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Dispose(frontier);
-            reader.Dispose();
         }
     }
 
@@ -1371,10 +1361,18 @@ public class PbtNodeGroupTests
     }
 
     [TestCase("0000,0800", "0800", false, new[] { 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_group_root_handoff")]
-    [TestCase("0000,0080,0800", "0080,0800", false, new[] { 4, 8, 0 }, TestName = "Escaping_subtree_survives_poisoned_nested_groups")]
-    [TestCase("0000,0080,0800", "0080,0800", true, new[] { 8, 4, 0 }, TestName = "Owned_subtree_survives_poisoned_nested_groups")]
+    [TestCase("0000,0080,0800", "0080,0800", false, new[] { 8, 4, 0 }, TestName = "Escaping_subtree_survives_poisoned_nested_groups")]
+    [TestCase("0000,0080,0800", "0080,0800", true, new[] { 8, 4, 0 }, TestName = "Inline_subtree_survives_poisoned_nested_groups")]
     [TestCase("0000,0008", "0080", false, new[] { 0 }, TestName = "Ancestor_borrowed_subtree_survives_child_frame_return")]
-    public void Returned_subtrees_survive_group_lease_release(string initialKeys, string deletedKeys, bool replaceSurvivor, int[] releasedDepths)
+    public void Returned_subtrees_survive_group_lease_release(string initialKeys, string deletedKeys, bool replaceSurvivor, int[] releasedDepths) =>
+        AssertReturnedSubtrees(initialKeys, deletedKeys, replaceSurvivor, releasedDepths, false);
+
+    [Test]
+    public void Worker_results_survive_poisoned_group_memory([Values] bool parallel, [Values] bool branch) =>
+        AssertReturnedSubtrees(branch ? "000000,000008,000080,008000,010000" : "000000,000080,008000,010000",
+            "000080,008000", false, null, parallel);
+
+    private static void AssertReturnedSubtrees(string initialKeys, string deletedKeys, bool replaceSurvivor, int[]? releasedDepths, bool parallel)
     {
         using PbtTreeHarness expected = new();
         EipReferenceTree oracle = new();
@@ -1405,9 +1403,18 @@ public class PbtNodeGroupTests
         }
         expected.ApplyBatch(changes);
 
-        ValueHash256 actualRoot = TrieUpdater.UpdateRoot(store, root, batch.Build());
+        ValueHash256 actualRoot;
+        if (parallel)
+        {
+            using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
+            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions);
+        }
+        else actualRoot = TrieUpdater.UpdateRoot(store, root, batch.Build());
 
-        Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "payloads are poisoned when their last owning frame or subtree releases them");
+        if (releasedDepths is not null)
+            Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "payloads are poisoned when their owning frame releases them");
+        else Assert.That(store.ReleasedGroupDepths, Is.Not.Empty);
+        Assert.That(store.ReleasedGroupDepths.Count, Is.EqualTo(store.ReadCount));
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.Inner.ExportPhysicalPayloads());
         IReadOnlyList<PbtNodeRecord> actualRecords = reopened.EnumerateRecords();
         IReadOnlyList<PbtNodeRecord> expectedRecords = expected.Nodes;
@@ -1428,12 +1435,14 @@ public class PbtNodeGroupTests
         private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Create();
         internal PbtNodeGroupStore Inner { get; } = inner;
         internal List<int> ReleasedGroupDepths { get; } = [];
+        internal int ReadCount { get; private set; }
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             using RefCountingMemory? payload = Inner.GetNodeGroup(groupKey);
             if (payload is null) return null;
             int length = payload.GetSpan().Length;
+            ReadCount++;
             byte[] buffer = _pool.Rent(length);
             payload.GetSpan().CopyTo(buffer);
             return RefCountingMemory.OwningRocksDb(new PoisoningMemoryManager(_pool, buffer, length,
@@ -1657,7 +1666,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads([new(groupKey.ToEncodedArray(), sourcePayload)]);
         GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, new TrackingMemoryProvider());
-        try
+        using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             uint taken = markTaken ? 0x7FFFFFFFu : 0;
             reader.Taken = taken;
@@ -1697,10 +1706,6 @@ public class PbtNodeGroupTests
             }
             using RefCountingMemory? payload = writer.Detach();
             Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expectedRecords.Count == 0 ? null : EncodeGroup(groupKey, expectedRecords)));
-        }
-        finally
-        {
-            reader.Dispose();
         }
     }
 

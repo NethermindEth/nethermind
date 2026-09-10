@@ -79,7 +79,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         Commit();
     }
 
-    /// <summary>Emits the resolved subtree root at its final position and consumes its lease.</summary>
+    /// <summary>Emits the resolved subtree root at its final position and clears the borrowed value.</summary>
     internal ValueHash256 Write<TKey>(int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
         where TKey : struct, IPbtKey<TKey>
     {
@@ -87,7 +87,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
         ValueHash256 hash = node.Encode(encoding, depth);
         Commit();
-        node.Dispose();
+        node = default;
         return hash;
     }
 

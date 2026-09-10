@@ -2306,7 +2306,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Promoted_subtree_retains_read_lease_after_its_frame_is_disposed()
+    public void Promoted_subtree_is_materialized_before_its_frame_is_disposed()
     {
         CountingPbtStore store = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(

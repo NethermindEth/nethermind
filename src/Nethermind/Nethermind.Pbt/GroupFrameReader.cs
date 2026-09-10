@@ -91,13 +91,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
             return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.PathOf(GroupKey, position), left, right);
         }
         TPath? path = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? null : PbtFourLevelGroupGeometry.PathOf(GroupKey, position);
-        _lease!.AcquireLease();
-        try { return new(_lease, encoding, path); }
-        catch
-        {
-            ((IDisposable)_lease).Dispose();
-            throw;
-        }
+        return new(encoding, path);
     }
 
     private ValueHash256 GetHash(int position)
@@ -128,6 +122,19 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         ((IDisposable?)_lease)?.Dispose();
         _lease = null;
+    }
+
+    /// <summary>Releases the actual mutable frames, including payloads loaded after this scope was opened.</summary>
+    internal readonly ref struct Scope(Span<GroupFrameReader<TKey, TPath>> readers) : IDisposable
+    {
+        private readonly Span<GroupFrameReader<TKey, TPath>> _readers = readers;
+
+        internal Scope(ref GroupFrameReader<TKey, TPath> reader) : this(System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref reader, 1)) { }
+
+        public void Dispose()
+        {
+            foreach (ref GroupFrameReader<TKey, TPath> reader in _readers) reader.Dispose();
+        }
     }
 
     [InlineArray(PbtNodeGroupCodec.PositionCount)]

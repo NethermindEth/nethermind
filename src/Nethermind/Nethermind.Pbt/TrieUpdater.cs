@@ -82,26 +82,16 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (operations.IsEmpty) return currentRoot;
         memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
         GroupFrameReader<TKey, TPath> reader = new(store, RootPath, metrics);
-        try
+        using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(RootPath, memoryProvider);
             Subtree root = reader.Take(writer, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true);
-            Subtree result = default;
-            try
-            {
-                result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref root, operations, 0, plan);
-                ValueHash256 hash = writer.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
-                using (RefCountingMemory? payload = writer.Detach())
-                    store.SetNodeGroup(reader.GroupKey, payload);
-                return hash;
-            }
-            finally
-            {
-                root.Dispose();
-                result.Dispose();
-            }
+            Subtree result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref root, operations, 0, plan);
+            ValueHash256 hash = writer.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+            using (RefCountingMemory? payload = writer.Detach())
+                store.SetNodeGroup(reader.GroupKey, payload);
+            return hash;
         }
-        finally { reader.Dispose(); }
     }
 
     /// <summary>Consumes a subtree and applies its mutation range, returning the canonical replacement.</summary>
@@ -119,138 +109,115 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         // Normally the subtree in a boundary slot of the parent group, whose reader/writer are passed here.
         // The initial call supplies the tree root; prefix jumps carry the same subtree to a deeper bitDepth.
-        // A using local cannot be passed by ref. Keep current mutable so Move can clear it
-        // when transferring ownership; finally disposes only the subtree still owned by this frame.
         Subtree current = Subtree.Move(ref input);
-        try
+        if (operations.IsEmpty) return Subtree.Move(ref current);
+
+        // At an empty subtree or leaf, a single update needs no partition unless it inserts a different key beside the leaf.
+        // A default value denotes deletion, including a no-op when the key is absent.
+        if (current.IsEmpty)
         {
-            if (operations.IsEmpty) return Subtree.Move(ref current);
-
-            // At an empty subtree or leaf, a single update needs no partition unless it inserts a different key beside the leaf.
-            // A default value denotes deletion, including a no-op when the key is absent.
-            if (current.IsEmpty)
-            {
-                if (operations.Length == 1)
-                    return operations[0].Value == default ? default : new Subtree(operations[0]);
-            }
-            else if (current.IsLeaf)
-            {
-                if (operations.Length == 1)
-                {
-                    PbtWriteOperation<TKey> operation = operations[0];
-                    if (operation.Key.Equals(current.Key))
-                        return operation.Value == default ? default : new Subtree(operation);
-                    if (operation.Value == default) return Subtree.Move(ref current);
-                }
-            }
-
-            // Keys are logically variable-length despite each full-key type using a fixed-size inline buffer;
-            // Length/BitLength identify the actual end, not the buffer capacity. Groups advance by a nibble,
-            // but complete keys end on byte boundaries. A key ending here has no next nibble to bucket by.
-            // Fold it separately from longer keys: deleting 0xAB and inserting 0xABCD must be allowed,
-            // while keeping both would violate EIP-8297 prefix freedom.
-            if (!TKey.IsFixedLength && bitDepth > 0 && (bitDepth & 7) == 0)
-            {
-                // Variable-length keys incur an extra linear scan here; fixed-length keys skip this cost.
-                int terminalIndex = -1;
-                for (int index = 0; index < operations.Length; index++)
-                {
-                    if (operations[index].Key.BitLength != bitDepth) continue;
-                    terminalIndex = index;
-                    break;
-                }
-                bool hasTerminalLeaf = current.IsLeaf && current.Key.BitLength == bitDepth;
-                if (terminalIndex >= 0)
-                {
-                    // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
-                    Subtree terminal = hasTerminalLeaf ? Subtree.Move(ref current) : default;
-                    Subtree descendants = default;
-                    try
-                    {
-                        PbtWriteOperation<TKey> operation = operations[terminalIndex];
-                        operations[..terminalIndex].CopyTo(operations[1..]);
-                        operations[0] = operation;
-                        terminal = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref terminal, operations[..1], bitDepth, plan);
-                        operations = operations[1..];
-                        plan = plan.AfterFiltering(preservesOrder: true);
-                        descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, plan);
-                        if (terminal.IsEmpty) return Subtree.Move(ref descendants);
-                        if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                        return Subtree.Move(ref terminal);
-                    }
-                    finally
-                    {
-                        terminal.Dispose();
-                        descendants.Dispose();
-                    }
-                }
-                if (hasTerminalLeaf)
-                {
-                    Subtree descendants = default;
-                    try
-                    {
-                        descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref descendants, operations, bitDepth, plan);
-                        if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                        return Subtree.Move(ref current);
-                    }
-                    finally { descendants.Dispose(); }
-                }
-            }
-
-            Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
-            PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
-            // The existing subtree may diverge before the mutations do. Stop at the four-bit group containing
-            // that divergence rather than jumping solely by the mutations' shared prefix.
-            TKey firstKey = operations[0].Key;
-            int branchDepth = partition.Plan.KnownCommonPrefixLength;
-            if (!current.IsEmpty && current.IsLeaf)
-            {
-                TKey leafKey = current.Key;
-                int difference = leafKey.FirstDifferingBit(firstKey, bitDepth);
-                branchDepth = Math.Min(branchDepth, difference);
-            }
-            else if (!current.IsEmpty)
-            {
-                int prefixStart = current.Path!.Value.BitDepth;
-                branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Prefix, firstKey, prefixStart));
-            }
-            // Integer floor to the preceding or equal group boundary.
-            int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
-            // This is the shared-prefix path: both the mutations and existing subtree fit below one slot
-            // of this group, so skip ahead. If branching occurs within this group, groupDepth == bitDepth
-            // even when branchDepth is a few bits deeper; fold the current group below instead.
-            if (groupDepth > bitDepth)
-            {
-                // This can skip multiple four-bit groups at once, e.g. bitDepth 8 to groupDepth 24.
-                // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
-                return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, groupDepth, partition.Plan.ForChild());
-            }
-
-            // True when the requested group is already open (e.g. the root call at bitDepth 0): reuse its frame.
-            // A child call advances bitDepth by four but receives the parent's reader, since its boundary node
-            // is stored in that parent group. Then this is false, as it is after a deeper prefix jump;
-            // open the descendant group below. The code that opened each frame is responsible for flushing it.
-            if (ownerReader.BitDepth == bitDepth)
-                return FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, partition);
-
-            // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
-            // is left for the caller to place, allowing composition to promote it through a compressed path.
-            GroupFrameReader<TKey, TPath> reader = new(store, PbtNodePathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
-            try
-            {
-                using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
-                Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
-                try
-                {
-                    using (RefCountingMemory? payload = writer.Detach())
-                        store.SetNodeGroup(reader.GroupKey, payload);
-                    return Subtree.Move(ref result);
-                }
-                finally { result.Dispose(); }
-            }
-            finally { reader.Dispose(); }
+            if (operations.Length == 1)
+                return operations[0].Value == default ? default : new Subtree(operations[0]);
         }
-        finally { current.Dispose(); }
+        else if (current.IsLeaf)
+        {
+            if (operations.Length == 1)
+            {
+                PbtWriteOperation<TKey> operation = operations[0];
+                if (operation.Key.Equals(current.Key))
+                    return operation.Value == default ? default : new Subtree(operation);
+                if (operation.Value == default) return Subtree.Move(ref current);
+            }
+        }
+
+        // Keys are logically variable-length despite each full-key type using a fixed-size inline buffer;
+        // Length/BitLength identify the actual end, not the buffer capacity. Groups advance by a nibble,
+        // but complete keys end on byte boundaries. A key ending here has no next nibble to bucket by.
+        // Fold it separately from longer keys: deleting 0xAB and inserting 0xABCD must be allowed,
+        // while keeping both would violate EIP-8297 prefix freedom.
+        if (!TKey.IsFixedLength && bitDepth > 0 && (bitDepth & 7) == 0)
+        {
+            // Variable-length keys incur an extra linear scan here; fixed-length keys skip this cost.
+            int terminalIndex = -1;
+            for (int index = 0; index < operations.Length; index++)
+            {
+                if (operations[index].Key.BitLength != bitDepth) continue;
+                terminalIndex = index;
+                break;
+            }
+            bool hasTerminalLeaf = current.IsLeaf && current.Key.BitLength == bitDepth;
+            if (terminalIndex >= 0)
+            {
+                // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
+                Subtree terminal = hasTerminalLeaf ? Subtree.Move(ref current) : default;
+                Subtree descendants = default;
+                PbtWriteOperation<TKey> operation = operations[terminalIndex];
+                operations[..terminalIndex].CopyTo(operations[1..]);
+                operations[0] = operation;
+                terminal = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref terminal, operations[..1], bitDepth, plan);
+                operations = operations[1..];
+                plan = plan.AfterFiltering(preservesOrder: true);
+                descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, plan);
+                if (terminal.IsEmpty) return Subtree.Move(ref descendants);
+                if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+                return Subtree.Move(ref terminal);
+            }
+            if (hasTerminalLeaf)
+            {
+                Subtree descendants = default;
+                descendants = FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref descendants, operations, bitDepth, plan);
+                if (!descendants.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+                return Subtree.Move(ref current);
+            }
+        }
+
+        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
+        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
+        // The existing subtree may diverge before the mutations do. Stop at the four-bit group containing
+        // that divergence rather than jumping solely by the mutations' shared prefix.
+        TKey firstKey = operations[0].Key;
+        int branchDepth = partition.Plan.KnownCommonPrefixLength;
+        if (!current.IsEmpty && current.IsLeaf)
+        {
+            TKey leafKey = current.Key;
+            int difference = leafKey.FirstDifferingBit(firstKey, bitDepth);
+            branchDepth = Math.Min(branchDepth, difference);
+        }
+        else if (!current.IsEmpty)
+        {
+            int prefixStart = current.Path!.Value.BitDepth;
+            branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Prefix, firstKey, prefixStart));
+        }
+        // Integer floor to the preceding or equal group boundary.
+        int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
+        // This is the shared-prefix path: both the mutations and existing subtree fit below one slot
+        // of this group, so skip ahead. If branching occurs within this group, groupDepth == bitDepth
+        // even when branchDepth is a few bits deeper; fold the current group below instead.
+        if (groupDepth > bitDepth)
+        {
+            // This can skip multiple four-bit groups at once, e.g. bitDepth 8 to groupDepth 24.
+            // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
+            return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, groupDepth, partition.Plan.ForChild());
+        }
+
+        // True when the requested group is already open (e.g. the root call at bitDepth 0): reuse its frame.
+        // A child call advances bitDepth by four but receives the parent's reader, since its boundary node
+        // is stored in that parent group. Then this is false, as it is after a deeper prefix jump;
+        // open the descendant group below. The code that opened each frame is responsible for flushing it.
+        if (ownerReader.BitDepth == bitDepth)
+            return FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, partition);
+
+        // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
+        // is left for the caller to place, allowing composition to promote it through a compressed path.
+        GroupFrameReader<TKey, TPath> reader = new(store, PbtNodePathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
+        using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+        {
+            using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
+            Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
+            using (RefCountingMemory? payload = writer.Detach())
+                store.SetNodeGroup(reader.GroupKey, payload);
+            return result.Materialize();
+        }
     }
 
     private static Subtree FoldBoundaryFromPartition(
@@ -267,36 +234,23 @@ internal static partial class TrieUpdater<TKey, TPath>
         RefList16<DecompositionEntry> boundaryBuffer = new(PbtFourLevelGroupGeometry.BoundarySlots);
         Span<DecompositionEntry> boundaries = boundaryBuffer.AsSpan();
         uint frontierMask = 0;
-        try
+        Decompose(ref reader, writer, ref current, bitDepth, boundaries, ref frontierMask, partition.UsedMask);
+
+        int offset = 0;
+        int countIndex = 0;
+        for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
         {
-            Decompose(ref reader, writer, ref current, bitDepth, boundaries, ref frontierMask, partition.UsedMask);
-
-            int offset = 0;
-            int countIndex = 0;
-            for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
-            {
-                int slot = BitOperations.TrailingZeroCount(mask);
-                int count = partition.Counts[countIndex++];
-                Span<PbtWriteOperation<TKey>> bucket = operations.Slice(offset, count);
-                offset += count;
-                Subtree boundary = TakeBoundary(ref reader, writer, boundaries, ref frontierMask, slot);
-                Subtree result = default;
-                try
-                {
-                    result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref boundary,
-                        bucket, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
-                    SetBoundary(boundaries, ref frontierMask, slot, ref result);
-                }
-                finally
-                {
-                    boundary.Dispose();
-                    result.Dispose();
-                }
-            }
-
-            return Compose(ref reader, writer, metrics, boundaries, frontierMask);
+            int slot = BitOperations.TrailingZeroCount(mask);
+            int count = partition.Counts[countIndex++];
+            Span<PbtWriteOperation<TKey>> bucket = operations.Slice(offset, count);
+            offset += count;
+            Subtree boundary = TakeBoundary(ref reader, writer, boundaries, ref frontierMask, slot);
+            Subtree result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref boundary,
+                bucket, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
+            SetBoundary(boundaries, ref frontierMask, slot, ref result);
         }
-        finally { Dispose(boundaries); }
+
+        return Compose(ref reader, writer, metrics, boundaries, frontierMask);
     }
 
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
@@ -323,71 +277,67 @@ internal static partial class TrieUpdater<TKey, TPath>
         ComposeFrameBuffer frames = default;
         int frameCount = 1;
         Subtree result = default;
-        try
+        while (frameCount != 0)
         {
-            while (frameCount != 0)
+            ref ComposeFrame frame = ref frames[frameCount - 1];
+            int position = frame.Path.Position;
+            int width = frame.Path.Width;
+            if (frame.Stage == ComposeStage.LeftCompleted)
             {
-                ref ComposeFrame frame = ref frames[frameCount - 1];
-                int position = frame.Path.Position;
-                int width = frame.Path.Width;
-                if (frame.Stage == ComposeStage.LeftCompleted)
+                // Establish right occupancy without decoding it, so the left root can be emitted first.
+                uint rightMask = ((1u << (width - 1)) - 1) << (position - width + 1);
+                if ((frontierMask & rightMask) == 0)
                 {
-                    // Establish right occupancy without decoding it, so the left root can be emitted first.
-                    uint rightMask = ((1u << (width - 1)) - 1) << (position - width + 1);
-                    if ((frontierMask & rightMask) == 0)
-                    {
-                        frameCount--;
-                        continue;
-                    }
-
-                    bool promoteRight = result.IsEmpty;
-                    if (!promoteRight)
-                    {
-                        frame.LeftHash = writer.Write(position - width, reader.BitDepth + frame.Path.Length + 1, ref result);
-                        frame.Stage = ComposeStage.RightCompleted;
-                    }
-                    if (width == 2)
-                    {
-                        result = TakeBoundary(ref reader, writer, frontier, ref frontierMask, frame.Path.Slot + 1);
-                        if (promoteRight) frameCount--;
-                    }
-                    else if (promoteRight)
-                        frame = new(frame.Path.Right);
-                    else
-                        frames[frameCount++] = new(frame.Path.Right);
-                    continue;
-                }
-                if (frame.Stage == ComposeStage.RightCompleted)
-                {
-                    ValueHash256 rightHash = writer.Write(position - 1, reader.BitDepth + frame.Path.Length + 1, ref result);
-                    result = new Subtree(BoundaryPath(reader.GroupKey, frame.Path.Slot, frame.Path.Length), frame.LeftHash, rightHash);
-                    frameCount--;
-                    continue;
-                }
-                if ((frontierMask & (1u << position)) != 0)
-                {
-                    result = frontier[frame.Path.Slot].TakeSubtree(ref reader, writer);
-                    frontierMask &= ~(1u << position);
-                    // An internal frontier entry is an unchanged subtree reached from the original input.
-                    // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
-                    if (!result.IsLeaf)
-                    {
-                        int copied = reader.CopyRange(writer, position - 2 * width + 2, position);
-                        if (copied != 0) metrics?.AddBulkCopy(copied);
-                    }
                     frameCount--;
                     continue;
                 }
 
-                frame.Stage = ComposeStage.LeftCompleted;
+                bool promoteRight = result.IsEmpty;
+                if (!promoteRight)
+                {
+                    frame.LeftHash = writer.Write(position - width, reader.BitDepth + frame.Path.Length + 1, ref result);
+                    frame.Stage = ComposeStage.RightCompleted;
+                }
                 if (width == 2)
-                    result = TakeBoundary(ref reader, writer, frontier, ref frontierMask, frame.Path.Slot);
+                {
+                    result = TakeBoundary(ref reader, writer, frontier, ref frontierMask, frame.Path.Slot + 1);
+                    if (promoteRight) frameCount--;
+                }
+                else if (promoteRight)
+                    frame = new(frame.Path.Right);
                 else
-                    frames[frameCount++] = new(frame.Path.Left);
+                    frames[frameCount++] = new(frame.Path.Right);
+                continue;
             }
-            return Subtree.Move(ref result);
+            if (frame.Stage == ComposeStage.RightCompleted)
+            {
+                ValueHash256 rightHash = writer.Write(position - 1, reader.BitDepth + frame.Path.Length + 1, ref result);
+                result = new Subtree(BoundaryPath(reader.GroupKey, frame.Path.Slot, frame.Path.Length), frame.LeftHash, rightHash);
+                frameCount--;
+                continue;
+            }
+            if ((frontierMask & (1u << position)) != 0)
+            {
+                result = frontier[frame.Path.Slot].TakeSubtree(ref reader, writer);
+                frontierMask &= ~(1u << position);
+                // An internal frontier entry is an unchanged subtree reached from the original input.
+                // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
+                if (!result.IsLeaf)
+                {
+                    int copied = reader.CopyRange(writer, position - 2 * width + 2, position);
+                    if (copied != 0) metrics?.AddBulkCopy(copied);
+                }
+                frameCount--;
+                continue;
+            }
+
+            frame.Stage = ComposeStage.LeftCompleted;
+            if (width == 2)
+                result = TakeBoundary(ref reader, writer, frontier, ref frontierMask, frame.Path.Slot);
+            else
+                frames[frameCount++] = new(frame.Path.Left);
         }
-        finally { result.Dispose(); }
+        return Subtree.Move(ref result);
     }
 
     private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
@@ -438,7 +388,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         ValueHash256 left = current.LeftHash;
         ValueHash256 right = current.RightHash;
-        current.Dispose();
+        current = default;
         DecomposeChild(ref reader, writer, left, branchSlot, effectiveLevel + 1, bitDepth, frontier, ref frontierMask, touchedMask);
         DecomposeChild(ref reader, writer, right, branchSlot + branchWidth / 2, effectiveLevel + 1, bitDepth, frontier, ref frontierMask, touchedMask);
     }
@@ -457,12 +407,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         Subtree subtree = reader.Take(writer, position);
-        try { Decompose(ref reader, writer, ref subtree, bitDepth, frontier, ref frontierMask, touchedMask); }
-        finally { subtree.Dispose(); }
+        Decompose(ref reader, writer, ref subtree, bitDepth, frontier, ref frontierMask, touchedMask);
     }
 
-    /// <summary>Owns a materialized frontier node or retains a non-owning group position for deferred acquisition.</summary>
-    internal struct DecompositionEntry : IDisposable
+    /// <summary>Stores a borrowed frontier node or a group position for deferred acquisition.</summary>
+    internal struct DecompositionEntry
     {
         private Subtree _subtree;
         private readonly byte _sourcePositionPlusOne;
@@ -479,17 +428,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             this = default;
             return subtree;
         }
-
-        public void Dispose()
-        {
-            _subtree.Dispose();
-            this = default;
-        }
-    }
-
-    internal static void Dispose(Span<DecompositionEntry> entries)
-    {
-        foreach (ref DecompositionEntry entry in entries) entry.Dispose();
     }
 
     private static int PrefixBit(Subtree subtree, int bit) => bit < subtree.Path!.Value.BitDepth
@@ -503,19 +441,17 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>A boundary occupant or an unplaced result, retaining the original path of a compressed prefix.</summary>
-    /// <remarks>Value copies are borrowed; only Move transfers ownership of the single lease.</remarks>
-    internal struct Subtree : IDisposable
+    /// <remarks>Original encodings borrow their enclosing group frame; escaping results are materialized before that frame closes.</remarks>
+    internal struct Subtree
     {
-        private RefCountingMemory? _lease;
         private readonly NodeKind _kind;
         private readonly ReadOnlyMemory<byte> _encoding;
         private readonly TKey _key;
         private readonly ValueHash256 _valueOrLeft;
         private readonly ValueHash256 _right;
 
-        internal Subtree(RefCountingMemory lease, ReadOnlyMemory<byte> encoding, TPath? path)
+        internal Subtree(ReadOnlyMemory<byte> encoding, TPath? path)
         {
-            _lease = lease;
             _kind = NodeKind.Original;
             _encoding = encoding;
             Path = path;
@@ -536,10 +472,9 @@ internal static partial class TrieUpdater<TKey, TPath>
             Path = path;
         }
 
-        private Subtree(RefCountingMemory? lease, NodeKind kind, ReadOnlyMemory<byte> encoding, TKey key,
+        private Subtree(NodeKind kind, ReadOnlyMemory<byte> encoding, TKey key,
             ValueHash256 valueOrLeft, ValueHash256 right, TPath? path)
         {
-            _lease = lease;
             _kind = kind;
             _encoding = encoding;
             _key = key;
@@ -563,7 +498,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 path = sourcePath.ToPath<TPath>();
             }
-            Subtree result = new(source._lease, source._kind, source._encoding, key,
+            Subtree result = new(source._kind, source._encoding, key,
                 source._valueOrLeft, source._right, path);
             source = default;
             return result;
@@ -614,11 +549,20 @@ internal static partial class TrieUpdater<TKey, TPath>
             return result;
         }
 
-        public void Dispose()
+        internal readonly Subtree Materialize()
         {
-            RefCountingMemory? lease = _lease;
-            this = default;
-            ((IDisposable?)lease)?.Dispose();
+            if (_kind != NodeKind.Original) return this;
+            if (IsLeaf) return new(new PbtWriteOperation<TKey>(Key, new ValueHash256(Reader.Value)));
+
+            TPath path = Path!.Value;
+            CompressedPrefix prefix = Prefix;
+            int branchDepth = path.BitDepth + prefix.BitCount;
+            Span<byte> branchBytes = stackalloc byte[PbtBitPrefix.ByteCount(branchDepth)];
+            branchBytes.Clear();
+            path.CopyBitsTo(0, branchBytes, 0, path.BitDepth);
+            PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, branchBytes, path.BitDepth);
+            TPath branchPath = TPath.Create(branchBytes, branchDepth);
+            return new(branchPath, LeftHash, RightHash);
         }
     }
 
