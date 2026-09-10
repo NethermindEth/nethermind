@@ -309,12 +309,12 @@ public class PbtSnapshotBundleTests
     [TestCase(1048576UL, 1)]
     public void Trie_cache_reuses_only_matching_immutable_views(ulong budget, int expectedReads)
     {
-        long initialHits = Metrics.PbtTrieCacheHits;
-        long initialMisses = Metrics.PbtTrieCacheMisses;
+        long initialHits = Metrics.PbtTrieCacheHits["account"];
+        long initialMisses = Metrics.PbtTrieCacheMisses["account"];
         TrackingMemoryProvider memory = new();
         PbtNodePath path = new([], 0);
         byte[] encoding = EncodeGroup(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
-        using PbtTrieNodeCache cache = new(new PbtConfig { TrieCacheMemoryBudget = budget });
+        using PbtTrieNodeCache cache = new(new PbtConfig { AccountTrieNodeCacheSizeBudget = budget });
         Reader reader = new(default, null) { GroupPayload = encoding, MemoryProvider = memory };
         using PbtReadOnlySnapshotBundle bundle = new(new(0), reader, trieNodeCache: cache);
         for (int read = 0; read < 2; read++)
@@ -336,16 +336,19 @@ public class PbtSnapshotBundleTests
         Assert.That(cache.TryGet(default, new PbtStorageNodePath([], 0), out _), Is.False);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.PbtTrieCacheHits - initialHits, Is.EqualTo(2 - expectedReads));
-            Assert.That(Metrics.PbtTrieCacheMisses - initialMisses, Is.EqualTo(expectedReads + 3));
+            Assert.That(Metrics.PbtTrieCacheHits["account"] - initialHits, Is.EqualTo(2 - expectedReads));
+            Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(expectedReads + 3));
         }
     }
 
     [Test]
-    public void Trie_cache_shares_canonical_paths_across_representations([Values(0, 4, 12, 272)] int depth, [Values] bool storageFirst)
+    public void Trie_cache_shares_canonical_paths_across_representations(
+        [Values(0, 4, 8, 12, 272)] int depth,
+        [Values(Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.CodeZone, Eip8297KeyDerivation.StorageZone)] byte zone,
+        [Values] bool storageFirst)
     {
         byte[] bytes = new byte[(depth + 7) / 8];
-        if (bytes.Length > 0) bytes[0] = 0x10;
+        if (bytes.Length > 0) bytes[0] = depth == 4 ? (byte)(zone & 0xF0) : zone;
         PbtNodePath narrow = new(bytes, depth);
         PbtStorageNodePath wide = new(bytes, depth);
         if (storageFirst) AssertCanonicalCachePaths(wide, narrow);
@@ -379,10 +382,174 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    private static readonly string[] CachePartitions = ["account", "code", "storage"];
+
+    private static PbtConfig CacheConfig(string partition, ulong budget) => new()
+    {
+        AccountTrieNodeCacheSizeBudget = partition == "account" ? budget : 1048576,
+        CodeTrieNodeCacheSizeBudget = partition == "code" ? budget : 1048576,
+        StorageTrieNodeCacheSizeBudget = partition == "storage" ? budget : 1048576,
+    };
+
+    private static PbtNodePath CachePath(string partition) => new(Bytes.FromHexString(partition switch
+    {
+        "account" => "00",
+        "code" => "01",
+        _ => "ff",
+    }), 8);
+
+    [NonParallelizable]
+    [TestCase("", 0, "account")]
+    [TestCase("00", 4, "account")]
+    [TestCase("f0", 4, "storage")]
+    [TestCase("00", 8, "account")]
+    [TestCase("01", 8, "code")]
+    [TestCase("ff", 8, "storage")]
+    [TestCase("00a0", 12, "account")]
+    [TestCase("01a0", 12, "code")]
+    [TestCase("ffa0", 12, "storage")]
+    [TestCase("ff", 528, "storage")]
+    public void Trie_cache_routes_memory_and_lookup_metrics_by_partition(string hex, int depth, string partition)
+    {
+        byte[] bytes = new byte[(depth + 7) / 8];
+        Bytes.FromHexString(hex).CopyTo(bytes, 0);
+        PbtStorageNodePath path = new(bytes, depth);
+        long[] initialMemory = new long[3];
+        long[] initialHits = new long[3];
+        long[] initialMisses = new long[3];
+        for (int index = 0; index < CachePartitions.Length; index++)
+        {
+            string label = CachePartitions[index];
+            initialMemory[index] = Metrics.PbtTrieCacheMemory[label];
+            initialHits[index] = Metrics.PbtTrieCacheHits[label];
+            initialMisses[index] = Metrics.PbtTrieCacheMisses[label];
+        }
+        using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
+        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        Assert.That(cache.TryGet(default, path, out _), Is.False);
+        cache.Add(default, path, source);
+        Assert.That(cache.TryGet(default, path, out RefCountingMemory? retained), Is.True);
+        using (retained)
+        {
+            Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False);
+            long retainedSize = cache.MemorySize;
+            Assert.That(retainedSize, Is.GreaterThan(0));
+            AssertMetrics(retainedSize, 1, 2);
+            cache.Clear();
+            AssertMetrics(0, 1, 2);
+            cache.Add(default, path, source);
+            AssertMetrics(retainedSize, 1, 2);
+            cache.Dispose();
+            cache.Add(default, path, source);
+            Assert.That(cache.TryGet(default, path, out _), Is.False);
+            AssertMetrics(0, 1, 3);
+            Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
+        }
+
+        void AssertMetrics(long memory, long hits, long misses)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.EqualTo(memory));
+                for (int index = 0; index < CachePartitions.Length; index++)
+                {
+                    string label = CachePartitions[index];
+                    Assert.That(Metrics.PbtTrieCacheMemory[label] - initialMemory[index], Is.EqualTo(label == partition ? memory : 0), label);
+                    Assert.That(Metrics.PbtTrieCacheHits[label] - initialHits[index], Is.EqualTo(label == partition ? hits : 0), label);
+                    Assert.That(Metrics.PbtTrieCacheMisses[label] - initialMisses[index], Is.EqualTo(label == partition ? misses : 0), label);
+                }
+            }
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Trie_cache_partition_budget_does_not_disable_other_partitions(
+        [ValueSource(nameof(CachePartitions))] string partition, [Values(0UL, 1UL, 1048576UL)] ulong budget)
+    {
+        using PbtTrieNodeCache cache = new(CacheConfig(partition, budget));
+        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        foreach (string label in CachePartitions)
+        {
+            long initialMisses = Metrics.PbtTrieCacheMisses[label];
+            PbtNodePath path = CachePath(label);
+            cache.Add(default, path, source);
+            bool expectedHit = label != partition || budget == 1048576;
+            Assert.That(cache.TryGet(default, path, out RefCountingMemory? payload), Is.EqualTo(expectedHit), label);
+            using (payload)
+                Assert.That(Metrics.PbtTrieCacheMisses[label] - initialMisses, Is.EqualTo(expectedHit ? 0 : 1), label);
+        }
+    }
+
+    [Test]
+    public void Trie_cache_uses_all_shards_below_each_zone([ValueSource(nameof(CachePartitions))] string partition)
+    {
+        using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
+        using RefCountingMemory source = Memory(new byte[1600]);
+        byte[] bytes = new byte[2];
+        bytes[0] = CachePath(partition).GetByte(0);
+        for (int shard = 0; shard < 256; shard++)
+        {
+            bytes[1] = (byte)shard;
+            cache.Add(default, new PbtNodePath(bytes, 16), source);
+        }
+        for (int shard = 0; shard < 256; shard++)
+        {
+            bytes[1] = (byte)shard;
+            Assert.That(cache.TryGet(default, new PbtNodePath(bytes, 16), out RefCountingMemory? payload), Is.True, $"shard {shard}");
+            ((IDisposable)payload!).Dispose();
+        }
+        Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(1048576));
+    }
+
+    [Test, NonParallelizable]
+    public void Trie_cache_partition_eviction_preserves_other_partitions([ValueSource(nameof(CachePartitions))] string partition)
+    {
+        long[] initialMemory = new long[CachePartitions.Length];
+        for (int index = 0; index < CachePartitions.Length; index++)
+            initialMemory[index] = Metrics.PbtTrieCacheMemory[CachePartitions[index]];
+        using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
+        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        foreach (string label in CachePartitions) cache.Add(default, CachePath(label), source);
+        long entrySize = cache.MemorySize / CachePartitions.Length;
+        PbtNodePath path = CachePath(partition);
+        ValueHash256 replacementRoot = new(Value(1));
+        cache.Add(replacementRoot, path, source);
+        Assert.That(cache.TryGet(default, path, out _), Is.False);
+        Assert.That(cache.TryGet(replacementRoot, path, out RefCountingMemory? retained), Is.True);
+        using (retained)
+        {
+            using RefCountingMemory larger = Memory(new byte[1600]);
+            cache.Add(default, path.AppendNib(0), larger);
+            Assert.That(cache.TryGet(replacementRoot, path, out _), Is.False);
+            foreach (string label in CachePartitions)
+            {
+                if (label == partition) continue;
+                Assert.That(cache.TryGet(default, CachePath(label), out RefCountingMemory? payload), Is.True, label);
+                ((IDisposable)payload!).Dispose();
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
+                long totalMemory = 0;
+                for (int index = 0; index < CachePartitions.Length; index++)
+                {
+                    string label = CachePartitions[index];
+                    long memory = Metrics.PbtTrieCacheMemory[label] - initialMemory[index];
+                    Assert.That(memory, Is.EqualTo(entrySize + (label == partition ? 1600 - 3 : 0)), label);
+                    totalMemory += memory;
+                }
+                Assert.That(cache.MemorySize, Is.EqualTo(totalMemory));
+            }
+            cache.Dispose();
+            for (int index = 0; index < CachePartitions.Length; index++)
+                Assert.That(Metrics.PbtTrieCacheMemory[CachePartitions[index]], Is.EqualTo(initialMemory[index]));
+        }
+    }
+
     [Test]
     public void Trie_cache_replacement_eviction_and_disposal_preserve_caller_leases()
     {
-        using PbtTrieNodeCache cache = new(new PbtConfig { TrieCacheMemoryBudget = 1048576 });
+        using PbtTrieNodeCache cache = new(new PbtConfig { AccountTrieNodeCacheSizeBudget = 1048576 });
         PbtNodePath path = new([], 0);
         using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         cache.Add(default, path, source);
@@ -412,11 +579,11 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Trie_cache_concurrent_hits_and_eviction_keep_payloads_alive()
     {
-        using PbtTrieNodeCache cache = new(new PbtConfig { TrieCacheMemoryBudget = 1048576 });
-        PbtNodePath path = new([], 0);
+        using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
         using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
         {
+            PbtNodePath path = CachePath(CachePartitions[iteration % CachePartitions.Length]);
             cache.Add(default, path, source);
             if (cache.TryGet(default, path, out RefCountingMemory? payload))
                 using (payload) Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));

@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
@@ -16,8 +17,12 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     private const int BucketCount = 256;
     private const long TableSize = 24 + BucketCount * 8;
     private const long EntryOverhead = 384;
-    private readonly Shard[] _shards = CreateShards();
-    private readonly ulong _shardBudget = config.TrieCacheMemoryBudget / ShardCount;
+    private readonly Partition[] _partitions =
+    [
+        new(config.AccountTrieNodeCacheSizeBudget, "account"),
+        new(config.CodeTrieNodeCacheSizeBudget, "code"),
+        new(config.StorageTrieNodeCacheSizeBudget, "storage"),
+    ];
     private long _memorySize;
     private bool _disposed;
 
@@ -30,14 +35,24 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         return shards;
     }
 
+    private Partition GetPartition<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        if (path.BitDepth == 0) return _partitions[0];
+        if (path.BitDepth == 4 && path.GetByte(0) == 0xF0
+            || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone)
+            return _partitions[2];
+        return _partitions[path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? 1 : 0];
+    }
+
     private static int ShardIndex<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => path.BitDepth > 8
-        ? (path.GetByte(0) + path.GetByte(1)) & (ShardCount - 1)
-        : path.BitDepth == 0 ? 0 : path.GetByte(0);
+        ? path.GetByte(1)
+        : 0;
     private static int BucketIndex<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => path.GetHashCode() & (BucketCount - 1);
 
     internal bool TryGet<TPath>(in ValueHash256 root, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        Shard shard = _shards[ShardIndex(path)];
+        Partition partition = GetPartition(path);
+        Shard shard = partition.Shards[ShardIndex(path)];
         lock (shard.Sync)
         {
             Entry? entry = shard.Entries?[BucketIndex(path)];
@@ -46,44 +61,45 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             {
                 entry.Payload.AcquireLease();
                 payload = entry.Payload;
-                Metrics.IncrementPbtTrieCacheHits();
+                Metrics.PbtTrieCacheHits.Increment(partition.Label);
                 return true;
             }
         }
         payload = null;
-        Metrics.IncrementPbtTrieCacheMisses();
+        Metrics.PbtTrieCacheMisses.Increment(partition.Label);
         return false;
     }
 
     internal void Add<TPath>(in ValueHash256 root, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
+        Partition partition = GetPartition(path);
         long size = payload.GetSpan().Length + EntryOverhead;
-        if ((ulong)(size + TableSize) > _shardBudget) return;
-        Shard shard = _shards[ShardIndex(path)];
+        if ((ulong)(size + TableSize) > partition.ShardBudget) return;
+        Shard shard = partition.Shards[ShardIndex(path)];
         lock (shard.Sync)
         {
             if (Volatile.Read(ref _disposed)) return;
             int bucket = BucketIndex(path);
             Entry? previous = shard.Entries?[bucket];
             if (previous is not null && previous.Root == root && previous.Path.Equals(path)) return;
-            if ((ulong)(shard.MemorySize + size) > _shardBudget)
+            if ((ulong)(shard.MemorySize + size) > partition.ShardBudget)
             {
-                ClearShard(shard);
+                ClearShard(partition, shard);
                 previous = null;
             }
             if (shard.Entries is null)
             {
                 shard.Entries = new Entry[BucketCount];
-                ChangeSize(shard, TableSize);
+                ChangeSize(partition, shard, TableSize);
             }
             // Copy only on admission: a shrunk pooled payload may retain far more memory than its visible length.
             RefCountingMemory cachedPayload = RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
             shard.Entries[bucket] = new Entry(root, path.ToPath<PbtStorageNodePath>(), cachedPayload, size);
-            ChangeSize(shard, size);
+            ChangeSize(partition, shard, size);
             if (previous is not null)
             {
                 ((IDisposable)previous.Payload).Dispose();
-                ChangeSize(shard, -previous.Size);
+                ChangeSize(partition, shard, -previous.Size);
             }
         }
     }
@@ -91,23 +107,24 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     /// <summary>Releases retained groups without invalidating caller-owned leases.</summary>
     public void Clear()
     {
-        foreach (Shard shard in _shards)
-            lock (shard.Sync) ClearShard(shard);
+        foreach (Partition partition in _partitions)
+            foreach (Shard shard in partition.Shards)
+                lock (shard.Sync) ClearShard(partition, shard);
     }
 
-    private void ClearShard(Shard shard)
+    private void ClearShard(Partition partition, Shard shard)
     {
         if (shard.Entries is null) return;
         foreach (Entry? entry in shard.Entries) ((IDisposable?)entry?.Payload)?.Dispose();
         shard.Entries = null;
-        ChangeSize(shard, -shard.MemorySize);
+        ChangeSize(partition, shard, -shard.MemorySize);
     }
 
-    private void ChangeSize(Shard shard, long delta)
+    private void ChangeSize(Partition partition, Shard shard, long delta)
     {
         shard.MemorySize += delta;
         Interlocked.Add(ref _memorySize, delta);
-        Interlocked.Add(ref Metrics.PbtTrieCacheMemory, delta);
+        Metrics.PbtTrieCacheMemory.AddBy(partition.Label, delta);
     }
 
     /// <summary>Stops admission and releases all cache-owned payload references.</summary>
@@ -115,6 +132,13 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     {
         Volatile.Write(ref _disposed, true);
         Clear();
+    }
+
+    private sealed class Partition(ulong budget, string label)
+    {
+        internal readonly Shard[] Shards = CreateShards();
+        internal readonly ulong ShardBudget = budget / ShardCount;
+        internal readonly string Label = label;
     }
 
     private sealed class Shard

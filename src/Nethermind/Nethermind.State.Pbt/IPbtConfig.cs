@@ -11,9 +11,17 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Whether to use the experimental EIP-8297 partitioned binary tree state backend. The state root will not match networks using the hexary Patricia trie.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    /// <summary>Maximum estimated retained trie-cache memory in bytes; zero disables retention.</summary>
-    [ConfigItem(Description = "Memory budget for cached immutable PBT trie node groups, in bytes. Zero disables retention.", DefaultValue = "536870912")]
-    ulong TrieCacheMemoryBudget { get; set; }
+    /// <summary>Maximum estimated retained account trie-cache memory in bytes; zero disables this partition.</summary>
+    [ConfigItem(Description = "Memory budget for cached account PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "134217728")]
+    ulong AccountTrieNodeCacheSizeBudget { get; set; }
+
+    /// <summary>Maximum estimated retained code trie-cache memory in bytes; zero disables this partition.</summary>
+    [ConfigItem(Description = "Memory budget for cached code PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "33554432")]
+    ulong CodeTrieNodeCacheSizeBudget { get; set; }
+
+    /// <summary>Maximum estimated retained storage trie-cache memory in bytes; zero disables this partition.</summary>
+    [ConfigItem(Description = "Memory budget for cached storage PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "234881024")]
+    ulong StorageTrieNodeCacheSizeBudget { get; set; }
 
     [ConfigItem(Description = "The number of in-memory snapshots (one per block) merged into a single snapshot by compaction, and the persist batch granularity, in blocks.", DefaultValue = "32")]
     int CompactSize { get; set; }

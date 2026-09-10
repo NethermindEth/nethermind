@@ -9,7 +9,9 @@ namespace Nethermind.State.Pbt;
 public class PbtConfig : IPbtConfig
 {
     public bool Enabled { get; set; }
-    public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
+    public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
+    public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;
+    public ulong StorageTrieNodeCacheSizeBudget { get; set; } = 224UL.MiB;
     public int CompactSize { get; set; } = 32;
     public long CompactionOffset { get; set; } = -1;
     public int MinReorgDepth { get; set; } = 128;

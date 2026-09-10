@@ -703,7 +703,13 @@ public class PbtWorldStateScopeTests
         static async Task<List<ValueHash256>> Run(ulong budget, bool warming)
         {
             SnapshotableMemColumnsDb<PbtColumns> database = new("pbt-cache-parity");
-            PbtConfig config = new() { TrieCacheMemoryBudget = budget, CompactSize = 2 };
+            PbtConfig config = new()
+            {
+                AccountTrieNodeCacheSizeBudget = budget,
+                CodeTrieNodeCacheSizeBudget = budget,
+                StorageTrieNodeCacheSizeBudget = budget,
+                CompactSize = 2,
+            };
             RecordingTrieWarmer warmer = new();
             List<ValueHash256> roots = [];
             Hash256 committedRoot;
