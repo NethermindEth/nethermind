@@ -57,9 +57,13 @@ public class PreBlockCaches
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
 
     /// <summary>
-    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
-    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
+    /// The main processing scope, registered as a factory for reference-counted trie warm-up session borrows.
     /// </summary>
+    /// <remarks>
+    /// Registration, removal, and <see cref="IWorldStateScopeProvider.IScope.CreateTrieWarmupSession"/> calls
+    /// must hold the lock on this cache instance. Borrowers release their references on disposal;
+    /// the main scope's disposal stops further warm-up and drains active reads.
+    /// </remarks>
     public IWorldStateScopeProvider.IScope? MainScope
     {
         get => _mainScope;

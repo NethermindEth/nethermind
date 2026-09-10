@@ -850,6 +850,109 @@ public class PbtNodeGroupTests
         Assert.That(provider.RentCount, Is.Zero);
     }
 
+    [TestCase("00", "80", "00")]
+    [TestCase("00", "80", "40")]
+    [TestCase("0000", "0080", "0000")]
+    [TestCase("0000", "0080", "8000")]
+    [TestCase("00000000", "00000001", "00000000")]
+    public void Path_warming_reads_only_matching_groups_without_writes(string first, string second, string query) =>
+        AssertPathWarming(new PbtStorageFullKey(Bytes.FromHexString(first)),
+            new PbtStorageFullKey(Bytes.FromHexString(second)), new PbtStorageFullKey(Bytes.FromHexString(query)));
+
+    [Test]
+    public void Path_warming_handles_canonical_account_and_both_storage_zones([Values(0, 1, 256)] int slot)
+    {
+        Nethermind.Core.Address address = new("0x0000000000000000000000000000000000000001");
+        PbtStorageFullKey accountKey = (PbtStorageFullKey)PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey);
+        PbtStorageFullKey storageKey = PbtStateKey.Storage(address, (Nethermind.Int256.UInt256)slot);
+        AssertPathWarming(accountKey, storageKey, accountKey);
+        AssertPathWarming(accountKey, storageKey, storageKey);
+    }
+
+    private static void AssertPathWarming(PbtStorageFullKey first, PbtStorageFullKey second, PbtStorageFullKey query)
+    {
+        TrackingMemoryProvider memory = new();
+        using PbtNodeGroupStore store = new(memory);
+        using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
+        batch.Set(first, new ValueHash256(Value(1)));
+        batch.Set(second, new ValueHash256(Value(2)));
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build());
+        IReadOnlyList<PbtPhysicalPayload> before = store.ExportPhysicalPayloads();
+        HashSet<IPbtNodePath> expectedGroups = [];
+        foreach (PbtPhysicalPayload physical in before)
+        {
+            IPbtNodePath groupKey = PbtPathOperations.Decode(physical.Key.Span);
+            PbtNodeGroupReader group = new(groupKey, physical.Payload.Span);
+            for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+            {
+                if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                if (!group.TryGetNode(position, out _)) continue;
+                IPbtNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+                bool matches = path.BitDepth <= query.BitLength;
+                for (int bit = 0; matches && bit < path.BitDepth; bit++)
+                    matches = TrieUpdater.GetBit(path.Path, bit) == TrieUpdater.GetBit(query.Bytes, bit);
+                if (matches) expectedGroups.Add(groupKey);
+            }
+        }
+        WarmReadStore reader = new(store);
+        PbtTrieWarmer.WarmUpPath(reader, query);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Reads, Is.EquivalentTo(expectedGroups));
+            Assert.That(reader.Reads.Count, Is.EqualTo(expectedGroups.Count), "each group is fetched once");
+            Assert.That(store.ExportPhysicalPayloads().Count, Is.EqualTo(before.Count));
+            foreach (PbtPhysicalPayload physical in before)
+            {
+                using RefCountingMemory payload = store.GetNodeGroup(PbtPathOperations.Decode(physical.Key.Span))!;
+                Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(physical.Payload.ToArray()));
+            }
+            using PbtWriteBatchBuilder<PbtStorageFullKey> unchanged = new(0);
+            Assert.That(TrieUpdater.UpdateRoot(store, root, unchanged.Build()), Is.EqualTo(root));
+        }
+        store.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Path_warming_releases_payloads_on_missing_nodes_and_invalid_payloads([Values] bool invalidPayload)
+    {
+        TrackingMemoryProvider memory = new();
+        using PbtNodeGroupStore store = new();
+        WarmReadStore reader = new(store);
+        PbtStorageFullKey key = new(Bytes.FromHexString("00"));
+        PbtTrieWarmer.WarmUpPath(reader, key);
+        Assert.That(reader.Reads.Count, Is.EqualTo(1), "empty tree");
+
+        PbtNodePath root = new([], 0);
+        PbtNodePath child = new(Bytes.FromHexString("00"), 1);
+        byte[] bytes = EncodeGroup(root, [new PbtNodeRecord(child, LeafEncoding(0, 1))]);
+        if (invalidPayload) bytes = Bytes.FromHexString("ff");
+        RefCountingMemory payload = memory.Rent(bytes.Length);
+        bytes.CopyTo(payload.GetSpan());
+        reader.Payload = payload;
+        if (invalidPayload) Assert.Throws<InvalidDataException>(() => PbtTrieWarmer.WarmUpPath(reader, key));
+        else PbtTrieWarmer.WarmUpPath(reader, key);
+        ((IDisposable)payload).Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+    }
+
+    private sealed class WarmReadStore(IPbtStore store) : IPbtStore
+    {
+        internal List<IPbtNodePath> Reads { get; } = [];
+        internal RefCountingMemory? Payload { get; set; }
+
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        {
+            Reads.Add(groupKey);
+            if (Payload is not { } payload) return store.GetNodeGroup(groupKey);
+            payload.AcquireLease();
+            return payload;
+        }
+
+        public void SetNodeGroup(IPbtNodePath groupKey, RefCountingMemory? payload) =>
+            throw new AssertionException("Path warming must never write.");
+    }
+
     private static byte[] EncodeGroup(IPbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)
     {
         int capacity = PbtNodeGroupCodec.TrailerLength;

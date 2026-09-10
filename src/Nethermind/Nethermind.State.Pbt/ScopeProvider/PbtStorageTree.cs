@@ -6,14 +6,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides a per-address storage view over the scope's unified EIP-8297 tree.</summary>
 public sealed class PbtStorageTree(
     PbtWorldStateScope scope,
-    Address address) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+    Address address) : IWorldStateScopeProvider.IStorageTree
 {
     public Hash256 RootHash => Keccak.EmptyTreeHash;
 
@@ -30,9 +29,5 @@ public sealed class PbtStorageTree(
         return EvmWordSlot.IsZero(value) ? StorageTree.ZeroBytes : EvmWordSlot.ToStrippedBytes(value);
     }
 
-    public void HintSet(in UInt256 index, byte[]? value) => QueuePrewarm(index, multiProducer: false);
-
-    internal void QueuePrewarm(in UInt256 index, bool multiProducer) { }
-
-    public bool WarmUpStorageTrie(UInt256 index, int sequenceId) => false;
+    public void HintSet(in UInt256 index, byte[]? value) => scope.HintSet(address, in index);
 }

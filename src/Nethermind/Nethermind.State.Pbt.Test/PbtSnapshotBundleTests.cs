@@ -303,6 +303,115 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [TestCase(0UL, 2)]
+    [TestCase(1UL, 2)]
+    [TestCase(1048576UL, 1)]
+    public void Trie_cache_reuses_only_matching_immutable_views(ulong budget, int expectedReads)
+    {
+        TrackingMemoryProvider memory = new();
+        PbtNodePath path = new([], 0);
+        byte[] encoding = EncodeGroup(path, [new PbtNodeRecord(path, BranchEncoding(1))]);
+        using PbtTrieNodeCache cache = new(new PbtConfig { TrieCacheMemoryBudget = budget });
+        Reader reader = new(default, null) { GroupPayload = encoding, MemoryProvider = memory };
+        using PbtReadOnlySnapshotBundle bundle = new(new(0), reader, trieNodeCache: cache);
+        for (int read = 0; read < 2; read++)
+        {
+            using RefCountingMemory? payload = bundle.GetNodeGroup(path);
+            Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GroupReadCount, Is.EqualTo(expectedReads));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "cache must not retain oversized source allocations");
+            Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
+        }
+        Reader forkReader = new(default, null) { GroupPayload = encoding, CurrentRoot = new ValueHash256(Value(2)) };
+        using PbtReadOnlySnapshotBundle fork = new(new(0), forkReader, trieNodeCache: cache);
+        using RefCountingMemory? forkPayload = fork.GetNodeGroup(path);
+        Assert.That(forkReader.GroupReadCount, Is.EqualTo(1));
+        Assert.That(cache.TryGet(default, new PbtNodePath([0], 4), out _), Is.False);
+        Assert.That(cache.TryGet(default, new PbtStorageNodePath([], 0), out _), Is.False);
+    }
+
+    [Test]
+    public void Trie_cache_shares_canonical_paths_across_representations([Values(0, 4, 12, 272)] int depth, [Values] bool storageFirst)
+    {
+        byte[] bytes = new byte[(depth + 7) / 8];
+        if (bytes.Length > 0) bytes[0] = 0x10;
+        PbtNodePath narrow = new(bytes, depth);
+        PbtStorageNodePath wide = new(bytes, depth);
+        IPbtNodePath inserted = storageFirst ? wide : narrow;
+        IPbtNodePath requested = storageFirst ? narrow : wide;
+        using PbtTrieNodeCache cache = new(new PbtConfig());
+        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        cache.Add(default, inserted, source);
+        long retainedSize = cache.MemorySize;
+        Assert.That(cache.TryGet(default, requested, out RefCountingMemory? first), Is.True);
+        using (first)
+        {
+            cache.Add(default, requested, source);
+            Assert.That(cache.TryGet(default, inserted, out RefCountingMemory? second), Is.True);
+            using (second)
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(narrow.Equals(wide), Is.True);
+                Assert.That(wide.Equals(narrow), Is.True);
+                Assert.That(narrow.GetHashCode(), Is.EqualTo(wide.GetHashCode()));
+                Assert.That(second, Is.SameAs(first), "equivalent fill must retain the existing cache entry");
+                Assert.That(second!.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));
+                Assert.That(cache.MemorySize, Is.EqualTo(retainedSize));
+                Assert.That(cache.TryGet(new ValueHash256(Value(1)), requested, out _), Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void Trie_cache_replacement_eviction_and_disposal_preserve_caller_leases()
+    {
+        using PbtTrieNodeCache cache = new(new PbtConfig { TrieCacheMemoryBudget = 1048576 });
+        PbtNodePath path = new([], 0);
+        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        cache.Add(default, path, source);
+        Assert.That(cache.TryGet(default, path, out RefCountingMemory? retained), Is.True);
+        using (retained)
+        {
+            cache.Add(new ValueHash256(Value(1)), path, source);
+            Assert.That(cache.TryGet(default, path, out _), Is.False);
+            Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out RefCountingMemory? replacement), Is.True);
+            using RefCountingMemory? replacementLease = replacement;
+            using RefCountingMemory larger = Memory(new byte[1600]);
+            cache.Add(new ValueHash256(Value(2)), new PbtNodePath([0], 4), larger);
+            Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False, "a full shard evicts old entries");
+            cache.Clear();
+            cache.Dispose();
+            cache.Add(default, path, source);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.MemorySize, Is.Zero);
+                Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));
+                Assert.That(cache.TryGet(default, path, out _), Is.False);
+            }
+        }
+        Assert.Throws<InvalidOperationException>(() => retained!.AcquireLease());
+    }
+
+    [Test]
+    public void Trie_cache_concurrent_hits_and_eviction_keep_payloads_alive()
+    {
+        using PbtTrieNodeCache cache = new(new PbtConfig { TrieCacheMemoryBudget = 1048576 });
+        PbtNodePath path = new([], 0);
+        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
+        {
+            cache.Add(default, path, source);
+            if (cache.TryGet(default, path, out RefCountingMemory? payload))
+                using (payload) Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));
+            if ((iteration & 3) == 0) cache.Clear();
+        });
+        cache.Clear();
+        Assert.That(cache.MemorySize, Is.Zero);
+    }
+
     [Test]
     public void Node_group_read_rejects_non_boundary_key_before_empty_persistence_lookup()
     {
@@ -337,7 +446,8 @@ public class PbtSnapshotBundleTests
         PbtSnapshotPooledList localSnapshots = newestTier >= 2
             ? Snapshots(pool, Content(groupKey, shared), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local))
             : new(0);
-        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtTrieNodeCache cache = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, trieNodeCache: cache), pool, PbtResourcePool.Usage.MainBlockProcessing);
         if (newestTier == 3)
         {
             using RefCountingMemory? payload = tombstone ? null : Memory(write);
@@ -810,7 +920,7 @@ public class PbtSnapshotBundleTests
         public Exception? GroupReadException { get; set; }
         public int GroupReadCount { get; private set; }
         public StateId CurrentState => StateId.PreGenesis;
-        public ValueHash256 CurrentRoot => default;
+        public ValueHash256 CurrentRoot { get; set; }
         public Account? GetAccount(in ValueHash256 addressHash) => null;
         public EvmWord GetSlot(PbtStorageFullKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;

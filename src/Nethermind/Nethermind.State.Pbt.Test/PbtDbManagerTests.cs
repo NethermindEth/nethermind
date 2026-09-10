@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
+using Nethermind.Core.Test.Modules;
+using Nethermind.State.Pbt.Mirror;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Threading;
@@ -23,6 +26,24 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtDbManagerTests
 {
+    [Test]
+    public async Task Trie_cache_is_singleton_in_both_production_modules([Values] bool mirror)
+    {
+        PbtConfig config = new() { Enabled = !mirror, MirrorFlat = mirror };
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddModule(mirror ? new PbtMirrorModule(config) : new PbtModule(config));
+        await using IContainer container = builder.Build();
+        PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
+        using ILifetimeScope child = container.BeginLifetimeScope();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Resolve<PbtTrieNodeCache>(), Is.SameAs(cache));
+            Assert.That(container.Resolve<IPbtDbManager>(), Is.TypeOf<PbtDbManager>());
+            Assert.That(config.TrieCacheMemoryBudget, Is.EqualTo(536870912UL));
+        }
+    }
+
     private static readonly Address Address = TestItem.AddressA;
 
     /// <summary>The per-block storage slot, on a stem separate from the account header.</summary>

@@ -3,18 +3,22 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
+using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -428,21 +432,422 @@ public class PbtWorldStateScopeTests
         }
     }
 
+    [Test]
+    public async Task Warm_hints_use_the_expected_queue([Values(-1, 7, 1000)] int slot, [Values] bool singleProducer)
+    {
+        RecordingTrieWarmer warmer = new(acceptSlot: false);
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        if (slot < 0) scope.HintGet(TestItem.AddressA, null);
+        else if (singleProducer) scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)(uint)slot, null);
+        else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.AddressJobs, Is.EqualTo(slot < 0 ? 1 : 0));
+            Assert.That(warmer.SlotJobs, Is.EqualTo(slot >= 0 && singleProducer ? 1 : 0));
+            Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(slot >= 0 ? 1 : 0));
+            Assert.That(ExecuteHint(warmer, slot), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Read_only_provider_does_not_queue_warmup_jobs()
+    {
+        RecordingTrieWarmer warmer = new();
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.ITrieWarmupSession session = scope.CreateTrieWarmupSession();
+        session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), 7);
+        scope.HintGet(TestItem.AddressB, null);
+        scope.CreateStorageTree(TestItem.AddressB).HintSet(1000, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session, Is.SameAs(IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance));
+            Assert.That(warmer.AddressJobs, Is.Zero);
+            Assert.That(warmer.SlotJobs, Is.Zero);
+            Assert.That(warmer.MpmcSlotJobs, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Retired_jobs_are_rejected_without_draining_the_queue([Values] bool disposeScope, [Values] bool acceptJobs)
+    {
+        RecordingTrieWarmer warmer = new(acceptSlot: acceptJobs, acceptMpmc: acceptJobs, acceptAddress: acceptJobs);
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.ITrieWarmupSession firstBorrow = scope.CreateTrieWarmupSession();
+        IWorldStateScopeProvider.ITrieWarmupSession secondBorrow = scope.CreateTrieWarmupSession();
+        secondBorrow.Dispose();
+        firstBorrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        firstBorrow.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), 1000);
+        Assert.That(ExecuteHint(warmer, -1), Is.True, "disposing another borrow must not stop the scope-owned session");
+
+        await Task.Run(() => { if (disposeScope) scope.Dispose(); else scope.Commit(0); }).WaitAsync(TimeSpan.FromSeconds(10));
+        int queued = warmer.AddressJobs;
+        firstBorrow.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ExecuteHint(warmer, -1), Is.False);
+            Assert.That(ExecuteHint(warmer, 1000), Is.False);
+            Assert.That(warmer.AddressJobs, Is.EqualTo(queued));
+        }
+    }
+
+    [Test]
+    public async Task New_sessions_capture_each_committed_generation()
+    {
+        RecordingTrieWarmer warmer = new();
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        for (byte block = 0; block < 4; block++)
+        {
+            using IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
+            PbtTrieWarmupSession session = (PbtTrieWarmupSession)borrow;
+            Assert.That(session.TreeRoot, Is.EqualTo(scope.Bundle.TreeRoot));
+            borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+            Assert.That(ExecuteHint(warmer, -1), Is.True);
+            Assert.That(warmer.AddressJobs, Is.EqualTo(block + 1), "deduplication must rotate with the committed generation");
+            Write(scope, (byte)(block + 1));
+            scope.Commit(block);
+            Assert.That(ExecuteHint(warmer, -1), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Session_keeps_frozen_local_groups_through_writes_and_folds()
+    {
+        RecordingTrieWarmer warmer = new();
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        Write(scope, 1);
+        scope.Commit(0);
+        ValueHash256 committedRoot = scope.Bundle.TreeRoot;
+        PbtStorageNodePath rootPath = new([], 0);
+        byte[] committedGroup = ReadGroup(new PbtSnapshotStore(scope.Bundle), rootPath);
+        Write(scope, 2);
+        scope.UpdateRootHash();
+        using IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
+        PbtTrieWarmupSession session = (PbtTrieWarmupSession)borrow;
+        Assert.That(session.TreeRoot, Is.EqualTo(committedRoot), "capture excludes already-folded uncommitted writes");
+        byte[] frozen = ReadGroup((IPbtStore)session, rootPath);
+        Assert.That(frozen, Is.EqualTo(committedGroup));
+        ValueHash256 frozenRoot = session.TreeRoot;
+        for (byte balance = 2; balance < 5; balance++)
+        {
+            Write(scope, balance);
+            Assert.That(ReadGroup((IPbtStore)session, rootPath), Is.EqualTo(frozen));
+            scope.UpdateRootHash();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReadGroup((IPbtStore)session, rootPath), Is.EqualTo(frozen));
+                Assert.That(session.TreeRoot, Is.EqualTo(frozenRoot));
+                Assert.That(scope.RootHash.ValueHash256, Is.Not.EqualTo(frozenRoot));
+            }
+        }
+        scope.Dispose();
+        Assert.That(ReadGroup((IPbtStore)session, rootPath), Is.EqualTo(frozen), "the outstanding borrow still owns the frozen layer");
+    }
+
+    [Test]
+    public void Warmed_groups_are_reused_by_the_root_fold([Values(-1, 7, 1000)] int slot)
+    {
+        (Hash256 Root, int Reads) cold = Fold(false);
+        (Hash256 Root, int Reads) warm = Fold(true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warm.Root, Is.EqualTo(cold.Root));
+            Assert.That(cold.Reads, Is.GreaterThan(0));
+            Assert.That(warm.Reads, Is.LessThan(cold.Reads), "the fold must reuse groups read by the queued warm callback");
+        }
+        TestContext.Out.WriteLine($"slot={slot}: cold fold reads={cold.Reads}, warmed fold reads={warm.Reads}");
+
+        (Hash256 Root, int Reads) Fold(bool warm)
+        {
+            using PbtTreeHarness tree = new();
+            PbtStorageFullKey key = slot < 0
+                ? (PbtStorageFullKey)PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey)
+                : PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)slot);
+            byte[] value = new byte[32];
+            value[31] = 1;
+            tree.ApplyBatch([(key.Bytes.ToArray(), value)]);
+            CountingWarmupReader reader = new(tree);
+            using PbtTrieNodeCache cache = new(new PbtConfig());
+            RecordingTrieWarmer warmer = new();
+            using PbtWorldStateScope scope = CreateCountingScope(reader, cache, warmer);
+            if (warm)
+            {
+                if (slot < 0) scope.HintGet(TestItem.AddressA, null);
+                else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
+                Assert.That(ExecuteHint(warmer, slot), Is.True);
+                Assert.That(reader.GroupReads, Is.GreaterThan(0));
+            }
+            int readsBeforeFold = reader.GroupReads;
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            {
+                if (slot < 0) batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(2).TestObject);
+                else
+                {
+                    using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                    storage.Set((UInt256)(uint)slot, Bytes.FromHexString("02"));
+                }
+            }
+            scope.UpdateRootHash();
+            return (scope.RootHash, reader.GroupReads - readsBeforeFold);
+        }
+    }
+
+    [Test]
+    public async Task Retirement_waits_only_for_active_operations_and_last_borrow_releases_reader([Values] bool disposeScope)
+    {
+        using PbtTreeHarness tree = new();
+        CountingWarmupReader reader = new(tree);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        reader.BeforeRead = () => { entered.Set(); Assert.That(release.Wait(TimeSpan.FromSeconds(10)), Is.True); };
+        RecordingTrieWarmer warmer = new();
+        using PbtWorldStateScope scope = CreateCountingScope(reader, null, warmer);
+        IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
+        try
+        {
+            borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+            Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
+            Task? retirement = null;
+            try
+            {
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                retirement = Task.Run(() => { if (disposeScope) scope.Dispose(); else scope.Commit(0); });
+                Assert.That(SpinWait.SpinUntil(() => ((PbtTrieWarmupSession)borrow).IsStopped, TimeSpan.FromSeconds(10)), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(retirement.IsCompleted, Is.False);
+                    Assert.That(reader.DisposeCount, Is.Zero);
+                    Assert.That(ExecuteHint(warmer, -1), Is.False);
+                }
+            }
+            finally
+            {
+                release.Set();
+                await operation.WaitAsync(TimeSpan.FromSeconds(10));
+                if (retirement is not null) await retirement.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            scope.Dispose();
+            Assert.That(reader.DisposeCount, Is.Zero, "a retained borrow pins the reader after scope retirement");
+        }
+        finally
+        {
+            borrow.Dispose();
+        }
+        Assert.That(reader.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Active_warmup_reads_frozen_state_while_fold_and_cache_clear_complete()
+    {
+        using PbtTreeHarness tree = new();
+        CountingWarmupReader reader = new(tree);
+        using PbtTrieNodeCache cache = new(new PbtConfig());
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        int firstRead = 0;
+        reader.BeforeRead = () =>
+        {
+            if (Interlocked.Increment(ref firstRead) != 1) return;
+            entered.Set();
+            Assert.That(release.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        };
+        RecordingTrieWarmer warmer = new();
+        using PbtWorldStateScope scope = CreateCountingScope(reader, cache, warmer);
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Write(scope, 2);
+            scope.UpdateRootHash();
+            Hash256 folded = scope.RootHash;
+            cache.Clear();
+            scope.UpdateRootHash();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(operation.IsCompleted, Is.False);
+                Assert.That(scope.RootHash, Is.EqualTo(folded));
+                Assert.That(cache.MemorySize, Is.Zero);
+            }
+        }
+        finally
+        {
+            release.Set();
+            Assert.That(await operation.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+        }
+        scope.Commit(1);
+        using PbtTreeHarness expected = new();
+        List<(byte[] Key, byte[]? Value)> leaves = [];
+        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(
+            PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Build.An.Account.WithBalance(2).TestObject, null))
+            leaves.Add((key.Bytes.ToArray(), value.Bytes.ToArray()));
+        expected.ApplyBatch(leaves);
+        Assert.That(scope.Bundle.TreeRoot, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public async Task Cache_and_warmup_preserve_actual_roots_across_forks_deletion_and_reopen(
+        [Values(0UL, 1UL, 1048576UL)] ulong cacheBudget, [Values] bool warm)
+    {
+        List<ValueHash256> expected = await Run(0, false);
+        List<ValueHash256> actual = await Run(cacheBudget, warm);
+        Assert.That(actual, Is.EqualTo(expected));
+
+        static async Task<List<ValueHash256>> Run(ulong budget, bool warming)
+        {
+            SnapshotableMemColumnsDb<PbtColumns> database = new("pbt-cache-parity");
+            PbtConfig config = new() { TrieCacheMemoryBudget = budget, CompactSize = 2 };
+            RecordingTrieWarmer warmer = new();
+            List<ValueHash256> roots = [];
+            Hash256 committedRoot;
+            await using (PbtTestContext context = new(database, config, trieWarmer: warmer))
+            {
+                using (PbtWorldStateScope scope = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+                {
+                    Mutate(scope, 1);
+                    scope.Commit(1);
+                    roots.Add(scope.Bundle.TreeRoot);
+                    committedRoot = scope.RootHash;
+                }
+                BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(committedRoot).TestObject;
+                using (PbtWorldStateScope fork = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(parent, new LocalMetrics()))
+                {
+                    Warm(fork);
+                    Mutate(fork, 9);
+                    fork.Commit(2);
+                    roots.Add(fork.Bundle.TreeRoot);
+                }
+                using (PbtWorldStateScope scope = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(parent, new LocalMetrics()))
+                {
+                    for (uint generation = 2; generation <= 4; generation++)
+                    {
+                        Warm(scope);
+                        if (generation == 3)
+                        {
+                            using IWorldStateScopeProvider.IWorldStateWriteBatch deletion = scope.StartWriteBatch(1);
+                            deletion.Set(TestItem.AddressA, null);
+                        }
+                        else Mutate(scope, generation);
+                        scope.UpdateRootHash();
+                        Hash256 folded = scope.RootHash;
+                        scope.UpdateRootHash();
+                        Assert.That(scope.RootHash, Is.EqualTo(folded));
+                        scope.Commit(generation);
+                        roots.Add(scope.Bundle.TreeRoot);
+                        AssertState(scope, generation == 3 ? 0 : generation);
+                    }
+                    committedRoot = scope.RootHash;
+                }
+                context.Manager.FlushCache(default);
+                using IPbtPersistence.IReader reader = context.Persistence.CreateReader();
+                Assert.That(reader.CurrentRoot, Is.EqualTo(roots[^1]));
+            }
+            await using (PbtTestContext reopened = new(database, config))
+            {
+                BlockHeader header = Build.A.BlockHeader.WithNumber(4).WithStateRoot(committedRoot).TestObject;
+                using PbtWorldStateScope scope = (PbtWorldStateScope)reopened.CreateScopeProvider().BeginScope(header, new LocalMetrics());
+                Assert.That(scope.Bundle.TreeRoot, Is.EqualTo(roots[^1]));
+                AssertState(scope, 4);
+            }
+            return roots;
+
+            void Warm(PbtWorldStateScope scope)
+            {
+                if (!warming) return;
+                scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+                Assert.That(ExecuteHint(warmer, -1), Is.True);
+                foreach (uint slot in new uint[] { 7, 1000 })
+                {
+                    scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slot);
+                    Assert.That(ExecuteHint(warmer, (int)slot), Is.True);
+                }
+            }
+        }
+
+        static void Mutate(PbtWorldStateScope scope, uint generation)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(generation).TestObject);
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 2);
+            storage.Set(7, Bytes.FromHexString("ab"));
+            storage.Set(1000, generation == 2 ? [] : Bytes.FromHexString("cd"));
+        }
+
+        static void AssertState(PbtWorldStateScope scope, uint generation)
+        {
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scope.Get(TestItem.AddressA)?.Balance ?? UInt256.Zero, Is.EqualTo((UInt256)generation));
+                Assert.That(storage.Get(7), Is.EqualTo(generation == 0 ? StorageTree.ZeroBytes : Bytes.FromHexString("ab")));
+                Assert.That(storage.Get(1000), Is.EqualTo(generation is 0 or 2 ? StorageTree.ZeroBytes : Bytes.FromHexString("cd")));
+            }
+        }
+    }
+
+    private static bool ExecuteHint(RecordingTrieWarmer warmer, int slot) => slot < 0
+        ? warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence)
+        : warmer.StorageWarmer!.WarmUpStorageTrie((UInt256)(uint)slot, warmer.SlotSequence);
+
+    private static byte[] ReadGroup(IPbtStore store, IPbtNodePath path)
+    {
+        using RefCountingMemory? payload = store.GetNodeGroup(path);
+        Assert.That(payload, Is.Not.Null);
+        return payload!.GetSpan().ToArray();
+    }
+
+    private static PbtWorldStateScope CreateCountingScope(CountingWarmupReader reader, PbtTrieNodeCache? cache, ITrieWarmer warmer)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, trieNodeCache: cache);
+        PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        return new PbtWorldStateScope(reader.CurrentState, null, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(),
+            Substitute.For<IPbtCommitTarget>(), NullPbtChildHeaderSource.Instance, pool, PbtResourcePool.Usage.MainBlockProcessing,
+            true, warmer);
+    }
+
+    private sealed class CountingWarmupReader(PbtTreeHarness tree) : IPbtPersistence.IReader
+    {
+        private readonly PbtNodeGroupStore _store = PbtNodeGroupStore.FromPhysicalPayloads(tree.PhysicalPayloads);
+        public Action? BeforeRead { get; set; }
+        public int GroupReads { get; private set; }
+        public int DisposeCount { get; private set; }
+        public StateId CurrentState => new(0, CurrentRoot.ToHash256());
+        public ValueHash256 CurrentRoot { get; } = tree.RootHash;
+        public Account? GetAccount(in ValueHash256 addressHash) => null;
+        public EvmWord GetSlot(PbtStorageFullKey key) => default;
+        public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
+        public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
+        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => [];
+        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => [];
+        public IEnumerable<IPbtNodePath> EnumerateNodeGroupKeys() => _store.EnumerateNodeGroupKeys();
+        public RefCountingMemory? GetNodeGroup(IPbtNodePath groupKey)
+        {
+            BeforeRead?.Invoke();
+            GroupReads++;
+            return _store.GetNodeGroup(groupKey);
+        }
+        public void Dispose()
+        {
+            DisposeCount++;
+            _store.Dispose();
+        }
+    }
+
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
         batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(balance).TestObject);
     }
 
-    /// <summary>
-    /// Empties the process-wide pool so the maps it hands out next are the ones the test seeded.
-    /// </summary>
-    /// <remarks>
-    /// The pool is FIFO, so whatever an earlier test left queued comes out ahead of a freshly
-    /// returned sentinel: renting until the sentinel reappears drains exactly the backlog, whatever
-    /// its size, without depending on the pool's cap.
-    /// </remarks>
-    private sealed class RecordingTrieWarmer(bool acceptSlot = true, bool acceptMpmc = true) : ITrieWarmer
+    private sealed class RecordingTrieWarmer(bool acceptSlot = true, bool acceptMpmc = true, bool acceptAddress = true) : ITrieWarmer
     {
         public int AddressJobs { get; private set; }
         public int SlotJobs { get; private set; }
@@ -473,7 +878,7 @@ public class PbtWorldStateScopeTests
             AddressJobs++;
             AddressWarmer = scope;
             AddressSequence = sequenceId;
-            return true;
+            return acceptAddress;
         }
 
         public void OnEnterScope()

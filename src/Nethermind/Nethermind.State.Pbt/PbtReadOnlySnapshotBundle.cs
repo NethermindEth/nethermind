@@ -18,7 +18,8 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtReadOnlySnapshotBundle(
     PbtSnapshotPooledList snapshots,
     IPbtPersistence.IReader reader,
-    bool recordDetailedMetrics = false) : RefCountingDisposable
+    bool recordDetailedMetrics = false,
+    PbtTrieNodeCache? trieNodeCache = null) : RefCountingDisposable
 {
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
@@ -53,18 +54,22 @@ public sealed class PbtReadOnlySnapshotBundle(
         ArgumentNullException.ThrowIfNull(groupKey);
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+        ValueHash256 root = TreeRoot;
+        if (trieNodeCache?.TryGet(root, groupKey, out RefCountingMemory? cached) == true) return cached;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int index = snapshots.Count - 1; index >= 0; index--)
         {
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readNodeGroupSnapshotLabel);
+                if (payload is not null) trieNodeCache?.Add(root, groupKey, payload);
                 return payload;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         RefCountingMemory? result = reader.GetNodeGroup(groupKey);
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readNodeGroupPersistenceNullLabel : _readNodeGroupPersistenceLabel);
+        if (result is not null) trieNodeCache?.Add(root, groupKey, result);
         return result;
     }
 

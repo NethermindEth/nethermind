@@ -22,6 +22,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private const int MaxInFlightCompactionJobs = 32;
     private static readonly TimeSpan CacheSweepInterval = TimeSpan.FromSeconds(15);
 
+    private readonly PbtTrieNodeCache? _trieNodeCache;
     private readonly PbtSnapshotRepository _repository;
     private readonly PbtPersistenceCoordinator _coordinator;
     private readonly IPbtPersistence _persistence;
@@ -57,8 +58,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         IProcessExitSource processExitSource,
         ILogManager logManager,
         IPbtConfig config,
-        IMetricsConfig metricsConfig)
+        IMetricsConfig metricsConfig,
+        PbtTrieNodeCache? trieNodeCache = null)
     {
+        _trieNodeCache = trieNodeCache;
         _repository = repository;
         _coordinator = coordinator;
         _persistence = persistence;
@@ -97,7 +100,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 ReportBundleMetrics(chain);
 
                 // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics);
+                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics, _trieNodeCache);
 
                 // lease before publishing, never after: a sweep landing between the publish and the
                 // lease would release the only lease and hand back a dead bundle

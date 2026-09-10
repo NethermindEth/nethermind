@@ -99,6 +99,8 @@ public class PbtMirrorScopeProvider(
 
         public void HintGet(Address address, Account? account) => authoritative.HintGet(address, account);
 
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() => authoritative.CreateTrieWarmupSession();
+
         public void HintWarmAccount(in ValueAddress address) => authoritative.HintWarmAccount(in address);
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => authoritative.HintWarmSlot(in address, in index);

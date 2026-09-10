@@ -8,6 +8,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt;
 
@@ -333,6 +335,55 @@ public sealed class PbtSnapshotBundle(
                 transientResource.ReleaseLease();
             }
             spinWait.SpinOnce();
+        }
+    }
+
+    // The owning scope serializes capture with snapshot collection and disposal.
+    internal PbtTrieWarmupSession CreateTrieWarmupSession(ITrieWarmer trieWarmer, int sequenceId)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        PbtSnapshotPooledList initialSnapshots = new(snapshots.Count);
+        bool readOnlyLeased = false;
+        bool transientLeased = false;
+        try
+        {
+            foreach (PbtSnapshot snapshot in snapshots)
+            {
+                if (!snapshot.TryLease()) throw new ObjectDisposedException(nameof(PbtSnapshot));
+                try
+                {
+                    initialSnapshots.Add(snapshot);
+                }
+                catch
+                {
+                    snapshot.Dispose();
+                    throw;
+                }
+            }
+            readOnlyLeased = readOnlyBundle.TryLease();
+            if (!readOnlyLeased) throw new ObjectDisposedException(nameof(PbtReadOnlySnapshotBundle));
+            transientLeased = _transientResource.TryAcquireLease();
+            if (!transientLeased) throw new ObjectDisposedException(nameof(PbtTransientResource));
+            return new PbtTrieWarmupSession(initialSnapshots, readOnlyBundle, _transientResource, trieWarmer, sequenceId);
+        }
+        catch
+        {
+            try
+            {
+                if (transientLeased) _transientResource.ReleaseLease();
+            }
+            finally
+            {
+                try
+                {
+                    if (readOnlyLeased) readOnlyBundle.Dispose();
+                }
+                finally
+                {
+                    initialSnapshots.Dispose();
+                }
+            }
+            throw;
         }
     }
 
