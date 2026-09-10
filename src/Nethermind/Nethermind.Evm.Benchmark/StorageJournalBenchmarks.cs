@@ -51,6 +51,7 @@ public class StorageJournalBenchmarks
             _freshCells[i] = new StorageCell(Address.Zero, (UInt256)(SlotCount + i));
             _state.Set(_cells[i], _initial);
         }
+        _state.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
     }
 
     [Benchmark]
@@ -88,13 +89,23 @@ public class StorageJournalBenchmarks
     [Benchmark]
     public void RepeatedWritesAndCommit() => WriteAndCommit(8);
 
-    private void WriteAndCommit(int passes)
+    [Benchmark]
+    public void RepeatedWritesRestoringOriginalAndCommit() => WriteAndCommit(8, restoreOriginal: true);
+
+    private void WriteAndCommit(int passes, bool restoreOriginal = false)
     {
+        if (restoreOriginal)
+            foreach (StorageCell cell in _cells)
+                _state.Get(cell);
+
         _alternate = !_alternate;
-        byte[] value = _alternate ? _updated : _initial;
+        byte[] value = restoreOriginal || _alternate ? _updated : _initial;
         for (int pass = 0; pass < passes; pass++)
             foreach (StorageCell cell in _cells)
                 _state.Set(cell, value);
+        if (restoreOriginal)
+            foreach (StorageCell cell in _cells)
+                _state.Set(cell, _initial);
         _state.Commit(Osaka.Instance, NullStateTracer.Instance, commitRoots: false);
     }
 

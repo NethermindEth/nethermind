@@ -247,46 +247,47 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
 
+        // SaveChange and backend hints must not re-enter the journal while its heads are enumerated.
         foreach (HeadChange head in _intraBlockCache.Values)
         {
+            Debug.Assert((uint)head.CurrentIdx < (uint)changes.Length);
             ref readonly Change change = ref changes[head.CurrentIdx];
+            Debug.Assert(change.ChangeType == StorageChangeType.Update);
+            Debug.Assert(_intraBlockCache[change.StorageCell].CurrentIdx == head.CurrentIdx);
 
-            if (change.ChangeType == StorageChangeType.Update)
+            // A SaveChange would resurrect the dead value over the Clear() marker;
+            // tracers still see the cell zeroed, as the journaled path reported it.
+            if (HasDestroyedAccounts.IsActive && _destroyedThisRound.Contains(change.StorageCell.Address))
             {
-                // A SaveChange would resurrect the dead value over the Clear() marker;
-                // tracers still see the cell zeroed, as the journaled path reported it.
-                if (HasDestroyedAccounts.IsActive && _destroyedThisRound.Contains(change.StorageCell.Address))
-                {
-                    if (TStorageTracing.IsActive)
-                    {
-                        RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
-                    }
-
-                    continue;
-                }
-
-                if (_logger.IsTrace)
-                {
-                    TraceUpdate(change);
-                }
-
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[]? initialValue) &&
-                    initialValue.AsSpan().SequenceEqual(change.Value))
-                {
-                    // no need to update the tree if the value is the same
-                }
-                else
-                {
-                    toUpdateRoots.Add(change.StorageCell.Address);
-
-                    GetOrCreateStorage(change.StorageCell.Address)
-                        .SaveChange(change.StorageCell, change.Value);
-                }
-
                 if (TStorageTracing.IsActive)
                 {
-                    RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(change.Value);
+                    RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
                 }
+
+                continue;
+            }
+
+            if (_logger.IsTrace)
+            {
+                TraceUpdate(change);
+            }
+
+            if (_originalValues.TryGetValue(change.StorageCell, out byte[]? initialValue) &&
+                initialValue.AsSpan().SequenceEqual(change.Value))
+            {
+                // no need to update the tree if the value is the same
+            }
+            else
+            {
+                toUpdateRoots.Add(change.StorageCell.Address);
+
+                GetOrCreateStorage(change.StorageCell.Address)
+                    .SaveChange(change.StorageCell, change.Value);
+            }
+
+            if (TStorageTracing.IsActive)
+            {
+                RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(change.Value);
             }
         }
     }

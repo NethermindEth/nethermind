@@ -1113,6 +1113,8 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(provider.Get(second).ToArray(), Is.EqualTo(secondValue));
             Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(_values[clearStorage && !restore ? 0 : 3]));
             Assert.That(tracer.Changes, Has.Count.EqualTo(clearStorage && !restore ? 3 : 2));
+            Assert.That(tracer.Changes[0].Cell, Is.EqualTo(first), "storage changes follow surviving-head insertion order");
+            Assert.That(tracer.Changes[1].Cell, Is.EqualTo(second));
             Assert.That(tracer.Changes.FindAll(change => change.Cell.Equals(first)), Has.Count.EqualTo(1));
             Assert.That(tracer.Changes.Find(change => change.Cell.Equals(first)).Before, Is.EqualTo(_values[1]));
             Assert.That(tracer.Changes.Find(change => change.Cell.Equals(first)).After, Is.EqualTo(firstValue));
