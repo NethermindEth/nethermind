@@ -118,8 +118,8 @@ public class PbtFormatInteropTests
         tree.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(mixedRoot, Is.EqualTo("0x6ef7fc2feef4df37f1f41f9f06063227c5b1969ae452c9556fa75e8b8809c393"));
-            Assert.That(mixedPayload, Is.EqualTo("0xb7946f16c99017d2351d9e27e59fbe22d246caa808e6307fe2f3c97a2eb9cc03"));
+            Assert.That(mixedRoot, Is.EqualTo("0xd6100f64e772fe72648dbef668e718b9625d3d7907e18e62618c54c07f7af13e"));
+            Assert.That(mixedPayload, Is.EqualTo("0x6f4f5d98eec215acf73602b828d46ad135728243c74344e2623d29e0aaa90a67"));
             Assert.That(singletonRoot, Is.EqualTo("0x3039f167d1d69a8b3739e88307abc9c4e71193e29f330c06a5b1edae10cafde7"));
             Assert.That(singletonPayload, Is.EqualTo("0x86884a84e431a12152c642e5c4f0e489f233d83f6666c4bf21370d18ea62d70c"));
             Assert.That(tree.RootHash.ToString(), Is.EqualTo(mixedRoot));

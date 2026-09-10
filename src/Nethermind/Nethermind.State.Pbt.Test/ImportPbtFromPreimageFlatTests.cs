@@ -39,15 +39,12 @@ public class ImportPbtFromPreimageFlatTests
     private static readonly Hash256 SourceStateRoot = TestItem.KeccakA;
 
     // Zero uses the built-in window; small values force multiple windows with the same root.
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(3)]
-    public async Task Imports_preimage_flat_state_into_pbt_and_exits(int windowSize)
+    [Test]
+    public async Task Imports_preimage_flat_state_into_pbt_and_exits([Values(0, 1, 3)] int windowSize, [Values(5, 8000)] int codeLength)
     {
         PbtConfig config = new() { ImportWindowSize = windowSize };
 
-        // More than 128 chunks exercises the overflow-code zone end-to-end.
-        byte[] bigCode = new byte[5000];
+        byte[] bigCode = new byte[codeLength];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
         Hash256 bigCodeHash = Keccak.Compute(bigCode);
 
@@ -57,7 +54,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);      // header-region slot
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);     // storage-zone slot
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
-        // A second contract with the same code exercises content-addressed overflow-chunk deduplication.
+        // A second contract with the same code exercises content-addressed chunk deduplication.
         PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
@@ -99,6 +96,33 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
         Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
+
+        PbtRocksDbPersistence reopened = new(pbtDb, config);
+        PbtResourcePool pool = new(config);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);
+        bundle.SetAccount(TestItem.AddressB, retained);
+        bundle.SetAccount(TestItem.AddressC, null);
+        Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(1));
+        int codeLeaves = 0;
+        foreach ((PbtStorageFullKey key, ValueHash256 _) in bundle.EnumerateLeaves())
+            if (key.Bytes[0] == 0x01) codeLeaves++;
+        int expectedCodeLeaves = 0;
+        foreach (string key in model.Keys)
+            if (key.StartsWith("01", StringComparison.Ordinal)) expectedCodeLeaves++;
+        Assert.That(codeLeaves, Is.EqualTo(expectedCodeLeaves), "zero chunks remain absent after reopening");
+        bundle.SetAccount(TestItem.AddressB, null);
+        using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
+        ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes);
+        bundle.CompleteLeafChanges();
+        model.Clear();
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.Zero);
+            Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "last-owner deletion must remove all persisted code chunks");
+        }
     }
 
     /// <summary>Verifies merge-joining header-only storage and accounts without storage or code.</summary>

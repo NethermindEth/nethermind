@@ -31,8 +31,7 @@ public class PbtRebuilderTests
 
     private static List<RebuildEntry> BuildFixture(Dictionary<string, byte[]> model, PbtRocksDbPersistence target)
     {
-        // > 128 chunks (3968 bytes) so overflow chunks land in the content-addressed code zone
-        byte[] bigCode = new byte[5000];
+        byte[] bigCode = new byte[8000];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63; // PUSH4, to exercise the chunk PUSHDATA offsets
         byte[] smallCode = Bytes.FromHexString("0x60016002");
 
@@ -58,11 +57,11 @@ public class PbtRebuilderTests
         }
 
         AddAccount(TestItem.AddressA, 1, 100, null);                  // EOA
-        AddAccount(TestItem.AddressB, 0, 42, bigCode);               // overflow-code contract
+        AddAccount(TestItem.AddressB, 0, 42, bigCode);               // multi-group code contract
         AddSlot(TestItem.AddressB, 5, 0xAB);                        // header-region slot (< 64)
         AddSlot(TestItem.AddressB, 70, 0x07);                       // storage-zone slot (>= 64)
         AddSlot(TestItem.AddressB, 1000, 0x1234);
-        AddAccount(TestItem.AddressC, 2, 7, smallCode);             // small contract, no overflow
+        AddAccount(TestItem.AddressC, 2, 7, smallCode);             // single-chunk contract
         AddSlot(TestItem.AddressC, 3, 0x99);
         AddAccount(TestItem.AddressD, 0, 0, bigCode);
         AddAccount(TestItem.AddressE, 0, 0, null);
@@ -265,7 +264,7 @@ public class PbtRebuilderTests
             for (int index = 0; index < 2; index++)
             {
                 PbtStorageFullKey key = (PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA,
-                    TestItem.KeccakB.ValueHash256, PbtKeyDerivation.HeaderCodeChunks + index);
+                    TestItem.KeccakB.ValueHash256, PbtKeyDerivation.StemSubtreeWidth + index);
                 ArrayPoolList<RebuildEntry> chunk = new(windowSize);
                 for (int repeat = 0; repeat < windowSize; repeat++) chunk.Add(new(key, TestItem.KeccakC.ValueHash256));
                 await channel.Writer.WriteAsync(chunk);

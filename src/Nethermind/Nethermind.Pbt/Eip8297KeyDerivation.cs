@@ -48,28 +48,21 @@ public static class Eip8297KeyDerivation
         return new PbtStorageFullKey(key);
     }
 
-    public static PbtFullKey CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId)
-    {
-        if (chunkId < 0) throw new ArgumentOutOfRangeException(nameof(chunkId));
-        return chunkId < PbtKeyDerivation.HeaderCodeChunks
-            ? AccountKey(address32, checked((byte)(PbtKeyDerivation.CodeOffset + chunkId)))
-            : OverflowCodeKey(codeHash32, chunkId);
-    }
+    public static PbtFullKey CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId) =>
+        OverflowCodeKey(codeHash32, chunkId);
 
     public static PbtFullKey OverflowCodeKey(ReadOnlySpan<byte> codeHash32, int chunkId)
     {
         Validate32(codeHash32, nameof(codeHash32));
-        if (chunkId < PbtKeyDerivation.HeaderCodeChunks) throw new ArgumentOutOfRangeException(nameof(chunkId));
-        int overflow = chunkId - PbtKeyDerivation.HeaderCodeChunks;
+        if (chunkId < 0) throw new ArgumentOutOfRangeException(nameof(chunkId));
         Span<byte> input = stackalloc byte[64];
-        input.Clear();
         codeHash32.CopyTo(input);
-        new UInt256((ulong)(overflow >> 8)).ToBigEndian(input[32..]);
+        new UInt256((ulong)(chunkId >> 8)).ToBigEndian(input[32..]);
         ValueHash256 digest = Blake3Hash.Hash(input);
         Span<byte> key = stackalloc byte[AccountKeyLength];
         key[0] = CodeZone;
         digest.Bytes.CopyTo(key[1..]);
-        key[^1] = (byte)overflow;
+        key[^1] = (byte)chunkId;
         return new PbtFullKey(key);
     }
 

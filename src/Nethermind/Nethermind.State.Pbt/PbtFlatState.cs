@@ -14,15 +14,15 @@ namespace Nethermind.State.Pbt;
 /// <summary>Derives canonical tree leaves from whole flat values without retaining a second flat index.</summary>
 internal static class PbtFlatState
 {
-    internal static IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code, bool includeOverflowCode = true)
+    internal static IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code, bool includeCode = true)
     {
         if (account.HasCode && code is null) throw new InvalidDataException($"Missing PBT bytecode for {account.CodeHash}.");
         ValueHash256 basicData = default;
         PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)(code?.Code.Length ?? 0), account.Nonce, account.Balance);
         if (basicData != default) yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
         yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
-        if (code is null) yield break;
-        int codeLength = includeOverflowCode ? code.Code.Length : Math.Min(code.Code.Length, PbtKeyDerivation.HeaderCodeChunks * 31);
+        if (code is null || !includeCode) yield break;
+        int codeLength = code.Code.Length;
         int chunkCount = (codeLength + 30) / 31;
         int chunksLength = chunkCount * PbtKeyDerivation.CodeChunkSize;
         using ArrayPoolList<byte> chunks = new(chunksLength, chunksLength);

@@ -48,19 +48,31 @@ public class KeyDerivationTests
     }
 
     [Test]
-    public void CodeChunkKeysMatchEipTestVectors()
+    public void CodeChunkKeysMatchEipTestVectors([Values(0, 5, 127, 128, 255, 256, 300)] int chunkId)
     {
-        // Chunk 5 is in the account header at sub-index CODE_OFFSET + 5 = 0x85.
-        Assert.That(PbtKeyDerivation.HeaderCodeChunkSubIndex(5), Is.EqualTo(0x85));
+        ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
+        PbtFullKey expected = PbtReferenceModel.CodeKey(codeHash, chunkId);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8297KeyDerivation.CodeKey(Address32(TestItem.AddressA), codeHash.Bytes, chunkId), Is.EqualTo(expected));
+            Assert.That(Eip8297KeyDerivation.CodeKey(Address32(TestItem.AddressB), codeHash.Bytes, chunkId), Is.EqualTo(expected));
+            Assert.That(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), Is.EqualTo(expected));
+            Assert.That(PbtStateKey.Code(TestItem.AddressA, codeHash, chunkId), Is.EqualTo(expected));
+            Assert.That(PbtStateKey.Code(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB), codeHash, chunkId), Is.EqualTo(expected));
+        }
+    }
 
-        // Chunk 300 uses overflow 172, tree index 0, sub-index 0xAC, and stem 0x1 || H(C || 0)[:244].
-        ValueHash256 codeHash = new("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
-        Stem stem = PbtKeyDerivation.CodeOverflowStem(codeHash, 300, out byte subIndex);
-        Assert.That(subIndex, Is.EqualTo(0xAC));
-
-        byte[] expected = SpliceBits([0, 0, 0, 1], (Blake3([.. codeHash.Bytes, .. new byte[32]]), 244));
-        Assert.That(stem.Bytes.SequenceEqual(expected));
-        Assert.That(stem.Zone, Is.EqualTo(1));
+    [TestCase(-1, 32)]
+    [TestCase(0, 31)]
+    [TestCase(0, 33)]
+    public void CodeChunkKeysRejectInvalidInputs(int chunkId, int hashLength)
+    {
+        byte[] codeHash = new byte[hashLength];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => Eip8297KeyDerivation.CodeKey(Address32(Address), codeHash, chunkId), Throws.InstanceOf<ArgumentException>());
+            Assert.That(() => Eip8297KeyDerivation.OverflowCodeKey(codeHash, chunkId), Throws.InstanceOf<ArgumentException>());
+        }
     }
 
     [Test]

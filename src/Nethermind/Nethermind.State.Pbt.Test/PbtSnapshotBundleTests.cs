@@ -605,6 +605,22 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [Test]
+    public void Code_bearing_account_matches_pinned_eip_root()
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        Address address = new("0x0000000000000000000000000000000000000001");
+        byte[] bytes = Bytes.FromHexString("6001");
+        Account account = Build.An.Account.WithNonce(1).WithBalance(2).WithCode(bytes).TestObject;
+        bundle.SetAccount(address, account);
+        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
+        // EIP-8297 at d2a64c2d: literal Python mapping and merkelization, using BLAKE3.
+        ValueHash256 expected = new("0x1d6376e73eb20356030d5335b0297c6d29b1222e9522450c33406126f6f9f5ee");
+        Assert.That(Fold(bundle, default), Is.EqualTo(expected));
+    }
+
     [TestCase(false, 0ul)]
     [TestCase(true, 0ul)]
     [TestCase(false, 9ul)]
@@ -646,26 +662,28 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(false, 3ul, "")]
-    [TestCase(true, 3ul, "")]
-    [TestCase(false, 0ul, "")]
-    [TestCase(true, 0ul, "")]
-    [TestCase(false, 0ul, "00")]
-    [TestCase(true, 0ul, "00")]
-    [TestCase(false, 0ul, "6001")]
-    [TestCase(true, 0ul, "6001")]
-    public void Shared_overflow_code_survives_account_replacement_and_last_reference_removal(bool reverseOrder, ulong replacementNonce, string replacementCode)
+    [Test]
+    public void Shared_code_survives_account_replacement_and_last_reference_removal(
+        [Values] bool reverseOrder, [Values(0ul, 3ul)] ulong replacementNonce,
+        [Values("", "00", "6001")] string replacementCode, [Values(1, 129, 258)] int chunkCount)
     {
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        byte[] bytes = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * 31];
+        byte[] bytes = new byte[chunkCount * 31];
         bytes.AsSpan().Fill(0x5b);
         CodeInfo code = new(bytes);
         Account account = Build.An.Account.WithCode(bytes).TestObject;
         bundle.SetCode(account.CodeHash.ValueHash256, code);
         bundle.SetAccount(TestItem.AddressA, account);
         bundle.SetAccount(TestItem.AddressB, account);
+        int codeLeaves = 0;
+        foreach ((PbtStorageFullKey key, ValueHash256 _) in bundle.EnumerateLeaves())
+        {
+            if (key.Bytes[0] == 0x01) codeLeaves++;
+            else Assert.That(key.Bytes[^1], Is.LessThan(128), "code must not occupy account header leaves");
+        }
+        Assert.That(codeLeaves, Is.EqualTo(chunkCount), "identical bytecode must share every chunk");
         ValueHash256 root = Fold(bundle, default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         byte[] replacementBytes = Bytes.FromHexString(replacementCode);
@@ -742,7 +760,7 @@ public class PbtSnapshotBundleTests
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
         byte[] abandonedBytes = Bytes.FromHexString("6001");
         Account abandoned = Build.An.Account.WithCode(abandonedBytes).TestObject;
-        byte[] bytes = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * 31];
+        byte[] bytes = new byte[(PbtKeyDerivation.StemSubtreeWidth + 2) * 31];
         bytes.AsSpan().Fill(0x5b);
         Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
         bundle.SetAccount(TestItem.AddressA, abandoned);
@@ -807,7 +825,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        byte[] bytes = new byte[(PbtKeyDerivation.HeaderCodeChunks + 2) * 31];
+        byte[] bytes = new byte[(PbtKeyDerivation.StemSubtreeWidth + 2) * 31];
         bytes.AsSpan().Fill(0x5b);
         Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
         bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));

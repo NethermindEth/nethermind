@@ -18,7 +18,6 @@ public static class PbtKeyDerivation
     public const int BasicDataLeafKey = 0;
     public const int CodeHashLeafKey = 1;
     public const int HeaderStorageOffset = 64;
-    public const int CodeOffset = 128;
     public const int StemSubtreeWidth = 256;
 
     public const int AccountZone = 0;
@@ -30,8 +29,6 @@ public static class PbtKeyDerivation
 
     private const int StorageAddressPrefixBits = 60;
     private const int StorageSuffixBits = 187;
-
-    public const int HeaderCodeChunks = StemSubtreeWidth - CodeOffset;
 
     /// <summary>Size of one code chunk, which is one leaf value.</summary>
     public const int CodeChunkSize = 32;
@@ -130,25 +127,6 @@ public static class PbtKeyDerivation
         CopyBits(addressPrefix.Bytes, StorageAddressPrefixBits, stem, 1);
         CopyBits(suffix.Bytes, StorageSuffixBits, stem, 1 + StorageAddressPrefixBits);
         return new Stem(stem);
-    }
-
-    /// <summary>Sub-index of a header-embedded code chunk (<paramref name="chunkId"/> must be below <see cref="HeaderCodeChunks"/>).</summary>
-    public static byte HeaderCodeChunkSubIndex(int chunkId) => (byte)(CodeOffset + chunkId);
-
-    /// <summary>
-    /// Builds the code-zone stem for an overflow chunk (<paramref name="chunkId"/> at or above
-    /// <see cref="HeaderCodeChunks"/>), content-addressed by <paramref name="codeHash"/>.
-    /// </summary>
-    public static Stem CodeOverflowStem(in ValueHash256 codeHash, int chunkId, out byte subIndex)
-    {
-        int overflow = chunkId - HeaderCodeChunks;
-        subIndex = (byte)(overflow & 0xFF);
-
-        Span<byte> input = stackalloc byte[64];
-        codeHash.Bytes.CopyTo(input);
-        BinaryPrimitives.WriteInt32BigEndian(input[60..], overflow >> 8);
-        ValueHash256 digest = Blake3Hash.Hash(input);
-        return ZoneStem(CodeZone, digest.Bytes);
     }
 
     /// <summary>
