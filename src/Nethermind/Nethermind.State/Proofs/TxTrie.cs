@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -57,7 +58,10 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     }
 
     public static Hash256 CalculateRoot(ReadOnlySpan<Transaction> transactions) =>
-        RuntimeInformation.IsSingleProcessor || transactions.Length <= MinItemsForParallelRootHash
+        CalculateRoot(transactions, canBeParallel: true);
+
+    internal static Hash256 CalculateRoot(ReadOnlySpan<Transaction> transactions, bool canBeParallel) =>
+        !canBeParallel || RuntimeInformation.IsSingleProcessor || transactions.Length <= MinItemsForParallelRootHash
             ? new IndexedTrieRoot.Calculator<Transaction, TransactionEncoder>(transactions, default).Calculate(canBeParallel: false)
             : CalculateParallelRoot(transactions);
 
@@ -71,35 +75,35 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
             Transaction transaction = transactions[i];
             ReadOnlyMemory<byte> value = transaction.PreHash;
             encoded[i] = value;
-            if (value.IsEmpty)
-            {
-                int length = _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
-                if (length > Array.MaxLength - totalLength)
-                    return new IndexedTrieRoot.Calculator<Transaction, TransactionEncoder>(transactions, default).Calculate(canBeParallel: false);
-                lengths[i] = length;
-                totalLength += length;
-            }
+            int length = value.IsEmpty ? _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping) : value.Length;
+            if (length > Array.MaxLength - totalLength)
+                return new IndexedTrieRoot.Calculator<Transaction, TransactionEncoder>(transactions, default).Calculate(canBeParallel: false);
+            lengths[i] = length;
+            totalLength += length;
         }
 
         using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
-        buffer.AsSpan(0, totalLength).Clear();
         int offset = 0;
-        bool sparse = false;
         for (int i = 0; i < transactions.Length; i++)
         {
-            if (!encoded[i].IsEmpty) continue;
             int length = lengths[i];
             Memory<byte> value = buffer.AsMemory(offset, length);
-            RlpWriter writer = new(value.Span);
-            // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
-            _txDecoder.Encode(ref writer, transactions[i], RlpBehaviors.SkipTypedWrapping);
+            if (encoded[i].IsEmpty)
+            {
+                RlpWriter writer = new(value.Span);
+                // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
+                _txDecoder.Encode(ref writer, transactions[i], RlpBehaviors.SkipTypedWrapping);
+                Debug.Assert(writer.Position == length);
+            }
+            else
+            {
+                // Reading Transaction.Hash can release PreHash's owner before the workers finish.
+                encoded[i].Span.CopyTo(value.Span);
+            }
             encoded[i] = value;
             offset += length;
-            sparse |= length == 0;
         }
-        return sparse
-            ? CalculateSparseRoot<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encoded.AsSpan(), default)
-            : new IndexedTrieRoot.Calculator<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encoded.AsSpan(), default).Calculate();
+        return new IndexedTrieRoot.Calculator<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encoded.AsSpan(), default).Calculate();
     }
 
     public static Hash256 CalculateRoot(ReadOnlySpan<byte[]> encodedTransactions)

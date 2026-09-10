@@ -19,6 +19,8 @@ namespace Nethermind.State.Proofs;
 // ordered 1..127, 0, 128..N, so each subtree can be hashed before encoding its sibling.
 internal static class IndexedTrieRoot
 {
+    internal const int MinItemsForParallelRootHash = 64;
+
     internal interface IValueEncoder<T>
     {
         ReadOnlySpan<byte> GetEncodedValue(T item);
@@ -37,12 +39,13 @@ internal static class IndexedTrieRoot
 
         public Hash256 Calculate(bool canBeParallel = true)
             => _items.IsEmpty ? Keccak.EmptyTreeHash
-                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= 64
+                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= MinItemsForParallelRootHash
                 ? CalculateSequential()
                 : CalculateParallel();
 
         private Hash256 CalculateParallel()
         {
+            Debug.Assert(_items.Length > 1);
             using ArrayPoolList<T> inputs = new(_items);
             using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
             TEncoder leafEncoder = encoder;
@@ -161,6 +164,7 @@ internal static class IndexedTrieRoot
                 }
                 else writer.Encode(encodedValue);
             }
+            Debug.Assert(writer.Position == totalLength);
             return NodeReference.FromRlp(buffer.AsSpan(0, writer.Position));
         }
 
