@@ -90,18 +90,24 @@ public static partial class EvmInstructions
             ulong carry = limb < augend ? 1UL : 0UL;
             Add(ref top, 3) = swap.Bswap64(limb);
 
-            for (nint i = 2; i >= 0; i--)
-            {
-                augend = swap.Bswap64(Add(ref top, i));
-                addend = swap.Bswap64(Add(ref popped, i));
-                limb = augend + addend;
-                // The two carries are mutually exclusive: a wrap on augend + addend leaves a result
-                // below both, which cannot then be ulong.MaxValue and wrap again on the incoming carry.
-                ulong wrapped = limb < augend ? 1UL : 0UL;
-                limb += carry;
-                carry = wrapped + (limb < carry ? 1UL : 0UL);
-                Add(ref top, i) = swap.Bswap64(limb);
-            }
+            augend = swap.Bswap64(Add(ref top, 2));
+            addend = swap.Bswap64(Add(ref popped, 2));
+            limb = augend + addend;
+            ulong wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 2) = swap.Bswap64(limb);
+
+            augend = swap.Bswap64(Add(ref top, 1));
+            addend = swap.Bswap64(Add(ref popped, 1));
+            limb = augend + addend;
+            wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 1) = swap.Bswap64(limb);
+
+            limb = swap.Bswap64(top) + swap.Bswap64(popped) + carry;
+            top = swap.Bswap64(limb);
 
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;

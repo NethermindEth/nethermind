@@ -26,6 +26,18 @@ public class AddTests : VirtualMachineTestsBase
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "0x0000000000000000000000000000000000000000000000000000000000000001",
         "0x0000000000000000000000000000000000000000000000000000000000000000")]
+    [TestCase(
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe")]
+    [TestCase(
+        "0x00000000000000007fffffffffffffffffffffffffffffffffffffffffffffff",
+        "0x0000000000000000800000000000000000000000000000000000000000000001",
+        "0x0000000000000001000000000000000000000000000000000000000000000000")]
+    [TestCase(
+        "0x0000000000000000ffffffffffffffff7fffffffffffffffffffffffffffffff",
+        "0x0000000000000000000000000000000080000000000000000000000000000001",
+        "0x0000000000000001000000000000000000000000000000000000000000000000")]
     public void Add_carries_across_words(string aHex, string bHex, string resultHex)
     {
         byte[] code = Prepare.EvmCode
