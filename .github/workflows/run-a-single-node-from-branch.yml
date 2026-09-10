@@ -83,7 +83,7 @@ on:
         default: ""
         required: false
       additional_options:
-        description: "A Json property which allows to customize node even more"
+        description: 'A Json property which allows to customize node even more. "sedge_repo" must be a full git URL, e.g. https://github.com/myfork/sedge.git - the node clones it verbatim, so an owner/name shorthand fails the sedge build.'
         default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": "", "sedge_repo": "", "sedge_branch": ""}'
       additional_l2_options:
         description: "Extra options to configure L2 node"
@@ -382,9 +382,44 @@ jobs:
           echo "run_id=$run_id" >> $GITHUB_OUTPUT
         working-directory: ${{ github.workspace }}
 
+      # wait-for-workflow.sh only waits for the downstream run to START, so this job used to
+      # report success while the node was still being provisioned - or had failed to provision at
+      # all. The downstream run is the one that gates on the node actually answering RPC and
+      # advancing, so wait for its conclusion and adopt it.
+      - name: Wait for the node run to conclude
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          RUN_URL: https://github.com/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}
+        run: |
+          # A transient gh failure must not end the wait, so every probe is best-effort and the
+          # deadline is the only way out.
+          deadline=$((SECONDS + 90 * 60))
+          status=""
+          while :; do
+            probe=$(gh run view "${{ env.RUN_ID }}" --repo NethermindEth/post-merge-smoke-tests --json status,conclusion --jq '[.status, .conclusion // "-"] | @tsv' 2>/dev/null || true)
+            status=$(printf '%s' "$probe" | cut -f1)
+            conclusion=$(printf '%s' "$probe" | cut -f2)
+            if [[ "$status" == "completed" ]]; then
+              echo "Node run concluded: $conclusion ($RUN_URL)"
+              if [[ "$conclusion" == "success" ]]; then
+                exit 0
+              else
+                echo "::error::The node was not provisioned: $RUN_URL concluded '$conclusion'. Its node-diagnostics artifact carries the machine's provisioning log."
+                exit 1
+              fi
+            fi
+            if (( SECONDS > deadline )); then
+              echo "::error::$RUN_URL has not concluded within 90 minutes (last status: ${status:-unknown})."
+              exit 1
+            fi
+            sleep 30
+          done
+
       - name: Download machine specs artifact
         run: |
-          ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
+          # By name, not .artifacts[0]: a gated run that failed also uploads node-diagnostics, and
+          # index 0 then points at the wrong archive.
+          ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq --arg want "smoketests" '[.artifacts[] | select(.name | endswith($want))][0].id // .artifacts[0].id')
           curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ steps.gh-app.outputs.token }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
           unzip artifact.zip -d ./downloaded-artifacts/
 
