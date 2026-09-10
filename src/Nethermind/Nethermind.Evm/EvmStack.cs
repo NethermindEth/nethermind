@@ -141,30 +141,33 @@ public ref partial struct EvmStack
     private static void WriteWordFromBigEndianBytes(ref EvmWord word, ref byte value, int length)
     {
         Debug.Assert(length is > sizeof(ulong) and <= WordSize, "Shorter values reach the stack through one limb.");
+        if (Vector256.IsHardwareAccelerated && length == WordSize)
+        {
+            word = Unsafe.ReadUnaligned<EvmWord>(ref value).ByteSwap();
+            return;
+        }
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         const int limbBytes = sizeof(ulong);
         int fullLimbs = length / limbBytes;
         int partialBytes = length % limbBytes;
         ulong partial = partialBytes == 0
             ? 0
-            : Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref value)) >> ((limbBytes - partialBytes) * 8);
+            : swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref value)) >> ((limbBytes - partialBytes) * 8);
 
-        ulong limb0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - limbBytes)));
+        ulong limb0 = swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - limbBytes)));
         ulong limb1 = fullLimbs > 1
-            ? Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - 2 * limbBytes)))
+            ? swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - 2 * limbBytes)))
             : partial;
         ulong limb2 = fullLimbs > 2
-            ? Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - 3 * limbBytes)))
+            ? swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, length - 3 * limbBytes)))
             : fullLimbs == 2 ? partial : 0;
         ulong limb3 = fullLimbs > 3
-            ? Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref value))
+            ? swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref value))
             : fullLimbs == 3 ? partial : 0;
 
         if (Vector256.IsHardwareAccelerated)
         {
-            // A full-width value is one load and one shuffle; the shorter ones assemble their limbs.
-            word = length == WordSize
-                ? Unsafe.ReadUnaligned<EvmWord>(ref value).ByteSwap()
-                : Vector256.Create(limb0, limb1, limb2, limb3).AsByte();
+            word = Vector256.Create(limb0, limb1, limb2, limb3).AsByte();
         }
         else
         {
