@@ -247,28 +247,37 @@ public ref partial struct EvmStack
 
         ref byte src = ref MemoryMarshal.GetReference(value);
 
-        if (value.Length == WordSize)
+        if (Vector256.IsHardwareAccelerated && value.Length < WordSize)
         {
-            if (Vector256.IsHardwareAccelerated)
-            {
-                Unsafe.As<byte, EvmWord>(ref dst) = Unsafe.As<byte, EvmWord>(ref src);
-            }
-            else
-            {
-                Unsafe.As<byte, HalfWord>(ref dst) = Unsafe.ReadUnaligned<HalfWord>(ref src);
-                Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
-            }
+            WriteLeftPaddedVector(ref dst, ref src, (nuint)value.Length);
+            return EvmExceptionType.None;
+        }
+
+        if (value.Length > sizeof(ulong))
+        {
+            WriteWordFromBigEndianBytes(ref Unsafe.As<byte, EvmWord>(ref dst), ref src, value.Length);
         }
         else
         {
-            PushBytesPartial(ref dst, ref src, (uint)value.Length);
+            ulong limb = value.Length switch
+            {
+                0 => 0,
+                1 => src,
+                2 => BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref src)),
+                3 => ((ulong)BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref src)) << 8) | Unsafe.Add(ref src, 2),
+                4 => BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref src)),
+                5 => ((ulong)BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref src)) << 8) | Unsafe.Add(ref src, 4),
+                6 => ((ulong)BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref src)) << 16) | BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, 4))),
+                7 => ((ulong)BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref src)) << 24) | ((ulong)BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, 4))) << 8) | Unsafe.Add(ref src, 6),
+                _ => Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref src))
+            };
+            WriteUInt256ToSlot(ref dst, new UInt256(limb));
         }
-        SwapSlot(ref dst);
         return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private static void PushBytesPartial(ref byte dst, ref byte src, nuint length)
+    private static void WriteLeftPaddedVector(ref byte dst, ref byte src, nuint length)
     {
         nuint q = length >> 3;
         nuint r = length & 7;
@@ -301,15 +310,7 @@ public ref partial struct EvmStack
             hi = Unsafe.ReadUnaligned<Vector128<ulong>>(ref Unsafe.Add(ref p, 8)); // lanes 2-3
         }
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            Unsafe.As<byte, EvmWord>(ref dst) = Vector256.Create(lo, hi).AsByte();
-        }
-        else
-        {
-            Unsafe.As<byte, HalfWord>(ref dst) = lo.AsByte();
-            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
-        }
+        Unsafe.WriteUnaligned(ref dst, Vector256.Create(lo, hi).AsByte().ByteSwap());
     }
 
     [SkipLocalsInit]
@@ -359,17 +360,7 @@ public ref partial struct EvmStack
             return PushBytesPartialZeroPadded<TTracingInst>(ref dst, ref src, length);
         }
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            Unsafe.As<byte, EvmWord>(ref dst) = Unsafe.ReadUnaligned<EvmWord>(ref src);
-        }
-        else
-        {
-            Unsafe.As<byte, HalfWord>(ref dst) = Unsafe.ReadUnaligned<HalfWord>(ref src);
-            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) =
-                Unsafe.ReadUnaligned<HalfWord>(ref Unsafe.Add(ref src, 16));
-        }
-        SwapSlot(ref dst);
+        WriteWordFromBigEndianBytes(ref Unsafe.As<byte, EvmWord>(ref dst), ref src, WordSize);
         if (TTracingInst.IsActive)
             ReportPushWord(ref dst);
         return EvmExceptionType.None;
@@ -377,6 +368,37 @@ public ref partial struct EvmStack
 
     [SkipLocalsInit]
     private EvmExceptionType PushBytesPartialZeroPadded<TTracingInst>(ref byte dst, ref byte src, nuint length)
+        where TTracingInst : struct, IFlag
+    {
+        if (Vector256.IsHardwareAccelerated)
+            return PushRightPaddedVector<TTracingInst>(ref dst, ref src, length);
+
+        nuint q = length >> 3;
+        nuint r = length & 7;
+        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
+        ref byte tail = ref Unsafe.Add(ref src, (int)(q << 3));
+        ulong partial = r == 0 ? 0 : swap.Bswap64(PackLoU64(ref tail, r));
+
+        // The source is right-padded, so its first bytes occupy the most significant limb.
+        ulong limb3 = q > 0 ? swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref src)) : partial;
+        ulong limb2 = q > 1 ? swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, 8))) : q == 1 ? partial : 0;
+        ulong limb1 = q > 2 ? swap.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, 16))) : q == 2 ? partial : 0;
+        ulong limb0 = q == 3 ? partial : 0;
+        if (Vector256.IsHardwareAccelerated)
+        {
+            Unsafe.WriteUnaligned(ref dst, Vector256.Create(limb0, limb1, limb2, limb3));
+        }
+        else
+        {
+            WriteUInt256ToSlot(ref dst, new UInt256(limb0, limb1, limb2, limb3));
+        }
+        if (TTracingInst.IsActive)
+            ReportPushWord(ref dst);
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    private EvmExceptionType PushRightPaddedVector<TTracingInst>(ref byte dst, ref byte src, nuint length)
         where TTracingInst : struct, IFlag
     {
         nuint q = length >> 3; // full 8-byte chunks: 0..3
@@ -415,16 +437,7 @@ public ref partial struct EvmStack
                 partial);
         }
 
-        if (Vector256.IsHardwareAccelerated)
-        {
-            Unsafe.As<byte, EvmWord>(ref dst) = Vector256.Create(lo, hi).AsByte();
-        }
-        else
-        {
-            Unsafe.As<byte, HalfWord>(ref dst) = lo.AsByte();
-            Unsafe.As<byte, HalfWord>(ref Unsafe.Add(ref dst, 16)) = hi.AsByte();
-        }
-        SwapSlot(ref dst);
+        Unsafe.WriteUnaligned(ref dst, Vector256.Create(lo, hi).AsByte().ByteSwap());
         if (TTracingInst.IsActive)
             ReportPushWord(ref dst);
         return EvmExceptionType.None;

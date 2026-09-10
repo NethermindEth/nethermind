@@ -220,7 +220,7 @@ public class EvmStackTests
 
     [Test]
     public void PushRightPaddedBytes_traces_the_completed_word(
-        [Values(0, 1, 17, 31, 32)] int length, [Values(0, 1, 7, 31)] int offset)
+        [Range(0, 32)] int length, [Values(0, 1, 7, 31)] int offset)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         StackPushTracer tracer = new();
@@ -240,6 +240,29 @@ public class EvmStackTests
             Assert.That(tracer.StackItem, Is.EqualTo(expected));
             Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
             Assert.That(word.ToArray(), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void PushBytes_preserves_left_padding([Range(0, 32)] int length, [Values(0, 1, 7, 31)] int offset)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        StackPushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+        byte[] source = new byte[offset + length];
+        for (int i = 0; i < source.Length; i++) source[i] = (byte)(i + 1);
+        ReadOnlySpan<byte> input = source.AsSpan(offset, length);
+        UInt256 expected = new(input, isBigEndian: true);
+
+        EvmExceptionType result = stack.PushBytes<OnFlag>(input);
+        bool popped = stack.PopUInt256(out UInt256 actual);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(popped, Is.True);
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(tracer.StackItem, Is.EqualTo(input.ToArray()));
         }
     }
 
