@@ -99,6 +99,19 @@ internal sealed class PbtNodeGroupWriter : IDisposable
         return hash;
     }
 
+    internal void Flush<TKey, TPath>(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> reader)
+        where TKey : struct, IPbtKey<TKey>
+        where TPath : class, IPbtNodePath<TPath>
+    {
+        if (reader.Taken == 0 && Availability == 0) return;
+        CopyUntouchedBefore(ref reader, PbtNodeGroupCodec.PositionCount);
+        if (ChangedNodes == 0) return;
+
+        using RefCountingMemory? payload = Detach();
+        store.SetNodeGroup(reader.GroupKey, payload);
+        metrics?.AddEmittedNodeWrites(ChangedNodes);
+    }
+
     internal void CopyUntouchedBefore<TKey, TPath>(ref GroupFrameReader<TKey, TPath> reader, int endPosition)
         where TKey : struct, IPbtKey<TKey>
         where TPath : class, IPbtNodePath<TPath>

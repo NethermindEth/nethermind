@@ -90,7 +90,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref root, operations, 0, plan);
                 ValueHash256 hash = writer.Write(ref reader, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
-                Flush(store, metrics, ref reader, writer);
+                writer.Flush(store, metrics, ref reader);
                 return hash;
             }
             finally
@@ -220,6 +220,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // even when branchDepth is a few bits deeper; fold the current group below instead.
             if (groupDepth > bitDepth)
             {
+                // This can skip multiple four-bit groups at once, e.g. bitDepth 8 to groupDepth 24.
                 // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
                 return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, groupDepth, partition.Plan.ForChild());
             }
@@ -240,7 +241,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
                 try
                 {
-                    Flush(store, metrics, ref reader, writer);
+                    writer.Flush(store, metrics, ref reader);
                     return Subtree.Move(ref result);
                 }
                 finally { result.Dispose(); }
@@ -360,6 +361,23 @@ internal static partial class TrieUpdater<TKey, TPath>
             return Subtree.Move(ref result);
         }
         finally { result.Dispose(); }
+
+        static bool TryCopyUnchangedSubtree(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, TrieUpdaterMetrics? metrics, NodeGroupPath path, out Subtree root)
+        {
+            int position = path.Position;
+            root = default;
+            // Only a consumed source root proves this range belongs to the subtree being recomposed.
+            if ((reader.Taken & (1U << position)) == 0) return false;
+            root = reader.Acquire(position, BoundaryPath(reader.GroupKey, path.Slot, path.Length));
+            if (root.IsEmpty) return false;
+            int startPosition = position - 2 * path.Width + 2;
+            writer.CopyUntouchedBefore(ref reader, startPosition);
+            // Placement may promote the root and extend its compressed prefix, so copy only its descendants.
+            int copiedNodes = reader.CopyRange(writer, startPosition, position);
+            if (copiedNodes != 0) metrics?.AddBulkCopy(copiedNodes);
+            writer.NextPosition = position;
+            return true;
+        }
     }
 
     private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
@@ -585,34 +603,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         while (index < count && GetBit(prefixBytes, index) == key.GetBit(keyOffset + index)) index++;
         return index;
-    }
-
-    private static bool TryCopyUnchangedSubtree(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer, TrieUpdaterMetrics? metrics, NodeGroupPath path, out Subtree root)
-    {
-        int position = path.Position;
-        root = default;
-        // Only a consumed source root proves this range belongs to the subtree being recomposed.
-        if ((reader.Taken & (1U << position)) == 0) return false;
-        root = reader.Acquire(position, BoundaryPath(reader.GroupKey, path.Slot, path.Length));
-        if (root.IsEmpty) return false;
-        int startPosition = position - 2 * path.Width + 2;
-        writer.CopyUntouchedBefore(ref reader, startPosition);
-        // Placement may promote the root and extend its compressed prefix, so copy only its descendants.
-        int copiedNodes = reader.CopyRange(writer, startPosition, position);
-        if (copiedNodes != 0) metrics?.AddBulkCopy(copiedNodes);
-        writer.NextPosition = position;
-        return true;
-    }
-
-    internal static void Flush(IPbtStore store, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter writer)
-    {
-        if (reader.Taken == 0 && writer.Availability == 0) return;
-        writer.CopyUntouchedBefore(ref reader, PbtNodeGroupCodec.PositionCount);
-        if (writer.ChangedNodes == 0) return;
-
-        using RefCountingMemory? payload = writer.Detach();
-        store.SetNodeGroup(reader.GroupKey, payload);
-        metrics?.AddEmittedNodeWrites(writer.ChangedNodes);
     }
 }
 

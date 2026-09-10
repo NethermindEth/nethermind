@@ -111,13 +111,13 @@ public static partial class TrieUpdater
                     if (sharedWriters[slot] is not { } sharedWriter) continue;
                     ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                     rootBoundaries[slot] = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan(), touchedZoneMasks[slot]);
-                    Flush(store, metrics, ref sharedReader, sharedWriter);
+                    sharedWriter.Flush(store, metrics, ref sharedReader);
                 }
                 Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan(), touchedRootMask);
                 try
                 {
                     ValueHash256 hash = rootWriter.Write(ref rootReader, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
-                    Flush(store, metrics, ref rootReader, rootWriter);
+                    rootWriter.Flush(store, metrics, ref rootReader);
                     return hash;
                 }
                 finally { result.Dispose(); }
@@ -189,7 +189,7 @@ public static partial class TrieUpdater
                     // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                     result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
                         operations.AsSpan(), 8, new(table.AsSpan(), 8, false));
-                    TrieUpdater<TKey, TPath>.Flush(store, Metrics, ref reader, writer);
+                    writer.Flush(store, Metrics, ref reader);
                     Result = Subtree.TakeFrom<TKey, TPath>(ref result);
                 }
                 finally
