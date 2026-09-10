@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,24 +28,42 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 {
     private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
 
-    private readonly Dictionary<NodeKey, byte[]> _nodes;
+    private readonly Dictionary<NodeKey, byte[]?> _nodes = [];
+    private readonly Dictionary<NodeKey, byte[]> _overflow = [];
+    private readonly NodeKey[] _keys;
+    private readonly byte[][] _values;
+    private readonly int[] _starts;
+    private readonly int _bucketMask;
+    private const int MaxBucketLength = 8;
 
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
     public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state)
     {
-        Dictionary<NodeKey, byte[]> nodes = new(state.Length + 1);
-
-        foreach (byte[] stateElement in state)
+        int count = state.Length + 1;
+        int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
+        _bucketMask = bucketCount - 1;
+        _starts = new int[bucketCount + 1];
+        NodeKey[] unsorted = new NodeKey[count];
+        for (int i = 0; i < count; i++)
         {
-            nodes[new NodeKey(ValueKeccak.Compute(stateElement))] = stateElement;
+            NodeKey key = i == state.Length ? EmptyRootKey : new NodeKey(ValueKeccak.Compute(state[i]));
+            unsorted[i] = key;
+            _starts[key.Bucket(_bucketMask) + 1]++;
         }
-
-        // Some of the code does not save the empty tree at all, so the empty root has to resolve
-        // whether the witness carries it or not. Seeding it here keeps NodeStorage's special case
-        // out of every read.
-        nodes[EmptyRootKey] = [128];
-
-        _nodes = nodes;
+        for (int i = 1; i < _starts.Length; i++) _starts[i] += _starts[i - 1];
+        int[] cursors = (int[])_starts.Clone();
+        _keys = new NodeKey[count];
+        _values = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            NodeKey key = unsorted[i];
+            byte[] value = i == state.Length ? [128] : state[i];
+            int bucket = key.Bucket(_bucketMask);
+            int slot = cursors[bucket]++;
+            _keys[slot] = key;
+            _values[slot] = value;
+            if (_starts[bucket + 1] - _starts[bucket] > MaxBucketLength) _overflow[key] = value;
+        }
     }
 
     /// <inheritdoc/>
@@ -63,7 +82,19 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
     /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => _nodes.TryGetValue(new NodeKey(keccak), out byte[]? node) ? node : null;
+        => Find(new NodeKey(keccak));
+
+    private byte[]? Find(NodeKey key)
+    {
+        if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
+        int bucket = key.Bucket(_bucketMask);
+        int start = _starts[bucket];
+        int end = _starts[bucket + 1];
+        if (end - start > MaxBucketLength) return _overflow.GetValueOrDefault(key);
+        for (int i = end - 1; i >= start; i--)
+            if (_keys[i].Equals(key)) return _values[i];
+        return null;
+    }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -82,7 +113,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
         if (data.IsNull())
         {
-            _nodes.Remove(key);
+            _nodes[key] = null;
         }
         else
         {
@@ -92,7 +123,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
     // The empty root is seeded, so it needs no special case here.
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
-        => _nodes.ContainsKey(new NodeKey(keccak));
+        => Find(new NodeKey(keccak)) is not null;
 
     public INodeStorage.IWriteBatch StartWriteBatch() => this;
 
@@ -130,6 +161,8 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     private readonly struct NodeKey(in ValueHash256 hash) : IEquatable<NodeKey>
     {
         private readonly ValueHash256 _hash = hash;
+
+        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<uint>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
         public bool Equals(NodeKey other)
         {
