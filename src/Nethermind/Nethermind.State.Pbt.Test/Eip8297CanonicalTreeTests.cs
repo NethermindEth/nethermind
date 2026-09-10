@@ -733,6 +733,87 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+    [Test]
+    public void First_differing_bit_checks_every_bit_from_each_start(
+        [Range(0, PbtStorageFullKey.MaxLength * 8)] int startBit,
+        [Values] bool earlierDifferences)
+    {
+        byte[] bytes = new byte[PbtStorageFullKey.MaxLength];
+        bytes.AsSpan().Fill(0xA5);
+        byte[] other = (byte[])bytes.Clone();
+        int commonBits = bytes.Length * 8;
+        if (earlierDifferences)
+        {
+            for (int bit = 0; bit < startBit; bit++)
+                other[bit >> 3] ^= (byte)(0x80 >> (bit & 7));
+        }
+
+        Assert.That(PbtKeyOperations.FirstDifferingBit(bytes, other, startBit), Is.EqualTo(commonBits));
+        for (int differingBit = 0; differingBit < commonBits; differingBit++)
+        {
+            other[differingBit >> 3] ^= (byte)(0x80 >> (differingBit & 7));
+            int expected = differingBit < startBit ? commonBits : differingBit;
+            Assert.That(PbtKeyOperations.FirstDifferingBit(bytes, other, startBit), Is.EqualTo(expected), $"differing bit {differingBit}");
+            other[differingBit >> 3] ^= (byte)(0x80 >> (differingBit & 7));
+        }
+    }
+
+    [Test]
+    public void First_differing_bit_respects_common_length_and_validates_start(
+        [Values(0, 1, 31, 32, 33, 34, 63, 64, 65, 66)] int length,
+        [Values(0, 1, 31, 32, 33, 34, 63, 64, 65, 66)] int otherLength)
+    {
+        byte[] bytes = new byte[length];
+        byte[] other = new byte[otherLength];
+        int commonLength = Math.Min(length, otherLength);
+        int commonBits = commonLength * 8;
+        bytes.AsSpan(commonLength).Fill(0xFF);
+        other.AsSpan(commonLength).Fill(0xFF);
+
+        for (int startBit = 0; startBit <= commonBits; startBit++)
+            Assert.That(PbtKeyOperations.FirstDifferingBit(bytes, other, startBit), Is.EqualTo(commonBits), $"start bit {startBit}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => PbtKeyOperations.FirstDifferingBit(bytes, other, -1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => PbtKeyOperations.FirstDifferingBit(bytes, other, commonBits + 1));
+        }
+    }
+
+    [Test]
+    public void Matching_prefix_bits_matches_reference_at_offsets_and_word_boundaries(
+        [Range(0, 15)] int keyOffset,
+        [Values(0, 1, 7, 8, 63, 64, 65, 127, 128, 129, PbtStorageFullKey.MaxLength * 8)] int requestedBitCount,
+        [Values(16, PbtStorageFullKey.MaxLength)] int keyLength)
+    {
+        byte[] source = new byte[PbtStorageFullKey.MaxLength];
+        new Random(8297).NextBytes(source);
+        PbtStorageFullKey key = new(source.AsSpan(0, keyLength));
+        int bitCount = Math.Min(requestedBitCount, source.Length * 8 - keyOffset);
+        byte[] encoding = new byte[sizeof(ushort) + ((bitCount + 7) >> 3)];
+        BinaryPrimitives.WriteUInt16BigEndian(encoding, (ushort)bitCount);
+        for (int bit = 0; bit < bitCount; bit++)
+        {
+            int sourceBit = keyOffset + bit;
+            int value = (source[sourceBit >> 3] >> (7 - (sourceBit & 7))) & 1;
+            encoding[sizeof(ushort) + (bit >> 3)] |= (byte)(value << (7 - (bit & 7)));
+        }
+
+        int expectedCount = Math.Min(bitCount, key.BitLength - keyOffset);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.MatchingPrefixBits(default, key, keyOffset), Is.Zero);
+            Assert.That(TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.MatchingPrefixBits(new CompressedPrefix(encoding), key, keyOffset), Is.EqualTo(expectedCount));
+        }
+        for (int differingBit = 0; differingBit < bitCount; differingBit++)
+        {
+            encoding[sizeof(ushort) + (differingBit >> 3)] ^= (byte)(0x80 >> (differingBit & 7));
+            int actual = TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.MatchingPrefixBits(new CompressedPrefix(encoding), key, keyOffset);
+            Assert.That(actual, Is.EqualTo(Math.Min(differingBit, expectedCount)), $"differing bit {differingBit}");
+            encoding[sizeof(ushort) + (differingBit >> 3)] ^= (byte)(0x80 >> (differingBit & 7));
+        }
+    }
+
     [TestCase(67)]
     [TestCase(8192)]
     public void Oversized_keys_and_persisted_leaves_are_rejected(int length)

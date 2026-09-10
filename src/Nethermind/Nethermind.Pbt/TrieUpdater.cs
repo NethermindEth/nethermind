@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
@@ -621,20 +622,31 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    private static int MatchingPrefixBits(CompressedPrefix prefix, TKey key, int keyOffset)
+    internal static int MatchingPrefixBits(CompressedPrefix prefix, TKey key, int keyOffset)
     {
+        if (prefix.BitCount == 0) return 0;
+
         ReadOnlySpan<byte> prefixBytes = prefix.Bytes;
         int available = key.BitLength - keyOffset;
         int count = Math.Min(prefix.BitCount, available);
         ReadOnlySpan<byte> keyBytes = key.Bytes;
         int keyBitOffset = keyOffset & 7;
+        if (keyBitOffset == 0)
+            return Math.Min(count, PbtKeyOperations.FirstDifferingBit(prefixBytes, keyBytes[(keyOffset >> 3)..], 0));
+
         int index = 0;
+        for (; index + 64 <= count; index += 64)
+        {
+            int keyByteIndex = (keyOffset + index) >> 3;
+            ulong keyWord = (BinaryPrimitives.ReadUInt64BigEndian(keyBytes[keyByteIndex..]) << keyBitOffset)
+                | (uint)(keyBytes[keyByteIndex + sizeof(ulong)] >> (8 - keyBitOffset));
+            ulong difference = BinaryPrimitives.ReadUInt64BigEndian(prefixBytes[(index >> 3)..]) ^ keyWord;
+            if (difference != 0) return index + BitOperations.LeadingZeroCount(difference);
+        }
         for (; index + 8 <= count; index += 8)
         {
             int keyByteIndex = (keyOffset + index) >> 3;
-            int keyByte = keyBitOffset == 0
-                ? keyBytes[keyByteIndex]
-                : ((keyBytes[keyByteIndex] << 8) | keyBytes[keyByteIndex + 1]) >> (8 - keyBitOffset);
+            int keyByte = ((keyBytes[keyByteIndex] << 8) | keyBytes[keyByteIndex + 1]) >> (8 - keyBitOffset);
             int difference = prefixBytes[index >> 3] ^ (keyByte & 0xFF);
             if (difference != 0) return index + BitOperations.LeadingZeroCount((uint)difference) - 24;
         }

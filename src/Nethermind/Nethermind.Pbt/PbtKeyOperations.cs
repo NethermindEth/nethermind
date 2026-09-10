@@ -20,29 +20,18 @@ internal static class PbtKeyOperations
         int commonBits = Math.Min(bytes.Length, other.Length) * 8;
         if (startBit > commonBits) throw new ArgumentOutOfRangeException(nameof(startBit));
 
-        int bit = startBit;
-        int firstCompleteByte = Math.Min((bit + 7) & ~7, commonBits);
-        while (bit < firstCompleteByte)
+        int byteIndex = startBit >> 3;
+        int bitOffset = startBit & 7;
+        if (bitOffset != 0)
         {
-            if (((bytes[bit >> 3] ^ other[bit >> 3]) & (1 << (7 - (bit & 7)))) != 0) return bit;
-            bit++;
+            uint difference = (uint)((bytes[byteIndex] ^ other[byteIndex]) & (0xFF >> bitOffset));
+            if (difference != 0) return (byteIndex << 3) + BitOperations.LeadingZeroCount(difference) - 24;
+            byteIndex++;
         }
 
-        int completeByteEnd = commonBits >> 3;
-        for (int byteIndex = bit >> 3; byteIndex < completeByteEnd; byteIndex++)
-        {
-            int difference = bytes[byteIndex] ^ other[byteIndex];
-            if (difference != 0) return (byteIndex << 3) + (BitOperations.LeadingZeroCount((uint)difference) - 24);
-        }
-
-        bit = completeByteEnd << 3;
-        while (bit < commonBits)
-        {
-            if (((bytes[bit >> 3] ^ other[bit >> 3]) & (1 << (7 - (bit & 7)))) != 0) return bit;
-            bit++;
-        }
-
-        return commonBits;
+        byteIndex += bytes[byteIndex..].CommonPrefixLength(other[byteIndex..]);
+        if (byteIndex == commonBits >> 3) return commonBits;
+        return (byteIndex << 3) + BitOperations.LeadingZeroCount((uint)(bytes[byteIndex] ^ other[byteIndex])) - 24;
     }
 
 }
