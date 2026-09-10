@@ -72,8 +72,8 @@ public abstract class BlockchainTestBase
     protected virtual ILogManager? ComponentLogManagerOverride => null;
 
     /// <summary>
-    /// Whether to run under the flat state layout instead of patricia (the production default).
-    /// Driven by the <c>TEST_USE_FLAT=1</c> environment variable, mirroring TestBlockchain.UseFlatDb.
+    /// Whether to run under the flat state layout, from the suite-wide selection.
+    /// See <see cref="TestStateBackend.UseFlatDb"/>.
     /// </summary>
     protected static bool UseFlatDb => TestStateBackend.UseFlatDb;
 
@@ -125,8 +125,6 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // Patricia by default (the production default); opt into the flat state layout with
-        // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
         flatDbConfig.Enabled = UseFlatDb;
         // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,

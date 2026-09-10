@@ -29,7 +29,7 @@ public class PseudoNethermindModuleTests
     [Test]
     public void Default_backend_follows_suite_selection([Range(0, 3)] int constructor)
     {
-        bool expectedFlatDb = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+        bool expectedFlatDb = Environment.GetEnvironmentVariable(TestStateBackend.UseTrieEnvironmentVariable) != "1";
         TestNethermindModule module = constructor switch
         {
             0 => new TestNethermindModule(Osaka.Instance),

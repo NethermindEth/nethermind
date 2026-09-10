@@ -26,7 +26,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Json;
@@ -3007,15 +3006,20 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
+            TestRpcBlockchain.Builder<TestRpcBlockchain> testBlockchainBuilder = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockchainBridge(blockchainBridge!)
+                .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
+                .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
+
+            // Left unset, the chain follows the suite-wide backend selection.
+            if (useFlatDb is not null)
+            {
+                testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
             return Task.FromResult(new Context
             {
-                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                    .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
-                    .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb ?? TestStateBackend.UseFlatDb)
-                    .Build(wrappedConfigurer).Result,
-
+                TestFactory = () => testBlockchainBuilder.Build(wrappedConfigurer).Result,
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(wrappedConfigurer).Result
             });
