@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -122,9 +121,7 @@ public class PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            Hash256 withdrawalsRootHash = Withdrawals.Length == 0
-                ? PatriciaTree.EmptyTreeHash
-                : new WithdrawalTrie(Withdrawals).RootHash;
+            Hash256 withdrawalsRootHash = WithdrawalTrie.CalculateRoot(Withdrawals);
             withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
