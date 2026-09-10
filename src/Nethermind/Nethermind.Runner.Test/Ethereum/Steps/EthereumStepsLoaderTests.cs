@@ -11,7 +11,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
-using Nethermind.Grpc;
 using Nethermind.Init;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Snapshot;
@@ -20,7 +19,7 @@ using Nethermind.Merge.AuRa;
 using Nethermind.Merge.Plugin;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Runner.Ethereum.Modules;
+using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Shutter;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs.ChainSpecStyle;
@@ -46,10 +45,7 @@ public class EthereumStepsLoaderTests
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new BuiltInStepsModule())
-            .AddModule(new StartRpcStepsModule(new GrpcConfig()
-            {
-                Enabled = true
-            }))
+            .AddStep(typeof(StartRpc))
             .Build();
 
         AssertStepInfosEquivalent(container.Resolve<IEnumerable<StepInfo>>(), steps);
