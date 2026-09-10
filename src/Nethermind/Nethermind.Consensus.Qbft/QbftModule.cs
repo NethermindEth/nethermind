@@ -116,7 +116,13 @@ public class QbftModule : Module
         ILifetimeScope envScope = rootScope.BeginLifetimeScope(builder => builder
             .AddModule(ctx.Resolve<IBlockValidationModule[]>())
             .AddScoped<QbftBlockValidatorAdapter.ProcessingEnv>()
-            .AddModule(env));
+            .AddModule(env)
+            // The child scope inherits this method's own registration of the closed generic, so name the real
+            // implementation here; resolving the inherited one would re-enter this factory forever.
+            .AddScoped<IOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv>>(static c =>
+                new DisposableScopeOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv>(
+                    c.Resolve<IOverridableEnv>(),
+                    c.Resolve<QbftBlockValidatorAdapter.ProcessingEnv>())));
         rootScope.Disposer.AddInstanceForDisposal(envScope);
         return envScope.Resolve<IOverridableEnv<QbftBlockValidatorAdapter.ProcessingEnv>>();
     }

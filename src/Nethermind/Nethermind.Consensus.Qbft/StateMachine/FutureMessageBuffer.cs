@@ -12,7 +12,9 @@ namespace Nethermind.Consensus.Qbft.StateMachine;
 /// </summary>
 /// <remarks>
 /// Eviction drops the furthest height first and, when only one height remains, its oldest message.
-/// Mirrors Besu's <c>FutureMessageBuffer</c>.
+/// Mirrors Besu's <c>FutureMessageBuffer</c>, minus its synchronizer handler: Besu uses consensus messages to learn
+/// that a peer is ahead, whereas Nethermind's sync follows the head announced over eth/68 and the consensus loop is
+/// gated on <c>IBlockTree.IsSyncing</c>.
 /// </remarks>
 public sealed class FutureMessageBuffer(long futureMessagesMaxDistance, long futureMessagesLimit, long chainHeight, long maxTotalMessageBytes = FutureMessageBuffer.DefaultMaxTotalMessageBytes)
 {
