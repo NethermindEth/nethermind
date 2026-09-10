@@ -190,6 +190,79 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public async Task AFinishedWalkWhoseTailTheTipCommitted_IsNotRunAgainOnRestart()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.TryPublishVerifiedCoverage(0, 2, out _, out _);
+        metadata.AdvanceTipSeries(3, 8, out _);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict, Is.Null,
+                "the earlier run verified 0 to 2 and the tip committed 3 to 8; a restart with the flag still on must not walk the chain again from genesis");
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task AFinishedWalkBelowAnUncommittedTail_ContinuesFromWhereItStopped()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 8; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.MarkWalkVerified(0, 5);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat),
+            metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict, Is.Not.Null);
+            Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.EqualTo(3UL), "only blocks 6 to 8 are unverified, so only they are walked");
+            Assert.That(metadata.TryGetWalkVerified(out ulong from, out ulong to) && from == 0 && to == 8, Is.True, "a verify-only run records what it verified, or the next restart walks the chain again from genesis");
+        }
+    }
+
+    [Test]
     public async Task AnUnfinishedWalkOverBlocksTheTipCommitted_IsDroppedRatherThanResumed()
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };

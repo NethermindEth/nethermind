@@ -286,6 +286,20 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryGetTipSeries(out ulong startInclusive, out ulong frontierInclusive) => TryReadRange(TipSeriesKey, out startInclusive, out frontierInclusive);
 
+    public void MarkWalkVerified(ulong fromInclusive, ulong toInclusive)
+    {
+        lock (_lock)
+        {
+            if (TryReadRange(WalkVerifiedKey, out ulong knownFrom, out ulong knownTo) && fromInclusive <= knownTo + 1 && toInclusive + 1 >= knownFrom)
+            {
+                fromInclusive = Math.Min(fromInclusive, knownFrom);
+                toInclusive = Math.Max(toInclusive, knownTo);
+            }
+
+            WriteRange(WalkVerifiedKey, fromInclusive, toInclusive);
+        }
+    }
+
     public bool TryPublishVerifiedCoverage(ulong fromInclusive, ulong toInclusive, out ulong coveredFrom, out ulong coveredTo)
     {
         lock (_lock)

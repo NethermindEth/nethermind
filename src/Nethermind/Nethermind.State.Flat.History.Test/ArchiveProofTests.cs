@@ -913,6 +913,25 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void A_tip_series_joined_to_the_published_coverage_keeps_extending_it_as_it_advances()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        metadata.TryPublishVerifiedCoverage(0, 2, out _, out _);
+
+        metadata.AdvanceTipSeries(3, 8, out _);
+        bool afterJoin = metadata.TryGetCoverage(out ulong joinedFrom, out ulong joinedTo);
+        metadata.AdvanceTipSeries(9, 12, out _);
+        bool afterAdvance = metadata.TryGetCoverage(out ulong advancedFrom, out ulong advancedTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterJoin && joinedFrom == 0 && joinedTo == 8, Is.True, "a tip series that starts right after the verified range is part of what the node can serve");
+            Assert.That(afterAdvance && advancedFrom == 0 && advancedTo == 12, Is.True,
+                "on a retrofitted node the tip series never starts at genesis, so every capture round must carry the served coverage forward with it or the node stops serving proofs at the block the walk ended");
+        }
+    }
+
+    [Test]
     public void The_storage_trie_depth_is_one_record_however_the_contract_is_identified()
     {
         ValueHash256 full = Keccak.Compute(Contract.Bytes).ValueHash256;
