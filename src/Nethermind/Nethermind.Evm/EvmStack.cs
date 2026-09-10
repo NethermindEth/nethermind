@@ -1798,8 +1798,8 @@ public ref partial struct EvmStack
         nint head = Head - 1;
         if (head < 0) return null;
         Head = head;
-        SwapSlot(ref Unsafe.Add(ref _stack, head * WordSize));
-        return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, head * WordSize + WordSize - AddressSize), AddressSize));
+        ReadUInt256FromSlot(ref Unsafe.Add(ref _stack, head * WordSize), out UInt256 word);
+        return cache.GetOrCreate(in word);
     }
 
     public bool PopAddress([NotNullWhen(true)] out Address? address)
