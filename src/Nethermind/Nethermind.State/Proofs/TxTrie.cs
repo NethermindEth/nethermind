@@ -74,7 +74,6 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         {
             Transaction transaction = transactions[i];
             ReadOnlyMemory<byte> value = transaction.PreHash;
-            encoded[i] = value;
             int length = value.IsEmpty ? _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping) : value.Length;
             if (length > Array.MaxLength - totalLength)
                 return new IndexedTrieRoot.Calculator<Transaction, TransactionEncoder>(transactions, default).Calculate(canBeParallel: false);
@@ -88,7 +87,9 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         {
             int length = lengths[i];
             Memory<byte> value = buffer.AsMemory(offset, length);
-            if (encoded[i].IsEmpty)
+            // An earlier codec can release this transaction's cached RLP by reading its Hash.
+            ReadOnlySpan<byte> cached = transactions[i].PreHash.Span;
+            if (cached.IsEmpty)
             {
                 RlpWriter writer = new(value.Span);
                 // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
@@ -98,7 +99,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
             else
             {
                 // Reading Transaction.Hash can release PreHash's owner before the workers finish.
-                encoded[i].Span.CopyTo(value.Span);
+                cached.CopyTo(value.Span);
             }
             encoded[i] = value;
             offset += length;

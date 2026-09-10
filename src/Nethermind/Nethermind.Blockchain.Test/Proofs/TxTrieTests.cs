@@ -268,7 +268,7 @@ public class TxTrieCodecTests
     }
 
     [Test]
-    public void Cached_encoding_is_owned_before_later_codec_releases_it([Values] bool canBeParallel)
+    public void Cached_encoding_survives_codec_releasing_it([Values] bool canBeParallel, [Values(0, 127)] int codecIndex)
     {
         using TestTxDecoder decoder = new();
         Transaction cached = Build.A.Transaction.TestObject;
@@ -277,7 +277,7 @@ public class TxTrieCodecTests
         Transaction[] transactions = new Transaction[128];
         Array.Fill(transactions, Build.A.Transaction.TestObject);
         transactions[1] = cached;
-        transactions[^1] = Build.A.Transaction.WithType(decoder.Type).TestObject;
+        transactions[codecIndex] = Build.A.Transaction.WithType(decoder.Type).TestObject;
         using TrackingCappedArrayPool pool = new();
         Hash256 expected = new TxTrie(transactions, bufferPool: pool, canBeParallel: false).RootHash;
         decoder.OnEncode = () => Assert.That(cached.Hash, Is.Not.Null);
