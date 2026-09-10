@@ -130,6 +130,51 @@ internal class XdcTransactionProcessorTests
     }
 
     /// <remarks>
+    /// The gas a special transaction spends is burned: XDPoSChain guards its whole fee payment with
+    /// <c>!types.IsSpecialTx(msg.To)</c>, so crediting it forks the chain once such a transaction
+    /// carries a non-zero gas price — which stays invisible while the premium happens to be zero.
+    /// </remarks>
+    [Test]
+    public void PayFees_SpecialTransaction_PaysNobody([Values] bool tipTrc21FeeEnabled)
+    {
+        _spec.IsTipTrc21FeeEnabled.Returns(tipTrc21FeeEnabled);
+        _spec.IsEip1559Enabled.Returns(true);
+        _spec.RandomizeSMCBinary.Returns(TestItem.AddressC);
+        _spec.BlockSignerContract.Returns(TestItem.AddressB);
+
+        Address beneficiary = TestItem.AddressB;
+        Address owner = TestItem.AddressD;
+        _stateProvider!.CreateAccount(beneficiary, AccountBalance);
+        _stateProvider.CreateAccount(owner, UInt256.Zero);
+        _masternodeVotingContract.GetCandidateOwner(Arg.Any<IWorldState>(), beneficiary).Returns(owner);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressC)
+            .WithGasPrice(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)
+            .WithGasLimit(100000)
+            .WithType(TxType.Legacy)
+            .TestObject;
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(1)
+            .WithBaseFee((UInt256)XdcBaseFeeCalculator.BaseFee)
+            .TestObject;
+        header.Beneficiary = beneficiary;
+
+        _transactionProcessor!.SetBlockExecutionContext(header);
+
+        UInt256 beneficiaryBefore = _stateProvider.GetBalance(beneficiary);
+        UInt256 ownerBefore = _stateProvider.GetBalance(owner);
+
+        _transactionProcessor.TestPayFees(tx, header, _spec, new FeesTracer(), default, 21046,
+            premiumPerGas: (UInt256)XdcBaseFeeCalculator.BaseFee,
+            tx.CalculateEffectiveGasPrice(true, header.BaseFeePerGas), UInt256.Zero, StatusCode.Success);
+
+        Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(beneficiaryBefore));
+        Assert.That(_stateProvider.GetBalance(owner), Is.EqualTo(ownerBefore));
+    }
+
+    /// <remarks>
     /// XDPoSChain waives only the EIP-1559 fee floor for the special contracts
     /// (<c>!types.IsSpecialTx(msg.To)</c> in <c>core/state_transition.go</c> <c>preCheck</c>) and still
     /// runs <c>buyGas</c>, so a client that skips the charge computes a different state root and forks.
