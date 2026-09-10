@@ -89,6 +89,14 @@ public sealed partial class JumpDestinationAnalyzer
         return analyzedUntil;
     }
 
+    /// <summary>
+    /// Marks every jump destination up to and including <paramref name="destination"/>, resuming at
+    /// <paramref name="start"/>, and returns the position the scan reached.
+    /// </summary>
+    /// <remarks>
+    /// Instruction boundaries are only known from the start of the code, so a scan can resume only where
+    /// the last one stopped; the returned position is what the caller keeps for the next query.
+    /// </remarks>
     internal static nuint ScanUntil(nuint start, int destination, long[] bitmap, ReadOnlySpan<byte> code)
         => ProcessJumpDestinationBitmap_Byte(start, bitmap, code[..(destination + 1)]);
 }

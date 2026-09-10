@@ -10,7 +10,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -54,20 +54,6 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-#if ZK_EVM
-    private long[]? _incrementalJumpBitmap;
-    private nint _analyzedUntil;
-
-    internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(Code.Length);
-
-    internal bool AnalyzeJump(int destination)
-    {
-        if (CodeSpan[destination] != (byte)Instruction.JUMPDEST) return false;
-        long[] bitmap = IncrementalJumpBitmap;
-        _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, CodeSpan);
-        return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
-    }
-#endif
     public ValueHash256 CodeHash { get; set; }
 
     /// <summary>

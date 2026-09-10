@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
@@ -378,11 +377,7 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
         (uint)jumpDestination < (uint)stack.CodeLength
-            && (JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination)
-#if ZK_EVM
-                || stack.AnalyzeJump(jumpDestination)
-#endif
-                )
+            && stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
 
