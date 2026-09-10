@@ -150,13 +150,6 @@ public sealed class PbtSnapshotBundle(
             if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
     }
 
-    internal bool HasStorage(Address address)
-    {
-        ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        foreach (KeyValuePair<PbtStorageFullKey, EvmWord> _ in EnumerateStorage(hash)) return true;
-        return false;
-    }
-
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
 
     private Account? GetAccount(in ValueHash256 addressHash)

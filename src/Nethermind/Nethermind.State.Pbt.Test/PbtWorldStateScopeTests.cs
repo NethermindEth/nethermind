@@ -23,6 +23,28 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtWorldStateScopeTests
 {
     [Test]
+    public async Task Storage_emptiness_is_unknown_and_slot_reads_work([Values] bool hasStorage)
+    {
+        await using PbtTestContext ctx = new();
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        if (hasStorage)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageWriter = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageWriter.Set(1000, Bytes.FromHexString("ab"));
+        }
+
+        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.IsKnownEmpty, Is.False);
+            Assert.That(storage.Get(1000), Is.EqualTo(hasStorage ? Bytes.FromHexString("ab") : StorageTree.ZeroBytes));
+            Assert.That(storage.Get(1001), Is.EqualTo(StorageTree.ZeroBytes));
+        }
+    }
+
+    [Test]
     public async Task Lifecycle_logging_respects_debug_level([Values] bool debugEnabled)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();

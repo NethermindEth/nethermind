@@ -11,14 +11,18 @@ using Nethermind.State.Flat.ScopeProvider;
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides a per-address storage view over the scope's unified EIP-8297 tree.</summary>
-/// <remarks>EIP-8297 has no per-account storage root; emptiness is established by the account's full-key storage prefix.</remarks>
 public sealed class PbtStorageTree(
     PbtWorldStateScope scope,
     Address address) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
     public Hash256 RootHash => Keccak.EmptyTreeHash;
 
-    public bool IsKnownEmpty => !scope.Bundle.HasStorage(address);
+    /// <inheritdoc/>
+    /// <remarks>
+    /// PBT has no per-account storage root or cheap emptiness check. Enumerating a contract's storage
+    /// here can exhaust memory, especially during parallel prewarming, so leave emptiness unknown and use slot lookups.
+    /// </remarks>
+    public bool IsKnownEmpty => false;
 
     public byte[] Get(in UInt256 index)
     {
