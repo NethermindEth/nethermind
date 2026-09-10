@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -12,6 +14,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -19,8 +23,12 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// Loader for Geth-style genesis.json files as defined in EIP-7949.
 /// Converts Geth-style genesis format to Nethermind's ChainSpec format.
 /// </summary>
-public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
+public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManager = null) : IChainSpecLoader
 {
+    private const string TransitionsKey = "transitions";
+
+    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<GethGenesisLoader>();
+
     public ChainSpec Load(Stream streamData)
     {
         try
@@ -47,7 +55,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             NetworkId = config.ChainId
         };
 
-        LoadGenesis(gethGenesisJson, config, chainSpec);
+        LoadGenesis(gethGenesisJson, config, chainSpec, _logger);
         LoadEngine(config, chainSpec);
         LoadAllocations(gethGenesisJson, chainSpec);
         LoadParameters(config, chainSpec);
@@ -58,8 +66,85 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private void LoadEngine(GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider(config);
+        chainSpec.EngineChainSpecParametersProvider = CreateBesuEngineProvider(config) ?? new GethGenesisEngineParametersProvider(config);
         chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+    }
+
+    /// <summary>
+    /// Besu keeps its consensus configuration in an engine-named object (<c>qbft</c>, <c>ibft2</c>, ...) next to the
+    /// fork blocks, with per-engine fork overrides under <c>transitions.&lt;engine&gt;</c>. Those sections are handed
+    /// to the same reflection-discovered <see cref="IChainSpecEngineParameters"/> types the Parity-style chainspec
+    /// uses, with the transitions folded into the engine object. Returns null when no known engine is present, in
+    /// which case the file is a plain Geth genesis and Ethash applies.
+    /// </summary>
+    private IChainSpecParametersProvider? CreateBesuEngineProvider(GethGenesisConfigJson config)
+    {
+        if (config.ExtensionData is null)
+        {
+            return null;
+        }
+
+        Dictionary<string, JsonElement> engines = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string key, JsonElement value) in config.ExtensionData)
+        {
+            if (value.ValueKind == JsonValueKind.Object
+                && !key.Equals(SealEngineType.Ethash, StringComparison.OrdinalIgnoreCase)
+                && !key.Equals(TransitionsKey, StringComparison.OrdinalIgnoreCase))
+            {
+                engines[key] = WithBesuTransitions(key, value, config.ExtensionData);
+            }
+        }
+
+        if (engines.Count == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new ChainSpecParametersProvider(engines, serializer);
+        }
+        catch (InvalidOperationException e)
+        {
+            // None of the sections belongs to a consensus engine this build knows; keep Geth semantics.
+            if (_logger.IsDebug) _logger.Debug($"Genesis config sections {string.Join(", ", engines.Keys)} do not describe a known consensus engine: {e.Message}");
+            return null;
+        }
+    }
+
+    private static JsonElement WithBesuTransitions(string engineName, JsonElement engine, Dictionary<string, JsonElement> extensionData)
+    {
+        if (!TryGetIgnoreCase(extensionData, TransitionsKey, out JsonElement transitions) || transitions.ValueKind != JsonValueKind.Object)
+        {
+            return engine;
+        }
+
+        foreach (JsonProperty property in transitions.EnumerateObject())
+        {
+            if (property.Name.Equals(engineName, StringComparison.OrdinalIgnoreCase))
+            {
+                JsonObject merged = JsonNode.Parse(engine.GetRawText())!.AsObject();
+                merged[TransitionsKey] = JsonNode.Parse(property.Value.GetRawText());
+                return JsonSerializer.SerializeToElement(merged);
+            }
+        }
+
+        return engine;
+    }
+
+    private static bool TryGetIgnoreCase(Dictionary<string, JsonElement> dictionary, string key, out JsonElement value)
+    {
+        foreach ((string candidate, JsonElement element) in dictionary)
+        {
+            if (candidate.Equals(key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = element;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     private void LoadParameters(GethGenesisConfigJson config, ChainSpec chainSpec)
@@ -105,8 +190,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             Eip7Transition = config.HomesteadBlock ?? 0,
 
-            // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
-            MaxCodeSize = 0x6000,
+            // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon; Besu lets a chain raise it.
+            MaxCodeSize = config.ContractSizeLimit ?? 0x6000,
             MaxCodeSizeTransition = config.Eip158Block ?? config.SpuriousDragonBlock ?? 0,
 
             Eip150Transition = config.Eip150Block ?? config.TangerineWhistleBlock ?? 0,
@@ -188,7 +273,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO5)] = new(8),
         };
 
-    private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)
+    private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec, ILogger logger)
     {
         ulong nonce = gethGenesisJson.Nonce;
         Hash256 mixHash = gethGenesisJson.MixHash ?? Keccak.Zero;
@@ -255,7 +340,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.SlotNumber = gethGenesisJson.SlotNumber ?? 0;
         }
 
-        chainSpec.Bootnodes = [];
+        chainSpec.Bootnodes = NetworkNode.ParseNodes(config.Discovery?.Bootnodes, logger);
         chainSpec.Genesis = isAmsterdamActive
             ? new Block(genesisHeader, [], [], [], new())
             : isShanghaiActive

@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -73,6 +75,19 @@ public class GethGenesisConfigJson : IHasNamedForks
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
+
+    /// <summary>Besu-only override of the EIP-170 contract code size limit in bytes.</summary>
+    public long? ContractSizeLimit { get; set; }
+
+    /// <summary>Besu-only <c>discovery</c> section carrying the network bootnodes.</summary>
+    public GethGenesisDiscoveryJson? Discovery { get; set; }
+
+    /// <summary>
+    /// Keys not modelled above. Besu puts its consensus engine sections here (<c>qbft</c>, <c>ibft2</c>, <c>clique</c>)
+    /// together with the <c>transitions</c> object that lists per-engine fork overrides.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkTimestamps => _timestamps;
