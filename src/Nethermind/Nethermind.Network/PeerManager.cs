@@ -145,7 +145,7 @@ namespace Nethermind.Network
 #pragma warning disable 4014
 
                 // TODO: hack related to not clearly separated peer pool and peer manager
-                if (CanQuickConnect(peer))
+                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id))
                 {
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
@@ -274,10 +274,7 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        if (ShouldContactPeer(peer))
-                        {
-                            await SetupOutgoingPeerConnection(peer);
-                        }
+                        await SetupOutgoingPeerConnection(peer);
                     }
                     catch (TaskCanceledException)
                     {
@@ -806,6 +803,11 @@ namespace Nethermind.Network
             bool result = false;
             try
             {
+                // Records the address in the recent-contact filter, so it has to run under the claim:
+                // a candidate refused a slot would otherwise stay suppressed for the whole filter
+                // window without ever having been dialed.
+                if (!ShouldContactPeer(peer)) return;
+
                 await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
                 // Can happen when In connection is received from the same peer and is initialized before we get here
@@ -977,15 +979,6 @@ namespace Nethermind.Network
                && _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
 
         private bool IsSelf(Peer peer) => peer.Node.Id == _enode.PublicKey;
-
-        /// <summary>
-        /// Fast-path guard for the peer-added event: checks throttle before the IP filter
-        /// so a throttled no-op does not consume a filter entry and block the peer for the full timeout window.
-        /// </summary>
-        private bool CanQuickConnect(Peer peer)
-            => !_nodesBeingAdded.ContainsKey(peer.Node.Id)
-               && !_outgoingConnectionRateLimiter.IsThrottled()
-               && ShouldContactPeer(peer);
 
         private bool CanConnectToPeer(Peer peer)
         {

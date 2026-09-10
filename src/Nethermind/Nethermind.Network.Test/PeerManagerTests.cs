@@ -246,48 +246,63 @@ namespace Nethermind.Network.Test
             Node contested = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 30303);
             ctx.PeerPool.ActivePeers[contested.Id] = new Peer(contested);
             ctx.PeerPool.GetOrAdd(contested);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "an already active node was dialled again");
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "an already active node was dialed again");
 
             ctx.PeerPool.GetOrAdd(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.5", 30303));
 
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "the claim was not released, so the freed slot is unusable");
         }
 
+        /// <remarks>
+        /// Contacting a candidate spends an entry in the production recent-IP filter, which then suppresses
+        /// it for five minutes. A candidate that loses the last slot before it can claim one was never
+        /// dialed, so it must not pay that price - it is offered again as soon as capacity returns, and that
+        /// offer has to reach the dial.
+        /// </remarks>
         [Test]
-        public async Task Will_not_dial_when_the_slots_fill_between_the_check_and_the_claim()
+        public async Task Will_not_consume_the_contact_filter_when_the_slot_is_lost_before_the_claim()
         {
             const int maxActivePeers = 3;
 
             await using Context ctx = new(maxActivePeers: maxActivePeers);
-            ctx.PeerManager.Start();
+            ctx.RlpxPeer.UseRecentIpFilter();
 
-            Node first = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 30303);
-            Node refused = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.5", 30303);
+            // Port 0 keeps the candidate out of the update loop's selection, leaving the peer-added fast
+            // path as the only way it is dialed - which is what makes the interleaving below reproducible.
+            Node refused = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.1", 0);
 
-            // Both dial paths check for a free slot before ShouldContact and claim one after it, so
-            // filling the slots from here lands inside the window the claim has to close.
+            // CanConnectToPeer is the only step between the free-slot check and the claim, so taking the
+            // slots from its stats lookup lands the candidate inside the window the claim has to close.
             bool filled = false;
-            ctx.RlpxPeer.OnShouldContact = ip =>
+            ctx.Stats = ForwardingStats(ctx.Stats, node =>
             {
-                if (!ip.Equals(refused.Address.Address)) return;
+                if (filled || node.Id != refused.Id) return;
 
                 PrivateKeyGenerator keyGenerator = new();
                 while (ctx.PeerPool.ActivePeers.Count < maxActivePeers)
                 {
                     PublicKey key = keyGenerator.Generate().PublicKey;
-                    ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.6", 30303));
+                    ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "203.0.113.2", 30303));
                 }
 
                 filled = true;
-            };
-
-            ctx.PeerPool.GetOrAdd(first);
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
+            });
+            ctx.CreatePeerManager();
+            ctx.PeerManager.Start();
 
             ctx.PeerPool.GetOrAdd(refused);
 
             Assert.That(filled, Is.True, "the candidate never reached the claim");
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "dialled with no slot left");
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "dialed with no slot left");
+            Assert.That(ctx.RlpxPeer.ContactedIps, Is.Empty, "a filter entry was spent on a dial that never happened");
+
+            // Capacity is back, so the retry has to get through - a spent entry would hold it off for the
+            // next five minutes.
+            ctx.PeerPool.ActivePeers.Clear();
+            ctx.PeerPool.TryRemove(refused.Id, out _);
+            ctx.PeerPool.GetOrAdd(refused);
+
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "the refused candidate stayed suppressed");
         }
 
         [Test]
@@ -901,6 +916,27 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_delay, 10));
         }
 
+        /// <summary>
+        /// A stats manager that answers from <paramref name="inner"/> and runs <paramref name="onNodeChecked"/>
+        /// on every compatibility lookup, the one the dial fast path makes per candidate.
+        /// </summary>
+        private static INodeStatsManager ForwardingStats(INodeStatsManager inner, Action<Node> onNodeChecked)
+        {
+            INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+            stats.GetOrAdd(Arg.Any<Node>()).Returns(call => inner.GetOrAdd(call.Arg<Node>()));
+            stats.GetCurrentReputation(Arg.Any<Node>()).Returns(call => inner.GetCurrentReputation(call.Arg<Node>()));
+            stats.IsConnectionDelayed(Arg.Any<Node>()).Returns(call => inner.IsConnectionDelayed(call.Arg<Node>()));
+            stats.HasFailedValidation(Arg.Any<Node>()).Returns(call => inner.HasFailedValidation(call.Arg<Node>()));
+            stats.FindCompatibilityValidationResult(Arg.Any<Node>()).Returns(call =>
+            {
+                Node node = call.Arg<Node>();
+                onNodeChecked(node);
+                return inner.FindCompatibilityValidationResult(node);
+            });
+
+            return stats;
+        }
+
         private class Context : IAsyncDisposable
         {
             public RlpxMock RlpxPeer { get; }
@@ -1055,6 +1091,7 @@ namespace Nethermind.Network.Test
         private class RlpxMock(List<Session> sessions) : IRlpxHost
         {
             private readonly List<Session> _sessions = sessions;
+            private NodeFilter _nodeFilter = NodeFilter.AcceptAll;
             private int _connectAsyncCallsCount;
 
             public ISessionMonitor SessionMonitor { get; }
@@ -1158,11 +1195,17 @@ namespace Nethermind.Network.Test
 
             public void MakeItFail() => _isFailing = true;
 
-            public Action<IPAddress>? OnShouldContact { get; set; }
+            /// <summary>Addresses accepted for contact, that is, the ones that spent a filter entry.</summary>
+            public ConcurrentBag<IPAddress> ContactedIps { get; } = [];
+
+            /// <summary>Replaces the accept-everything default with the production recent-IP filter.</summary>
+            public void UseRecentIpFilter() => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: TimeSpan.FromMinutes(5));
 
             public bool ShouldContact(IPAddress ip, bool exactOnly = false)
             {
-                OnShouldContact?.Invoke(ip);
+                if (!_nodeFilter.TryAccept(ip, exactOnly)) return false;
+
+                ContactedIps.Add(ip);
                 return true;
             }
 
