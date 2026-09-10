@@ -211,17 +211,21 @@ internal static partial class TrieUpdater<TKey, TPath>
                 int prefixStart = current.Path!.BitDepth;
                 branchDepth = Math.Min(branchDepth, prefixStart + MatchingPrefixBits(current.Prefix, current.PrefixBitCount, firstKey, prefixStart));
             }
+            // Integer floor to the preceding or equal group boundary.
             int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
             // This is the shared-prefix path: both the mutations and existing subtree fit below one slot
             // of this group, so skip ahead. If branching occurs within this group, groupDepth == bitDepth
             // even when branchDepth is a few bits deeper; fold the current group below instead.
-            if (groupDepth != bitDepth)
+            if (groupDepth > bitDepth)
             {
                 // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
                 return FoldMutations(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, groupDepth, partition.Plan.ForChild());
             }
 
-            // Reuse the owner frame when traversal has reached its group; its caller will flush the accumulated output.
+            // True when the requested group is already open (e.g. the root call at bitDepth 0): reuse its frame.
+            // A child call advances bitDepth by four but receives the parent's reader, since its boundary node
+            // is stored in that parent group. Then this is false, as it is after a deeper prefix jump;
+            // open the descendant group below. The code that opened each frame is responsible for flushing it.
             if (ownerReader.BitDepth == bitDepth)
                 return FoldBoundaryFromPartition(store, metrics, ref ownerReader, ownerWriter, memoryProvider, ref current, operations, bitDepth, partition);
 
