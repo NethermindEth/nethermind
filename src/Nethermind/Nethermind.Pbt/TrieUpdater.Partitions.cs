@@ -222,12 +222,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
-        int depth,
+        int bitDepth,
         BucketPlan plan)
     {
-        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, depth)];
-        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, depth, metrics);
-        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, depth, partition);
+        Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
+        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
+        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
     }
 
     private static Subtree FoldBoundaryFromPartition(
@@ -238,14 +238,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
-        int depth,
+        int bitDepth,
         PartitionOutcome partition)
     {
         RefList16<Subtree> boundaryBuffer = new(PbtFourLevelGroupGeometry.BoundarySlots);
         Span<Subtree> boundaries = boundaryBuffer.AsSpan();
         try
         {
-            Decompose(ref reader, writer, ref current, depth, boundaries);
+            Decompose(ref reader, writer, ref current, bitDepth, boundaries);
 
             int offset = 0;
             int countIndex = 0;
@@ -256,7 +256,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 Span<PbtWriteOperation<TKey>> bucket = operations.Slice(offset, count);
                 offset += count;
                 boundaries[slot] = FoldMutations(
-                    store, metrics, ref reader, writer, memoryProvider, ref boundaries[slot], bucket, depth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
+                    store, metrics, ref reader, writer, memoryProvider, ref boundaries[slot], bucket, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
             }
 
             return Compose(ref reader, writer, metrics, boundaries, partition.UsedMask);

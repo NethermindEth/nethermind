@@ -107,13 +107,13 @@ public class Eip8297CanonicalTreeTests
         using PbtWriteBatch<PbtStorageFullKey> first = builder.Build();
         using PbtWriteBatch<PbtStorageFullKey> second = builder.Build();
         BucketPlan plan = first.Plan;
-        int depth = shardNibbleIndex * 4;
-        byte[] buffer = new byte[plan.GetBufferSize(first.Count, depth)];
-        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(first.Entries.ToArray().AsSpan(), depth, null);
+        int bitDepth = shardNibbleIndex * 4;
+        byte[] buffer = new byte[plan.GetBufferSize(first.Count, bitDepth)];
+        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(first.Entries.ToArray().AsSpan(), bitDepth, null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(plan.Precalculated.Length, Is.EqualTo(17));
-            Assert.That(plan.KnownCommonPrefixLength, Is.EqualTo(depth));
+            Assert.That(plan.KnownCommonPrefixLength, Is.EqualTo(bitDepth));
             Assert.That(plan.IsSorted, Is.False);
             Assert.That(plan.PrefixesValidated, Is.False);
             Assert.That(plan.Precalculated[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
@@ -1286,11 +1286,11 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    private static void AssertPreparedLevel<TKey>(ReadOnlySpan<PbtWriteOperation<TKey>> entries, ReadOnlySpan<int> table, int depth) where TKey : struct, IPbtKey<TKey>
+    private static void AssertPreparedLevel<TKey>(ReadOnlySpan<PbtWriteOperation<TKey>> entries, ReadOnlySpan<int> table, int bitDepth) where TKey : struct, IPbtKey<TKey>
     {
         Assert.That(table.Length, Is.EqualTo(17));
         int[] counts = new int[16];
-        foreach (PbtWriteOperation<TKey> entry in entries) counts[(entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15]++;
+        foreach (PbtWriteOperation<TKey> entry in entries) counts[(entry.Key.Bytes[bitDepth / 8] >> (4 - bitDepth % 8)) & 15]++;
         int expectedMask = 0;
         int countIndex = 1;
         int offset = 0;
@@ -1301,7 +1301,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(table[countIndex++], Is.EqualTo(counts[slot]));
             ReadOnlySpan<PbtWriteOperation<TKey>> bucket = entries.Slice(offset, counts[slot]);
             foreach (PbtWriteOperation<TKey> entry in bucket)
-                Assert.That((entry.Key.Bytes[depth / 8] >> (4 - depth % 8)) & 15, Is.EqualTo(slot));
+                Assert.That((entry.Key.Bytes[bitDepth / 8] >> (4 - bitDepth % 8)) & 15, Is.EqualTo(slot));
             offset += counts[slot];
         }
         using (Assert.EnterMultipleScope())
@@ -1338,7 +1338,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Single_bucket_prefix_is_reused_across_sort_levels(
         [Values(2, 3, 16, 17, 33)] int count,
-        [Values(0, 4)] int depth,
+        [Values(0, 4)] int bitDepth,
         [Values(false, true)] bool sorted)
     {
         PbtWriteOperation<PbtStorageFullKey>[] operations = new PbtWriteOperation<PbtStorageFullKey>[count];
@@ -1349,9 +1349,9 @@ public class Eip8297CanonicalTreeTests
             operations[index] = PbtWriteOperation<PbtStorageFullKey>.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
         }
         TrieUpdaterMetrics metrics = new();
-        BucketPlan plan = new(default, depth, sorted, false);
-        byte[] buffer = new byte[plan.GetBufferSize(count, depth)];
-        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(operations, depth, metrics);
+        BucketPlan plan = new(default, bitDepth, sorted, false);
+        byte[] buffer = new byte[plan.GetBufferSize(count, bitDepth)];
+        TrieUpdater.PartitionOutcome outcome = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
         int branchDepth = operations[0].Key.BitLength;
         foreach (PbtWriteOperation<PbtStorageFullKey> operation in operations)
             branchDepth = Math.Min(branchDepth, operations[0].Key.FirstDifferingBit(operation.Key));
@@ -1360,7 +1360,7 @@ public class Eip8297CanonicalTreeTests
         int sorts = metrics.FullKeySorts;
         int synthesized = 0;
         Assert.That(outcome.Plan.KnownCommonPrefixLength, Is.EqualTo(branchDepth));
-        for (int childDepth = depth + 4; childDepth + 4 <= branchDepth; childDepth += 4)
+        for (int childDepth = bitDepth + 4; childDepth + 4 <= branchDepth; childDepth += 4)
         {
             plan = outcome.Plan.ForChild();
             buffer = new byte[plan.GetBufferSize(count, childDepth)];
