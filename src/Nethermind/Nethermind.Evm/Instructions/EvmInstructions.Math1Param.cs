@@ -222,7 +222,8 @@ public static partial class EvmInstructions
         ulong position = index;
         if ((Add(ref index, 1) | Add(ref index, 2) | Add(ref index, 3)) != 0 || position >= EvmStack.WordSize - 1)
         {
-            // If the index is out-of-range, no extension is needed.
+            // Nothing to do: an index past the word extends nothing, and the last byte in it has no
+            // byte above to fill, so extending from there leaves the value as it is.
             return EvmExceptionType.None;
         }
         // The sign byte is read out of its limb, and the limb is extended in place with an

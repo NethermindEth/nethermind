@@ -92,6 +92,8 @@ public ref partial struct EvmStack
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
     /// callers must check with <see cref="Unsafe.IsNullRef{T}"/> before writing.
     /// </summary>
+    /// <remarks>The slot holds a word in the <see cref="UInt256"/> limb layout, so a caller writing
+    /// big-endian bytes has to reverse them, as <see cref="PushBytes{TTracingInst}"/> does.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref byte PushBytesRef()
     {
@@ -211,7 +213,8 @@ public ref partial struct EvmStack
     /// Writes the slot at <paramref name="slot"/> to <paramref name="word"/> reversed into big-endian
     /// bytes, which is how tracers and their converters read a stack.
     /// </summary>
-    public static void WriteBigEndianWord(ReadOnlySpan<byte> slot, Span<byte> word)
+    /// <remarks>The write is a whole 32-byte word and is not bounds-checked, so both spans must hold one.</remarks>
+    internal static void WriteBigEndianWord(ReadOnlySpan<byte> slot, Span<byte> word)
     {
         Debug.Assert(slot.Length >= WordSize && word.Length >= WordSize, "Both sides hold a whole word.");
         Unsafe.WriteUnaligned(
@@ -220,8 +223,10 @@ public ref partial struct EvmStack
     }
 
     /// <summary><inheritdoc cref="WriteBigEndianWord" path="/summary"/> for every whole slot in <paramref name="slots"/>.</summary>
-    public static void WriteBigEndianWords(ReadOnlySpan<byte> slots, Span<byte> words)
+    /// <remarks><inheritdoc cref="WriteBigEndianWord" path="/remarks"/></remarks>
+    internal static void WriteBigEndianWords(ReadOnlySpan<byte> slots, Span<byte> words)
     {
+        Debug.Assert(words.Length >= slots.Length, "The destination holds every slot the source does.");
         for (int offset = 0; offset + WordSize <= slots.Length; offset += WordSize)
         {
             WriteBigEndianWord(slots.Slice(offset), words.Slice(offset));
@@ -1917,6 +1922,8 @@ public ref partial struct EvmStack
     /// this overload throws <see cref="EvmStackUnderflowException"/> on underflow rather than
     /// signalling via return value.
     /// </summary>
+    /// <remarks>The span views the popped slot, which is reversed in place to big-endian bytes to
+    /// produce it; the next push over that slot overwrites them.</remarks>
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();
@@ -2007,6 +2014,10 @@ public ref partial struct EvmStack
         return true;
     }
 
+    /// <summary>Pops a 32-byte word from the stack.</summary>
+    /// <remarks><inheritdoc cref="PopWord256()" path="/remarks"/></remarks>
+    /// <param name="word">The popped word, big-endian.</param>
+    /// <returns><see langword="false"/> on stack underflow.</returns>
     [SkipLocalsInit]
     public bool PopWord256(out Span<byte> word)
     {
