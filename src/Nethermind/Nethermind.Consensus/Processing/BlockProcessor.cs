@@ -163,7 +163,11 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts;
+        using (MetricsTimer<ProcessTransactionsTimeSink> _ = new())
+        {
+            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -350,6 +354,12 @@ public partial class BlockProcessor(
             Evm.Metrics.IncrementStateHashTime(ticks);
             Evm.Metrics.IncrementStateRootTime(ticks);
         }
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
+    }
+
+    private readonly struct ProcessTransactionsTimeSink : IMetricSink
+    {
+        public static void AddTicks(long ticks) => Evm.Metrics.IncrementProcessTransactionsTime(ticks);
         public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
 

@@ -102,6 +102,7 @@ namespace Nethermind.Consensus.Processing
         private long _startEip7702DelegationsCleared;
         private long _startStorageMerkleTime;
         private long _startStateRootTime;
+        private long _startProcessTransactionsTime;
         private long _startBloomsTime;
         private long _startReceiptsRootTime;
         private double _chunkMGas;
@@ -177,6 +178,11 @@ namespace Nethermind.Consensus.Processing
             _startSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
             _startOpCodes = Evm.Metrics.MainThreadOpCodes;
 
+            // Phase timers backing the always-on per-block histograms (execution vs state root vs storage merkle).
+            _startProcessTransactionsTime = Evm.Metrics.MainThreadProcessTransactionsTime;
+            _startStorageMerkleTime = Evm.Metrics.MainThreadStorageMerkleTime;
+            _startStateRootTime = Evm.Metrics.MainThreadStateRootTime;
+
             // Slow block diagnostics — skip when disabled (-1)
             if (_slowBlockThresholdMs < 0) return;
 
@@ -211,8 +217,6 @@ namespace Nethermind.Consensus.Processing
             _startCodeCacheMisses = Evm.Metrics.MainThreadCodeReads;
             _startEip7702DelegationsSet = Evm.Metrics.MainThreadEip7702DelegationsSet;
             _startEip7702DelegationsCleared = Evm.Metrics.MainThreadEip7702DelegationsCleared;
-            _startStorageMerkleTime = Evm.Metrics.MainThreadStorageMerkleTime;
-            _startStateRootTime = Evm.Metrics.MainThreadStateRootTime;
             _startBloomsTime = Evm.Metrics.MainThreadBloomsTime;
             _startReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime;
         }
@@ -267,6 +271,11 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
 
+            // Phase deltas backing the always-on per-block histograms (execution vs state root vs storage merkle).
+            blockData.DeltaProcessTransactionsTime = Evm.Metrics.MainThreadProcessTransactionsTime - _startProcessTransactionsTime;
+            blockData.DeltaStorageMerkleTime = Evm.Metrics.MainThreadStorageMerkleTime - _startStorageMerkleTime;
+            blockData.DeltaStateRootTime = Evm.Metrics.MainThreadStateRootTime - _startStateRootTime;
+
             // Pre-compute deltas for slow block logging (done here on the block-processing thread)
             // Skip entirely when slow block logging is disabled (-1)
             if (_slowBlockThresholdMs >= 0)
@@ -295,8 +304,6 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaCodeBytesRead = Evm.Metrics.MainThreadCodeBytesRead - _startCodeBytesRead;
                 blockData.DeltaEip7702DelegationsSet = Evm.Metrics.MainThreadEip7702DelegationsSet - _startEip7702DelegationsSet;
                 blockData.DeltaEip7702DelegationsCleared = Evm.Metrics.MainThreadEip7702DelegationsCleared - _startEip7702DelegationsCleared;
-                blockData.DeltaStorageMerkleTime = Evm.Metrics.MainThreadStorageMerkleTime - _startStorageMerkleTime;
-                blockData.DeltaStateRootTime = Evm.Metrics.MainThreadStateRootTime - _startStateRootTime;
                 blockData.DeltaBloomsTime = Evm.Metrics.MainThreadBloomsTime - _startBloomsTime;
                 blockData.DeltaReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime - _startReceiptsRootTime;
 
@@ -357,6 +364,9 @@ namespace Nethermind.Consensus.Processing
             double mgasPerSec = timeSec > 0 ? mgas / timeSec : 0;
             Metrics.BlockMGasPerSec.Observe(mgasPerSec);
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+            Metrics.BlockExecutionTimeMicros.Observe(data.DeltaProcessTransactionsTime / (double)TimeSpan.TicksPerMicrosecond);
+            Metrics.BlockStateRootTimeMicros.Observe(data.DeltaStateRootTime / (double)TimeSpan.TicksPerMicrosecond);
+            Metrics.BlockStorageMerkleTimeMicros.Observe(data.DeltaStorageMerkleTime / (double)TimeSpan.TicksPerMicrosecond);
 
             // Log slow blocks in JSON format for cross-client performance analysis
             // Only log when slow block threshold is enabled (>= 0)
@@ -897,6 +907,7 @@ namespace Nethermind.Consensus.Processing
                 data.DeltaEip7702DelegationsCleared = 0;
                 data.DeltaStorageMerkleTime = 0;
                 data.DeltaStateRootTime = 0;
+                data.DeltaProcessTransactionsTime = 0;
                 data.DeltaBloomsTime = 0;
                 data.DeltaReceiptsRootTime = 0;
 
@@ -961,6 +972,7 @@ namespace Nethermind.Consensus.Processing
             public long DeltaEip7702DelegationsCleared;
             public long DeltaStorageMerkleTime;
             public long DeltaStateRootTime;
+            public long DeltaProcessTransactionsTime;
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
             public ArrayPoolList<long>? PerTxTicks;

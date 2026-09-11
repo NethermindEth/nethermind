@@ -114,4 +114,19 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
     [Description("Histogram of block processing time")]
     public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
+    [Description("Histogram of per-block transaction execution time (block executor stage, microseconds, main thread)")]
+    public static IMetricObserver BlockExecutionTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
+    [Description("Histogram of per-block state root recalculation time (microseconds, main thread)")]
+    public static IMetricObserver BlockStateRootTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
+    [Description("Histogram of per-block storage trie merkleization time (microseconds, main thread)")]
+    public static IMetricObserver BlockStorageMerkleTimeMicros { get; set; } = new NoopMetricObserver();
 }

@@ -318,6 +318,18 @@ public partial class Metrics
         Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateRootTime.Value : ref _otherStateRootTime.Value, ticks);
     }
 
+    [Description("Time spent processing transactions — the block executor stage (ticks). In the parallel BAL path this includes the concurrently-computed state root; in the non-BAL path it is execution only.")]
+    public static long ProcessTransactionsTime => _mainProcessTransactionsTime.Value + _otherProcessTransactionsTime.Value;
+    private static CacheLinePaddedLong _mainProcessTransactionsTime;
+    private static CacheLinePaddedLong _otherProcessTransactionsTime;
+    internal static long MainThreadProcessTransactionsTime => _mainProcessTransactionsTime.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementProcessTransactionsTime(long ticks)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainProcessTransactionsTime.Value : ref _otherProcessTransactionsTime.Value, ticks);
+    }
+
     [Description("Time spent calculating bloom filters (ticks).")]
     public static long BloomsTime => _mainBloomsTime.Value + _otherBloomsTime.Value;
     private static CacheLinePaddedLong _mainBloomsTime;
