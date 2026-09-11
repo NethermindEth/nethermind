@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Ethash
             uint startEpoch = (uint)(start / Ethash.EpochLength);
             uint endEpoch = (uint)(end / Ethash.EpochLength);
 
-            if (endEpoch - startEpoch > 10)
+            if (endEpoch < startEpoch || endEpoch - startEpoch > 10)
             {
                 throw new InvalidOperationException("Hint too wide");
             }
@@ -86,7 +86,9 @@ namespace Nethermind.Consensus.Ethash
 
             if (currentMin > startEpoch || currentMax < endEpoch)
             {
-                for (uint i = startEpoch; i <= endEpoch; i++)
+                // Widened counter: an inclusive `uint` loop never terminates when endEpoch is uint.MaxValue,
+                // which a peer-selected block number can produce via the truncating cast above.
+                for (ulong i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint)i;
                     if (epochForGuid.Add(epoch))
