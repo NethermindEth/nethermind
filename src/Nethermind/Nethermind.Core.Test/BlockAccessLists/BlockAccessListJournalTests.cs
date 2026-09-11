@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -22,7 +23,8 @@ public class BlockAccessListJournalTests
 {
     [Test]
     public void Coverage_reduces_workers_and_checks_partial_words(
-        [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast, [Values] bool wideKeys)
+        [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast, [Values] bool wideKeys,
+        [Values(1, 2, 8)] int workerCount)
     {
         UInt256[] slots = new UInt256[count];
         for (int i = 0; i < count; i++)
@@ -30,17 +32,20 @@ public class BlockAccessListJournalTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject).TestObject;
         using BalReadStoragePlan plan = new(bal);
-        BalReadCoverage[] workers = [plan.CreateCoverage(), plan.CreateCoverage()];
+        BalReadCoverage[] workers = new BalReadCoverage[workerCount];
+        for (int i = 0; i < workers.Length; i++) workers[i] = plan.CreateCoverage();
         int marked = omitLast ? Math.Max(0, count - 1) : count;
         for (int i = 0; i < marked; i++)
         {
             StorageCell cell = new(TestItem.AddressA, slots[i]);
-            workers[i % 2].TryMark(cell);
-            workers[i % 2].TryMark(cell);
+            workers[i % workerCount].TryMark(cell);
+            workers[i % workerCount].TryMark(cell);
         }
+        ulong chargeableReads = 0;
+        foreach (BalReadCoverage worker in workers) chargeableReads += worker.ChargeableReadCount;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(workers[0].ChargeableReadCount + workers[1].ChargeableReadCount, Is.EqualTo((ulong)marked));
+            Assert.That(chargeableReads, Is.EqualTo((ulong)marked));
             Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
         }
     }
@@ -77,6 +82,66 @@ public class BlockAccessListJournalTests
         Assert.That(plan.TryFindUncovered(out _), Is.False);
         plan.Dispose();
         Assert.Throws<ObjectDisposedException>(() => worker.TryMark(last));
+        Assert.Throws<ObjectDisposedException>(() => plan.TryGetOrdinal(last, out _));
+    }
+
+    [Test]
+    public void Coverage_clears_dirty_rentals_and_ignores_excess_capacity([Values(65, 513)] int count)
+    {
+        UInt256[] slots = new UInt256[count];
+        for (int i = 0; i < count; i++) slots[i] = (UInt256)i;
+        using BalReadStoragePlan plan = new(Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject).TestObject);
+        DirtyCoveragePool pool = new();
+        BalReadCoverage worker = new(plan, pool);
+        try
+        {
+            Assert.That(worker.FirstUncovered(), Is.Zero);
+            for (int i = 0; i < count - 1; i++) worker.TryMark(new StorageCell(TestItem.AddressA, slots[i]));
+            Assert.That(worker.FirstUncovered(), Is.EqualTo(count - 1));
+            StorageCell last = new(TestItem.AddressA, slots[^1]);
+            worker.TryMark(last);
+            Assert.That(worker.FirstUncovered(), Is.EqualTo(-1));
+            worker.StartSlice();
+            worker.TryMark(last);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+                Assert.That(worker.FirstUncovered(), Is.EqualTo(-1));
+            }
+        }
+        finally
+        {
+            worker.Release();
+        }
+        worker.Release();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.Returns, Is.EqualTo(1));
+            Assert.That(pool.Buffer, Is.All.Zero);
+            Assert.That(worker.Plan, Is.Null);
+        }
+        Assert.Throws<ObjectDisposedException>(() => worker.TryMark(new StorageCell(TestItem.AddressA, slots[^1])));
+    }
+
+    private sealed class DirtyCoveragePool : ArrayPool<ulong>
+    {
+        public ulong[] Buffer { get; private set; } = [];
+        public int Returns { get; private set; }
+
+        public override ulong[] Rent(int minimumLength)
+        {
+            Buffer = new ulong[minimumLength + 7];
+            Array.Fill(Buffer, ulong.MaxValue);
+            return Buffer;
+        }
+
+        public override void Return(ulong[] array, bool clearArray = false)
+        {
+            Assert.That(array, Is.SameAs(Buffer));
+            Returns++;
+            if (clearArray) Array.Clear(array);
+        }
     }
 
     private static readonly Address[] SystemAddresses =

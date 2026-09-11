@@ -396,6 +396,8 @@ public partial class BlockAccessListManager
         };
 
         if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
+        // EIP-7928: coverage rejects unused declared reads; BlockAccessListBasedWorldState.Get/GetOriginal
+        // reject undeclared storage accesses, while incremental validation checks the write lanes.
         if (_readPlan?.TryFindUncovered(out Address? uncovered) == true)
             throw new InvalidBlockLevelAccessListException(block.Header, $"storage_reads mismatch for {uncovered}.");
     }

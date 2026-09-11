@@ -15,6 +15,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -54,7 +55,8 @@ namespace Nethermind.Blockchain.Test;
 public class BlockProcessorTests
 {
     [Test]
-    public void Read_coverage_validates_system_slices_and_preserves_read_budget([Values] bool omitRead, [Values] bool revertWrite)
+    public void Read_coverage_validates_system_slices_and_preserves_read_budget(
+        [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
     {
         List<TracedAccessWorldState> workers = [];
         using IContainer container = new ContainerBuilder()
@@ -81,31 +83,83 @@ public class BlockProcessorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2)
                 .WithStorageChanges(3, new StorageChange(1, 7u)).TestObject).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
-        PrepareSetup(manager, block, Amsterdam.Instance);
-        Assert.That(manager.ParallelExecutionEnabled, Is.True);
-        manager.GetTxProcessor(0);
-        TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
-        Assert.That(pre.ReadCoverage, Is.Not.Null);
-        pre.Get(new StorageCell(TestItem.AddressA, 1));
-        pre.Get(new StorageCell(TestItem.AddressA, 3));
-        if (revertWrite)
+        BalReadCoverage? previousCoverage = null;
+        Dictionary<TracedAccessWorldState, (BalReadCoverage Coverage, int Block)> previousWorkers = [];
+        bool reusedWorkerInBlock = false;
+        for (int blockNumber = 1; blockNumber <= blockCount; blockNumber++)
         {
-            Snapshot snapshot = pre.TakeSnapshot();
-            pre.Set(new StorageCell(TestItem.AddressA, 1), [99]);
-            pre.Restore(snapshot);
+            reusedWorkerInBlock = false;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
+            PrepareSetup(manager, block, Amsterdam.Instance);
+            if (previousCoverage is not null) Assert.That(previousCoverage.Plan, Is.Null);
+            Assert.That(manager.ParallelExecutionEnabled, Is.True);
+            manager.GetTxProcessor(0);
+            TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(pre, blockNumber);
+            previousCoverage = pre.ReadCoverage;
+            pre.Get(new StorageCell(TestItem.AddressA, 1));
+            pre.Get(new StorageCell(TestItem.AddressA, 3));
+            if (revertWrite)
+            {
+                Snapshot snapshot = pre.TakeSnapshot();
+                pre.Set(new StorageCell(TestItem.AddressA, 1), [99]);
+                pre.Restore(snapshot);
+            }
+            manager.NextTransaction();
+            // A read of a slot written later still pays for a surplus declared read at this index.
+            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0));
+            manager.GetTxProcessor(uint.MaxValue);
+            TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(post, blockNumber);
+            post.Set(new StorageCell(TestItem.AddressA, 3), [7]);
+            bool skipRead = omitRead && blockNumber == blockCount;
+            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2));
+            if (skipRead)
+                Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
+            else
+                Assert.DoesNotThrow(() => manager.SetBlockAccessList(block));
+
+            if (blockNumber < blockCount)
+            {
+                state.Commit(Amsterdam.Instance);
+                state.CommitTree((ulong)blockNumber);
+            }
         }
-        manager.NextTransaction();
-        // A read of a slot written later still pays for a surplus declared read at this index.
-        Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0));
-        manager.GetTxProcessor(uint.MaxValue);
-        TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
-        post.Set(new StorageCell(TestItem.AddressA, 3), [7]);
-        if (!omitRead) post.Get(new StorageCell(TestItem.AddressA, 2));
-        if (omitRead)
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
-        else
-            Assert.DoesNotThrow(() => manager.SetBlockAccessList(block));
+
+        if (blockCount > RuntimeInformation.ProcessorCount)
+            Assert.That(reusedWorkerInBlock, Is.True, "The final block must reuse a worker from an earlier block.");
+
+        Block disabledBlock = Build.A.Block.WithNumber(blockCount + 1).TestObject;
+        manager.PrepareForProcessing(disabledBlock, Prague.Instance, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.Enabled, Is.False);
+            Assert.That(previousCoverage!.Plan, Is.Null);
+        }
+
+        void CheckWorkerCoverage(TracedAccessWorldState worker, int blockNumber)
+        {
+            Assert.That(worker.ReadCoverage, Is.Not.Null);
+            if (previousWorkers.TryGetValue(worker, out (BalReadCoverage Coverage, int Block) previous)
+                && previous.Block < blockNumber)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(worker.ReadCoverage, Is.Not.SameAs(previous.Coverage));
+                    Assert.That(previous.Coverage.Plan, Is.Null);
+                }
+                reusedWorkerInBlock = true;
+            }
+            previousWorkers[worker] = (worker.ReadCoverage!, blockNumber);
+        }
+    }
+
+    private static IEnumerable<int> ReadCoverageBlockCounts()
+    {
+        yield return 1;
+        yield return 2;
+        if (RuntimeInformation.ProcessorCount > 1)
+            yield return RuntimeInformation.ProcessorCount + 1;
     }
 
     [Test]

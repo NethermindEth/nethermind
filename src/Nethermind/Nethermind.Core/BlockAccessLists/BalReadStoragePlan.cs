@@ -50,6 +50,7 @@ public sealed class BalReadStoragePlan : IDisposable
     /// <summary>Finds a declared read's ordinal; write slots are not in this index.</summary>
     public bool TryGetOrdinal(in StorageCell cell, out int ordinal)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_accounts.TryGetValue(cell.Address, out (ReadOnlyAccountChanges Account, int Start) entry))
         {
             int local = entry.Account.StorageReads.AsSpan().BinarySearch(cell.Index);
@@ -83,7 +84,7 @@ public sealed class BalReadStoragePlan : IDisposable
             if (combined is null) combined = worker;
             else combined.Absorb(worker);
         }
-        int missing = combined?.FirstUncovered(TotalReads) ?? (TotalReads == 0 ? -1 : 0);
+        int missing = combined?.FirstUncovered() ?? (TotalReads == 0 ? -1 : 0);
         int end = 0;
         foreach (ReadOnlyAccountChanges account in _bal.AccountChanges)
         {
@@ -104,7 +105,6 @@ public sealed class BalReadStoragePlan : IDisposable
         if (_disposed) return;
         _disposed = true;
         while (_workers.TryDequeue(out BalReadCoverage? worker)) worker.Release();
-        _accounts.Clear();
         _chargeableReads = [];
     }
 }
