@@ -35,7 +35,7 @@ public sealed partial class JumpDestinationAnalyzer
     /// indexed form is the faster one on x64, hence the split.
     /// </remarks>
     [SkipLocalsInit]
-    private static unsafe void ProcessJumpDestinationBitmap_Byte(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
+    private static unsafe nuint ProcessJumpDestinationBitmap_Byte(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
     {
         long currentFlags = 0;
         nuint flagsPosition = 0;
@@ -46,6 +46,7 @@ public sealed partial class JumpDestinationAnalyzer
         // an unmanaged pointer: the same overshoot on a `ref byte` is a managed pointer outside its
         // object, which a relocating GC may adjust wrongly even though it is only ever compared - and
         // the differential tests run this scan on CoreCLR, whose GC does relocate.
+        nuint analyzedUntil;
         fixed (byte* codeStart = code)
         {
             byte* position = codeStart + programCounter;
@@ -78,11 +79,24 @@ public sealed partial class JumpDestinationAnalyzer
 
                 position++;
             }
+            analyzedUntil = (nuint)(position - codeStart);
         }
 
         if (currentFlags != 0)
         {
             MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
         }
+        return analyzedUntil;
     }
+
+    /// <summary>
+    /// Marks every jump destination up to and including <paramref name="destination"/>, resuming at
+    /// <paramref name="start"/>, and returns the position the scan reached.
+    /// </summary>
+    /// <remarks>
+    /// Instruction boundaries are only known from the start of the code, so a scan can resume only where
+    /// the last one stopped; the returned position is what the caller keeps for the next query.
+    /// </remarks>
+    internal static nuint ScanUntil(nuint start, int destination, long[] bitmap, ReadOnlySpan<byte> code)
+        => ProcessJumpDestinationBitmap_Byte(start, bitmap, code[..(destination + 1)]);
 }

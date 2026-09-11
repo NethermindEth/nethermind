@@ -308,7 +308,7 @@ internal static partial class RlpHelpers
         => throw new RlpException($"Non-canonical integer at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
-    public static ulong ThrowNonceTooWide(int position)
+    public static int ThrowNonceTooWide(int position)
         => throw new RlpException($"NonceTooWide: Transaction nonce exceeds uint64 at position {position}");
 
     [DoesNotReturn, StackTraceHidden]

@@ -76,7 +76,7 @@ public class NewPayloadPrefixBenchmarks
     public Hash256 TxRoot() => TxTrie.CalculateRoot(_encodedTransactions);
 
     [Benchmark(Description = "WithdrawalTrie root")]
-    public Hash256 WithdrawalsRoot() => new WithdrawalTrie(_withdrawals).RootHash;
+    public Hash256 WithdrawalsRoot() => WithdrawalTrie.CalculateRoot(_withdrawals);
 
     // No decode-memoized TryGetBlock arm: the memoized root task makes any in-loop measurement
     // either reuse the completed task or re-include decode; derive it as HandlerPrefix minus decode.
