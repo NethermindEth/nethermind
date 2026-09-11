@@ -4,22 +4,35 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Hive;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Json;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -407,9 +420,70 @@ public partial class EngineModuleTests
         Assert.That(head!.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests)));
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task NewPayloadV4_processes_child_of_genesis_after_retained_deep_reorg()
+    {
+        const string variable = "HIVE_EXPECT_DEEP_REORGS";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "1");
+            using MergeTestBlockchain chain = await new DeepReorgFlatDbMergeTestBlockchain()
+                .BuildMergeTestBlockchain(builder => builder
+                    .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance)));
+            IFlatDbConfig flatDbConfig = chain.Container.Resolve<IFlatDbConfig>();
+            Assert.That(flatDbConfig.MinReorgDepth, Is.EqualTo(544UL));
+            Assert.That(flatDbConfig.EnableLongFinality, Is.True);
+            Assert.That(chain.Container.Resolve<IPersistedSnapshotLoader>(), Is.TypeOf<PersistedSnapshotLoader>());
+            Assert.That(chain.Container.Resolve<IPersistedSnapshotCompactor>(), Is.TypeOf<PersistedSnapshotCompactor>());
+
+            IEngineRpcModule rpc = chain.EngineRpcModule;
+            BlockHeader genesis = chain.BlockTree.Genesis!;
+            Hash256 genesisHash = genesis.Hash!;
+            IPersistenceManager persistenceManager = chain.Container.Resolve<IPersistenceManager>();
+            chain.Container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
+            Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(genesis)));
+            Task genesisChildPrepared = chain.WaitForImprovedBlock(genesisHash);
+            PayloadAttributes attributes = new()
+            {
+                Timestamp = genesis.Timestamp + 12,
+                PrevRandao = TestItem.KeccakB,
+                SuggestedFeeRecipient = Address.Zero,
+                ParentBeaconBlockRoot = Keccak.Zero,
+                Withdrawals = [],
+            };
+            string payloadId = chain.PayloadPreparationService.StartPreparingPayload(genesis, attributes)!;
+            await genesisChildPrepared;
+            ResultWrapper<GetPayloadV4Result?> preparedPayload = await rpc.engine_getPayloadV4(
+                Bytes.FromHexString(payloadId));
+            Assert.That(preparedPayload.Data?.ExecutionPayload, Is.Not.Null);
+            ExecutionPayloadV3 genesisChild = preparedPayload.Data!.ExecutionPayload!;
+
+            await ProduceBranchV4(rpc, chain, 512, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true, setSafeAndFinalized: false);
+            await persistenceManager.AddToPersistence(new StateId(chain.BlockTree.Head!.Header));
+            ISnapshotRepository snapshots = chain.Container.Resolve<ISnapshotRepository>();
+            Assert.That(snapshots.PersistedSnapshotCount, Is.GreaterThan(0));
+            Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(genesis)));
+
+            ResultWrapper<ForkchoiceUpdatedV1Result> reorg = await rpc.engine_forkchoiceUpdatedV3(
+                new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero));
+            Assert.That(reorg.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(genesisHash));
+
+            ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV4(
+                genesisChild, [], genesisChild.ParentBeaconBlockRoot, executionRequests: []);
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
-        MergeTestBlockchain chain,
-        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
+        MergeTestBlockchain chain, int count, ExecutionPayload startingParentBlock, bool setHead,
+        Hash256? random = null, bool withRequests = false, bool setSafeAndFinalized = true)
     {
         List<ExecutionPayload> blocks = [];
         ExecutionPayload parentBlock = startingParentBlock;
@@ -429,7 +503,8 @@ public partial class EngineModuleTests
             if (setHead)
             {
                 Hash256 newHead = getPayloadResult!.BlockHash!;
-                ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
+                Hash256 safeAndFinalized = setSafeAndFinalized ? newHead : Keccak.Zero;
+                ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, safeAndFinalized, safeAndFinalized);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV3(forkchoiceStateV1);
                 Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
                 Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
@@ -519,5 +594,67 @@ public partial class EngineModuleTests
             await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
 
         return getPayloadResult.Data!.ExecutionPayload!;
+    }
+
+    private sealed class DeepReorgFlatDbMergeTestBlockchain : MergeTestBlockchain
+    {
+        private readonly TempPath _tempDirectory = TempPath.GetTempDirectory();
+
+        protected override ChainSpec CreateChainSpec() =>
+            new()
+            {
+                Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject,
+                Allocations = new() { [TestItem.AddressA] = new ChainSpecAllocation(1000) },
+            };
+
+        protected override IEnumerable<IConfig> CreateConfigs() =>
+            base.CreateConfigs()
+                .Append(new FlatDbConfig
+                {
+                    Enabled = true,
+                    CompactionOffset = 1,
+                    EnableLongFinality = true,
+                    ArenaFileSizeBytes = 64 * 1024,
+                    PersistedSnapshotDedicatedArenaThresholdBytes = 64 * 1024,
+                    PersistedSnapshotArenaPageCacheBytes = 0,
+                    PersistedSnapshotMaxCompactSize = 32,
+                })
+                .Append(new InitConfig { BaseDbPath = _tempDirectory.Path });
+
+        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+            => base.ConfigureContainer(builder, configProvider)
+                .AddModule(new LongFinalityTestModule(configProvider))
+                .AddModule(new HiveModule());
+
+        public override void Dispose()
+        {
+            try
+            {
+                try
+                {
+                    Container.Resolve<IPersistedSnapshotCompactor>().DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    base.Dispose();
+                }
+            }
+            finally
+            {
+                _tempDirectory.Dispose();
+            }
+        }
+    }
+
+    private sealed class LongFinalityTestModule(IConfigProvider configProvider) : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            configProvider.GetConfig<IFlatDbConfig>().EnableLongFinality = true;
+            builder
+                .AddSingleton<ISnapshotCatalog, SnapshotCatalog>()
+                .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
+                .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>();
+        }
     }
 }
