@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -69,6 +70,11 @@ public class BlockAccessListJournalTests
             accounts[account] = new(address, [], slots, [], [], []);
         }
         using BalReadStoragePlan plan = new(new ReadOnlyBlockAccessList(accounts, accounts.Length + reads.Count));
+        // Inspect the bounded cache so these lookups must exercise the binary-search fallback.
+        int[] index = (int[])typeof(BalReadStoragePlan)
+            .GetField(collideAccounts ? "_addressIndex" : "_slotIndex", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(plan)!;
+        Assert.That(index.AsSpan(0, 4).ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
+        Assert.That(index.AsSpan(0, 32).ToArray(), Does.Not.Contain(5));
         BalReadCoverage coverage = plan.CreateCoverage();
         for (int i = 0; i < reads.Count; i++)
         {
@@ -165,10 +171,23 @@ public class BlockAccessListJournalTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pool.Returns, Is.EqualTo(1));
-            Assert.That(pool.Buffer, Is.All.Zero);
             Assert.That(worker.Plan, Is.Null);
         }
         Assert.Throws<ObjectDisposedException>(() => worker.TryMark(new StorageCell(TestItem.AddressA, slots[^1])));
+        BalReadCoverage reused = new(plan, pool);
+        try
+        {
+            Assert.That(reused.FirstUncovered(), Is.Zero);
+            Assert.That(reused.ChargeableReadCount, Is.Zero);
+            reused.TryMark(new StorageCell(TestItem.AddressA, slots[^1]));
+            Assert.That(reused.ChargeableReadCount, Is.EqualTo(1));
+            Assert.That(reused.FirstUncovered(), Is.Zero);
+        }
+        finally
+        {
+            reused.Release();
+        }
+        Assert.That(pool.Returns, Is.EqualTo(2));
     }
 
     private sealed class DirtyCoveragePool : ArrayPool<ulong>
@@ -178,8 +197,11 @@ public class BlockAccessListJournalTests
 
         public override ulong[] Rent(int minimumLength)
         {
-            Buffer = new ulong[minimumLength + 7];
-            Array.Fill(Buffer, ulong.MaxValue);
+            if (Buffer.Length == 0)
+            {
+                Buffer = new ulong[minimumLength + 7];
+                Array.Fill(Buffer, ulong.MaxValue);
+            }
             return Buffer;
         }
 

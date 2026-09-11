@@ -235,6 +235,8 @@ public partial class BlockAccessListManager
                 continue;
             }
 
+            // With coverage, BAL-backed storage reads reject undeclared accounts before completing.
+            // Generated-only storage-read tolerance therefore applies only to materialized reads.
             bool hasChargeableReads = !IsSystemContract(address) && gen.HasStorageReadsForOrdinal(ordinal);
             if (IsToleratedGeneratedOnlyAccount(address, index, hasNoChangesAtIndex: !gen.Lanes.HasAt(row, ordinal), hasChargeableReads)) continue;
 

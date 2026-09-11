@@ -112,6 +112,6 @@ public sealed class BalReadCoverage
         _lastAddress = null;
         _touchedWords.Clear();
         _touchedWords.Capacity = 0;
-        if (bits.Length != 0) _pool.Return(bits, clearArray: true);
+        if (bits.Length != 0) _pool.Return(bits);
     }
 }

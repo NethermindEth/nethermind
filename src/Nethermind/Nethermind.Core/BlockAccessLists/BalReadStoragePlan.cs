@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
@@ -44,6 +45,8 @@ public sealed class BalReadStoragePlan : IDisposable
         for (int ordinal = 0; ordinal < accounts.Length; ordinal++)
         {
             ReadOnlyAccountChanges account = accounts[ordinal];
+            Debug.Assert(ordinal == 0 || accounts[ordinal - 1].Address.CompareTo(account.Address) < 0,
+                "The binary-search fallback requires strictly increasing BAL addresses.");
             int size = account.StorageReads.Length < 8 ? 0 : (int)BitOperations.RoundUpToPowerOf2((uint)account.StorageReads.Length * 2);
             if (size < 0 || indexLength + size > Array.MaxLength) size = 0;
             _readOffsets[ordinal] = (start, (int)indexLength, size - 1);
@@ -88,6 +91,7 @@ public sealed class BalReadStoragePlan : IDisposable
             catch
             {
                 ArrayPool<int>.Shared.Return(_slotIndex);
+                _slotIndex = [];
                 throw;
             }
         }

@@ -338,9 +338,13 @@ public partial class BlockAccessListManager
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
         {
             if (readPlan is not null)
-                throw new ArgumentException("Read coverage requires parallel execution.", nameof(readPlan));
+                ThrowReadCoverageUnavailable();
             _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
         }
+
+        [DoesNotReturn]
+        private static void ThrowReadCoverageUnavailable()
+            => throw new InvalidOperationException("Read coverage requires parallel execution.");
 
         public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;

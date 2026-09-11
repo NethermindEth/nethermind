@@ -93,6 +93,8 @@ public class BlockProcessorTests
             PrepareSetup(manager, block, Amsterdam.Instance);
             if (previousCoverage is not null) Assert.That(previousCoverage.Plan, Is.Null);
             Assert.That(manager.ParallelExecutionEnabled, Is.True);
+            manager.NextTransaction();
+            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0, validateStorageReads: false));
             manager.GetTxProcessor(0);
             TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
             CheckWorkerCoverage(pre, blockNumber);
