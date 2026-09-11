@@ -104,8 +104,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             Random.Shared.Shuffle(rest.AsSpan());
 
             ArrayPoolListRef<Transaction[]> senders = new(SenderSampleCapacity);
-            // Floored at the slots a uniform draw would have given the cohort, so a share below its weight in
-            // the pool leaves it where the tier off would: reserving cannot demote what it is meant to promote.
+            // Floored at the slots a uniform draw would have given the cohort, so reserving cannot demote what it
+            // is meant to promote. Both operands are pre-reservoir: capped counts would leak `rest`'s compression in.
             int uniformDraw = (int)((long)SenderSampleCapacity * oldestSeen / pending.Count);
             int reserved = int.Min(int.Max(_oldestSenderDraw, uniformDraw), oldest.Count);
             Take(ref senders, oldest.AsSpan()[..reserved]);
