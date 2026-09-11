@@ -4726,17 +4726,29 @@ namespace Nethermind.TxPool.Test
             _stateProvider.InsertCode([0x60, 0x00], sponsor);
 
             Task<AcceptTxResult> doomedResult = Task.Run(() => _txPool.SubmitTx(doomed, TxHandlingOptions.None));
-            Assert.That(reachedFilter.Wait(TimeSpan.FromSeconds(10)), Is.True, "the doomed submission never reached the injected filter");
+            bool reached;
+            AcceptTxResult sponsored;
+            AcceptTxResult doomedOutcome;
+            try
+            {
+                reached = reachedFilter.Wait(TimeSpan.FromSeconds(10));
 
-            // Submitted while the doomed one is parked past the cap gate and has not been rejected yet.
-            AcceptTxResult sponsored = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
-
-            releaseFilter.Set();
+                // Submitted while the doomed one is parked past the cap gate and has not been rejected yet.
+                sponsored = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            }
+            finally
+            {
+                // On every path, including a failure above: the events and the pool are disposed when this
+                // method returns, so the parked submission has to be let go and drained before that.
+                releaseFilter.Set();
+                doomedOutcome = await doomedResult;
+            }
 
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(reached, Is.True, "the doomed submission never reached the injected filter");
                 Assert.That(sponsored, Is.EqualTo(AcceptTxResult.Accepted), "a submission that never pools must not occupy the sponsor's slot");
-                Assert.That(await doomedResult, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(doomedOutcome, Is.EqualTo(AcceptTxResult.Invalid));
             }
         }
 
