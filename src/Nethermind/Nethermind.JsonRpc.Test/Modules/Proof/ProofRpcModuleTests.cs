@@ -133,12 +133,36 @@ public class ProofRpcModuleTests
     }
 
     [Test]
-    public async Task When_transaction_not_servable_transaction_by_hash_returns_null_result([Values] NotServableScenario scenario)
+    public async Task When_transaction_not_servable_transaction_by_hash_returns_null_result(
+        [Values(NotServableScenario.HeaderNotFound, NotServableScenario.TransactionAbsentFromResolvedBlock)] NotServableScenario scenario)
     {
         Hash256 txHash = ArrangeNotServable(scenario);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, false);
         Assert.That(response, Is.EqualTo(NullResultResponse));
+    }
+
+    /// <remarks>
+    /// A transactionsRoot proof needs only the transaction's position in the resolved block, so a receipt set that
+    /// cannot serve the receipt does not stop this method — matching the eth_getTransactionByHash it mirrors, which
+    /// serves the same transaction from the same block.
+    /// </remarks>
+    [Test]
+    public void When_only_the_receipt_is_missing_transaction_by_hash_still_serves_the_transaction(
+        [Values(NotServableScenario.ReceiptsPruned, NotServableScenario.MismatchedReceiptSet)] NotServableScenario scenario)
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = ArrangeNotServable(scenario);
+
+        TransactionForRpcWithProof? txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
+
+        Assert.That(txWithProof, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txWithProof.Transaction.Hash, Is.EqualTo(txHash));
+            Assert.That(txWithProof.Transaction.TransactionIndex, Is.Zero);
+            Assert.That(txWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, 0)));
+        }
     }
 
     [Test]
@@ -247,9 +271,13 @@ public class ProofRpcModuleTests
     }
 
     /// <summary>
-    /// A transaction the proof methods cannot serve, either because its block cannot be resolved at all, or
-    /// because a resolved block and receipt set cannot serve it.
+    /// A transaction <c>proof_getTransactionReceipt</c> cannot serve, either because its block cannot be resolved at
+    /// all, or because a resolved block and receipt set cannot serve it.
     /// </summary>
+    /// <remarks>
+    /// Only the first and last also stop <c>proof_getTransactionByHash</c>: the two receipt-set scenarios leave the
+    /// transaction in the resolved block, which is all its proof needs.
+    /// </remarks>
     public enum NotServableScenario
     {
         /// <summary>The receipt store's recorded block hash for this tx no longer resolves to any block the

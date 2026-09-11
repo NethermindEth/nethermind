@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return failure.IsError ? ResultWrapper<TransactionForRpcWithProof>.Fail(failure) : ResultWrapper<TransactionForRpcWithProof>.Success(null);
             }
 
-            (Block block, int txIndex, _, TxReceipt receipt) = resolved;
+            (Block block, int txIndex, _, TxReceipt? receipt) = resolved;
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
 
@@ -82,7 +82,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return failure.IsError ? ResultWrapper<ReceiptWithProof>.Fail(failure) : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
-            (Block block, int txIndex, TxReceipt[] storedReceipts, TxReceipt receipt) = resolved;
+            (Block block, int txIndex, TxReceipt[] storedReceipts, TxReceipt? receipt) = resolved;
+            if (receipt is null)
+            {
+                // Only this method needs the receipt itself; without one there is nothing to return a proof for.
+                return ResultWrapper<ReceiptWithProof>.Success(null);
+            }
+
             Transaction[] txs = block.Transactions;
 
             using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
@@ -164,7 +170,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
             });
         }
 
-        private readonly record struct ResolvedTransaction(Block Block, int TxIndex, TxReceipt[] StoredReceipts, TxReceipt Receipt);
+        /// <param name="Receipt">
+        /// The stored receipt, or <c>null</c> when the resolved block's receipt set no longer carries one for this
+        /// transaction. Proving the transaction's inclusion needs only its position, so only the receipt method
+        /// treats a missing receipt as unservable.
+        /// </param>
+        private readonly record struct ResolvedTransaction(Block Block, int TxIndex, TxReceipt[] StoredReceipts, TxReceipt? Receipt);
 
         /// <remarks>
         /// <paramref name="failure"/> is populated only for a search error the caller must surface, and left default
@@ -189,16 +200,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = searchResult.Object;
             int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
-            TxReceipt[] storedReceipts = receiptFinder.Get(block);
-            TxReceipt receipt = storedReceipts.ForTransaction(txHash);
-            if (txIndex < 0 || receipt is null)
+            if (txIndex < 0)
             {
-                // The resolved block may not contain this transaction, or its receipt set may no longer include it —
-                // e.g. a reorg re-resolved the stored block number to a different canonical block. Not an error, mirrors eth_.
+                // The resolved block may not contain this transaction — e.g. a reorg re-resolved the stored block
+                // number to a different canonical block. Not an error, mirrors eth_.
                 return false;
             }
 
-            resolved = new ResolvedTransaction(block, txIndex, storedReceipts, receipt);
+            TxReceipt[] storedReceipts = receiptFinder.Get(block);
+            resolved = new ResolvedTransaction(block, txIndex, storedReceipts, storedReceipts.ForTransaction(txHash));
             return true;
         }
 
