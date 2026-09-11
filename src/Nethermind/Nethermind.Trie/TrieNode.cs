@@ -968,10 +968,10 @@ namespace Nethermind.Trie
         }
 
         /// <summary>Whether a hash slot can retain the child returned by its resolver.</summary>
-        /// <remarks>Ordinary hash slots may come from memory pruning, even when the parent has since become persisted.
-        /// Only a verified warmer child opts back into retention; bare misses keep using the resolver.</remarks>
+        /// <remarks>Only verified warmer children opt back into retention; ordinary hashes and bare misses keep using
+        /// the resolver. Non-persisted parents keep pruned children detached, including resolved warmer children.</remarks>
         private bool CanRetainResolvedChild(TrieNode child) =>
-            IsPersisted && child.IsWarmerResolved;
+            child.IsWarmerResolved && IsPersisted;
 
         public void ReplaceChildRef(int i, TrieNode child)
         {

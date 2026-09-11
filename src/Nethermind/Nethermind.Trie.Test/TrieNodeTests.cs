@@ -235,16 +235,25 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Pruned_child_is_not_retained([Values] bool iterator, [Values] bool persistParentAfterPruning)
+    public void Pruned_child_retention_requires_resolved_warmer_and_persisted_parent(
+        [Values] bool iterator, [Values] bool persistParentAfterPruning, [Values] bool warmerResolved)
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
         TrieNode child = new(NodeType.Unknown, hash, rlp);
         TreePath path = TreePath.Empty;
-        TrieNode parent = CreateParent(child, ref path);
-        parent.IsPersisted = false;
+        if (warmerResolved)
+        {
+            child.MarkWarmerOwned();
+            child.ResolveNode(NullTrieNodeResolver.Instance, path);
+            Assert.That(child.IsWarmerResolved, Is.True);
+        }
+        TrieNode parent = new(NodeType.Branch);
+        parent.SetChild(0, child);
+        parent.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        parent.Seal();
+        parent.AppendChildPath(ref path, 0);
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
         resolver.FindCachedOrUnknown(path, hash).Returns(child);
-        parent.GetChildWithChildPath(resolver, ref path, 0);
         parent.PrunePersistedRecursively(1);
         if (persistParentAfterPruning) parent.IsPersisted = true;
         resolver.ClearReceivedCalls();
@@ -257,7 +266,7 @@ public class TrieNodeTests
             Assert.That(actual, Is.SameAs(child));
         }
 
-        resolver.Received(2).FindCachedOrUnknown(path, hash);
+        resolver.Received(warmerResolved && persistParentAfterPruning ? 1 : 2).FindCachedOrUnknown(path, hash);
     }
 
     [Test]
@@ -289,8 +298,8 @@ public class TrieNodeTests
 
     [TestCase(false, false)]
     [TestCase(false, true)]
-    [TestCase(true, false)]
-    public void Deep_persisted_child_retention_respects_pruning(bool iterator, bool keepChildRef)
+    [TestCase(true, false)] // The iterator has no keepChildRef option.
+    public void Deep_retained_child_is_pruned_unless_child_ref_is_kept(bool iterator, bool keepChildRef)
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
         TrieNode child = new(NodeType.Unknown, hash, rlp);
