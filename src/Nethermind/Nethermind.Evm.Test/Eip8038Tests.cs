@@ -134,11 +134,13 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
     }
 
     [Test]
-    public void Selfdestruct_charges_beneficiary_access_and_creation([Values] bool newBeneficiary)
+    public void Selfdestruct_charges_beneficiary_access_and_creation([Values] bool newBeneficiary, [Values] bool warm)
     {
         Address beneficiary = newBeneficiary ? TestItem.AddressE : Target;
-        byte[] code = Prepare.EvmCode.SELFDESTRUCT(beneficiary).Done;
-        ulong expected = GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SelfDestructEip150 + ColdAccountAccess;
+        byte[] warmup = warm ? Prepare.EvmCode.PushData(beneficiary).Op(Instruction.BALANCE).Op(Instruction.POP).Done : [];
+        byte[] code = [.. warmup, .. Prepare.EvmCode.SELFDESTRUCT(beneficiary).Done];
+        ulong expected = GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SelfDestructEip150 + ColdAccountAccess
+            + (warm ? GasCostOf.VeryLow + GasCostOf.Base + ExtraWarmAccess : 0);
         if (newBeneficiary)
             expected += GasCostOf.NewAccount + (eip8038Enabled ? Eip8038Constants.AccountWrite : 0);
 
@@ -149,6 +151,23 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(result.GasSpent, Is.EqualTo(expected));
             Assert.That(TestState.GetBalance(beneficiary), Is.GreaterThan(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_to_self_obeys_exact_gas_boundary([Values(-1, 0, 1)] int gasDelta)
+    {
+        byte[] code = Prepare.EvmCode.SELFDESTRUCT(Recipient).Done;
+        ulong expected = GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SelfDestructEip150 + ExtraWarmAccess;
+        ulong gasLimit = (ulong)((long)expected + gasDelta);
+
+        TestAllTracerWithOutput result = Execute(Activation, gasLimit, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(gasDelta < 0 ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(result.GasSpent, Is.EqualTo(gasDelta < 0 ? gasLimit : expected));
+            Assert.That(TestState.GetBalance(Recipient), Is.EqualTo(gasDelta < 0 ? 100.Ether : 100.Ether + 1));
         }
     }
 

@@ -247,7 +247,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
             true => UpdateGas(ref gas, TColdCost.GasCost(spec)),
-            false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
+            false when kind == AccountAccessKind.SelfDestructBeneficiary && !TMode.IsEip8038Enabled(spec) => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
     }
