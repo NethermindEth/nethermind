@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -20,6 +22,9 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
 {
     private readonly Dictionary<AddressAsKey, ReadOnlyAccountChanges> _accountChanges;
     private readonly ReadOnlyAccountChanges[] _orderedAccounts;
+    private bool _codeChangesInitialized;
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
+    private object? _codeChangesLock;
 
     [JsonIgnore]
     public int ItemCount { get; }
@@ -84,6 +89,32 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
         TotalStorageReads = totalReads;
         TotalStorageChangeEvents = totalChangeEvents;
         WireHash = wireHash;
+    }
+
+    /// <summary>Returns the shared code index for this immutable BAL. Callers must not modify it.</summary>
+    internal Dictionary<ValueHash256, (uint Index, byte[] Code)>? GetCodeChangesByHash()
+        => _orderedAccounts.Length == 0 ? null
+            : Volatile.Read(ref _codeChangesInitialized) ? _codeChangesByHash : InitializeCodeChangesByHash();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? InitializeCodeChangesByHash()
+        => LazyInitializer.EnsureInitialized(ref _codeChangesByHash, ref _codeChangesInitialized, ref _codeChangesLock, BuildCodeChangesByHash);
+
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
+    {
+        Dictionary<ValueHash256, (uint Index, byte[] Code)>? result = null;
+        foreach (ReadOnlyAccountChanges account in _orderedAccounts)
+        {
+            foreach (CodeChange change in account.CodeChanges)
+            {
+                result ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+                if (!result.TryGetValue(change.CodeHash, out (uint Index, byte[] Code) existing) || change.Index < existing.Index)
+                {
+                    result[change.CodeHash] = (change.Index, change.Code);
+                }
+            }
+        }
+        return result;
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)
