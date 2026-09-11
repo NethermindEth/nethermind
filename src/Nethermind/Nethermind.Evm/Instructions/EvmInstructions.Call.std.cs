@@ -57,7 +57,7 @@ public static partial class EvmInstructions
         }
 
         ReadOnlyMemory<byte> outputData;
-        if (precompile.OutputEqualsInput)
+        if (precompile is IdentityPrecompile)
         {
             // ID cannot fail and returns its input unchanged, so copy straight into a reusable buffer
             // rather than allocating an array per call. The data still has to live somewhere this frame

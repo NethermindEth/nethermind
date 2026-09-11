@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
+public sealed class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {
     public static IdentityPrecompile Instance { get; } = new();
 
@@ -22,9 +22,6 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
     // Caching disabled: the copy operation is O(n) and the cache key hash is also O(n),
     // making caching strictly worse than direct execution for this precompile.
     public bool SupportsCaching => false;
-
-    /// <inheritdoc cref="IPrecompile.OutputEqualsInput"/>
-    public bool OutputEqualsInput => true;
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 15UL;
 
