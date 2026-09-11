@@ -20,8 +20,8 @@ namespace Nethermind.Merge.Plugin.Test;
 /// Regression tests for https://github.com/NethermindEth/nethermind/issues/11979:
 /// testing_commitBlockV1 advances the head without re-processing through the main
 /// BlockchainProcessor, so the producer pass itself must persist the committed block's
-/// post-state. These tests run against a real blockchain (trie backend by default,
-/// Flat DB when TEST_USE_FLAT=1), where the second commit fails if the first one did
+/// post-state. These tests run against a real blockchain (flat backend by default,
+/// patricia when <c>TEST_USE_TRIE=1</c>), where the second commit fails if the first one did
 /// not persist its state.
 /// </summary>
 public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
