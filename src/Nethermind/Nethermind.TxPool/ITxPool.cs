@@ -90,7 +90,8 @@ namespace Nethermind.TxPool
         /// be granted a retry budget of <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> distinct chain
         /// heads: it is kept while it has failed on fewer heads than that, and those calls report
         /// <see langword="false"/> and retain it. The budget is counted per head, so repeated calls against the
-        /// same head spend a single unit; a budget of one (the default) drops on the first failed attempt.
+        /// same head spend a single unit; a budget of one (the default) drops on the first failed attempt. It is
+        /// also counted per pool residency, so a transaction resubmitted after this dropped it starts a fresh one.
         /// Removal is atomic and the rest of the work follows it, so repeated calls are idempotent: only the
         /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
         /// eviction, and a call for a transaction the pool does not hold changes nothing.

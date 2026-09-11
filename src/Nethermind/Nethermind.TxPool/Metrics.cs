@@ -76,6 +76,10 @@ namespace Nethermind.TxPool
         [Description("Number of EIP-8141 frame-transaction payers currently holding a pending-cost reservation.")]
         public static long FrameTxPayersWithReservedExposure;
 
+        [GaugeMetric]
+        [Description("Number of entries in the EIP-8141 frame-transaction eviction retry ledger, one per pending frame transaction while `TxPool.FrameTxEvictionRetryBudget` is above its default of `1` and zero otherwise. Entries are opened on pool insert and dropped on pool removal or pool disposal, so a floor above zero with no frame transactions pending is a leak.")]
+        public static long FrameTxEvictionRetryLedgerEntries;
+
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]
         public static long PendingTransactionsFrameTxPaymasterLimitReached;

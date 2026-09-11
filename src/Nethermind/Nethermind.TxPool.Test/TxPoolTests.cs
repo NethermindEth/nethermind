@@ -3068,6 +3068,82 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The retry ledger's only cleanup is removal, so an entry created after one has run would never be
+        // reclaimed. Pinning creation to admission is what makes that unreachable, rather than unlikely.
+        [Test]
+        [NonParallelizable]
+        public void EvictTransaction_never_opens_a_retry_record_of_its_own()
+        {
+            long held = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = 2 }, new TestSpecProvider(Eip8141Prototype.Instance));
+
+            Transaction frameTx = SelfVerifyFrameTx();
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            long afterAdmission = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+            Assert.That(_txPool.RemoveTransaction(frameTx.Hash), Is.True);
+
+            long afterRemoval = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+            _txPool.EvictTransaction(frameTx);
+            long afterEviction = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterAdmission, Is.EqualTo(held + 1), "admission opens the record, under the same lock removal drops it under");
+                Assert.That(afterRemoval, Is.EqualTo(held), "the removal that cleans the record up has a record to clean up");
+                Assert.That(afterEviction, Is.EqualTo(held), "a transaction the pool no longer holds leaves no record behind");
+            }
+        }
+
+        // Disposal unsubscribes the handler the records are released by while the pools still hold what they
+        // were opened for, so it is the one exit from the pool that has to release them itself.
+        [Test]
+        [NonParallelizable]
+        public async Task Disposing_the_pool_releases_the_retry_records_it_still_holds()
+        {
+            long held = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = 2 }, new TestSpecProvider(Eip8141Prototype.Instance));
+
+            Assert.That(_txPool.SubmitTx(SelfVerifyFrameTx(), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            long whilePooled = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+
+            await _txPool.DisposeAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(whilePooled, Is.EqualTo(held + 1), "the transaction is still pooled when disposal starts");
+                Assert.That(Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries), Is.EqualTo(held),
+                    "disposal releases the records no removal can reach any more");
+            }
+        }
+
+        // The budget is per pool residency: eviction clears the long-term hash cache so the same transaction may
+        // come back, and coming back is what grants it a fresh one. Pins the semantics the config documents.
+        [Test]
+        public async Task Resubmitting_an_evicted_frame_tx_opens_a_fresh_retry_budget()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = 2 }, new TestSpecProvider(Eip8141Prototype.Instance));
+
+            Transaction frameTx = SelfVerifyFrameTx();
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            bool droppedOnFirstHead = _txPool.EvictTransaction(frameTx);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            bool droppedOnSecondHead = _txPool.EvictTransaction(frameTx);
+
+            AcceptTxResult resubmitted = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
+            bool droppedOnResubmission = _txPool.EvictTransaction(frameTx);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(droppedOnFirstHead, Is.False, "the first production failure on a head is kept");
+                Assert.That(droppedOnSecondHead, Is.True, "failing on a second head spends the last unit and evicts");
+                Assert.That(resubmitted, Is.EqualTo(AcceptTxResult.Accepted), "eviction is a drop, not a verdict");
+                Assert.That(droppedOnResubmission, Is.False, "re-entering the pool opens a record with nothing spent against it");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "and the transaction is kept on that budget");
+            }
+        }
+
         // Both filters are wired into the pool, and the placement filter runs ahead of the one that would
         // otherwise claim the same layout — deleting either line leaves every filter fixture green.
         [Test]
