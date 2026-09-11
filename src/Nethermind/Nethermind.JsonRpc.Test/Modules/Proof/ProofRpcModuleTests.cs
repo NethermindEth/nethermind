@@ -170,12 +170,22 @@ public class ProofRpcModuleTests
     public void When_receipt_index_is_stale_transaction_receipt_proves_the_requested_transaction([Values] StaleReceiptIndexScenario scenario)
     {
         Block block = _blockTree.FindBlock(1)!;
-        Hash256 txHash = ArrangeStaleReceiptIndex(scenario);
+        Hash256 txHash = block.Transactions[StaleReceiptIndexTxIndex].Hash!;
+        // Ground truth for the proof content: the receipt trie is rebuilt from a fresh block retrace
+        // (see BuildReceiptProofs), never from the (possibly stale) IReceiptFinder, so this unsubstituted
+        // call for the same tx pins the same proof the stale-index arrangement below must still produce.
+        byte[][] expectedReceiptProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data!.ReceiptProof;
+
+        ArrangeStaleReceiptIndex(scenario);
 
         ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data!;
 
         Assert.That(receiptWithProof, Is.Not.Null);
-        Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
+            Assert.That(receiptWithProof.ReceiptProof, Is.EqualTo(expectedReceiptProof));
+        }
     }
 
     /// <remarks>
