@@ -320,12 +320,7 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    /// <remarks>
-    /// A dispose failure on a discarded trace is logged and draining continues: the trace the caller asked for
-    /// was already produced, so a cleanup fault on an unrelated transaction's tracer must not turn the call into
-    /// an internal error.
-    /// </remarks>
-    private GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
     {
         GethLikeTxTrace? selected = null;
         int index = 0;
@@ -337,14 +332,7 @@ public class DebugRpcModule(
                 continue;
             }
 
-            try
-            {
-                trace.Dispose();
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("Failed to dispose discarded block traces", ex);
-            }
+            trace.Dispose();
         }
 
         return selected;
