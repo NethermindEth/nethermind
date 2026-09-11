@@ -42,6 +42,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         : base(options)
     {
         IsTracingActions = true;
+        // Seeded on, not left to the first StartOperation, because a wrapping CompositeTxTracer
+        // latches these flags in its own constructor and would otherwise never ask for stack or memory.
         IsTracingMemory = true;
         IsTracingStack = true;
         IsTracingOpLevelStorage = false;
@@ -99,7 +101,15 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        if (_error is not null) return;
+        // Everything after an operation error is ignored, so stop pulling stack and memory for the
+        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
+        // at the failing operation.
+        if (_error is not null)
+        {
+            IsTracingMemory = false;
+            IsTracingStack = false;
+            return;
+        }
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
@@ -121,6 +131,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
+
+        // A wrapping tracer may keep asking for the stack after the flags were cleared above.
+        if (_error is not null) return;
 
         int stackLen = stack.Count;
         Address address;

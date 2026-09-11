@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -56,6 +57,35 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
             Assert.That(tracer.IsTracingReturnData, Is.False);
             Assert.That(tracer.IsTracingRefunds, Is.False);
+        }
+    }
+
+    [Test]
+    public void SetOperationStack_WhenAnOperationHasErrored_CapturesNothingMore([Values] bool errored)
+    {
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+
+        tracer.StartOperation(0, Instruction.SLOAD, 100, environment);
+        if (errored)
+        {
+            tracer.ReportOperationError(EvmExceptionType.OutOfGas);
+            // The frame that halted unwinds, but its caller keeps executing unrelated opcodes
+            tracer.StartOperation(1, Instruction.ADD, 100, environment);
+        }
+
+        // A wrapping tracer latches the capture flags, so the stack keeps arriving either way
+        tracer.SetOperationStack(new TraceStack(new byte[EvmStack.WordSize]));
+
+        NativePrestateTracerAccount account =
+            ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value)[TestItem.AddressB];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingStack, Is.EqualTo(!errored));
+            Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(errored ? 0 : 1));
         }
     }
 
