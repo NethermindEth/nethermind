@@ -23,7 +23,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
             ExecutionType.CREATE, ExecutionType.CREATE2)] ExecutionType callType,
         [Values] bool precompile)
     {
-        Native4ByteTracer tracer = new(Build.A.Transaction.TestObject,
+        using Native4ByteTracer tracer = new(Build.A.Transaction.TestObject,
             GethTraceOptions.Default with { EnableMemory = true, EnableReturnData = true });
         tracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
         tracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC,

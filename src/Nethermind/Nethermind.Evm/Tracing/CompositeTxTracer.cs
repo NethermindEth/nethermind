@@ -65,12 +65,12 @@ public class CompositeTxTracer : ITxTracer
     public bool IsCollectingLogs { get; }
     public bool IsTracingActions { get; }
     public bool IsTracingOpLevelStorage { get; }
-    public bool IsTracingMemory { get; }
+    public bool IsTracingMemory { get; private set; }
     public bool IsTracingInstructions { get; }
     public bool IsTracingRefunds { get; }
     public bool IsTracingReturnData { get; }
     public bool IsTracingCode { get; }
-    public bool IsTracingStack { get; }
+    public bool IsTracingStack { get; private set; }
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
@@ -174,6 +174,8 @@ public class CompositeTxTracer : ITxTracer
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        bool tracingMemory = false;
+        bool tracingStack = false;
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
@@ -181,7 +183,11 @@ public class CompositeTxTracer : ITxTracer
             {
                 innerTracer.StartOperation(pc, opcode, gas, env);
             }
+            tracingMemory |= innerTracer.IsTracingMemory;
+            tracingStack |= innerTracer.IsTracingStack;
         }
+        IsTracingMemory = tracingMemory;
+        IsTracingStack = tracingStack;
     }
 
     public void ReportOperationError(EvmExceptionType error)

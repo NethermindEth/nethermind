@@ -26,29 +26,17 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private const string PrestateMode = """{"diffMode":false}""";
     private const string? NoConfig = null;
 
-    [TestCase(Instruction.ADD, false, false)]
-    [TestCase(Instruction.SLOAD, true, false)]
-    [TestCase(Instruction.SSTORE, true, false)]
-    [TestCase(Instruction.BALANCE, true, false)]
-    [TestCase(Instruction.EXTCODECOPY, true, false)]
-    [TestCase(Instruction.EXTCODEHASH, true, false)]
-    [TestCase(Instruction.EXTCODESIZE, true, false)]
-    [TestCase(Instruction.SELFDESTRUCT, true, false)]
-    [TestCase(Instruction.CALL, true, false)]
-    [TestCase(Instruction.CALLCODE, true, false)]
-    [TestCase(Instruction.STATICCALL, true, false)]
-    [TestCase(Instruction.DELEGATECALL, true, false)]
-    [TestCase(Instruction.CREATE, true, false)]
-    [TestCase(Instruction.CREATE2, true, true)]
+    [TestCaseSource(nameof(CaptureCases))]
     public void StartOperation_WhenOpcodeChanges_CapturesOnlyRequiredInputs(Instruction opcode, bool stack, bool memory)
     {
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions() with { EnableReturnData = true },
             Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ITxTracer outer = new CancellationTxTracer(new CompositeTxTracer(tracer));
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
 
-        tracer.StartOperation(0, Instruction.CREATE2, 100, environment);
-        tracer.StartOperation(1, opcode, 100, environment);
+        outer.StartOperation(0, Instruction.CREATE2, 100, environment);
+        outer.StartOperation(1, opcode, 100, environment);
 
         using (Assert.EnterMultipleScope())
         {
@@ -57,6 +45,24 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
             Assert.That(tracer.IsTracingReturnData, Is.False);
             Assert.That(tracer.IsTracingRefunds, Is.False);
+            Assert.That(outer.IsTracingStack, Is.EqualTo(stack));
+            Assert.That(outer.IsTracingMemory, Is.EqualTo(memory));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CaptureCases()
+    {
+        yield return new TestCaseData(Instruction.ADD, false, false);
+        yield return new TestCaseData(Instruction.CREATE2, true, true);
+        Instruction[] stackInstructions =
+        [
+            Instruction.SLOAD, Instruction.SSTORE, Instruction.BALANCE,
+            Instruction.EXTCODECOPY, Instruction.EXTCODEHASH, Instruction.EXTCODESIZE, Instruction.SELFDESTRUCT,
+            Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL, Instruction.CREATE,
+        ];
+        foreach (Instruction instruction in stackInstructions)
+        {
+            yield return new TestCaseData(instruction, true, false);
         }
     }
 
@@ -490,7 +496,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private GethLikeTxTrace ExecutePrestate(NativePrestateTracer tracer, byte[] code, bool wrapped)
     {
-        ITxTracer executionTracer = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer), default) : tracer;
+        using ITxTracer executionTracer = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer), default) : tracer;
         Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
         return tracer.BuildResult();
     }

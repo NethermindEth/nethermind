@@ -15,23 +15,38 @@ namespace Nethermind.Evm.Test.Tracing;
 public class CompositeTxTracerTests
 {
     [Test]
-    public void Forwards_action_gas_only_to_action_tracers([Values] bool tracingActions)
+    public void StartOperation_WhenRequirementsChange_PreservesOtherTracers(
+        [Values] bool otherStack, [Values] bool otherMemory)
     {
-        ITxTracer inner = Substitute.For<ITxTracer>();
-        inner.IsTracingActions.Returns(tracingActions);
-        using CompositeTxTracer tracer = new(inner);
+        ITxTracer changing = Substitute.For<ITxTracer>();
+        changing.IsTracingInstructions.Returns(true);
+        changing.IsTracingStack.Returns(true);
+        changing.IsTracingMemory.Returns(true);
+        changing.When(tracer => tracer.StartOperation(0, Instruction.ADD, 100, null!)).Do(_ =>
+        {
+            changing.IsTracingStack.Returns(false);
+            changing.IsTracingMemory.Returns(false);
+        });
+        ITxTracer other = Substitute.For<ITxTracer>();
+        other.IsTracingStack.Returns(otherStack);
+        other.IsTracingMemory.Returns(otherMemory);
+        using CompositeTxTracer tracer = new(new CompositeTxTracer(changing), other);
 
-        tracer.ReportActionRemainingGas(1234);
+        tracer.StartOperation(0, Instruction.ADD, 100, null!);
 
-        inner.Received(tracingActions ? 1 : 0).ReportActionRemainingGas(1234);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingStack, Is.EqualTo(otherStack));
+            Assert.That(tracer.IsTracingMemory, Is.EqualTo(otherMemory));
+        }
     }
 
     [Test]
-    public void Cancellation_forwards_action_gas_only_to_action_tracers([Values] bool tracingActions)
+    public void Forwards_action_gas_only_to_action_tracers([Values] bool tracingActions, [Values] bool cancellation)
     {
         ITxTracer inner = Substitute.For<ITxTracer>();
         inner.IsTracingActions.Returns(tracingActions);
-        using CancellationTxTracer tracer = new(inner);
+        using ITxTracer tracer = cancellation ? new CancellationTxTracer(inner) : new CompositeTxTracer(inner);
 
         tracer.ReportActionRemainingGas(1234);
 
