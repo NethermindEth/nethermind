@@ -20,9 +20,7 @@ public class ReceiptMessageDecoder69Tests
 {
     private const byte ShortSequenceHeaderBase = 0xc0;
 
-    // 23 bytes of data encodes to 47 bytes, so a null placeholder beside it still clears the
-    // log-count guard's floor of 24 bytes per entry.
-    private static readonly LogEntry PaddingLog = new(Address.Zero, new byte[23], []);
+    private static readonly LogEntry PaddedLog = ReceiptRlpBuilder.PaddedLog();
 
     [Test]
     public void Can_roundtrip_receipt()
@@ -56,7 +54,7 @@ public class ReceiptMessageDecoder69Tests
     {
         // The padding log buys the null placeholder its 24 bytes of count budget, so the log-count
         // guard passes and the null rejection in the decode loop is what must fire.
-        byte[] encoded = EncodeReceipt([null, PaddingLog]);
+        byte[] encoded = EncodeReceipt([null, PaddedLog]);
 
         Assert.That(() => Decode(encoded), Throws.TypeOf<RlpException>());
     }
@@ -104,17 +102,18 @@ public class ReceiptMessageDecoder69Tests
     [TestCase(true, TestName = "Decode_UnderDeclaredLogsHeader_Throws")]
     public void Decode_LogsHeaderMustMatchItsContent(bool underDeclare)
     {
-        LogEntry log = new(TestItem.AddressB, [], []);
+        // A padded log, so the count guard's byte arm cannot reject the missing byte on its own and only
+        // the end-of-list check can - Core.Test's Padded_log_outlives_a_one_byte_under_declaration pins that.
         TxReceipt receipt = new()
         {
             TxType = TxType.EIP1559,
             StatusCode = 1,
             GasUsedTotal = 21000,
             Bloom = new Bloom(),
-            Logs = [log]
+            Logs = [PaddedLog]
         };
 
-        AssertHeaderMustMatchItsContent(receipt, encoded => LogsHeaderIndex(encoded, Rlp.LengthOf(log)), underDeclare,
+        AssertHeaderMustMatchItsContent(receipt, encoded => LogsHeaderIndex(encoded, Rlp.LengthOf(PaddedLog)), underDeclare,
             static decoded => Assert.That(decoded.Logs, Has.Length.EqualTo(1)));
     }
 

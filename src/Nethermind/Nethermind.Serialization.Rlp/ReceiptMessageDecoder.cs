@@ -65,6 +65,10 @@ namespace Nethermind.Serialization.Rlp
             ctx.Position = position;
             txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
+            // The item count only requires a log to start before the declared end, so an under-declared
+            // logs header is only caught here; the logs are last, so the receipt end lands on it.
+            ctx.Check(lastCheck);
+
             // Handle any remaining extra bytes
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
             if (ctx.Position != receiptEnd)

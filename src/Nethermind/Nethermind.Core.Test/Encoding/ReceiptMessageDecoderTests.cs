@@ -22,6 +22,12 @@ public class ReceiptMessageDecoderTests
     public void Min_encoded_log_length_matches_the_smallest_encodable_log() =>
         Assert.That(Rlp.LengthOf(ReceiptRlpBuilder.MinimalLog()), Is.EqualTo(LogEntryDecoder.MinNonNullEncodedLength));
 
+    // What makes Decode_LogsHeaderMustMatchItsContent bite: a minimal log is short enough that the count
+    // guard's byte arm rejects the missing byte on its own, leaving the end-of-list check untested.
+    [Test]
+    public void Padded_log_outlives_a_one_byte_under_declaration() =>
+        Assert.That(Rlp.LengthOf(ReceiptRlpBuilder.PaddedLog()) - 1, Is.GreaterThanOrEqualTo(LogEntryDecoder.MinNonNullEncodedLength));
+
     [Test]
     public void Decode_rejects_a_log_count_the_message_cannot_hold()
     {
@@ -52,7 +58,7 @@ public class ReceiptMessageDecoderTests
     [TestCase(TxType.FrameTx, true, TestName = "Decode_UnderDeclaredFrameLogsHeader_Throws")]
     public void Decode_LogsHeaderMustMatchItsContent(TxType txType, bool underDeclare)
     {
-        LogEntry log = new(TestItem.AddressB, [], []);
+        LogEntry log = ReceiptRlpBuilder.PaddedLog();
         TxReceipt receipt = txType == TxType.FrameTx
             ? new TxReceipt
             {
