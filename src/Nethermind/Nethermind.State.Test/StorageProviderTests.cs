@@ -487,6 +487,59 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
     }
 
+    /// <summary>A transient write must not materialise the word: TSTORE is priced per call and can fill a block.</summary>
+    /// <remarks>
+    /// Both arms run after the undo log has grown and been reset, so its amortized growth is out of the
+    /// measurement and what is left is the per-write array. The array arm is measured in the same run, so
+    /// this fails loudly rather than passing vacuously if it ever stops allocating.
+    /// </remarks>
+    [Test]
+    public void Transient_write_does_not_materialise_the_word()
+    {
+        const int Iterations = 1000;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 2);
+        byte[] word = new byte[32];
+        word[31] = 7;
+
+        // Grow the undo log well past what either measured loop needs, then reset so it starts empty
+        // with that capacity retained.
+        for (int i = 0; i < Iterations * 4; i++)
+        {
+            provider.SetTransientState(in cell, (ReadOnlySpan<byte>)word);
+            provider.SetTransientState(in cell, CopyOf(word));
+        }
+
+        provider.Reset();
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            provider.SetTransientState(in cell, (ReadOnlySpan<byte>)word);
+        }
+        long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        provider.Reset();
+        start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            provider.SetTransientState(in cell, CopyOf(word));
+        }
+        long arrayAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        Assert.That(arrayAllocated, Is.GreaterThan(Iterations * 8), "materialising the word should allocate per call");
+        Assert.That(spanAllocated, Is.Zero, $"span={spanAllocated} array={arrayAllocated}");
+
+        // The control arm has to materialise a word the way the opcode used to; NETH005 rejects ToArray here.
+        static byte[] CopyOf(byte[] source)
+        {
+            byte[] copy = new byte[source.Length];
+            source.CopyTo(copy, 0);
+            return copy;
+        }
+    }
+
     /// <summary>
     /// Commit will reset transient state
     /// </summary>
