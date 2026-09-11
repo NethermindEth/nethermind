@@ -26,9 +26,9 @@ public partial class DebugRpcModuleTests
 {
     [TestCase(false, "callTracer")]
     [TestCase(true, "callTracer")]
-    [TestCase(false, null)]
-    [TestCase(true, null)]
-    public async Task TraceBlock_Prewarming_PreservesResultsAndCanonicalState(bool flatDb, string? tracer)
+    [TestCase(false, "")]
+    [TestCase(true, "")]
+    public async Task TraceBlock_Prewarming_PreservesResultsAndCanonicalState(bool flatDb, string tracer)
     {
         HistoricalBlockView historyView = null!;
         CountingEnvironmentFactory environments = null!;
