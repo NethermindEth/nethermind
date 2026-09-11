@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -111,6 +112,17 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
     /// <remarks>Reused across instructions, like the stack it mirrors; only a stack-tracing run allocates it.</remarks>
     private byte[] _tracedStackWords = [];
+
+    private const int MinPrecompileScratch = 4 * 1024;
+    // Kept under the 85,000-byte large object heap threshold so the retained buffer never tenures there.
+    private const int MaxRetainedPrecompileScratch = 64 * 1024;
+
+    /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
+    /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
+    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and that path already refuses to run when a
+    /// tracer is attached, so nothing can retain the previous contents.</remarks>
+    private byte[] _precompileScratch = [];
+
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -122,23 +134,6 @@ public partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
-
-    private byte[] _precompileScratch = [];
-
-    /// <summary>A buffer reused to hold the output of a precompile whose result is a copy of its input.</summary>
-    /// <remarks>Its contents are only guaranteed until the next precompile served this way. That is safe
-    /// because <see cref="ReturnDataBuffer"/> is replaced by every call, and the only path that uses this
-    /// buffer already refuses to run when a tracer is attached, so nothing can retain the previous one.</remarks>
-    internal Memory<byte> RentPrecompileScratch(int length)
-    {
-        byte[] buffer = _precompileScratch;
-        if (buffer.Length < length)
-        {
-            _precompileScratch = buffer = GC.AllocateUninitializedArray<byte>(Math.Max(length, 4096));
-        }
-
-        return buffer.AsMemory(0, length);
-    }
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
@@ -991,6 +986,28 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
         !codeSource.Equals(Ripemd160Address);
+
+    /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
+    /// <remarks>Buffers up to <see cref="MaxRetainedPrecompileScratch"/> are kept for reuse; a larger one is
+    /// handed out but not retained, so a single outsized call does not leave a large object attached to the VM
+    /// for the rest of its life. The threshold keeps the retained buffer below the large object heap limit.
+    /// </remarks>
+    internal Memory<byte> RentPrecompileScratch(int length)
+    {
+        byte[] buffer = _precompileScratch;
+        if (buffer.Length < length)
+        {
+            if (length > MaxRetainedPrecompileScratch)
+            {
+                return GC.AllocateUninitializedArray<byte>(length);
+            }
+
+            int size = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(length, MinPrecompileScratch));
+            _precompileScratch = buffer = GC.AllocateUninitializedArray<byte>(size);
+        }
+
+        return buffer.AsMemory(0, length);
+    }
 
     /// <summary>
     /// Runs a precompile outside of a call frame for the inline STATICCALL fast path, applying the same
