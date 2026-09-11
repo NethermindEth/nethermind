@@ -64,6 +64,27 @@ internal sealed class PbtTreeHarness : IDisposable
 
 internal static class PbtStoreTestExtensions
 {
+    internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        return store.GetNodeGroup(cursor, groupHash);
+    }
+
+    internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        store.SetNodeGroup(cursor, groupHash, payload);
+    }
+
+    internal static PbtNodeGroupReader ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        return new PbtNodeGroupReader(cursor, payload);
+    }
+
     internal static RefCountingMemory? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
         where TPath : struct, IPbtNodePath<TPath>
         => store.GetNodeGroup(groupKey, store.GetGroupHash(groupKey));
@@ -79,7 +100,7 @@ internal static class PbtStoreTestExtensions
             byte[]? encoding = null;
             foreach (PbtPhysicalPayload physical in groups)
                 if (PbtStorageNodePath.Decode(physical.Key.Span).Equals(location.GroupKey))
-                    encoding = ResolveNode(new PbtNodeGroupReader<PbtStorageNodePath>(location.GroupKey, physical.Payload.Span), location.Position);
+                    encoding = ResolveNode(PbtStoreTestExtensions.ReadGroup(location.GroupKey, physical.Payload.Span), location.Position);
             if (encoding is null) return default;
             PbtNodeReader node = new(encoding);
             if (node.IsLeaf)
@@ -110,7 +131,7 @@ internal static class PbtStoreTestExtensions
         if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
         using RefCountingMemory? payload = store.GetNodeGroup(path, root);
         if (payload is null) return null;
-        return ResolveNode(new PbtNodeGroupReader<TPath>(path, payload.GetSpan()), PbtFourLevelGroupGeometry.RootPosition);
+        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), PbtFourLevelGroupGeometry.RootPosition);
     }
 
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
@@ -179,14 +200,14 @@ internal static class PbtStoreTestExtensions
         PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
         using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
-        PbtNodeGroupReader<TPath> reader = new(location.GroupKey, payload.GetSpan());
+        PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
         return ResolveNode(reader, location.Position);
     }
 
-    private static byte[]? ResolveNode<TPath>(PbtNodeGroupReader<TPath> reader, int position) where TPath : struct, IPbtNodePath<TPath>
+    private static byte[]? ResolveNode(PbtNodeGroupReader reader, int position)
     {
         if (reader.TryGetNode(position, out ReadOnlySpan<byte> encoding)) return encoding.ToArray();
-        TPath path = PbtFourLevelGroupGeometry.PathOf(reader.GroupKey, position);
+        PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(reader.GroupKey, position);
         int relativeDepth = path.BitDepth - reader.GroupKey.BitDepth;
         if (relativeDepth is < 1 or > 3) return null;
         int width = 1 << (4 - relativeDepth);
@@ -204,8 +225,8 @@ internal static class PbtStoreTestExtensions
         List<PbtNodeRecord> records = [];
         if (priorPayload is not null)
         {
-            PbtNodeGroupReader<TPath> reader = new(location.GroupKey, priorPayload.GetSpan());
-            PbtNodeGroupReader<TPath>.Enumerator enumerator = reader.EnumerateNodes();
+            PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, priorPayload.GetSpan());
+            PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
             while (enumerator.MoveNext())
             {
                 if (enumerator.CurrentPosition != location.Position)

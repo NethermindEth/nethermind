@@ -198,11 +198,11 @@ public static class PbtNodeGroupCodec
 }
 
 /// <summary>Provides a validated, allocation-free view over a borrowed node-group payload.</summary>
-public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtNodePath<TPath>
+public readonly ref struct PbtNodeGroupReader
 {
     private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
     private const uint AllowedPositionBits = (1u << PbtFourLevelGroupGeometry.PositionCount) - 1;
-    private readonly TPath _groupKey;
+    private readonly PbtStorageNodePath _groupKey;
     private readonly ReadOnlySpan<byte> _payload;
     private readonly OffsetBuffer _offsets;
     private readonly LengthBuffer _lengths;
@@ -210,8 +210,11 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
     private readonly bool _initialized;
 
     /// <summary>Validates and borrows a complete node-group payload.</summary>
-    public PbtNodeGroupReader(TPath groupKey, ReadOnlySpan<byte> payload)
+    /// <remarks>The group identity is snapshotted; advancing the cursor cannot change this reader or its enumerators.
+    /// The payload must remain valid and immutable for the lifetime of the reader and its enumerators.</remarks>
+    public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload)
     {
+        PbtStorageNodePath groupKey = path.ToPath<PbtStorageNodePath>();
         ValidateGroupKey(groupKey);
         if (payload.Length < PbtNodeGroupCodec.HeaderLength || !payload[..PbtNodeGroupCodec.HeaderLength].SequenceEqual(PbtNodeGroupCodec.Header))
             throw new InvalidDataException("Unsupported or missing PBT node group format header.");
@@ -270,7 +273,7 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
     }
 
     /// <summary>Gets the key identifying this group.</summary>
-    public TPath GroupKey => InitializedGroupKey();
+    public PbtStorageNodePath GroupKey => InitializedGroupKey();
     /// <summary>Gets the availability bits.</summary>
     public uint Availability { get { EnsureInitialized(); return _availability; } }
     /// <summary>Gets the number of nodes in this group.</summary>
@@ -314,7 +317,7 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
         return new(this);
     }
 
-    private TPath InitializedGroupKey() { EnsureInitialized(); return _groupKey; }
+    private PbtStorageNodePath InitializedGroupKey() { EnsureInitialized(); return _groupKey; }
     private void ValidatePosition(int position)
     {
         EnsureInitialized();
@@ -322,12 +325,12 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
             throw new ArgumentOutOfRangeException(nameof(position));
     }
     private void EnsureInitialized() { if (!_initialized) throw new InvalidOperationException("The PBT node-group reader is not initialized."); }
-    private static void ValidateGroupKey(TPath groupKey)
+    private static void ValidateGroupKey(PbtStorageNodePath groupKey)
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
     }
     [System.Diagnostics.Conditional("DEBUG")]
-    internal static void ValidateLeafPath(TPath groupKey, int position, ReadOnlySpan<byte> encoding)
+    internal static void ValidateLeafPath<TPath>(TPath groupKey, int position, ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
     {
         if (encoding[0] != 0 || position == PbtFourLevelGroupGeometry.RootPosition) return;
         Span<byte> directions = stackalloc byte[PbtFourLevelGroupGeometry.LevelsPerGroup];
@@ -367,9 +370,9 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
     /// <summary>Enumerates present positions without allocating.</summary>
     public ref struct Enumerator
     {
-        private readonly PbtNodeGroupReader<TPath> _reader;
+        private readonly PbtNodeGroupReader _reader;
         private int _position;
-        internal Enumerator(PbtNodeGroupReader<TPath> reader) { _reader = reader; _position = -1; Current = default; CurrentPosition = -1; }
+        internal Enumerator(PbtNodeGroupReader reader) { _reader = reader; _position = -1; Current = default; CurrentPosition = -1; }
         /// <summary>Gets the current node encoding.</summary>
         public ReadOnlySpan<byte> Current { get; private set; }
         /// <summary>Gets the current post-order position.</summary>

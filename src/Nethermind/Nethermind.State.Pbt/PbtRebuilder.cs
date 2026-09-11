@@ -107,16 +107,16 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         IPbtPersistence.IWriteBatch batch,
         CancellationToken cancellationToken) : IPbtStore
     {
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return reader.GetNodeGroup(groupKey);
+            return reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            batch.SetNodeGroup(groupKey, payload);
+            batch.SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
         }
     }
 }

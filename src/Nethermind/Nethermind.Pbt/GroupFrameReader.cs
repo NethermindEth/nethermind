@@ -36,13 +36,14 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         if (_loaded) return;
         _metrics?.IncrementPhysicalGroupFetches();
-        _lease = _store.GetNodeGroup(GroupKey, _groupHash);
+        PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], GroupKey);
+        _lease = _store.GetNodeGroup(path, _groupHash);
         _loaded = true;
         if (_lease is null) return;
         try
         {
             _metrics?.IncrementGroupParses();
-            PbtNodeGroupReader<TPath> reader = new(GroupKey, _lease.GetSpan());
+            PbtNodeGroupReader reader = new(path, _lease.GetSpan());
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
                 if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;

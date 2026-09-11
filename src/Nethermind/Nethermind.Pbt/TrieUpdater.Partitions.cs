@@ -107,6 +107,7 @@ public static partial class TrieUpdater
                         SetBoundary(zoneBoundaries[worker.Zone >> 4]!.AsSpan(), ref zoneFrontierMasks[worker.Zone >> 4], worker.Zone & 15, ref worker.Result);
                         if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
                     }
+                    Span<byte> sharedPathBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
                     for (int slot = 0; slot < sharedReaders.Count; slot++)
                     {
                         if (sharedWriters[slot] is not { } sharedWriter) continue;
@@ -115,12 +116,14 @@ public static partial class TrieUpdater
                         ValueHash256 groupHash = composed.Hash(4);
                         SetBoundary(rootBoundaries.AsSpan(), ref rootFrontierMask, slot, ref composed);
                         using RefCountingMemory? payload = sharedWriter.Detach();
-                        store.SetNodeGroup(sharedReader.GroupKey, groupHash, payload);
+                        PbtTraversalPath sharedPath = PbtTraversalPath.FromPath(sharedPathBuffer, sharedReader.GroupKey);
+                        store.SetNodeGroup(sharedPath, groupHash, payload);
                     }
                     Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan(), rootFrontierMask);
                     ValueHash256 hash = rootWriter.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                    PbtTraversalPath rootPath = new(Span<byte>.Empty);
                     using (RefCountingMemory? payload = rootWriter.Detach())
-                        store.SetNodeGroup(RootPath, hash, payload);
+                        store.SetNodeGroup(rootPath, hash, payload);
                     return hash;
                 }
             }
@@ -172,7 +175,11 @@ public static partial class TrieUpdater
     {
         internal override void Fold()
         {
-            GroupFrameReader<TKey, TPath> reader = new(store, TPath.Create([Zone], 8), Current.Hash(8), Metrics);
+            Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
+            PbtTraversalPath path = new(pathBuffer);
+            path.AppendMut(Zone >> 4);
+            path.AppendMut(Zone & 15);
+            GroupFrameReader<TKey, TPath> reader = new(store, path.ToPath<TPath>(), Current.Hash(8), Metrics);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
                 using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
@@ -180,9 +187,9 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.Subtree result = default;
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
-                    operations.AsSpan(), 8, new(table.AsSpan(), 8, false));
+                    operations.AsSpan(), ref path, 8, new(table.AsSpan(), 8, false));
                 using (RefCountingMemory? payload = writer.Detach())
-                    store.SetNodeGroup(reader.GroupKey, result.Hash(8), payload);
+                    store.SetNodeGroup(path, result.Hash(8), payload);
                 result = result.Materialize();
                 Result = Subtree.TakeFrom<TKey, TPath>(ref result);
             }
@@ -208,11 +215,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         IRefCountingMemoryProvider memoryProvider,
         ref Subtree current,
         Span<PbtWriteOperation<TKey>> operations,
+        ref PbtTraversalPath path,
         int bitDepth,
         BucketPlan plan)
     {
         Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
         PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
-        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
+        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, ref path, bitDepth, partition);
     }
 }

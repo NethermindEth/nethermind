@@ -122,7 +122,7 @@ public class PbtRebuilderTests
         foreach (PbtStorageNodePath groupKey in reader.EnumerateNodeGroupKeys())
         {
             using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-            PbtNodeGroupReader<PbtStorageNodePath> group = new(groupKey, payload.GetSpan());
+            PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
             physicalNodeCount += group.Count;
             if (groupKey.BitDepth != 0)
                 Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);

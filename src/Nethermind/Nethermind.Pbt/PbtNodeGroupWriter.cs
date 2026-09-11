@@ -168,7 +168,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private void ValidateEncoding(ReadOnlySpan<byte> encoding)
     {
         PbtNodeCodec.ValidateExact(encoding);
-        PbtNodeGroupReader<TPath>.ValidateLeafPath(_groupKey, _pendingPosition, encoding);
+        PbtNodeGroupReader.ValidateLeafPath(_groupKey, _pendingPosition, encoding);
     }
 
     private void EnsureCapacity(int required)

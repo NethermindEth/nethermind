@@ -23,6 +23,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         PbtNodeGroupStore store = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
+            Span<byte> pathBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
             foreach (PbtPhysicalPayload payload in payloads)
             {
                 PbtStorageNodePath groupKey = PbtStorageNodePath.Decode(payload.Key.Span);
@@ -31,7 +32,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
                 if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
 
                 ReadOnlySpan<byte> payloadSpan = payload.Payload.Span;
-                _ = new PbtNodeGroupReader<PbtStorageNodePath>(groupKey, payloadSpan);
+                PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupKey);
+                _ = new PbtNodeGroupReader(path, payloadSpan);
                 RefCountingMemory ownedPayload = store._memoryProvider.Rent(payloadSpan.Length);
                 try
                 {
@@ -55,7 +57,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
-    public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
+    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
     {
         lock (_groupLock)
         {
@@ -70,14 +72,14 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
-    public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-            if (payload is not null) _ = new PbtNodeGroupReader<TPath>(groupKey, payload.GetSpan());
+            if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
             PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
 
             _groups.TryGetValue(storagePath, out RefCountingMemory? previous);

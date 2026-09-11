@@ -344,7 +344,11 @@ public class PbtRocksDbPersistence(
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
-            if (payload is not null) _ = new PbtNodeGroupReader<TPath>(groupKey, payload.GetSpan());
+            if (payload is not null)
+            {
+                PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+                _ = new PbtNodeGroupReader(traversalPath, payload.GetSpan());
+            }
             IWriteBatch groups = _batch.GetColumnBatch(NodeGroupColumn(groupKey));
             Span<byte> key = stackalloc byte[groupKey.EncodedLength];
             ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(groupKey, key);

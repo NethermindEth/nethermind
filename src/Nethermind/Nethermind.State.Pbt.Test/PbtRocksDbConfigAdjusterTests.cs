@@ -174,7 +174,7 @@ public class PbtRocksDbConfigAdjusterTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));
-                    Assert.That(new PbtNodeGroupReader<PbtStorageNodePath>(path, payload!.GetSpan()).GetNode(NodePosition(path)).ToArray(), Is.EqualTo(encoding));
+                    Assert.That(PbtStoreTestExtensions.ReadGroup(path, payload!.GetSpan()).GetNode(NodePosition(path)).ToArray(), Is.EqualTo(encoding));
                 }
             }
         }

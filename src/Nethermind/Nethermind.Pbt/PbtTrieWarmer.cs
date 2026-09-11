@@ -17,13 +17,15 @@ internal static class PbtTrieWarmer
 
         PbtStorageNodePath path = new([], 0);
         ValueHash256 groupHash = root;
+        Span<byte> groupPathBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
         while (true)
         {
             PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
-            using RefCountingMemory? payload = store.GetNodeGroup(location.GroupKey, groupHash);
+            PbtTraversalPath groupPath = PbtTraversalPath.FromPath(groupPathBuffer, location.GroupKey);
+            using RefCountingMemory? payload = store.GetNodeGroup(groupPath, groupHash);
             if (payload is null) return;
 
-            PbtNodeGroupReader<PbtStorageNodePath> group = new(location.GroupKey, payload.GetSpan());
+            PbtNodeGroupReader group = new(groupPath, payload.GetSpan());
             do
             {
                 if (!group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding)) return;
