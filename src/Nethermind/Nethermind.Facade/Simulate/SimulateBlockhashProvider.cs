@@ -23,12 +23,13 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
             : blockhashProvider.GetBlockhash(currentBlock, number, spec);
     }
 
-    public bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, Span<byte> destination)
+    /// <inheritdoc/>
+    public bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
     {
         ulong bestKnown = blockTree.BestKnownNumber;
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
-            ? blockhashProvider.TryGetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec, destination)
-            : blockhashProvider.TryGetBlockhash(currentBlock, number, spec, destination);
+            ? blockhashProvider.TryGetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec, out hash)
+            : blockhashProvider.TryGetBlockhash(currentBlock, number, spec, out hash);
     }
 
     public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => blockhashProvider.Prefetch(currentBlock, token);

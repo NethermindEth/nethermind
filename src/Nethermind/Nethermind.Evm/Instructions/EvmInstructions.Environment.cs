@@ -773,10 +773,11 @@ public static partial class EvmInstructions
             return tracedPush;
         }
 
-        // Fill the word in place. Under EIP-2935 the hash comes from state, and materialising a Hash256 for
-        // it allocates once per BLOCKHASH for a value discarded on the next instruction.
-        Span<byte> blockHashBytes = stackalloc byte[Hash256.Size];
-        bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, blockHashBytes);
+        // Push the bytes the provider already holds: for storage-backed BLOCKHASH (EIP-7709) the hash comes
+        // from state, and materialising a Hash256 for it allocates once per call for a value the next
+        // instruction discards.
+        ReadOnlySpan<byte> blockHashBytes = default;
+        bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, out blockHashBytes);
 
         return stack.PushBytes<TTracingInst>(found ? blockHashBytes : BytesZero32);
         // Jump forward to be unpredicted by the branch predictor.

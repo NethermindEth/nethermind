@@ -14,18 +14,16 @@ namespace Nethermind.Evm
     {
         Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec);
 
-        /// <summary>Writes the block hash for <paramref name="number"/> into a 32-byte destination.</summary>
-        /// <remarks>Lets the BLOCKHASH opcode fill its stack word without materialising a <see cref="Hash256"/>
+        /// <summary>Gets the block hash for <paramref name="number"/> as bytes.</summary>
+        /// <remarks>Lets the BLOCKHASH opcode push its stack word without materialising a <see cref="Hash256"/>
         /// that it discards on the next instruction.</remarks>
-        /// <param name="destination">A 32-byte span, left-padded with zeros when the hash is shorter.</param>
-        /// <returns><c>true</c> when a hash was written, <c>false</c> when none is available.</returns>
-        bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, Span<byte> destination)
+        /// <param name="hash">The 32 hash bytes, borrowed from the provider rather than copied out.</param>
+        /// <returns><c>true</c> when a hash was found, <c>false</c> when none is available.</returns>
+        bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
-            Hash256? hash = GetBlockhash(currentBlock, number, spec);
-            if (hash is null) return false;
-
-            hash.Bytes.CopyTo(destination);
-            return true;
+            Hash256? blockHash = GetBlockhash(currentBlock, number, spec);
+            hash = blockHash is null ? default : blockHash.Bytes;
+            return blockHash is not null;
         }
         Task Prefetch(BlockHeader currentBlock, CancellationToken token);
     }

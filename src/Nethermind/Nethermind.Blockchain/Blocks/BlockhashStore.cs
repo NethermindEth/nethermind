@@ -56,6 +56,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
         return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
     }
 
+    /// <inheritdoc/>
     public bool TryGetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec, Span<byte> destination)
     {
         if (!TryGetHistoryCell(currentHeader, requiredBlockNumber, spec, out StorageCell blockHashStoreCell))

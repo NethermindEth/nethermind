@@ -29,6 +29,7 @@ public class BlockhashLookupBenchmark
     private BlockhashStore _store = null!;
     private BlockHeader _header = null!;
     private IReleaseSpec _spec = null!;
+    private IReleaseSpec _legacySpec = null!;
     private ulong _number;
 
     [GlobalSetup]
@@ -38,6 +39,13 @@ public class BlockhashLookupBenchmark
         {
             IsEip2935Enabled = true,
             IsEip7709Enabled = true,
+            Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
+        };
+
+        // No named fork enables EIP-7709 yet, so the block-tree path is what BLOCKHASH actually runs today.
+        _legacySpec = new ReleaseSpec
+        {
+            IsEip2935Enabled = true,
             Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
         };
 
@@ -69,8 +77,7 @@ public class BlockhashLookupBenchmark
         worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, _spec);
         _store.ApplyBlockhashStateChanges(_header, _spec);
 
-        Span<byte> warm = stackalloc byte[Hash256.Size];
-        _provider.TryGetBlockhash(_header, _number, _spec, warm);
+        _provider.TryGetBlockhash(_header, _number, _spec, out _);
     }
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
@@ -93,9 +100,24 @@ public class BlockhashLookupBenchmark
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
     public int Memoized()
     {
-        Span<byte> buffer = stackalloc byte[Hash256.Size];
         int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.TryGetBlockhash(_header, _number, _spec, buffer) ? 1 : 0;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.TryGetBlockhash(_header, _number, _spec, out _) ? 1 : 0;
+        return n;
+    }
+
+    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
+    public int LegacyAllocating()
+    {
+        int n = 0;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.GetBlockhash(_header, _number, _legacySpec) is null ? 0 : 1;
+        return n;
+    }
+
+    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
+    public int LegacySpan()
+    {
+        int n = 0;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.TryGetBlockhash(_header, _number, _legacySpec, out _) ? 1 : 0;
         return n;
     }
 }
