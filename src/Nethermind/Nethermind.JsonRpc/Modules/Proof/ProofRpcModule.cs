@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             if (searchResult.IsError)
             {
                 // Unknown blocks yield null and mirror eth_; other search failures (e.g. pruned history) keep their error.
-                failure = searchResult.Error == BlockFinderExtensions.HeaderNotFound ? default : searchResult;
+                failure = searchResult.ErrorCode == ErrorCodes.ResourceNotFound ? default : searchResult;
                 return false;
             }
 
