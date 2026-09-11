@@ -42,7 +42,6 @@ using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
-using Testably.Abstractions;
 using static Nethermind.JsonRpc.EvmAdmissionGate;
 
 namespace Nethermind.JsonRpc.Test;
