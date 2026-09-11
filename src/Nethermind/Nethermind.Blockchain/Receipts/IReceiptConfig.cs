@@ -10,6 +10,9 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether to store receipts after a new block is processed. This setting is independent from downloading receipts in fast sync mode.", DefaultValue = "true")]
     bool StoreReceipts { get; set; }
 
+    [ConfigItem(Description = "Whether receipt bodies are derived from state instead of persisted: their write is skipped, and a query re-executes the block over its parent state, serving the result only when it reproduces the block header's receipts root. Bodies already on disk are still served; pre-Byzantium bodies and the transaction index are always written. A skipped body is retained in memory until history capture durably covers its block, and is persisted if capture permanently stops (see the error log then), so a capture breakdown does not lose receipts. Intended for archive nodes: requires state history for the queried block, and peers are told no receipts are available. A query that misses the cache costs a full block execution, so a public endpoint should be rate limited; concurrency is bounded by JsonRpc.EthModuleConcurrentInstances.", DefaultValue = "false")]
+    bool DeriveFromState { get; set; }
+
     [ConfigItem(Description = "Whether to migrate the receipts database to the new schema.", DefaultValue = "false")]
     bool ReceiptsMigration { get; set; }
 

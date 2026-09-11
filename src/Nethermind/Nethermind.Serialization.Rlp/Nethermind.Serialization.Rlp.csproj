@@ -1,12 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Nullable>annotations</Nullable>
+    <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Core.Test" />
+    <InternalsVisibleTo Include="Nethermind.Trie" />
   </ItemGroup>
 
   <ItemGroup>

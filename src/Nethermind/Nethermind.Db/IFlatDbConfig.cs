@@ -16,11 +16,68 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
-    [ConfigItem(Description = "Enabled", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
     bool EnablePreimageRecording { get; set; }
+
+    [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
+    bool HistoryEnabled { get; set; }
+
+    [ConfigItem(Description = "How flat history is retained. 'None' keeps it unbounded from genesis or the pivot and never prunes it. 'Rolling' keeps a bounded window of the most recent HistoryRetentionBlocks blocks and reclaims below it. 'SinceBlock' keeps everything from HistoryRetentionSinceBlock onward forever and captures nothing below it. Both bounded modes select the windowed row format and so require a database that has never captured history unwindowed.", DefaultValue = "None")]
+    HistoryRetentionMode HistoryRetention { get; set; }
+
+    [ConfigItem(Description = "Size of the rolling flat-history window, in blocks below the watermark. Required when HistoryRetention is 'Rolling' and rejected otherwise.", DefaultValue = "0")]
+    ulong HistoryRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "First block of flat history to keep when HistoryRetention is 'SinceBlock'. History below it is never captured and reads there fail closed; from it onward nothing is ever pruned. Required in that mode and rejected otherwise.", DefaultValue = "0")]
+    ulong HistoryRetentionSinceBlock { get; set; }
+
+    [ConfigItem(Description = "How many blocks the watermark must advance before an idle history window pruner wakes and re-evaluates the floor. A pruner still owing sweep work paces itself on its pass budget instead. Only consulted when HistoryRetention is 'Rolling'.", DefaultValue = "1024")]
+    ulong HistoryPruneIntervalBlocks { get; set; }
+
+    [ConfigItem(Description = "Per-pass wall-clock budget, in seconds, for the history window pruner's incremental scan-and-delete. A pass yields at the budget and resumes from its persisted cursor on the next pass rather than running unbounded. Must exceed the longest historical query the node serves: deletes wait for in-flight historical reads, and a read that outlives every pass blocks reclamation until it finishes.", DefaultValue = "5")]
+    int HistoryPrunePassBudgetSeconds { get; set; }
+
+    [ConfigItem(Description = "A comma-separated list of contract addresses to retain unbounded (or far deeper than HistoryRetentionBlocks) flat history for, independent of the general rolling window. Needs the windowed row format (HistoryRetention Rolling or SinceBlock); under SinceBlock only the body and receipt retention described here applies, since flat history there is never pruned. Static allow-list only - an address is never added or removed except by editing this config and restarting. Both the receipts and the whole block body are retained for every block one of these addresses appears in, so those heights keep their transactions queryable and not just their logs. The cost is body disk: a contract busy enough to match most blocks means most of those bodies are kept, and history pruning stops reclaiming body space over that range. An entry with a retention suffix keeps bodies and receipts only while a height is within that many blocks of the head; a cleanup cursor reclaims them after they fall out. An entry without a retention suffix retains forever and pins the whole clears column and the per-block markers (~40 bytes per block the window never reclaims). Answering below a previously pruned boundary requires History.Pruning to stay enabled: the pruner is what validates, at startup, from which depth each slice's logs are provably retained, and without it those reads fail closed.", DefaultValue = "null")]
+    string? HistorySliceAddresses { get; set; }
+
+    [ConfigItem(Description = "Rebuild the state root from flat history rows at every covered block and compare against this node's own headers, once, in the background. Unwindowed archives only. Memory is bounded by FlatDb.HistoryVerifyMaxRows per worker, not by state size.", DefaultValue = "false")]
+    bool HistoryVerifyEveryBlock { get; set; }
+
+    [ConfigItem(Description = "Concurrent workers of the every-block history verification; the key keeps the name it shipped under, the value is a worker count. Each worker replays one trie subtree at a time from its own contiguous rows, so workers share nothing but the read-only columns; the count changes memory and wall clock, never the result. 0 sizes it from the machine: the processor count minus two cores kept for block processing, capped so the walk takes at most half of the memory and never more than the headroom free when it starts.", DefaultValue = "0")]
+    int HistoryVerifySegments { get; set; }
+
+    [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Sized so that one mainnet depth-2 account subtree fits without splitting; each worker holds about 400 bytes per row plus its replayed trie. 0 uses the built-in default of 5 million.", DefaultValue = "0")]
+    long HistoryVerifyMaxRows { get; set; }
+
+    [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
+    bool ArchiveProofServeEnabled { get; set; }
+
+    [ConfigItem(Description = "Emit the archive proof commitments: from the tip as blocks are captured, and, with FlatDb.HistoryVerifyEveryBlock, along the every-block walk that retrofits an already-synced archive. A node syncing from genesis needs only the tip capture.", DefaultValue = "false")]
+    bool ArchiveProofBuildEnabled { get; set; }
+
+    [ConfigItem(Description = "Concurrent child resolutions inside a single historical proof. Each of a node's 16 children is an independent read, so this is the per-request fan-out; 0 uses the processor count. The number of concurrent proofs is capped by the JSON-RPC module pool, not here.", DefaultValue = "8")]
+    int ArchiveProofFanOut { get; set; }
+
+    [ConfigItem(Description = "History rows one historical proof may read before it is refused. A proof that has to scan beyond this is resolving from raw history rather than from commitments, which means the commitment column does not really cover that height. 0 uses the built-in ceiling of 250000 rows.", DefaultValue = "0")]
+    long ArchiveProofMaxScannedRows { get; set; }
+
+    [ConfigItem(Description = "Checkpoint interval for the archive proof commitments, as a power of two blocks, the same at every trie depth. Smaller means faster cold proofs and more disk. Accepted range 6..12. Changing it invalidates commitments already built. 0 uses the built-in default of 2^9.", DefaultValue = "0")]
+    int ArchiveProofCheckpointIntervalLog2 { get; set; }
+
+    [ConfigItem(Description = "Delete the archive proof commitment columns and rebuild them when they were written under a different layout than this node is configured for (another checkpoint interval, or an older release). Off refuses to build and keeps the rows; on discards rows nothing can read any more. Nothing is deleted while the layout matches, so it is harmless to leave on.", DefaultValue = "false")]
+    bool ArchiveProofDiscardMismatchedLayout { get; set; }
+
+    [ConfigItem(Description = "Epoch of the archive proof commitment rows, as a power of two blocks. Rows are keyed by epoch so a whole epoch can be dropped in one range delete; every epoch starts with a snapshot of the account tiers and the storage roots. Must be at least the checkpoint interval; 0 uses 19 (about 2.5 months of blocks). Changing it invalidates commitments already built.", DefaultValue = "0")]
+    int ArchiveProofEpochLog2 { get; set; }
+
+    [ConfigItem(Description = "Number of most recent commitment epochs to keep. Older epochs are deleted and historical proofs below them are refused; 0 keeps every epoch (a full archive).", DefaultValue = "0")]
+    int ArchiveProofRecentEpochs { get; set; }
+
+    [ConfigItem(Description = "Number of most recent commitment epochs to keep the per-block rows for. Older epochs keep only their checkpoint rows: proofs there are still served and still verified, rebuilt from the window rows, which costs about a second instead of a hundred milliseconds and is most of the column's size. 0 keeps the per-block rows for every epoch.", DefaultValue = "0")]
+    int ArchiveProofFineEpochs { get; set; }
 
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }

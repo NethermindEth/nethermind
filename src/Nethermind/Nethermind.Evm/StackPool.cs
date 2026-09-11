@@ -3,7 +3,11 @@
 
 namespace Nethermind.Evm;
 
-internal sealed partial class StackPool
+// Stacks carry no gas-policy state, so one pool serves every VmState{TGasPolicy} instantiation rather
+// than one per closed type. Static rather than a singleton instance: EvmObjectPool's local tier is
+// static per pooled type, so a second StackPool would hand out this one's stacks - `static` makes that
+// inexpressible instead of merely discouraged.
+internal static partial class StackPool
 {
     // Also have parallel prewarming and Rpc calls
     private const int MaxStacksPooled = VirtualMachineStatics.MaxCallDepth * 2;
@@ -14,7 +18,7 @@ internal sealed partial class StackPool
         public readonly byte[] DataStack = dataStack;
     }
 
-    public partial void ReturnStacks(byte[] dataStack);
+    public static partial void ReturnStacks(byte[] dataStack);
 
-    public partial byte[] RentStacks();
+    public static partial byte[] RentStacks();
 }

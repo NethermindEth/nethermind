@@ -101,9 +101,8 @@ public class ResourcePoolTests
         Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ShouldPrewarm_AddressOverloadsUseSameHash(bool includeSlot)
+    [Test]
+    public void ShouldPrewarm_AddressOverloadsUseSameHash([Values] bool includeSlot)
     {
         using TransientResource resource = new(new TransientResource.Size(1024, 1));
         Address address = new("0x1234567890123456789012345678901234567890");
@@ -112,6 +111,25 @@ public class ResourcePoolTests
 
         Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
         Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
+    }
+
+    [Test]
+    public void Test_ReleaseLease_FinalRelease_ReturnsResourceToCheckoutPool()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        TransientResource resource = _resourcePool.GetCachedResource(usage);
+
+        resource.ReleaseLease();
+
+        Assert.That(_resourcePool.GetCachedResource(usage), Is.SameAs(resource));
+    }
+
+    [Test]
+    public void Test_ReleaseLease_WithoutPoolCheckout_Throws()
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+
+        Assert.That(resource.ReleaseLease, Throws.InvalidOperationException);
     }
 
     [Test]
@@ -187,10 +205,8 @@ public class ResourcePoolTests
     public void Test_CompactUsage_MapsCompactSizeToUsage(ulong compactSize, ResourcePool.Usage expected) =>
         Assert.That(ResourcePool.CompactUsage(compactSize), Is.EqualTo(expected));
 
-    [TestCase(3UL)]
-    [TestCase(5UL)]
-    [TestCase(2047UL)]
-    public void Test_CompactUsage_ThrowsOnInvalidSize(ulong compactSize) =>
+    [Test]
+    public void Test_CompactUsage_ThrowsOnInvalidSize([Values(3UL, 5UL, 2047UL)] ulong compactSize) =>
         Assert.That(() => ResourcePool.CompactUsage(compactSize), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

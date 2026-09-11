@@ -28,7 +28,7 @@ internal sealed class PongMsgSerializer() : MsgSerializerBase<PongMsg>(MessageTy
     protected override PongMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         ulong enrSequence = ctx.DecodeULong();
-        IPAddress recipientIp = new(ctx.DecodeByteArraySpan(IpAddressRlpLimit));
+        IPAddress recipientIp = new IPAddress(ctx.DecodeByteArraySpan(IpAddressRlpLimit)).NormalizeMappedIPv4();
         int recipientPort = ctx.DecodePositiveInt();
         return new PongMsg(requestId, enrSequence, recipientIp, recipientPort, owner);
     }

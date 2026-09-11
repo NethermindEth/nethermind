@@ -120,9 +120,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        {
+            NoBaseFee = !call.ShouldSetBaseFee()
+        };
+
         if (CanStreamStructLogs(options))
         {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
@@ -134,7 +138,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace;
         try
         {
-            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, effective);
         }
         catch (InsufficientBalanceException ex)
         {
@@ -543,7 +547,7 @@ public class DebugRpcModule(
         RlpBehaviors behavior =
             (specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoder<TxReceipt>()!;
+        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
 
         ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
         try
@@ -602,7 +606,7 @@ public class DebugRpcModule(
         Block? block = debugBridge.GetBlock(blockParameter);
         return block is null
             ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
-            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoder<BlockHeader>()!.EncodeToArrayPoolList(block.Header));
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());

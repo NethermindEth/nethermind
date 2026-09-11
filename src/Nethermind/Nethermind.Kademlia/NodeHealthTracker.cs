@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -278,16 +279,19 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         {
             lock (_lock)
             {
-                if (_values.TryGetValue(hash, out (int FailureCount, LinkedListNode<TKadKey> OrderNode) entry))
+                ref (int FailureCount, LinkedListNode<TKadKey> OrderNode) entry =
+                    ref CollectionsMarshal.GetValueRefOrAddDefault(_values, hash, out bool exists);
+                if (exists)
                 {
-                    _order.Remove(entry.OrderNode);
-                    _order.AddLast(entry.OrderNode);
-                    _values[hash] = (failureCount, entry.OrderNode);
+                    LinkedListNode<TKadKey> existingOrderNode = entry.OrderNode;
+                    _order.Remove(existingOrderNode);
+                    _order.AddLast(existingOrderNode);
+                    entry = (failureCount, existingOrderNode);
                     return;
                 }
 
                 LinkedListNode<TKadKey> orderNode = _order.AddLast(hash);
-                _values[hash] = (failureCount, orderNode);
+                entry = (failureCount, orderNode);
                 Trim();
             }
         }

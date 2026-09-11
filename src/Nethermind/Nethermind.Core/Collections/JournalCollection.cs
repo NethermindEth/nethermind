@@ -33,7 +33,7 @@ namespace Nethermind.Core.Collections
 
         [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidRestore(int snapshot)
-            => throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
+            => throw new InvalidOperationException($"{nameof(JournalCollection<>)} tried to restore snapshot {snapshot} beyond current position {Count}");
 
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_list).GetEnumerator();

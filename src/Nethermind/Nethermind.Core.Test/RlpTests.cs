@@ -25,6 +25,61 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Decodes_uint256_of_every_payload_length([Range(0, 32)] int byteLength)
+        {
+            UInt256 value = UInt256OfByteLength(byteLength);
+
+            UInt256 decoded = Rlp.Decode<UInt256>(Rlp.Encode(value).Bytes);
+
+            Assert.That(decoded, Is.EqualTo(value));
+        }
+
+        /// <summary>Builds a value whose canonical big-endian encoding is exactly that many bytes.</summary>
+        private static UInt256 UInt256OfByteLength(int byteLength)
+        {
+            if (byteLength == 0)
+            {
+                return UInt256.Zero;
+            }
+
+            Span<byte> bytes = stackalloc byte[byteLength];
+            for (int i = 0; i < byteLength; i++)
+            {
+                // Distinct per position so a word assembled from the wrong offset cannot still match.
+                bytes[i] = (byte)(i + 1);
+            }
+
+            bytes[0] = 0xab; // non-zero, so the encoding is canonical at this length
+            return new UInt256(bytes, isBigEndian: true);
+        }
+
+        [Test]
+        public void InternKeccak_discriminators_match_the_interned_hashes()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    RlpHelpers.FirstWord(Keccak.OfAnEmptyString.Bytes),
+                    Is.EqualTo(RlpHelpers.OfAnEmptyStringFirstWord));
+                Assert.That(
+                    RlpHelpers.FirstWord(Keccak.EmptyTreeHash.Bytes),
+                    Is.EqualTo(RlpHelpers.EmptyTreeHashFirstWord));
+            }
+        }
+
+        // The first row is the boundaries of the length prefix. The second is one value per byte width,
+        // each distinct per position behind a non-zero leading byte, so the encoding stays canonical at
+        // that width and a word assembled from the wrong offset cannot still match.
+        [Test]
+        public void Decodes_ulong_round_trip(
+            [Values(
+                0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue,
+                0xabUL, 0xab02UL, 0xab0203UL, 0xab020304UL,
+                0xab02030405UL, 0xab0203040506UL, 0xab020304050607UL, 0xab02030405060708UL)]
+            ulong value) =>
+            Assert.That(Rlp.Decode<ulong>(Rlp.Encode(value).Bytes), Is.EqualTo(value));
+
+        [Test]
         public void DecodeArray_rejects_more_items_than_the_limit()
         {
             RlpLimit limit = new(4);
@@ -99,14 +154,8 @@ namespace Nethermind.Core.Test
             AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
         }
 
-        [TestCase(0UL)]
-        [TestCase(1UL)]
-        [TestCase(127UL)]
-        [TestCase(128UL)]
-        [TestCase(255UL)]
-        [TestCase(256UL)]
-        [TestCase(ulong.MaxValue)]
-        public void RlpWriter_encodes_ulong_like_Rlp(ulong value)
+        [Test]
+        public void RlpWriter_encodes_ulong_like_Rlp([Values(0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue)] ulong value)
         {
             int length = Rlp.LengthOf(value);
 
@@ -153,6 +202,51 @@ namespace Nethermind.Core.Test
             writer.Encode(in value);
 
             AssertValueWriterMatchesExpected(writer, buffer, ExpectedValueHash(value));
+        }
+
+        [TestCaseSource(nameof(ValueWriterValueHashCases))]
+        public void RlpReader_roundtrips_value_hash(ValueHash256? value)
+        {
+            byte[] buffer = new byte[Rlp.LengthOf(in value)];
+            RlpWriter writer = new(buffer);
+            writer.Encode(in value);
+
+            RlpReader reader = new(buffer);
+
+            Assert.That(reader.DecodeValueKeccak(), Is.EqualTo(value));
+
+            if (value is null)
+            {
+                Assert.Throws<RlpException>(() =>
+                {
+                    RlpReader nonNullReader = new(buffer);
+                    nonNullReader.DecodeValueKeccakNonNull();
+                });
+            }
+            else
+            {
+                RlpReader nonNullReader = new(buffer);
+                Assert.That(nonNullReader.DecodeValueKeccakNonNull(), Is.EqualTo(value.Value));
+            }
+        }
+
+        [TestCaseSource(nameof(ValueWriterHashCases))]
+        public void RlpReader_roundtrips_hash(Hash256? value)
+        {
+            byte[] buffer = new byte[Rlp.LengthOf(value)];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            RlpReader reader = new(buffer);
+            Hash256? decoded = reader.DecodeKeccakOrNull();
+
+            Assert.That(decoded, Is.EqualTo(value));
+            if (value == Keccak.OfAnEmptyString || value == Keccak.EmptyTreeHash)
+            {
+                // The interned instances must come back by reference, which is the only observable
+                // difference between comparing the payload as a span and as a ValueHash256.
+                Assert.That(decoded, Is.SameAs(value));
+            }
         }
 
         [TestCaseSource(nameof(ValueWriterAddressCases))]
@@ -281,7 +375,37 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value) => Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
+        public void Length_of_ulong_matches_spec([ValueSource(nameof(ULongValues))] ulong value)
+        {
+            int expected = SpecLengthOf(value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Rlp.LengthOf(value), Is.EqualTo(expected), "ulong");
+                Assert.That(Rlp.LengthOf((UInt256)value), Is.EqualTo(expected), "UInt256");
+            }
+        }
+
+        /// <summary>Computes the RLP length of an unsigned integer.</summary>
+        /// <remarks>
+        /// Yellow Paper appendix B gives the length. A value below 0x80 uses one byte. Larger values use
+        /// one prefix byte plus the minimal big-endian bytes. The loop shape is deliberately different from
+        /// the production implementation. This prevents a defect shared with the production code.
+        /// </remarks>
+        private static int SpecLengthOf(ulong value)
+        {
+            if (value < 0x80)
+            {
+                return 1;
+            }
+
+            int byteCount = 0;
+            for (ulong rest = value; rest != 0; rest >>= 8)
+            {
+                byteCount++;
+            }
+
+            return 1 + byteCount;
+        }
 
         [Test]
         public void Single_byte_encoding_decoding()
@@ -346,10 +470,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(127)]
-        public void Byte_array_of_length_1_and_first_byte_value_less_than_128(byte value)
+        [Test]
+        public void Byte_array_of_length_1_and_first_byte_value_less_than_128([Values(0, 1, 127)] byte value)
         {
             byte[] bytes = { value };
             Rlp rlp = Rlp.Encode(bytes);
@@ -362,9 +484,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(128)]
-        [TestCase(255)]
-        public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128(byte value)
+        [Test]
+        public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128([Values(128, 255)] byte value)
         {
             byte[] bytes = { value };
             Rlp rlp = Rlp.Encode(bytes);
@@ -530,9 +651,8 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(50)]
-        [TestCase(100)]
-        public void Over_limit_throws(int limit)
+        [Test]
+        public void Over_limit_throws([Values(50, 100)] int limit)
         {
             byte[] rlp = Prepare100BytesRlp();
             RlpLimit rlpLimit = new(limit);
@@ -674,11 +794,7 @@ namespace Nethermind.Core.Test
 
                 CappedArray<byte> cappedData = new(data);
                 RlpReader cappedReader = new(cappedData);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(cappedReader.IsNotNull, Is.True);
-                    Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
-                }
+                Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
             }
         }
 
@@ -1003,18 +1119,47 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void RlpReader_from_default_capped_array_is_null()
+        public void RlpReader_from_default_capped_array_is_empty()
         {
             CappedArray<byte> data = default;
             RlpReader reader = new(data);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(reader.IsNull, Is.True);
-                Assert.That(reader.IsNotNull, Is.False);
-                Assert.That(reader.Length, Is.Zero);
-            }
+            Assert.That(reader.Length, Is.Zero);
         }
+
+        [Test]
+        public void SkipItems_advances_the_cursor_like_repeated_SkipItem([Range(-1, MixedItemCount)] int count)
+        {
+            byte[] rlp = MixedRlpItems();
+
+            RlpReader batched = new(rlp);
+            batched.SkipItems(count);
+
+            RlpReader oneByOne = new(rlp);
+            for (int i = 0; i < count; i++)
+            {
+                oneByOne.SkipItem();
+            }
+
+            Assert.That(batched.Position, Is.EqualTo(oneByOne.Position));
+        }
+
+        [Test]
+        public void SkipItems_over_every_item_lands_at_the_end()
+        {
+            byte[] rlp = MixedRlpItems();
+            RlpReader reader = new(rlp);
+
+            reader.SkipItems(MixedItemCount);
+
+            Assert.That(reader.Position, Is.EqualTo(rlp.Length));
+        }
+
+        private const int MixedItemCount = 5;
+
+        // 0x7F | "" | "abc" | [1, 2] | a 56-byte string, so a run crosses every prefix form
+        private static byte[] MixedRlpItems() =>
+            [0x7F, 0x80, 0x83, 0x61, 0x62, 0x63, 0xC2, 0x01, 0x02, 0xB8, 0x38, .. new byte[56]];
 
         private static byte[] BuildLongFormRlp(int prefix, int contentLength)
         {

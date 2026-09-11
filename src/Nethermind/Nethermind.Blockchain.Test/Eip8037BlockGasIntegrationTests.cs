@@ -41,12 +41,10 @@ public class Eip8037BlockGasIntegrationTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         return new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
     }
 
     private static (BlockAccessListManager, Block) BuildAmsterdamBlock(ulong blockGasLimit, params Transaction[] txs)
@@ -104,11 +102,11 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in the regular dimension
+    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in the execution dimension
     /// with no <c>intrinsic.state</c> subtraction, so a creation tx whose full gas fits is accepted.
     /// </summary>
     [Test]
-    public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
+    public void Eip8037_creation_tx_execution_check_actual_usage_modest_accepts()
     {
         ulong blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
@@ -139,7 +137,7 @@ public class Eip8037BlockGasIntegrationTests
     public void Eip8037_single_tx_state_check_exceeds_block_limit_rejects()
     {
         ulong blockGasLimit = 16_777_216ul + 100ul; // cap + tiny headroom
-        // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
+        // tx.gas = blockGasLimit + intrinsic_execution + 1 -> spec inclusion check rejects on state dim.
         Transaction onlyTx = Build.A.Transaction.WithHash(TestItem.KeccakA)
             .WithGasLimit(blockGasLimit + 21_000ul + 1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, onlyTx);
@@ -181,9 +179,9 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// EIP-7825 cap: even when (tx.gas - intrinsic.state) is huge, regular worst-case is
+    /// EIP-7825 cap: even when (tx.gas - intrinsic.state) is huge, execution worst-case is
     /// capped at TX_MAX_GAS_LIMIT. Test that IncrementalValidation correctly accepts a
-    /// block where a single tx with massive headroom on regular dim still fits because
+    /// block where a single tx with massive headroom on execution dim still fits because
     /// post-execution actual gas is modest.
     /// </summary>
     [Test]
@@ -207,12 +205,10 @@ public class Eip8037BlockGasIntegrationTests
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         BlockAccessListManager balManager = new(
             stateProvider,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)

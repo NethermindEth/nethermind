@@ -258,9 +258,10 @@ public class CensorshipDetectorTests
                 _blockTree,
                 _stateProvider),
             new TxPoolConfig(),
-            new TxValidator(_specProvider.ChainId),
-            _logManager,
-            _comparer);
+                new TxValidator(_specProvider.ChainId),
+                new SpecChangeTxValidator(_specProvider.ChainId),
+                _logManager,
+                _comparer);
     }
 
     private async Task BlockProcessingWorkflowAsync(Block block)

@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -16,13 +17,15 @@ namespace Nethermind.Merge.AuRa
         ITimestamper timestamper,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        IGasLimitCalculator? gasLimitCalculator = null) : PostMergeBlockProducerFactory(
+        IGasLimitCalculator? gasLimitCalculator = null,
+        IInclusionListTxSource? inclusionListTxSource = null) : PostMergeBlockProducerFactory(
             specProvider,
             sealEngine,
             timestamper,
             blocksConfig,
             logManager,
-            gasLimitCalculator)
+            gasLimitCalculator,
+            inclusionListTxSource)
     {
     }
 }

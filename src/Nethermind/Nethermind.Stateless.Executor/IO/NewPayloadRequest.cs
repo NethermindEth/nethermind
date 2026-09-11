@@ -6,27 +6,25 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Stateless.Execution.IO;
 
 [SszContainer]
 public partial class NewPayloadRequest<TExecutionPayload>
-    where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
+    where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
 {
     public TExecutionPayload ExecutionPayload { get; set; } = default!;
 
-    [SszList(0x1000)]
+    [SszProgressiveList]
     public Hash256[] VersionedHashes { get; set; } = [];
 
     public Hash256 ParentBeaconBlockRoot { get; set; } = null!;
 
     public SszExecutionRequests ExecutionRequests { get; set; }
 
-    public static NewPayloadRequest<TExecutionPayload> From(Block block)
+    public static NewPayloadRequest<TExecutionPayload> From(Block block, TExecutionPayload payload)
     {
-        TExecutionPayload payload = TExecutionPayload.From(block);
         Hash256 parentBeaconBlockRoot = block.ParentBeaconBlockRoot
             ?? throw new ArgumentException("Parent beacon block root is missing.", nameof(block));
 

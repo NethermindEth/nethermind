@@ -314,9 +314,8 @@ public class DebugModuleTests
         Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames(bool isBadBlock)
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames([Values] bool isBadBlock)
     {
         Hash256 blockHash = Keccak.EmptyTreeHash;
 
@@ -347,9 +346,8 @@ public class DebugModuleTests
         Assert.That(actual.Data, Is.EqualTo(GetFileNames(blockHash)));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void DebugStandardTraceBlockToFile_WhenBlockMissing_ReturnsResourceNotFound(bool isBadBlock)
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenBlockMissing_ReturnsResourceNotFound([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
         _blockFinder.FindHeader(blockHash).ReturnsNull();
@@ -361,9 +359,8 @@ public class DebugModuleTests
         Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void DebugStandardTraceBlockToFile_WhenStateUnavailable_ReturnsResourceUnavailable(bool isBadBlock)
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenStateUnavailable_ReturnsResourceUnavailable([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
@@ -452,20 +449,23 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsResponse()
+    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsBridgeResult()
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        string response = await SerializedRequest("debug_migrateReceipts", 100);
-        Assert.That(response, Is.Not.Null);
+        // Both arguments are required. Hex-string quantities stay valid when a parallel fixture enables StrictHexFormat.
+        string response = await SerializedRequest("debug_migrateReceipts", "0x64", "0xc8");
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        await _debugBridge.Received().MigrateReceipts(100, 200);
     }
 
     [Test]
     public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()
     {
-        _debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
+        string response = await SerializedRequest("debug_resetHead", TestItem.KeccakA);
 
-        await SerializedRequest("debug_resetHead", TestItem.KeccakA);
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 

@@ -70,6 +70,7 @@ public class ParityLikeTxTracer : TxTracer
 
     public sealed override bool IsTracingActions { get; protected set; }
     public sealed override bool IsTracingReceipt { get; protected set; }
+    public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }
     public sealed override bool IsTracingState { get; protected set; }
@@ -124,7 +125,7 @@ public class ParityLikeTxTracer : TxTracer
 
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
-    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after) => new(before, after);
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
@@ -352,7 +353,7 @@ public class ParityLikeTxTracer : TxTracer
         value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (_trace.StateChanges is null)
         {
@@ -465,7 +466,11 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert);
+
+    private void HandleActionError(EvmExceptionType evmExceptionType)
     {
         _currentAction!.Result = null;
         _currentAction.Error = GetErrorDescription(evmExceptionType);

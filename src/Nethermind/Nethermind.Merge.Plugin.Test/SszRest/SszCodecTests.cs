@@ -3,14 +3,17 @@
 
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
 using System.Buffers.Binary;
@@ -197,20 +200,25 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeGetBlobsV4Response_with_pool_rented_cells_and_proofs_round_trips()
+    public void EncodeGetBlobsV4Response_preserves_absolute_cell_indices()
     {
         // Reproduces what GetBlobsHandlerV4 builds: pool-rented byte[] arrays sized
         // by Ckzg.BytesPerCell (2048) and Ckzg.BytesPerProof (48). ArrayPool.Rent(48)
         // hands back a 64-byte array — the encoder must slice to spec-exact length
         // or SszKzgCommitment.FromSpan throws. Likewise for SszBlobCell.
-        const int cellsPerExtBlob = 128;
-        byte[]?[] cells = new byte[]?[cellsPerExtBlob];
-        byte[]?[] proofs = new byte[]?[cellsPerExtBlob];
+        byte[]?[] cells = new byte[]?[2];
+        byte[]?[] proofs = new byte[]?[2];
         cells[0] = ArrayPool<byte>.Shared.Rent(SszBlobCell.BlobCellLength);
         proofs[0] = ArrayPool<byte>.Shared.Rent(SszKzgCommitment.KzgCommitmentLength);
         try
         {
-            BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
+            BlobCellsAndProofs entry = new()
+            {
+                Available = true,
+                BlobCells = cells,
+                Proofs = proofs,
+                RequestedMask = BlobCellMask.FromIndices([3, 127])
+            };
             byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
             GetBlobsV4ResponseWire.Decode(Seq(encoded), out GetBlobsV4ResponseWire decoded);
 
@@ -219,9 +227,11 @@ public class SszCodecTests
                 Assert.That(encoded, Is.Not.Empty);
                 Assert.That(decoded.Entries, Has.Length.EqualTo(1));
                 Assert.That(decoded.Entries![0].Available, Is.True);
-                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(cellsPerExtBlob));
-                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Has.Length.EqualTo(1));
-                Assert.That(decoded.Entries[0].Contents.BlobCells![1].Cell, Is.Empty);
+                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(BlobCellMask.CellCount));
+                Assert.That(decoded.Entries[0].Contents.Proofs, Has.Length.EqualTo(BlobCellMask.CellCount));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Is.Empty);
+                Assert.That(decoded.Entries[0].Contents.BlobCells![3].Cell, Has.Length.EqualTo(1));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![127].Cell, Is.Empty);
             }
         }
         finally
@@ -597,6 +607,8 @@ public class SszCodecTests
         ulong expectedSlot = 0xAABBCCDD_11223344UL;
         ulong expectedTargetGasLimit = 0x0123456789ABCDEFUL;
 
+        BitArray expectedCustodyColumns = ToBitArray(BlobCellMask.FromIndices([1, 7, 127]));
+
         ForkchoiceUpdatedRequestWire wire = new()
         {
             ForkchoiceState = new ForkchoiceStateWire
@@ -617,7 +629,8 @@ public class SszCodecTests
                     SlotNumber = expectedSlot,
                     TargetGasLimit = expectedTargetGasLimit,
                 }
-            ]
+            ],
+            CustodyColumns = [new SszCustodyColumns { Bits = expectedCustodyColumns }]
         };
 
         byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
@@ -633,6 +646,38 @@ public class SszCodecTests
         Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
         Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
         Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+        Assert.That(decoded.CustodyColumns, Has.Length.EqualTo(1));
+        Assert.That(decoded.CustodyColumns![0].Bits, Is.Not.Null);
+        Assert.That(BitsEqual(decoded.CustodyColumns![0].Bits!, expectedCustodyColumns), Is.True);
+    }
+
+    private static BitArray ToBitArray(BlobCellMask mask)
+    {
+        BitArray result = new(BlobCellMask.CellCount);
+        foreach (int index in mask.EnumerateSetBits())
+        {
+            result.Set(index, true);
+        }
+
+        return result;
+    }
+
+    private static bool BitsEqual(BitArray left, BitArray right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            if (left[i] != right[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     [Test]
@@ -875,4 +920,150 @@ public class SszCodecTests
         Keys = new Core.Collections.ArrayPoolList<byte[]>(0),
         Headers = new Core.Collections.ArrayPoolList<byte[]>(0),
     };
+
+    [TestCase(true, (byte)1)]
+    [TestCase(false, (byte)0)]
+    public void EncodePayloadStatusV2_inclusion_list_satisfied_roundtrips(bool satisfied, byte expectedByte)
+    {
+        PayloadStatusV2 ps = new()
+        {
+            Status = PayloadStatus.Valid,
+            LatestValidHash = TestItem.KeccakA,
+            InclusionListSatisfied = satisfied
+        };
+
+        byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatusV2);
+        PayloadStatusV2Wire.Decode(Seq(encoded), out PayloadStatusV2Wire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Status, Is.EqualTo((byte)0));
+            Assert.That(decoded.LatestValidHash, Is.Not.Null.And.Length.EqualTo(1));
+            Assert.That(decoded.LatestValidHash![0], Is.EqualTo(TestItem.KeccakA));
+            Assert.That(decoded.InclusionListSatisfied, Has.Length.EqualTo(1));
+            Assert.That(decoded.InclusionListSatisfied![0], Is.EqualTo(expectedByte));
+        }
+    }
+
+    [Test]
+    public void EncodePayloadStatusV2_null_inclusion_list_satisfied_is_empty_list()
+    {
+        PayloadStatusV2 ps = new() { Status = PayloadStatus.Syncing, InclusionListSatisfied = null };
+
+        byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatusV2);
+        PayloadStatusV2Wire.Decode(Seq(encoded), out PayloadStatusV2Wire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Status, Is.EqualTo((byte)2));
+            Assert.That(decoded.InclusionListSatisfied, Is.Null.Or.Empty);
+        }
+    }
+
+    [Test]
+    public void DecodeNewPayload_v6_roundtrip_preserves_inclusion_list_and_v5_fields()
+    {
+        byte[] executionRequest = [0xAA, 0xBB];
+        byte[] ilTx1 = [0x01, 0x02, 0x03];
+        byte[] ilTx2 = [0x04, 0x05];
+        byte[] blockAccessList = [0xc0];
+        ulong slotNumber = 12_345UL;
+
+        NewPayloadV6RequestWire wire = new()
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
+            ParentBeaconBlockRoot = TestItem.KeccakD,
+            ExecutionRequests = [new SszTransaction { Bytes = executionRequest }],
+            InclusionListTransactions = [new SszTransaction { Bytes = ilTx1 }, new SszTransaction { Bytes = ilTx2 }]
+        };
+
+        byte[] encoded = NewPayloadV6RequestWire.Encode(wire);
+
+        NewPayloadV6RequestWire.Decode(encoded, out NewPayloadV6RequestWire decoded);
+        ExecutionPayloadV4 payload = decoded.ExecutionPayload.AsExecutionPayload();
+        byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
+        byte[][]? inclusionListTxs = decoded.InclusionListTransactions.ToExecutionRequests();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.BlockNumber, Is.EqualTo(100));
+            Assert.That(payload.SlotNumber, Is.EqualTo(slotNumber));
+            Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
+            Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakD));
+            Assert.That(requests, Is.EqualTo(new[] { executionRequest }));
+            Assert.That(inclusionListTxs, Is.EqualTo(new[] { ilTx1, ilTx2 }));
+        }
+    }
+
+    [Test]
+    public void DecodeFcuV5Request_roundtrips_slot_target_gas_and_inclusion_list()
+    {
+        ulong expectedSlot = 0xAABBCCDD_11223344UL;
+        ulong expectedTargetGasLimit = 0x0123456789ABCDEFUL;
+        byte[] ilTx = [0x11, 0x22, 0x33, 0x44];
+
+        ForkchoiceUpdatedV5RequestWire wire = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = TestItem.KeccakC,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV5Wire
+                {
+                    Timestamp = 0x0102030405060708UL,
+                    PrevRandao = TestItem.KeccakD,
+                    SuggestedFeeRecipient = TestItem.AddressB,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakE,
+                    SlotNumber = expectedSlot,
+                    TargetGasLimit = expectedTargetGasLimit,
+                    InclusionListTransactions = [new SszTransaction { Bytes = ilTx }]
+                }
+            ]
+        };
+
+        byte[] encoded = ForkchoiceUpdatedV5RequestWire.Encode(wire);
+
+        ForkchoiceUpdatedV5RequestWire.Decode(encoded, out ForkchoiceUpdatedV5RequestWire decoded);
+        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(decoded.ForkchoiceState);
+        PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
+            ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.HeadBlockHash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(attrs, Is.Not.Null);
+            Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE));
+            Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot));
+            Assert.That(attrs.TargetGasLimit, Is.EqualTo(expectedTargetGasLimit));
+            Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+            Assert.That(attrs.InclusionListTransactions, Is.EqualTo(new[] { ilTx }));
+        }
+    }
+
+    [Test]
+    public void EncodeInclusionListResponse_roundtrips_transactions()
+    {
+        byte[] tx1 = [0x01, 0x02, 0x03];
+        byte[] tx2 = [0xAA, 0xBB];
+        using InclusionListBytes inclusionList = new(2)
+        {
+            new ArrayPoolList<byte>(tx1),
+            new ArrayPoolList<byte>(tx2)
+        };
+
+        byte[] encoded = Encode(inclusionList, SszCodec.EncodeInclusionListResponse);
+        InclusionListResponseWire.Decode(Seq(encoded), out InclusionListResponseWire decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Transactions, Is.Not.Null.And.Length.EqualTo(2));
+            Assert.That(decoded.Transactions![0].Bytes.ToArray(), Is.EqualTo(tx1));
+            Assert.That(decoded.Transactions[1].Bytes.ToArray(), Is.EqualTo(tx2));
+        }
+    }
 }

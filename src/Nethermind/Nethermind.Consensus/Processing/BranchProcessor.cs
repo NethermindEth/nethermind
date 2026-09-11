@@ -21,6 +21,7 @@ public class BranchProcessor(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     IBlockhashProvider blockhashProvider,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
@@ -97,6 +98,8 @@ public class BranchProcessor(
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            // Production, tracing and eth_simulate never report inclusion-list compliance.
+            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
@@ -123,16 +126,6 @@ public class BranchProcessor(
                 if (notReadOnly)
                 {
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                }
-
-                if (preWarmTask is null)
-                {
-                    // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = preWarmer?.ClearCaches() ?? default;
-                    if (result != default)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
-                    }
                 }
 
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
@@ -163,6 +156,13 @@ public class BranchProcessor(
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
+
+                // A signal, not a rejection: the block is still committed, and it reads post-execution
+                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
+                bool inclusionListSatisfied = !checkInclusionList
+                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+                suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
                 QueueClearCaches(preWarmTask);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.
@@ -244,20 +244,10 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        ShouldSkipPreWarming(suggestedBlock, spec)
-            ? null
-            : preWarmer?.PreWarmCaches(suggestedBlock,
-                preBlockBaseBlock,
-                spec,
-                token);
-
-    // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
-    // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
-    private bool ShouldSkipPreWarming(Block suggestedBlock, IReleaseSpec spec)
-        => suggestedBlock.Transactions.Length < 3 && !ShouldBalReadWarm(suggestedBlock, spec);
-
-    private bool ShouldBalReadWarm(Block suggestedBlock, IReleaseSpec spec)
-        => preWarmer is not null && preWarmer.IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null;
+        preWarmer?.PreWarmCaches(suggestedBlock,
+            preBlockBaseBlock,
+            spec,
+            token);
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 

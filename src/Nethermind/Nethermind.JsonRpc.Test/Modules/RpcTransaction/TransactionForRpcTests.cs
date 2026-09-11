@@ -57,7 +57,8 @@ public class TransactionForRpcTests
     [TestCase("""{"blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
     public void Deserializes_polymorphically_when_declared_as_SignableTransactionForRpc(string json, Type expectedType)
     {
-        SignableTransactionForRpc tx = _serializer.Deserialize<SignableTransactionForRpc>(json);
+        SignableTransactionForRpc tx = _serializer.Deserialize<SignableTransactionForRpc>(json)
+            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
 
         Assert.That(tx, Is.TypeOf(expectedType),
             "input parameters declared as SignableTransactionForRpc must still dispatch to the concrete tx type");

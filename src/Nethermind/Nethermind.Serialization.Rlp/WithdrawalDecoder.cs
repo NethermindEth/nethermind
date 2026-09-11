@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using System.Diagnostics.CodeAnalysis;
 
@@ -11,26 +12,28 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
-        {
-            decoderContext.ReadByte();
-            return null;
-        }
+        if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int checkPosition = decoderContext.Position + sequenceLength;
+        position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+        int checkPosition = position + sequenceLength;
+
+        position = RlpHelpers.DecodeULong(rlp, position, out ulong index);
+        position = RlpHelpers.DecodeULong(rlp, position, out ulong validatorIndex);
+        position = RlpHelpers.DecodeAddress(rlp, position, out Address address);
+        position = RlpHelpers.DecodeULong(rlp, position, out ulong amountInGwei);
+        decoderContext.Position = position;
 
         Withdrawal withdrawal = new()
         {
-            Index = decoderContext.DecodeULong(),
-            ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddress(),
-            AmountInGwei = decoderContext.DecodeULong()
+            Index = index,
+            ValidatorIndex = validatorIndex,
+            Address = address,
+            AmountInGwei = amountInGwei
         };
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
-            decoderContext.Check(checkPosition);
+            RlpHelpers.Check(position, checkPosition);
         }
 
         return withdrawal;
@@ -67,5 +70,6 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
 
-    public override int GetLength(Withdrawal item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(Withdrawal? item, RlpBehaviors _)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 }

@@ -17,7 +17,7 @@ public static partial class EvmInstructions
     /// Implementers define a shift operation that uses a shift amount (provided as a UInt256)
     /// to shift a second UInt256 value, returning the shifted result.
     /// </summary>
-    public interface IOpShift : IGasCost
+    internal interface IOpShift : IGasCost
     {
         /// <summary>
         /// The gas cost for executing a shift operation.
@@ -28,6 +28,7 @@ public static partial class EvmInstructions
         /// Performs the shift operation.
         /// The lower 8 bits of <paramref name="a"/> (accessed as a.u0) are used as the shift amount.
         /// </summary>
+        /// <remarks>The value operand and result may alias. A zero shift must preserve the value.</remarks>
         /// <param name="a">The shift amount.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The resulting shifted value.</param>
@@ -41,45 +42,53 @@ public static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpShift">The specific shift operation (e.g. left or right shift).</typeparam>
-    /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
     /// <param name="gas">The gas state which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType InstructionShift<TGasPolicy, TOpShift, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
         // Deduct gas cost specific to the shift operation.
-        TGasPolicy.Consume<TOpShift>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpShift>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return ShiftCore<TOpShift, TTracingInst>(ref stack);
+        return ShiftCore<TOpShift, TTracingInst, OnFlag>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionShift{TGasPolicy, TOpShift, TTracingInst}"/>.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst>(ref EvmStack stack)
+    internal static EvmExceptionType ShiftCore<TOpShift, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        // Amortise the bounds check across both operands (mirrors InstructionSar).
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
+        ref UInt256 a = ref As<byte, UInt256>(ref Add(ref topRef, EvmStack.WordSize));
 
         // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
         if (!a.IsUint64 || a.u0 >= 256)
         {
-            return stack.PushZero<TTracingInst>();
+            EvmStack.WriteUInt256ToSlot(ref topRef, in UInt256.Zero);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+            return EvmExceptionType.None;
         }
 
         // Perform the shift operation using the specific implementation.
-        TOpShift.Operation(in a, in b, out UInt256 result);
-        return stack.PushUInt256<TTracingInst>(in result);
+        if (a.u0 != 0)
+        {
+            ref UInt256 value = ref As<byte, UInt256>(ref topRef);
+            TOpShift.Operation(in a, in value, out value);
+        }
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
@@ -91,43 +100,48 @@ public static partial class EvmInstructions
     /// and performs an arithmetic right shift.
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
-    /// <param name="vm">The virtual machine instance (unused in the operation logic).</param>
     /// <param name="stack">The EVM stack used for operands and result storage.</param>
     /// <param name="gas">The gas state which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if successful; otherwise, <see cref="EvmExceptionType.StackUnderflow"/>
     /// if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionSar<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b)) goto StackUnderflow;
+        return SarCore<TTracingInst, OnFlag>(ref stack);
+    }
 
-        // If the shift amount is 256 or more, the result depends solely on the sign of the value.
-        // Direct limb access avoids the full 256-bit vector compare the JIT emits for `a >= 256`.
-        if (!a.IsUint64 || a.u0 >= 256)
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType SarCore<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
+    {
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
+        ref byte slot = ref stack.Pop1Peek32BytesUnchecked(out UInt256 shift);
+        ref UInt256 value = ref As<byte, UInt256>(ref slot);
+        if (!shift.IsUint64 || shift.u0 >= 256)
+            value = (long)value.u3 < 0 ? UInt256.MaxValue : UInt256.Zero;
+        else if (shift.u0 != 0)
         {
-            return As<UInt256, Int256>(ref b).Sign >= 0
-                ? stack.PushZero<TTracingInst>()
-                : stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+            ref Int256 signed = ref As<UInt256, Int256>(ref value);
+            signed.RightShift((int)shift.u0, out signed);
         }
-
-        As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
-        return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
+        return EvmExceptionType.None;
     }
 
     /// <summary>
     /// Implements a left shift operation.
     /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
     /// </summary>
-    public struct OpShl : IOpShift
+    internal struct OpShl : IOpShift
     {
         /// <summary>
         /// Performs a left shift: shifts <paramref name="b"/> left by the number of bits specified in <paramref name="a"/>.
@@ -136,14 +150,14 @@ public static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the left shift operation.</param>
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = b << (int)a.u0; // Use only the lowest limb (u0) as the shift count.
+            => b.LeftShift((int)a.u0, out result);
     }
 
     /// <summary>
     /// Implements a right shift operation.
     /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
     /// </summary>
-    public struct OpShr : IOpShift
+    internal struct OpShr : IOpShift
     {
         /// <summary>
         /// Performs a logical right shift: shifts <paramref name="b"/> right by the number of bits specified in <paramref name="a"/>.
@@ -152,6 +166,6 @@ public static partial class EvmInstructions
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the right shift operation.</param>
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => result = b >> (int)a.u0; // Use only the lowest limb (u0) as the shift count.
+            => b.RightShift((int)a.u0, out result);
     }
 }

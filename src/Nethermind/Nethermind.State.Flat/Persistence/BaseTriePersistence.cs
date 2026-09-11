@@ -145,7 +145,7 @@ public static class BaseTriePersistence
 
             // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
             // Delete from StorageNodes
-            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)]);
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)], StoragePrefixPortion);
             BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
                 firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
                 StoragePrefixPortion + ShortenedPathLength, addressSuffix);
@@ -153,7 +153,7 @@ public static class BaseTriePersistence
             // Delete from FallbackNodes (prefix 0x01)
             firstKey[0] = 1;
             lastKey[0] = 1;
-            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..], StoragePrefixPortion);
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }

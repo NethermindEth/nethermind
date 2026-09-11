@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
@@ -57,9 +58,9 @@ namespace Nethermind.Merge.AuRa
 
                 // Post-merge block production decorates the AuRa engine factory (from AuRaModule).
                 .AddSingleton<ManualTimestamper>()
-                .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(
-                    (specProvider, sealEngine, timestamper, blocksConfig, logManager) =>
-                        new AuRaPostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
+                .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager, IInclusionListTxSource>(
+                    (specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource) =>
+                        new AuRaPostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource: inclusionListTxSource))
                 .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
                 .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
                 .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()

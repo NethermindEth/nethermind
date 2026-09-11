@@ -30,6 +30,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IOverridableEnvFactory overridableEnvFactory,
     ILifetimeScope rootLifetimeScope,
     IReadOnlyBlockTree baseBlockTree,
+    IBlockStore baseBlockStore,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
     IReadOnlyList<IBlockValidationModule> validationModules,
@@ -45,7 +46,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
         IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
 
-        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
+        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore, baseBlockStore);
         BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -62,7 +63,10 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
+            .Intercept<ITransactionProcessor>(SkipSenderCodeCheckTransactionProcessorFactory.Apply)
+            .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
+            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
+                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
@@ -89,13 +93,13 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         ILogManager logManager,
         IReadOnlyDbProvider editableDbProvider,
         SimulateDictionaryHeaderStore tmpHeaderStore,
-        IBlockAccessListStore tmpBalStore)
+        IBlockAccessListStore tmpBalStore,
+        IBlockStore baseBlockStore)
     {
         IHeaderDecoder headerDecoder = (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>();
-        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb, headerDecoder);
         const int badBlocksStored = 1;
 
-        SimulateDictionaryBlockStore tmpBlockStore = new(mainBlockStore);
+        SimulateDictionaryBlockStore tmpBlockStore = new(baseBlockStore);
         IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored, headerDecoder);
 
         return new(tmpBlockStore,

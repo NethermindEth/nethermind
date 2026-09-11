@@ -59,7 +59,7 @@ public class BlockFinderExtensionsTests
         BlockHeader head = Build.A.BlockHeader.WithNumber(1000).TestObject;
         Block headBlock = Build.A.Block.WithHeader(head).TestObject;
         blockFinder.Head.Returns(headBlock);
-        blockFinder.GetLowestBlock().Returns(100ul);
+        blockFinder.LowestServedBlock.Returns(100ul);
 
         // Mock the underlying method that will be called
         blockFinder.FindBlock(50ul, BlockTreeLookupOptions.None).Returns((Block?)null);
@@ -71,5 +71,32 @@ public class BlockFinderExtensionsTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
         Assert.That(result.Error, Does.Contain("50"));
         Assert.That(result.Error, Does.Contain("Pruned history unavailable"));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void SearchForBlock_reports_pruned_history_below_the_served_floor_not_the_published_boundary()
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        blockFinder.GetLowestBlock().Returns(1UL);
+        blockFinder.LowestServedBlock.Returns(100UL);
+
+        SearchResult<Block> result = blockFinder.SearchForBlock(new BlockParameter(50));
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable),
+            "the pruned-history check keys on the served floor the node advertises, not the published boundary");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void SearchForBlock_stays_not_found_at_or_above_the_served_floor()
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        blockFinder.GetLowestBlock().Returns(1UL);
+        blockFinder.LowestServedBlock.Returns(100UL);
+
+        SearchResult<Block> result = blockFinder.SearchForBlock(new BlockParameter(150));
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
 }

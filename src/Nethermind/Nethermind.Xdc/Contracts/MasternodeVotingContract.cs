@@ -93,6 +93,64 @@ internal class MasternodeVotingContract(
         return new Address(raw.Slice(32 - Address.Size));
     }
 
+    public Address[] GetVoters(IWorldState worldState, Address candidate)
+    {
+        // mapping(address => address[]) voters: the length sits at the mapping slot, the entries at keccak of it.
+        UInt256 arraySlot = MappingSlot(candidate, (UInt256)(byte)CandidateContractSlots.Voters);
+        UInt256 length = ReadSlot(worldState, arraySlot);
+        if (length.IsZero)
+        {
+            return [];
+        }
+
+        Span<byte> arraySlotBytes = stackalloc byte[32];
+        arraySlot.ToBigEndian(arraySlotBytes);
+        UInt256 entrySlot = new(ValueKeccak.Compute(arraySlotBytes).Bytes, isBigEndian: true);
+
+        Address[] voters = new Address[(ulong)length];
+        for (int i = 0; i < voters.Length; i++)
+        {
+            voters[i] = ReadAddress(worldState, entrySlot);
+            entrySlot += UInt256.One;
+        }
+
+        return voters;
+    }
+
+    public UInt256 GetVoterStake(IWorldState worldState, Address candidate, Address voter) =>
+        // validatorsState[candidate].voters is the struct's third field, hence the +2 before the inner mapping.
+        ReadSlot(worldState, MappingSlot(voter, ValidatorsStateSlot(candidate) + 2));
+
+    private static UInt256 ValidatorsStateSlot(Address candidate) =>
+        MappingSlot(candidate, (UInt256)(byte)CandidateContractSlots.ValidatorsState);
+
+    /// <summary>Locates <c>mapping[key]</c> for a mapping rooted at <paramref name="mappingSlot"/>.</summary>
+    private static UInt256 MappingSlot(Address key, in UInt256 mappingSlot)
+    {
+        Span<byte> input = stackalloc byte[64];
+        input.Clear();
+        key.Bytes.CopyTo(input.Slice(12, Address.Size));
+        mappingSlot.ToBigEndian(input.Slice(32));
+        return new UInt256(ValueKeccak.Compute(input).Bytes, isBigEndian: true);
+    }
+
+    private UInt256 ReadSlot(IWorldState worldState, in UInt256 slot)
+    {
+        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(ContractAddress!, slot));
+        return value.IsEmpty ? UInt256.Zero : new UInt256(value, isBigEndian: true);
+    }
+
+    private Address ReadAddress(IWorldState worldState, in UInt256 slot)
+    {
+        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(ContractAddress!, slot));
+
+        // Storage values are stored trimmed, so right-align before taking the low 20 bytes.
+        Span<byte> raw = stackalloc byte[32];
+        raw.Clear();
+        value.CopyTo(raw.Slice(32 - value.Length));
+        return new Address(raw.Slice(32 - Address.Size));
+    }
+
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
         CallInfo callInfo = new(blockHeader, "getCandidates", Address.SystemUser);

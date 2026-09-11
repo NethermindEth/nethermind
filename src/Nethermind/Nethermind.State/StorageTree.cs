@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -16,34 +17,16 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.State
 {
-    public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
+    public partial class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
-        private static readonly ValueHash256[] Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
-        private static ValueHash256[] CreateLookup()
-        {
-            const int LookupSize = 1024;
-
-            Span<byte> buffer = stackalloc byte[32];
-            ValueHash256[] lookup = new ValueHash256[LookupSize];
-
-            for (int i = 0; i < lookup.Length; i++)
-            {
-                UInt256 index = new((uint)i);
-                index.ToBigEndian(buffer);
-                lookup[i] = ValueKeccak.Compute(buffer);
-            }
-
-            return lookup;
-        }
-
-        public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, ILogManager logManager)
             : this(trieStore, Keccak.EmptyTreeHash, logManager)
         {
         }
 
-        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, Hash256 rootHash, ILogManager logManager)
             : base(trieStore, rootHash, true, logManager) => TrieType = TrieType.Storage;
 
         [SkipLocalsInit]
@@ -71,21 +54,15 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value)
+        private static byte[] EncodeNonZeroValue(byte[] value)
         {
-            byte[] encodedValue;
-            if (value.IsZero())
-            {
-                encodedValue = [];
-            }
-            else
-            {
-                encodedValue = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
-                Rlp.Encode(value, encodedValue);
-            }
-
-            return new BulkSetEntry(in key, encodedValue);
+            byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
+            Rlp.Encode(value, encoded);
+            return encoded;
         }
+
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) =>
+            new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
 
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
@@ -102,7 +79,7 @@ namespace Nethermind.State
             return GetWithKeyGenerate(in index, storageRoot);
 
             [SkipLocalsInit]
-            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256? storageRoot)
             {
                 ComputeKey(index, out ValueHash256 key);
                 return GetArray(in key, storageRoot);
@@ -168,8 +145,9 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
+                // Bind the CappedArray overload the Rlp one used to forward to, so a non-zero write
+                // keeps bypassing the virtual byte[] entry point that HealingStorageTree overrides.
+                Set(rawKey, new CappedArray<byte>(rlpEncode ? EncodeNonZeroValue(value) : value));
             }
         }
     }

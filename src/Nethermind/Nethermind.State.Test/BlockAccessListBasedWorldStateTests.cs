@@ -483,36 +483,6 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     /// <summary>
-    /// IsStorageEmpty must validate account membership in the BAL first, then delegate to the
-    /// parent reader for the actual emptiness check — the BAL only carries within-block changes
-    /// and never describes the pre-block storage shape, so the answer always comes from the
-    /// parent trie.
-    /// </summary>
-    [Test]
-    public void IsStorageEmpty_UsesParentStateAfterAccountMembershipValidation()
-    {
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .TestObject)
-            .TestObject;
-
-        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
-            blockAccessIndex: 0,
-            suggestedBal: bal,
-            genesisSetup: ws =>
-            {
-                ws.CreateAccount(TestItem.AddressA, 0);
-                ws.Set(new StorageCell(TestItem.AddressA, 1), [0x2A]);
-            });
-
-        using (scope)
-        {
-            Assert.That(bws.IsStorageEmpty(TestItem.AddressA), Is.False);
-        }
-    }
-
-    /// <summary>
     /// An account missing from parent state but introduced by a prior-tx balance change must
     /// report as existing — the existence overlay covers all three change families (balance,
     /// nonce, code), not just code. Pairs with the code-only test

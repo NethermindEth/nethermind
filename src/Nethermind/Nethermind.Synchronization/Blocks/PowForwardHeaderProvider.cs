@@ -39,8 +39,11 @@ public class PowForwardHeaderProvider(
 
     protected const int MinCachedHeaderBatchSize = 32;
 
+    // Strict improvement, to match ImprovementRequirementSatisfied. An equal-TD peer would be
+    // allocated and then rejected with no weakness report, and selection is sticky, so the
+    // feed could spin on that peer indefinitely.
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.Better);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
@@ -55,8 +58,19 @@ public class PowForwardHeaderProvider(
         }
     }
 
-    public virtual Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation) => syncPeerPool.AllocateAndRun(async (peerInfo) =>
+    public virtual async Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastN, ulong maxHeaders, CancellationToken cancellation)
     {
+        // PrepareRequest must return to the dispatcher when no better peer exists so a feed-state
+        // transition is observed; an unbounded allocation would remain parked inside this method.
+        using SyncPeerAllocation allocation = await syncPeerPool.Allocate(
+            _bestPeerAllocationStrategy,
+            AllocationContexts.ForwardHeader,
+            timeoutMilliseconds: 0,
+            cancellationToken: cancellation);
+
+        PeerInfo? peerInfo = allocation.Current;
+        if (peerInfo is null) return null;
+
         if (peerInfo != _currentBestPeer)
         {
             OnNewBestPeer(peerInfo);
@@ -90,7 +104,7 @@ public class PowForwardHeaderProvider(
 
         if (headers is not null && headers.Count > MinCachedHeaderBatchSize) LastResponseBatch = headers.AsSpan().ToPooledList();
         return headers;
-    }, _bestPeerAllocationStrategy, AllocationContexts.ForwardHeader, cancellation);
+    }
 
     private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch()
     {

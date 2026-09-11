@@ -42,6 +42,8 @@
     "DiscoveryVersion": "All"
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

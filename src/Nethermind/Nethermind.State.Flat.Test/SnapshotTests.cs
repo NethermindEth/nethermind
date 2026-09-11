@@ -130,16 +130,19 @@ public class SnapshotTests
         }
     }
 
-    [Test]
-    public void AddressOwnedStorageNodesRetainEligibleInnerCapacityAfterQuiescentClear()
+    [TestCase(256, false)]
+    [TestCase(8_192, true)]
+    public void AddressOwnedStorageNodesRetainBoundedInnerCapacityAfterQuiescentClear(
+        int requestedCapacity,
+        bool shouldShrink)
     {
         AddressStorageNodeDictionary storageNodes = new();
         Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
         Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
         AddressStorageNodeDictionary.AddressNodes original = storageNodes.GetOrAddAddress(addressA);
-        original.EnsureAdditionalCapacity(256);
+        original.EnsureAdditionalCapacity(requestedCapacity);
         original.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
-        int capacity = original.Nodes.Capacity;
+        int capacityBeforeClear = original.Nodes.Capacity;
 
         storageNodes.NoLockClear();
         AddressStorageNodeDictionary.AddressNodes reused = storageNodes.GetOrAddAddress(addressB);
@@ -147,8 +150,17 @@ public class SnapshotTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(original.Nodes, Is.Empty);
-            Assert.That(original.Nodes.Capacity, Is.EqualTo(capacity));
             Assert.That(reused.Nodes, Is.Empty);
+
+            if (shouldShrink)
+            {
+                Assert.That(original.Nodes.Capacity, Is.GreaterThan(0));
+                Assert.That(original.Nodes.Capacity, Is.LessThan(capacityBeforeClear));
+            }
+            else
+            {
+                Assert.That(original.Nodes.Capacity, Is.EqualTo(capacityBeforeClear));
+            }
         }
     }
 

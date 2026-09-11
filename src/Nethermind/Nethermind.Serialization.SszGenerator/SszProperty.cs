@@ -26,6 +26,7 @@ class SszProperty
             IsMemoryLikeProperty = SszTypeHelpers.IsMemoryType(prop.Type),
             IsReadOnlyMemoryProperty = SszTypeHelpers.IsReadOnlyMemoryType(prop.Type),
             IsNullable = prop.Type.NullableAnnotation == NullableAnnotation.Annotated,
+            IsReferenceType = prop.Type.IsReferenceType,
             IsListProperty = collection?.IsList ?? false,
             HasCollectionAsSpan = collection?.HasAsSpan ?? false,
             CanConstructCollectionFromReadOnlySpan = collection?.CanConstructFromReadOnlySpan ?? false,
@@ -193,6 +194,7 @@ class SszProperty
     public bool IsMemoryLikeProperty { get; init; }
     public bool IsReadOnlyMemoryProperty { get; init; }
     public bool IsNullable { get; init; }
+    public bool IsReferenceType { get; init; }
     public bool IsListProperty { get; init; }
     public bool HasCollectionAsSpan { get; init; }
     public bool CanConstructCollectionFromReadOnlySpan { get; init; }

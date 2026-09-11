@@ -75,7 +75,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             snapshot.Dispose();
         }
 
-        _resourcePool.ReturnCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv, transientResource);
+        transientResource.ReleaseLease();
     }
 
     private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
@@ -178,6 +178,15 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         {
             StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+
+            // Mirrors FlatStateReader.RunTreeVisitor: a historical bundle is trie-less, so fail as state-unavailable
+            // instead of throwing NotSupportedException mid-walk.
+            if (snapshotBundle.IsHistorical)
+            {
+                throw new MissingTrieNodeException(
+                    $"State proofs at historical block {stateId.BlockNumber} are not supported", null, TreePath.Empty,
+                    baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+            }
 
             ConcurrencyController concurrency = new(1);
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);

@@ -22,7 +22,8 @@ namespace Nethermind.Network
         private static readonly TimeSpan ClientIdMatcherTimeout = TimeSpan.FromMilliseconds(250);
         protected readonly ILogger _logger;
         protected readonly IBlockTree _blockTree;
-        protected virtual bool MustValidateForkId { get; set; } = true;
+        /// <summary>Whether a peer negotiating <paramref name="protocolVersion"/> must present a valid fork ID.</summary>
+        protected virtual bool MustValidateForkId(byte protocolVersion) => true;
 
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IForkInfo _forkInfo;
@@ -85,7 +86,9 @@ namespace Nethermind.Network
             if (!ValidateGenesisHash(session, syncPeerArgs))
                 return false;
 
-            if (!MustValidateForkId)
+            // The negotiated version, not the one the peer put in its status - that field is unvalidated,
+            // so gating on it would let a peer opt out of fork ID validation by claiming an older version.
+            if (!MustValidateForkId(syncPeerArgs.Subprotocol.ProtocolVersion))
                 return true;
 
             if (syncPeerArgs.ForkId is null)

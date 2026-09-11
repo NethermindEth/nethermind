@@ -40,6 +40,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingReceipt = value;
     }
 
+    public bool IsCollectingLogs => _isTracingReceipt || innerTracer.IsCollectingLogs;
+
     public bool IsTracingActions
     {
         get => _isTracingActions || innerTracer.IsTracingActions;
@@ -134,7 +136,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingState)

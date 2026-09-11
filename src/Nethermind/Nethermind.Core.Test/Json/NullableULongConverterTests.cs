@@ -14,10 +14,8 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
     static readonly NullableULongConverter converter = new();
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
 
-    [TestCase((ulong)int.MaxValue)]
-    [TestCase(1UL)]
-    [TestCase(0UL)]
-    public void Test_roundtrip(ulong value) => TestConverter((ulong?)value, static (a, b) => a.Equals(b), converter);
+    [Test]
+    public void Test_roundtrip([Values((ulong)int.MaxValue, 1UL, 0UL)] ulong value) => TestConverter((ulong?)value, static (a, b) => a.Equals(b), converter);
 
     [TestCase("\"0xa00000\"", 10485760UL)]
     [TestCase("\"0x0\"", 0UL)]
@@ -67,10 +65,8 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
         }
     }
 
-    [TestCase("\"0x0b\"")]
-    [TestCase("\"0x00\"")]
-    [TestCase("\"0x0ff\"")]
-    public void StrictQuantity_rejects_leading_zero(string json)
+    [Test]
+    public void StrictQuantity_rejects_leading_zero([Values("\"0x0b\"", "\"0x00\"", "\"0x0ff\"")] string json)
     {
         JsonSerializerOptions strictOpts = new() { Converters = { new NullableULongConverter(strictQuantity: true) } };
         Assert.That(() => JsonSerializer.Deserialize<ulong?>(json, strictOpts), Throws.InstanceOf<FormatException>());
@@ -92,8 +88,7 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
         Assert.That(result, Is.EqualTo(expected));
     }
 
-    [TestCase("\"0x0000\"")]
-    [TestCase("\"0x0b\"")]
-    public void Lenient_accepts_leading_zero(string json) =>
+    [Test]
+    public void Lenient_accepts_leading_zero([Values("\"0x0000\"", "\"0x0b\"")] string json) =>
         Assert.That(() => JsonSerializer.Deserialize<ulong?>(json, options), Throws.Nothing);
 }
