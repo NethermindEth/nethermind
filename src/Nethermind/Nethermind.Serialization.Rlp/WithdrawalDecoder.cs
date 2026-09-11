@@ -11,26 +11,28 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
-        {
-            decoderContext.ReadByte();
-            return null;
-        }
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        int checkPosition = decoderContext.Position + sequenceLength;
+        rlp.ReadSequenceLength(ref position, out int sequenceLength);
+        int checkPosition = position + sequenceLength;
+
+        rlp.DecodeULong(ref position, out ulong index);
+        rlp.DecodeULong(ref position, out ulong validatorIndex);
+        rlp.DecodeAddress(ref position, out Address address);
+        rlp.DecodeULong(ref position, out ulong amountInGwei);
+        decoderContext.Position = position;
 
         Withdrawal withdrawal = new()
         {
-            Index = decoderContext.DecodeULong(),
-            ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddress(),
-            AmountInGwei = decoderContext.DecodeULong()
+            Index = index,
+            ValidatorIndex = validatorIndex,
+            Address = address,
+            AmountInGwei = amountInGwei
         };
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
-            decoderContext.Check(checkPosition);
+            RlpHelpers.Check(position, checkPosition);
         }
 
         return withdrawal;

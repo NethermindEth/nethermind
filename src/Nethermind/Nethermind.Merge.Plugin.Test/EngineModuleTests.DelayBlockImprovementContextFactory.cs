@@ -48,6 +48,7 @@ public partial class EngineModuleTests
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
+        private readonly TaskCompletionSource _disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private volatile BlockProductionSnapshot _best;
         private readonly SharedCancellationTokenSource _improvementCancellation;
         private CancellationTokenSource? _timeOutCancellation;
@@ -94,6 +95,7 @@ public partial class EngineModuleTests
         public Task<Block?> ImprovementTask { get; }
         public BlockProductionSnapshot Best => _best;
         public bool Disposed { get; private set; }
+        public Task DisposalCompleted => _disposed.Task;
         public DateTimeOffset StartDateTime { get; }
 
         public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
@@ -103,6 +105,7 @@ public partial class EngineModuleTests
             Disposed = true;
             CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
             CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
+            _disposed.TrySetResult();
         }
     }
 }
