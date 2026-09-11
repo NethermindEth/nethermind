@@ -306,13 +306,36 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        GethLikeTxTrace? transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
+
+        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
+        // including the one we return. The collection holds no pooled or unmanaged resource of
+        // its own, so abandoning it leaks nothing.
+        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
         }
 
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+
+    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    {
+        GethLikeTxTrace? selected = null;
+        int index = 0;
+        foreach (GethLikeTxTrace trace in blockTrace)
+        {
+            if (index++ == txIndex)
+            {
+                selected = trace;
+                continue;
+            }
+
+            trace.Dispose();
+        }
+
+        return selected;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
