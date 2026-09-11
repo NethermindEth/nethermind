@@ -127,6 +127,7 @@ public partial class BlockAccessListManager(
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
         WaitForBalWarmup();
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -316,7 +317,6 @@ public partial class BlockAccessListManager(
 
     private void Reset()
     {
-        DisposableExtensions.DisposeAndNull(ref _readPlan);
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;

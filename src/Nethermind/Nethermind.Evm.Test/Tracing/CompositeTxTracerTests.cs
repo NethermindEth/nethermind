@@ -15,6 +15,29 @@ namespace Nethermind.Evm.Test.Tracing;
 public class CompositeTxTracerTests
 {
     [Test]
+    public void Aggregates_receipt_log_requirements([Values] bool firstRequiresLogs, [Values] bool secondRequiresLogs)
+    {
+        ITxTracer first = Substitute.For<ITxTracer>();
+        first.IsCollectingLogs.Returns(firstRequiresLogs);
+        ITxTracer second = Substitute.For<ITxTracer>();
+        second.IsCollectingLogs.Returns(secondRequiresLogs);
+        using CompositeTxTracer tracer = new(first, second);
+
+        Assert.That(tracer.IsCollectingLogs, Is.EqualTo(firstRequiresLogs || secondRequiresLogs));
+    }
+
+    [Test]
+    public void Cancellation_preserves_receipt_log_requirements([Values] bool innerRequiresLogs, [Values] bool forceReceipts)
+    {
+        ITxTracer inner = Substitute.For<ITxTracer>();
+        inner.IsTracingReceipt.Returns(true);
+        inner.IsCollectingLogs.Returns(innerRequiresLogs);
+        using CancellationTxTracer tracer = new(inner) { IsTracingReceipt = forceReceipts };
+
+        Assert.That(tracer.IsCollectingLogs, Is.EqualTo(innerRequiresLogs || forceReceipts));
+    }
+
+    [Test]
     public void Aggregates_IsCancelable_from_children()
     {
         CompositeTxTracer nonCancelable = new(Substitute.For<ITxTracer>(), Substitute.For<ITxTracer>());

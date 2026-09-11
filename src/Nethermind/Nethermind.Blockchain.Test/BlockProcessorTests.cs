@@ -15,6 +15,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -54,7 +55,9 @@ namespace Nethermind.Blockchain.Test;
 public class BlockProcessorTests
 {
     [Test]
-    public void Read_coverage_validates_system_slices_and_preserves_read_budget([Values] bool omitRead, [Values] bool revertWrite, [Values] bool denseCache)
+    public void Read_coverage_validates_system_slices_and_preserves_read_budget(
+        [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount,
+        [Values] bool denseCache)
     {
         List<TracedAccessWorldState> workers = [];
         using IContainer container = new ContainerBuilder()
@@ -84,34 +87,111 @@ public class BlockProcessorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2, (UInt256)4, (UInt256)5, (UInt256)6)
                 .WithStorageChanges(3, new StorageChange(1, 7u)).TestObject).TestObject;
-        Block block = Build.A.Block.WithNumber(1).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
-        PrepareSetup(manager, block, Amsterdam.Instance);
-        manager.WaitForBalWarmup();
-        Assert.That(manager.ParallelExecutionEnabled, Is.True);
-        manager.GetTxProcessor(0);
-        TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
-        Assert.That(pre.ReadCoverage, Is.Not.Null);
-        Assert.That(pre.ReadCoverage!.Plan!.StorageValues is not null, Is.EqualTo(denseCache));
-        if (denseCache)
-            Assert.That(pre.ReadCoverage.Plan.StorageValues!.TryGet(0, out _), Is.True, "warming must fill the ordinal destination");
-        foreach (UInt256 slot in new UInt256[] { 1, 3, 4, 5, 6 }) pre.Get(new StorageCell(TestItem.AddressA, slot));
-        if (revertWrite)
+        BalReadCoverage? previousCoverage = null;
+        Dictionary<TracedAccessWorldState, (BalReadCoverage Coverage, int Block)> previousWorkers = [];
+        bool reusedWorkerInBlock = false;
+        for (int blockNumber = 1; blockNumber <= blockCount; blockNumber++)
         {
-            Snapshot snapshot = pre.TakeSnapshot();
-            pre.Set(new StorageCell(TestItem.AddressA, 1), [99]);
-            pre.Restore(snapshot);
+            reusedWorkerInBlock = false;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
+            PrepareSetup(manager, block, Amsterdam.Instance);
+            manager.WaitForBalWarmup();
+            if (previousCoverage is not null) Assert.That(previousCoverage.Plan, Is.Null);
+            Assert.That(manager.ParallelExecutionEnabled, Is.True);
+            manager.NextTransaction();
+            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0, validateStorageReads: false));
+            manager.GetTxProcessor(0);
+            TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(pre, blockNumber);
+            previousCoverage = pre.ReadCoverage;
+            Assert.That(pre.ReadCoverage!.Plan!.StorageValues is not null, Is.EqualTo(denseCache));
+            if (denseCache)
+                Assert.That(pre.ReadCoverage.Plan.StorageValues!.TryGet(0, out _), Is.True, "warming must fill the ordinal destination");
+            foreach (UInt256 slot in new UInt256[] { 1, 3, 4, 5, 6 }) pre.Get(new StorageCell(TestItem.AddressA, slot));
+            if (revertWrite)
+            {
+                Snapshot snapshot = pre.TakeSnapshot();
+                pre.Set(new StorageCell(TestItem.AddressA, 1), [99]);
+                pre.Restore(snapshot);
+            }
+            manager.NextTransaction();
+            // A read of a slot written later still pays for a surplus declared read at this index.
+            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0));
+            manager.GetTxProcessor(uint.MaxValue);
+            TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(post, blockNumber);
+            post.Set(new StorageCell(TestItem.AddressA, 3), [7]);
+            bool skipRead = omitRead && blockNumber == blockCount;
+            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2));
+            if (skipRead)
+                Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
+            else
+                Assert.DoesNotThrow(() => manager.SetBlockAccessList(block));
+
+            if (blockNumber < blockCount)
+            {
+                state.Commit(Amsterdam.Instance);
+                state.CommitTree((ulong)blockNumber);
+            }
         }
-        manager.NextTransaction();
-        // A read of a slot written later still pays for a surplus declared read at this index.
-        Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0));
-        manager.GetTxProcessor(uint.MaxValue);
-        TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
-        post.Set(new StorageCell(TestItem.AddressA, 3), [7]);
-        if (!omitRead) post.Get(new StorageCell(TestItem.AddressA, 2));
-        if (omitRead)
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
-        else
-            Assert.DoesNotThrow(() => manager.SetBlockAccessList(block));
+
+        if (blockCount > RuntimeInformation.ProcessorCount)
+            Assert.That(reusedWorkerInBlock, Is.True, "The final block must reuse a worker from an earlier block.");
+
+        Block disabledBlock = Build.A.Block.WithNumber(blockCount + 1).TestObject;
+        manager.PrepareForProcessing(disabledBlock, Prague.Instance, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.Enabled, Is.False);
+            Assert.That(previousCoverage!.Plan, Is.Null);
+        }
+
+        void CheckWorkerCoverage(TracedAccessWorldState worker, int blockNumber)
+        {
+            Assert.That(worker.ReadCoverage, Is.Not.Null);
+            if (previousWorkers.TryGetValue(worker, out (BalReadCoverage Coverage, int Block) previous)
+                && previous.Block < blockNumber)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(worker.ReadCoverage, Is.Not.SameAs(previous.Coverage));
+                    Assert.That(previous.Coverage.Plan, Is.Null);
+                }
+                reusedWorkerInBlock = true;
+            }
+            previousWorkers[worker] = (worker.ReadCoverage!, blockNumber);
+        }
+    }
+
+    private static IEnumerable<int> ReadCoverageBlockCounts()
+    {
+        yield return 1;
+        yield return 2;
+        if (RuntimeInformation.ProcessorCount > 1)
+            yield return RuntimeInformation.ProcessorCount + 1;
+    }
+
+    [Test]
+    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+        Transaction tx = Build.A.Transaction.WithTo(null)
+            .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        Block block = await chain.AddBlock(tx);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].Logs, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+            Assert.That(receipts[0].Bloom, Is.Not.EqualTo(Bloom.Empty));
+            Assert.That(block.Header.Bloom, Is.Not.EqualTo(Bloom.Empty));
+        }
     }
 
     [Test]

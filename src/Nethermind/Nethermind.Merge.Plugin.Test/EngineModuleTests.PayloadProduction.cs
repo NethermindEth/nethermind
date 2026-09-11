@@ -459,8 +459,11 @@ public partial class EngineModuleTests
         await anyWait;
         Assert.That(minTxWait.IsCompleted, Is.False, "an empty improvement must not satisfy minTransactions");
 
+        IBlockImprovementContext emptyImprovement = chain.StoringBlockImprovementContextFactory.SnapshotCreatedContexts()[^1];
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 1, 10, out _, out _));
         await minTxWait;
+
+        Assert.That(() => emptyImprovement.Disposed, Is.True.After(5000, 10));
 
         ExecutionPayload payload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
         Assert.That(payload.TryGetTransactions().Data!, Has.Length.AtLeast(1));
@@ -603,7 +606,8 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         Assert.That(getPayloadResult.TryGetTransactions().Data, Has.Length.EqualTo(3));
-        Assert.That(cancelledContext?.Disposed, Is.True);
+        // The creation event can precede publication, so cleanup may finish after getPayload returns.
+        await ((DelayBlockImprovementContext)cancelledContext).DisposalCompleted.WaitAsync(chain.CancellationToken);
     }
 
     [Test]

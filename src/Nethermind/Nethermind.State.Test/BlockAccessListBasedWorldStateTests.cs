@@ -38,7 +38,7 @@ public class BlockAccessListBasedWorldStateTests
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
         Action<IWorldState>? genesisSetup = null,
-        BalReadCoverage? coverage = null,
+        BalReadCoverage? readCoverage = null,
         Action<IWorldState>? captureParent = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
@@ -56,7 +56,7 @@ public class BlockAccessListBasedWorldStateTests
         BlockAccessListBasedWorldState bws = new(inner, Logger);
         bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
-        bws.Setup(block, coverage);
+        bws.Setup(block, readCoverage);
         IDisposable scope = inner.BeginScope(baseBlock);
         // The inner world state, scoped against the genesis root, is itself a valid parent reader
         // — reads against it answer pre-block state directly from the trie.
@@ -411,15 +411,17 @@ public class BlockAccessListBasedWorldStateTests
     /// BAL pass validation.
     /// </summary>
     [Test]
-    public void GetStorage_MissingSlotDeclaration_ThrowsBeforeParentFallback()
+    public void GetStorage_MissingDeclaration_ThrowsBeforeParentFallback(
+        [Values] bool missingAccount, [Values] bool original, [Values] bool useCoverage)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
+                .WithAddress(missingAccount ? TestItem.AddressB : TestItem.AddressA)
+                .WithStorageReads((UInt256)2)
                 .TestObject)
             .TestObject;
-
+        using BalReadStoragePlan plan = new(bal);
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
             suggestedBal: bal,
@@ -427,12 +429,17 @@ public class BlockAccessListBasedWorldStateTests
             {
                 ws.CreateAccount(TestItem.AddressA, 0);
                 ws.Set(cell, [0x2A]);
-            });
+            },
+            readCoverage: useCoverage ? plan.CreateCoverage() : null);
 
         using (scope)
         {
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
-                () => bws.Get(cell));
+                () =>
+                {
+                    if (original) bws.GetOriginal(cell);
+                    else bws.Get(cell);
+                });
         }
     }
 

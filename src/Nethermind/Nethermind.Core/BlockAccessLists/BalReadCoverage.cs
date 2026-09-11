@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -14,12 +17,14 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public sealed class BalReadCoverage
 {
-    private ulong[] _block;
-    private ulong[] _slice;
+    // The first _wordCount words hold block coverage; the next _wordCount words deduplicate the transaction.
+    private ulong[] _bits;
+    private readonly int _wordCount;
+    private readonly ArrayPool<ulong> _pool;
     private readonly List<int> _touchedWords = [];
-    private StorageCell _lastCell;
+    private Address? _lastAddress;
+    private UInt256 _lastSlot;
     private int _lastOrdinal;
-    private bool _hasLastCell;
 
     /// <summary>The owning block plan, or null after it is disposed.</summary>
     public BalReadStoragePlan? Plan { get; private set; }
@@ -27,47 +32,51 @@ public sealed class BalReadCoverage
     /// <summary>Distinct non-system declared reads in the current transaction.</summary>
     public ulong ChargeableReadCount { get; private set; }
 
-    internal BalReadCoverage(BalReadStoragePlan plan)
+    internal BalReadCoverage(BalReadStoragePlan plan) : this(plan, ArrayPool<ulong>.Shared) { }
+
+    internal BalReadCoverage(BalReadStoragePlan plan, ArrayPool<ulong> pool)
     {
         Plan = plan;
-        int words = (int)(((long)plan.TotalReads + 63) / 64);
-        _block = new ulong[words];
-        _slice = new ulong[words];
+        _pool = pool;
+        _wordCount = (int)(((long)plan.TotalReads + 63) / 64);
+        _bits = _wordCount == 0 ? [] : pool.Rent(2 * _wordCount);
+        _bits.AsSpan(0, 2 * _wordCount).Clear();
     }
 
     /// <summary>Starts the next transaction, retaining coverage of earlier transactions.</summary>
     public void StartSlice()
     {
-        foreach (int word in _touchedWords) _slice[word] = 0;
+        foreach (int word in _touchedWords) _bits[_wordCount + word] = 0;
         _touchedWords.Clear();
         ChargeableReadCount = 0;
-        _hasLastCell = false;
+        _lastAddress = null;
     }
 
     /// <summary>Marks a declared read, returning false for slots outside the read plan.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryMark(in StorageCell cell)
     {
         ObjectDisposedException.ThrowIf(Plan is null, this);
-        if (!_hasLastCell || !_lastCell.Equals(cell))
-        {
-            Plan!.TryGetOrdinal(cell, out _lastOrdinal);
-            _lastCell = cell;
-            _hasLastCell = true;
-        }
+        if (ReferenceEquals(cell.Address, _lastAddress) && cell.Index == _lastSlot) return _lastOrdinal >= 0;
+        return MarkSlow(cell);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool MarkSlow(in StorageCell cell)
+    {
+        Plan!.TryGetOrdinal(cell, out _lastOrdinal);
+        _lastAddress = cell.Address;
+        _lastSlot = cell.Index;
         int ordinal = _lastOrdinal;
         if (ordinal < 0) return false;
         int word = ordinal >> 6;
         ulong mask = 1UL << (ordinal & 63);
-        if ((_slice[word] & mask) == 0)
+        if ((_bits[_wordCount + word] & mask) == 0)
         {
-            if (_slice[word] == 0) _touchedWords.Add(word);
-            _slice[word] |= mask;
-            _block[word] |= mask;
-            if (cell.Address != Eip7002Constants.WithdrawalRequestPredeployAddress
-                && cell.Address != Eip7251Constants.ConsolidationRequestPredeployAddress
-                && cell.Address != Eip8282Constants.BuilderDepositRequestPredeployAddress
-                && cell.Address != Eip8282Constants.BuilderExitRequestPredeployAddress)
-                ChargeableReadCount++;
+            if (_bits[_wordCount + word] == 0) _touchedWords.Add(word);
+            _bits[_wordCount + word] |= mask;
+            _bits[word] |= mask;
+            if (Plan.IsChargeable(word, mask)) ChargeableReadCount++;
         }
         return true;
     }
@@ -77,18 +86,19 @@ public sealed class BalReadCoverage
         int i = 0;
         if (Vector.IsHardwareAccelerated)
         {
-            for (; i <= _block.Length - Vector<ulong>.Count; i += Vector<ulong>.Count)
-                (new Vector<ulong>(_block, i) | new Vector<ulong>(other._block, i)).CopyTo(_block, i);
+            for (; i <= _wordCount - Vector<ulong>.Count; i += Vector<ulong>.Count)
+                (new Vector<ulong>(_bits, i) | new Vector<ulong>(other._bits, i)).CopyTo(_bits, i);
         }
-        for (; i < _block.Length; i++) _block[i] |= other._block[i];
+        for (; i < _wordCount; i++) _bits[i] |= other._bits[i];
     }
 
-    internal int FirstUncovered(int count)
+    internal int FirstUncovered()
     {
-        for (int i = 0; i < _block.Length; i++)
+        int count = Plan!.TotalReads;
+        for (int i = 0; i < _wordCount; i++)
         {
             ulong mask = count - i * 64 >= 64 ? ulong.MaxValue : (1UL << (count & 63)) - 1;
-            ulong missing = ~_block[i] & mask;
+            ulong missing = ~_bits[i] & mask;
             if (missing != 0) return i * 64 + BitOperations.TrailingZeroCount(missing);
         }
         return -1;
@@ -96,10 +106,12 @@ public sealed class BalReadCoverage
 
     internal void Release()
     {
+        ulong[] bits = _bits;
         Plan = null;
-        _block = [];
-        _slice = [];
+        _bits = [];
+        _lastAddress = null;
         _touchedWords.Clear();
         _touchedWords.Capacity = 0;
+        if (bits.Length != 0) _pool.Return(bits);
     }
 }

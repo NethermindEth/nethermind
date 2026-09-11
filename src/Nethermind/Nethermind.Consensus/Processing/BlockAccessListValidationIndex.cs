@@ -60,7 +60,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         // Slack covers per-tx duplication before dedup on reads, and invalid wire BALs that push
         // generated past suggested before lane overflow trips.
         _generatedStorageReads = trackStorageReads ? new(WithSlack(storageReadsCapacity)) : null;
-        _generatedStorageWrites = new(WithSlack(storageWritesCapacity));
+        _generatedStorageWrites = trackStorageReads ? new(WithSlack(storageWritesCapacity)) : null;
         // Start with an empty bitmap; MarkAccount grows it through the pool on first use, so
         // blocks that never call MarkAccount don't rent anything.
         _hasAccountWords = [];
@@ -150,15 +150,15 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
                 else _hasOutOfRangeChange = true;
             }
 
-            List<(int, UInt256)> writes = _generatedStorageWrites!;
-            int writesCountBefore = writes.Count;
+            List<(int, UInt256)>? writes = _generatedStorageWrites;
+            int writesCountBefore = writes?.Count ?? 0;
             foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
             {
                 if (TryGetRow(kv.Value.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddStorage(row, accountOrdinal, kv.Key, kv.Value.Value), kv.Value.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
-                writes.Add((accountOrdinal, kv.Key));
+                writes?.Add((accountOrdinal, kv.Key));
             }
-            if (writes.Count != writesCountBefore) _generatedStorageWritesSorted = false;
+            if (writes is not null && writes.Count != writesCountBefore) _generatedStorageWritesSorted = false;
 
             if (_generatedStorageReads is not null && accountChanges.StorageReads.Count > 0)
             {

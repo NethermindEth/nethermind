@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -16,13 +19,43 @@ namespace Nethermind.Evm.Test;
 public class EvmStackTests
 {
     [Test]
+    public void IsJumpDestination_AtBitmapBoundaries_RejectsPaddingAndPushData(
+        [Values(0, 1, 2, 63, 64, 65, 127, 128, 129)] int codeLength,
+        [Values] bool cached)
+    {
+        byte[] code = new byte[codeLength];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        if (codeLength > 1) code[0] = (byte)Instruction.PUSH1;
+        CodeInfo codeInfo = new(code);
+        byte slot = 0;
+
+        for (int destination = -1; destination <= codeLength + 64; destination++)
+        {
+            EvmStack stack = new(0, ref slot, code, codeInfo);
+            if (cached && codeLength > 0) stack.IsJumpDestination(0);
+            bool expected = destination >= (codeLength > 1 ? 2 : 0) && destination < codeLength;
+
+            Assert.That(stack.IsJumpDestination(destination), Is.EqualTo(expected), $"destination {destination}");
+        }
+
+        EvmStack extremeStack = new(0, ref slot, code, codeInfo);
+        if (cached && codeLength > 0) extremeStack.IsJumpDestination(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(extremeStack.IsJumpDestination(int.MinValue), Is.False);
+            Assert.That(extremeStack.IsJumpDestination(int.MaxValue), Is.False);
+        }
+    }
+
+    [Test]
     public void UInt256_writeback_preserves_aliases_and_unaligned_slots(
         [Values(0, 1, 7, 8, 31)] int offset, [Values] bool alias)
     {
         byte[] buffer = new byte[offset + EvmPooledMemory.WordSize + 1];
         Array.Fill(buffer, (byte)0xa5);
         UInt256 value = new(0x0123456789abcdef, 0xfedcba9876543210, 0x1122334455667788, 0x8877665544332211);
-        byte[] expected = value.ToBigEndian();
+        // A slot holds the UInt256 limb layout, so the bytes are the value's own.
+        byte[] expected = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)).ToArray();
         ref byte slot = ref buffer[offset];
         Unsafe.WriteUnaligned(ref slot, value);
         ref UInt256 source = ref (alias ? ref Unsafe.As<byte, UInt256>(ref slot) : ref value);
@@ -219,7 +252,7 @@ public class EvmStackTests
 
     [Test]
     public void PushRightPaddedBytes_traces_the_completed_word(
-        [Values(0, 1, 17, 31, 32)] int length, [Values(0, 1, 7, 31)] int offset)
+        [Range(0, 32)] int length, [Values(0, 1, 7, 31)] int offset)
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();
         StackPushTracer tracer = new();
@@ -240,6 +273,118 @@ public class EvmStackTests
             Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
             Assert.That(word.ToArray(), Is.EqualTo(expected));
         }
+    }
+
+    [Test]
+    public void PushBytes_preserves_left_padding([Range(0, 32)] int length, [Values(0, 1, 7, 31)] int offset)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        StackPushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+        byte[] source = new byte[offset + length];
+        for (int i = 0; i < source.Length; i++) source[i] = (byte)(i + 1);
+        ReadOnlySpan<byte> input = source.AsSpan(offset, length);
+        UInt256 expected = new(input, isBigEndian: true);
+
+        EvmExceptionType result = stack.PushBytes<OnFlag>(input);
+        bool popped = stack.PopUInt256(out UInt256 actual);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(popped, Is.True);
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(tracer.StackItem, Is.EqualTo(input.ToArray()));
+        }
+    }
+
+    [Test]
+    public void Shifts_preserve_unaligned_native_slots(
+        [Values(Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction instruction,
+        [Values(0, 1, 7)] int offset,
+        [ValueSource(nameof(ShiftAmounts))] UInt256 shift)
+    {
+        byte[] buffer = new byte[96 + offset];
+        EvmStack stack = new(0, ref buffer[offset], ReadOnlySpan<byte>.Empty, null);
+        UInt256 value = new(0x0123456789abcdef, 0xfedcba9876543210, 0x1122334455667788, 0x8877665544332211);
+        stack.PushUInt256<OffFlag>(in value);
+        stack.PushUInt256<OffFlag>(in shift);
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(100);
+        int count = shift.IsUint64 && shift.u0 < 256 ? (int)shift.u0 : 256;
+        BigInteger unsigned = (BigInteger)value;
+        BigInteger mask = (BigInteger.One << 256) - 1;
+        BigInteger expected = instruction switch
+        {
+            Instruction.SHL => (unsigned << count) & mask,
+            Instruction.SHR => unsigned >> count,
+            _ => ((unsigned - (BigInteger.One << 256)) >> count) & mask
+        };
+
+        EvmExceptionType status = instruction switch
+        {
+            Instruction.SHL => EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShl, OffFlag>(ref stack, ref gas),
+            Instruction.SHR => EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShr, OffFlag>(ref stack, ref gas),
+            _ => EvmInstructions.InstructionSar<EthereumGasPolicy, OffFlag>(ref stack, ref gas)
+        };
+        bool popped = stack.PopUInt256(out UInt256 actual);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(popped, Is.True);
+            Assert.That(actual, Is.EqualTo((UInt256)expected));
+            Assert.That(stack.Head, Is.EqualTo((nint)0));
+        }
+    }
+
+    [Test]
+    public void Arithmetic_preserves_unaligned_native_slots(
+        [Values(Instruction.ADD, Instruction.SUB)] Instruction instruction,
+        [Values(0, 1, 7)] int offset,
+        [ValueSource(nameof(ArithmeticOperands))] UInt256 a,
+        [ValueSource(nameof(ArithmeticOperands))] UInt256 b)
+    {
+        byte[] buffer = new byte[96 + offset];
+        EvmStack stack = new(0, ref buffer[offset], ReadOnlySpan<byte>.Empty, null);
+        stack.PushUInt256<OffFlag>(in b);
+        stack.PushUInt256<OffFlag>(in a);
+        BigInteger left = (BigInteger)a;
+        BigInteger right = (BigInteger)b;
+        BigInteger expected = instruction == Instruction.ADD ? left + right : left - right;
+        expected &= (BigInteger.One << 256) - 1;
+
+        EvmExceptionType status = instruction == Instruction.ADD
+            ? EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag, OnFlag>(ref stack)
+            : EvmInstructions.Math2ParamCore<EvmInstructions.OpSub, OffFlag, OnFlag>(ref stack);
+        bool popped = stack.PopUInt256(out UInt256 actual);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(popped, Is.True);
+            Assert.That(actual, Is.EqualTo((UInt256)expected));
+            Assert.That(stack.Head, Is.EqualTo((nint)0));
+        }
+    }
+
+    private static IEnumerable<UInt256> ArithmeticOperands()
+    {
+        yield return UInt256.Zero;
+        yield return UInt256.One;
+        yield return UInt256.MaxValue;
+        yield return new UInt256(1_000_000_000_000_000_000);
+        for (int bit = 64; bit <= 192; bit += 64)
+        {
+            yield return UInt256.One << bit;
+            yield return (UInt256.One << bit) - UInt256.One;
+        }
+    }
+
+    private static IEnumerable<UInt256> ShiftAmounts()
+    {
+        int[] counts = [0, 1, 63, 64, 65, 127, 128, 129, 191, 192, 193, 255, 256, 257];
+        foreach (int count in counts) yield return new UInt256((ulong)count);
+        for (int bit = 64; bit <= 192; bit += 64) yield return UInt256.One << bit;
+        yield return new UInt256(1_000_000_000_000_000_000);
+        yield return UInt256.MaxValue;
     }
 
     [Test]

@@ -984,12 +984,12 @@ public unsafe class EvmOpcodesBenchmark
         => WriteStackSlot(GetAlignedStackSpan(), slotIndex, in value);
 
     /// <summary>
-    /// Writes a UInt256 value to stack slot in big-endian format.
+    /// Writes a UInt256 value to a stack slot in the layout the stack stores words in.
     /// </summary>
     private static void WriteStackSlot(Span<byte> buffer, int slotIndex, in UInt256 value)
     {
-        Span<byte> slot = buffer.Slice(slotIndex * 32, 32);
-        value.ToBigEndian(slot);
+        Span<byte> slot = buffer.Slice(slotIndex * EvmStack.WordSize, EvmStack.WordSize);
+        EvmStack.WriteUInt256ToSlot(ref MemoryMarshal.GetReference(slot), in value);
     }
 
     private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)
