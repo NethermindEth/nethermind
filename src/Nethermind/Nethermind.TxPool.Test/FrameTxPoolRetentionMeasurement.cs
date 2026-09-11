@@ -27,12 +27,15 @@ using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>Measures how long an unincludable frame transaction stays pending, and therefore how many times a
-/// block producer re-executes its validation prefix without ever collecting a fee for it.</summary>
-/// <remarks>Results go to <c>FRAME_RETRY_OUT</c> (default <c>frame-prefix-retry.txt</c> under the temp
+/// <summary>Measures how many chain heads a pending frame transaction survives in the pool, and how an expiry
+/// deadline bounds that.</summary>
+/// <remarks>Retention only: nothing here produces a block or reaches the eviction path, and the pool is built
+/// without a validation-prefix simulator, so revalidation reaches no verdict on an opaque prefix either.
+/// <c>FrameTxProducerRetryMeasurement</c> is where production attempts are run and the gas each one burns is
+/// counted. Results go to <c>FRAME_RETRY_OUT</c> (default <c>frame-prefix-retry.txt</c> under the temp
 /// directory), because the test runner swallows console writers.</remarks>
 [Explicit("measurement harness")]
-public class FrameTxPrefixRetryMeasurement
+public class FrameTxPoolRetentionMeasurement
 {
     private const int HeadAdvances = 20;
     private const ulong SampleFrameGas = 50_000;
@@ -89,7 +92,7 @@ public class FrameTxPrefixRetryMeasurement
     }
 
     [Test]
-    public async Task Unincludable_frame_transaction_survives_every_head()
+    public async Task Pending_frame_transaction_survives_every_head()
     {
         Transaction tx = BuildFrameTx(nonce: 0, deadline: null);
         Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
@@ -103,15 +106,18 @@ public class FrameTxPrefixRetryMeasurement
             if (Array.IndexOf(_txPool.GetPendingTransactions(), tx) >= 0) survived++;
         }
 
-        ulong prefixGas = FrameTxValidation.ValidationWorkGas(tx);
-        Emit($"case=no_deadline heads={HeadAdvances} survived_heads={survived} prefix_gas={prefixGas} "
-             + $"unpaid_gas_over_window={prefixGas * (ulong)survived}");
-        Assert.That(survived, Is.EqualTo(HeadAdvances), "the pool dropped an unincludable frame transaction on its own");
+        // Both gas figures are ceilings, not observations: ValidationWorkGas is the declared bound rather than
+        // a burn, and the default eviction budget drops a frame transaction on its first failed production.
+        ulong declaredPrefixGas = FrameTxValidation.ValidationWorkGas(tx);
+        Emit($"case=retention_no_deadline heads={HeadAdvances} survived_heads={survived} "
+             + $"declared_prefix_gas={declaredPrefixGas} production_attempts=0 "
+             + $"hypothetical_gas_if_every_head_retried={declaredPrefixGas * (ulong)survived}");
+        Assert.That(survived, Is.EqualTo(HeadAdvances), "the pool dropped a pending frame transaction on its own");
     }
 
-    /// <summary>An expiry deadline bounds the same exposure in blocks rather than in gas.</summary>
+    /// <summary>An expiry deadline is the one thing that ends that retention without a producer.</summary>
     [Test]
-    public async Task Expiry_deadline_bounds_the_number_of_attempts()
+    public async Task Expiry_deadline_bounds_how_long_it_is_retained()
     {
         ulong deadline = _headTimestamp + SlotSeconds * 3;
         Transaction tx = BuildFrameTx(nonce: 0, deadline);
@@ -125,7 +131,7 @@ public class FrameTxPrefixRetryMeasurement
             survived++;
         }
 
-        Emit($"case=with_deadline deadline_slots=3 heads={HeadAdvances} survived_heads={survived}");
+        Emit($"case=retention_with_deadline deadline_slots=3 heads={HeadAdvances} survived_heads={survived}");
         Assert.That(survived, Is.LessThan(HeadAdvances), "an expired frame transaction was never evicted");
     }
 
