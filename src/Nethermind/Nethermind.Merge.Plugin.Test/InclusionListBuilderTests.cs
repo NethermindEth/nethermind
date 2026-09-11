@@ -130,8 +130,8 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { nonce0.Hash, nonce1.Hash }));
     }
 
-    // The pool admits a whole bucket on its first entry's readiness alone, so a frame transaction at the
-    // head is what vouched for the run; once dropped, what remains need not sit at the next account nonce.
+    // The pool admits a bucket on any one entry being ready, so a frame transaction can be what vouched for
+    // the run; once dropped, what remains need not sit at the next account nonce.
     [Test]
     public void Drops_a_sender_run_the_removed_frame_transaction_was_vouching_for()
     {
@@ -165,8 +165,38 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { atAccountNonce.Hash, next.Hash }));
     }
 
-    // The pool checks CanPayBaseFee on the bucket's first entry alone, so a transaction behind a paying head can
-    // sit below the next block's base fee. The validator excuses omitting it, so listing it burns the cap.
+    private static IEnumerable<TestCaseData> BucketsAdmittedByANonFrontEntry()
+    {
+        // The pool reads a bucket entry under the account nonce as spent rather than blocking, so it admits this
+        // bucket on nonce 5 alone while nonce 4 heads it. Only nonce 5 is appendable.
+        Transaction spent = TxOfSize(50, 4);
+        Transaction atAccountNonce = TxOfSize(50, 5);
+        yield return new TestCaseData(new[] { spent, atAccountNonce }, 5UL, new[] { atAccountNonce })
+            .SetName("Skips_a_spent_nonce_heading_the_bucket");
+
+        // A keyed frame transaction is judged on its own sequence however the account-nonce entries sit, so it can
+        // admit a bucket whose only ordinary entry is four nonces ahead. Stripping it leaves nothing appendable.
+        Transaction gapped = TxOfSize(50, 9);
+        Transaction keyedFrame = FrameTx(TestItem.AddressA, nonce: 100, nonceKeys: [1]);
+        yield return new TestCaseData(new[] { gapped, keyedFrame }, 5UL, Array.Empty<Transaction>())
+            .SetName("Drops_a_gapped_run_admitted_by_a_keyed_frame_transaction");
+    }
+
+    // The bucket's lowest entry is not the account's next nonce: the pool admits a bucket on any one entry being
+    // ready, so only a state read names the anchor.
+    [TestCaseSource(nameof(BucketsAdmittedByANonFrontEntry))]
+    public void Anchors_a_sender_run_at_the_account_nonce_not_at_the_bucket_front(
+        Transaction[] bucket, ulong accountNonce, Transaction[] expected)
+    {
+        using InclusionListBytes il = BuildBuilder(
+            PoolOf(bucket),
+            accountNonces: [(TestItem.AddressA, accountNonce)]).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(expected.Select(tx => tx.Hash)));
+    }
+
+    // The pool admits a bucket once one entry both pays and is nonce-ready, so a transaction behind a paying head
+    // can sit below the next block's base fee. The validator excuses omitting it, so listing it burns the cap.
     [Test]
     public void Truncates_a_sender_run_at_the_first_transaction_below_the_next_base_fee()
     {
@@ -195,8 +225,7 @@ public class InclusionListBuilderTests
         Assert.That(il, Is.Empty);
     }
 
-    // Worst case for the state read: every sender's bucket is headed by a keyed frame transaction, so the cheap
-    // anchor comparison never decides. The reservoir must bound the reads whatever the pool size.
+    // Every drawn sender costs one account-nonce read, so the reservoir must bound the reads whatever the pool size.
     private static (ITxPool Pool, IReadOnlyStateProvider HeadState, InclusionListBuilder Builder) KeyedHeadSetup(int senderCount)
     {
         Transaction[] txs = new Transaction[senderCount * 2];
