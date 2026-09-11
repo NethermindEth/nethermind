@@ -143,16 +143,32 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
+    private static readonly uint[] CompositeReadIndices = [0, 1, 2, 3, 4, 31, 32, 33, 63, 64, uint.MaxValue];
+
     [Test]
     public void CompositeReads_UseEffectiveState(
         [Values("balance", "nonce", "code", "empty")] string kind,
-        [Values(0u, 1u, 2u)] uint index)
+        [ValueSource(nameof(CompositeReadIndices))] uint index,
+        [Values(0, 1, 4, 32)] int count)
     {
+        BalanceChange[] balances = new BalanceChange[count];
+        NonceChange[] nonces = new NonceChange[count];
+        CodeChange[] codes = new CodeChange[count];
+        int last = -1;
+        for (int i = 0; i < count; i++)
+        {
+            uint changeIndex = (uint)(2 * i + 1);
+            bool nonempty = i % 2 == 0;
+            balances[i] = new BalanceChange(changeIndex, nonempty && kind == "balance" ? 10u : 0u);
+            nonces[i] = new NonceChange(changeIndex, nonempty && kind == "nonce" ? 10u : 0u);
+            codes[i] = new CodeChange(changeIndex, nonempty && kind == "code" ? [0x00] : []);
+            if (changeIndex < index) last = i;
+        }
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(1, kind == "balance" ? 10u : 0u))
-                .WithNonceChanges(new NonceChange(1, kind == "nonce" ? 10u : 0u))
-                .WithCodeChanges(new CodeChange(1, kind == "code" ? [0x00] : []))
+                .WithBalanceChanges(balances)
+                .WithNonceChanges(nonces)
+                .WithCodeChanges(codes)
                 .TestObject).TestObject;
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(index, bal,
             ws =>
@@ -166,9 +182,10 @@ public class BlockAccessListBasedWorldStateTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(index < 2 || kind != "empty"));
-                Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.EqualTo(index == 2 && kind == "empty"));
-                Assert.That(bws.IsContract(TestItem.AddressA), Is.EqualTo(index < 2 ? kind is "nonce" or "empty" : kind == "code"));
+                bool exists = last < 0 || (last % 2 == 0 && kind != "empty");
+                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(exists));
+                Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.EqualTo(!exists));
+                Assert.That(bws.IsContract(TestItem.AddressA), Is.EqualTo(last < 0 ? kind is "nonce" or "empty" : last % 2 == 0 && kind == "code"));
             }
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.AccountExists(TestItem.AddressB));
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsDeadAccount(TestItem.AddressB));

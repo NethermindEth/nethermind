@@ -264,12 +264,35 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private bool HasAccountState(Address address)
     {
         ReadOnlyAccountChanges changes = ResolveContext(address);
-        return (changes.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balance)
-                ? !balance.Value.IsZero : !_parentReader!.GetBalance(address).IsZero)
-            || (changes.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonce)
-                ? nonce.Value != 0 : _parentReader!.GetNonce(address) != 0)
-            || (changes.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange code)
-                ? code.CodeHash != Keccak.OfAnEmptyString : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString);
+        BalanceChange[] balances = changes.BalanceChanges;
+        int balanceIndex = FindLastChange(balances, _blockAccessIndex);
+        if (balanceIndex >= 0 ? !balances[balanceIndex].Value.IsZero : !_parentReader!.GetBalance(address).IsZero)
+        {
+            return true;
+        }
+
+        NonceChange[] nonces = changes.NonceChanges;
+        int nonceIndex = FindLastChange(nonces, _blockAccessIndex);
+        if (nonceIndex >= 0 ? nonces[nonceIndex].Value != 0 : _parentReader!.GetNonce(address) != 0)
+        {
+            return true;
+        }
+
+        CodeChange[] codes = changes.CodeChanges;
+        int codeIndex = FindLastChange(codes, _blockAccessIndex);
+        return codeIndex >= 0
+            ? codes[codeIndex].CodeHash != Keccak.OfAnEmptyString
+            : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString;
+    }
+
+    private static int FindLastChange<T>(T[] changes, uint index) where T : struct, IIndexedChange
+    {
+        if (changes.Length <= 1)
+        {
+            return changes.Length == 1 && changes[0].Index < index ? 0 : -1;
+        }
+        int position = ((ReadOnlySpan<T>)changes).BinarySearch(new IndexKey<T>(index));
+        return (position >= 0 ? position : ~position) - 1;
     }
 
     public override void ClearStorage(Address address) { }
