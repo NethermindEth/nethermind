@@ -248,6 +248,10 @@ public partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
+                        // The frame halts without running, so its gas is untouched. Report it to keep
+                        // the contract that ReportActionError is preceded by this frame's gas — otherwise
+                        // a tracer would attribute the caller's gas to it.
+                        if (IsTracingActions) _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in _currentState.Gas));
                         callResult = new(EvmExceptionType.InvalidCode);
                     }
 
