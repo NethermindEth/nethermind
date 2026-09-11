@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -36,7 +37,7 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = new FilterStore(new TimerFactory(), 400, 100);
+        _filterStore = new FilterStore(new TimerFactory());
         _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
         _receiptMonitor = Substitute.For<IReceiptMonitor>();
@@ -53,6 +54,11 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task removing_filter_removes_data()
     {
+        // Only this test expects filters to expire. A fixture-wide short lifetime also drops the data of any
+        // other test whose filter goes unused for that long, which on a loaded runner is a matter of scheduling.
+        _filterStore.Dispose();
+        _filterStore = new FilterStore(new TimerFactory(), timeout: 400, cleanupInterval: 100);
+
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
         Assert.That(_filterManager.GetLogs(0), Is.Not.Empty);
         await Task.Delay(600);
@@ -285,8 +291,8 @@ public class FilterManagerTests
     }
 
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task concurrent_block_processing_and_poll_does_not_lose_data()
+    [Test, CancelAfter(Timeout.MaxTestTime)]
+    public async Task concurrent_block_processing_and_poll_does_not_lose_data(CancellationToken cancellationToken)
     {
         BlockFilter blockFilter = new(_currentFilterId++);
         _filterStore.SaveFilter(blockFilter);
@@ -316,11 +322,12 @@ public class FilterManagerTests
         {
             while (totalPolled < blockCount)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
                 totalPolled += polled.Length;
                 if (polled.Length == 0) await Task.Yield();
             }
-        });
+        }, cancellationToken);
 
         List<Task> allTasks = new(producerCount + 1);
         for (int p = 0; p < producerCount; p++)
