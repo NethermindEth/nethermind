@@ -21,6 +21,15 @@ internal static class PbtReferenceModel
         Set(model, PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), basicData);
 
         ValueHash256 codeHash = code is null or [] ? Keccak.OfAnEmptyString.ValueHash256 : ValueKeccak.Compute(code);
+        model.Remove(PbtStateKey.Account(address, 1).Bytes.ToArray().ToHexString());
+        model.Remove(PbtStateKey.Account(address, 2).Bytes.ToArray().ToHexString());
+        if (code is { Length: 23 } && code.AsSpan(0, 3).SequenceEqual(Bytes.FromHexString("ef0100")))
+        {
+            byte[] delegation = new byte[32];
+            code.CopyTo(delegation, 0);
+            Set(model, PbtStateKey.Account(address, 2), delegation);
+            return;
+        }
         Set(model, PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), codeHash.ToByteArray());
 
         if (code is not { Length: > 0 }) return;

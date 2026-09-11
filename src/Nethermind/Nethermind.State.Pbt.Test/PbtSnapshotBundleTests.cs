@@ -1099,6 +1099,63 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [Test]
+    public void Delegation_header_matches_eip_preimages([Values] bool includeCode)
+    {
+        byte[] code = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
+        Account account = Build.An.Account.WithCode(code).TestObject;
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        Dictionary<PbtFullKey, ValueHash256> expected = new()
+        {
+            [new PbtFullKey([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
+            [new PbtFullKey([0, .. addressHash.Bytes, 2])] = new([.. code, .. new byte[9]]),
+        };
+        Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(code), includeCode), Is.EquivalentTo(expected));
+    }
+
+    [Test]
+    public void Delegation_transitions_match_reference_leaves([Values] bool codeFirst, [Values] bool foldEachChange)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] firstDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
+        byte[] secondDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000002");
+        ValueHash256 root = default;
+        Dictionary<Address, byte[]> accounts = [];
+        Set(TestItem.AddressA, firstDelegation);
+        Set(TestItem.AddressB, firstDelegation);
+        Set(TestItem.AddressA, secondDelegation);
+        Set(TestItem.AddressA, []);
+        Set(TestItem.AddressA, firstDelegation);
+        Set(TestItem.AddressA, null);
+        Set(TestItem.AddressB, Bytes.FromHexString("6001"));
+        Set(TestItem.AddressB, firstDelegation);
+        Set(TestItem.AddressB, Bytes.FromHexString("00"));
+        Set(TestItem.AddressB, null);
+        Assert.That(Fold(bundle, root), Is.EqualTo(default(ValueHash256)));
+
+        void Set(Address address, byte[]? bytes)
+        {
+            Account? account = bytes is null ? null : Build.An.Account.WithNonce(1).WithCode(bytes).TestObject;
+            if (codeFirst && bytes is { Length: > 0 }) bundle.SetCode(account!.CodeHash.ValueHash256, new CodeInfo(bytes));
+            bundle.SetAccount(address, account);
+            if (!codeFirst && bytes is { Length: > 0 }) bundle.SetCode(account!.CodeHash.ValueHash256, new CodeInfo(bytes));
+            if (bytes is null) accounts.Remove(address);
+            else accounts[address] = bytes;
+            Dictionary<string, byte[]> model = [];
+            foreach ((Address owner, byte[] ownerCode) in accounts) PbtReferenceModel.SetAccount(model, owner, 1, 0, ownerCode);
+            EipReferenceTree rebuilt = new();
+            foreach ((PbtStorageFullKey key, ValueHash256 value) in bundle.EnumerateLeaves()) rebuilt.Insert(key.Bytes, value.Bytes.ToArray());
+            Assert.That(new ValueHash256(rebuilt.Merkelize()), Is.EqualTo(PbtReferenceModel.Root(model)), "deduplicated flat reconstruction");
+            if (foldEachChange)
+            {
+                root = Fold(bundle, root);
+                Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "incremental root");
+            }
+        }
+    }
+
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(40)]

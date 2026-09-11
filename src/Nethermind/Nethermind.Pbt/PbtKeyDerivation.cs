@@ -17,6 +17,7 @@ public static class PbtKeyDerivation
 {
     public const int BasicDataLeafKey = 0;
     public const int CodeHashLeafKey = 1;
+    public const int DelegationLeafKey = 2;
     public const int HeaderStorageOffset = 64;
     public const int StemSubtreeWidth = 256;
 

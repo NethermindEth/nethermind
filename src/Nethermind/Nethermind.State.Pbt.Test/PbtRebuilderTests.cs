@@ -65,6 +65,9 @@ public class PbtRebuilderTests
         AddSlot(TestItem.AddressC, 3, 0x99);
         AddAccount(TestItem.AddressD, 0, 0, bigCode);
         AddAccount(TestItem.AddressE, 0, 0, null);
+        byte[] delegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
+        AddAccount(TestItem.AddressF, 1, 0, delegation);
+        AddAccount(TestItem.Addresses[6], 1, 0, delegation);
 
         stagingBatch.Commit();
         return leaves;

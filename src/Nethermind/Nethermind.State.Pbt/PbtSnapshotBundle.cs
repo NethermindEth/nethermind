@@ -241,6 +241,10 @@ public sealed class PbtSnapshotBundle(
             SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account?.CodeHash.ValueHash256);
         }
         if (!hasBasicData) SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), null);
+        byte inactiveCodeLeaf = code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan)
+            ? (byte)PbtKeyDerivation.CodeHashLeafKey
+            : (byte)PbtKeyDerivation.DelegationLeafKey;
+        SetPbtLeaf(PbtStateKey.Account(addressHash, inactiveCodeLeaf), null);
     }
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)

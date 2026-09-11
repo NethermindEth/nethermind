@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -25,6 +26,45 @@ public class PbtScopeProviderTests
     private static PbtTestContext NewContext() => new();
 
     private static readonly IReleaseSpec Spec = Prague.Instance;
+
+    [Test]
+    public async Task Delegation_through_world_state_has_canonical_root_after_reopening()
+    {
+        await using PbtTestContext ctx = NewContext();
+        WorldState worldState = new(ctx.WorldStateManager.GlobalWorldState, LimboLogs.Instance);
+        BlockHeader? header = IWorldState.PreGenesis;
+        Address[] targets = [TestItem.AddressC, TestItem.AddressD, Address.Zero];
+        byte[] ordinaryCode = Bytes.FromHexString("6001");
+        byte[] zeroCode = Bytes.FromHexString("00");
+        for (int index = 0; index < targets.Length; index++)
+        {
+            byte[] expectedCode = targets[index] == Address.Zero ? [] : [.. Bytes.FromHexString("ef0100"), .. targets[index].Bytes];
+            using (worldState.BeginScope(header))
+            {
+                if (index == 0)
+                {
+                    worldState.CreateAccount(TestItem.AddressA, 0, 1);
+                    worldState.CreateAccount(TestItem.AddressB, 0, 1);
+                    worldState.CreateAccount(TestItem.AddressE, 0, 1);
+                    worldState.InsertCode(TestItem.AddressB, ValueKeccak.Compute(ordinaryCode), ordinaryCode, Spec);
+                    worldState.InsertCode(TestItem.AddressE, ValueKeccak.Compute(zeroCode), zeroCode, Spec);
+                }
+                CodeInfoRepository.SetDelegation(worldState, targets[index], TestItem.AddressA, Spec, out _, out _);
+                worldState.Commit(Spec);
+                worldState.CommitTree((ulong)index + 1);
+                Dictionary<string, byte[]> model = [];
+                PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 0, expectedCode);
+                PbtReferenceModel.SetAccount(model, TestItem.AddressB, 1, 0, ordinaryCode);
+                PbtReferenceModel.SetAccount(model, TestItem.AddressE, 1, 0, zeroCode);
+                Assert.That(worldState.StateRoot, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+                header = Build.A.BlockHeader.WithNumber(index + 1).WithStateRoot(worldState.StateRoot).TestObject;
+            }
+            using (worldState.BeginScope(header))
+            {
+                Assert.That(worldState.GetCode(TestItem.AddressA), Is.EqualTo(expectedCode));
+            }
+        }
+    }
 
     [Test]
     public async Task ProcessBlocksThroughWorldState_RootsMatchEipReference_AndHistoricalReadsWork()

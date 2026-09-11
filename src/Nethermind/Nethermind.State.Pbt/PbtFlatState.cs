@@ -20,6 +20,13 @@ internal static class PbtFlatState
         ValueHash256 basicData = default;
         PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)(code?.Code.Length ?? 0), account.Nonce, account.Balance);
         if (basicData != default) yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
+        if (code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan))
+        {
+            ValueHash256 delegation = default;
+            code.CodeSpan.CopyTo(delegation.BytesAsSpan);
+            yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), delegation);
+            yield break;
+        }
         yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
         if (code is null || !includeCode) yield break;
         int codeLength = code.Code.Length;
