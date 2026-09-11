@@ -53,6 +53,20 @@ namespace Nethermind.Blockchain
             };
         }
 
+        public bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, Span<byte> destination)
+        {
+            if (spec.IsBlockHashInStateAvailable)
+            {
+                return _blockhashStore.TryGetBlockHashFromState(currentBlock, number, spec, destination);
+            }
+
+            Hash256? hash = GetBlockhash(currentBlock, number, spec);
+            if (hash is null) return false;
+
+            hash.Bytes.CopyTo(destination);
+            return true;
+        }
+
         private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, ulong number)
         {
             if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");

@@ -309,6 +309,105 @@ public class BlockhashProviderTests
                 : Is.EqualTo(genesisHash));
     }
 
+    /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
+    /// <remarks>Measures the allocating overload in the same run, so the comparison fails loudly if that
+    /// one ever stops allocating rather than silently passing on an unrelated build.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_span_lookup_does_not_allocate()
+    {
+        const int Iterations = 1000;
+
+        ulong chainLength = 42ul;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+        BlockHeader? head = tree.FindHeader(chainLength - 1ul, BlockTreeLookupOptions.None);
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        ISpecProvider specProvider = new CustomSpecProvider(
+            (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
+            (new ForkActivation(0, current.Timestamp), Prague.Instance));
+        BlockhashStore store = new(worldState);
+
+        using IDisposable _ = worldState.BeginScope(current.Header);
+
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+
+        IReleaseSpec spec = specProvider.GetSpec(current.Header);
+        store.ApplyBlockhashStateChanges(current.Header, spec);
+        ulong number = current.Header.Number - 1;
+
+        Span<byte> buffer = stackalloc byte[Hash256.Size];
+        for (int i = 0; i < Iterations; i++)
+        {
+            store.TryGetBlockHashFromState(current.Header, number, spec, buffer);
+            store.GetBlockHashFromState(current.Header, number, spec);
+        }
+
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            store.TryGetBlockHashFromState(current.Header, number, spec, buffer);
+        }
+        long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            store.GetBlockHashFromState(current.Header, number, spec);
+        }
+        long hashAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        Assert.That(hashAllocated, Is.GreaterThan(Iterations * 8), "the Hash256 overload should allocate per call");
+        Assert.That(spanAllocated, Is.Zero, $"span={spanAllocated} hash={hashAllocated}");
+    }
+
+    /// <summary>The span overload must left-pad exactly as the <see cref="Hash256"/> overload does.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_trimmed_hashes_pad_identically(
+        [Values("0x0011111111111111111111111111111111111111111111111111111111111111",
+                "0x0000000000000000000000000000000000000000000000000000000000000011",
+                "0xff11111111111111111111111111111111111111111111111111111111111111",
+                "0x0000000000000000000000000000000000000000000000000000000000000000")] string parentHash)
+    {
+        ulong chainLength = 42ul;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+        BlockHeader? head = tree.FindHeader(chainLength - 1ul, BlockTreeLookupOptions.None);
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        ISpecProvider specProvider = new CustomSpecProvider(
+            (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
+            (new ForkActivation(0, current.Timestamp), Prague.Instance));
+        BlockhashStore store = new(worldState);
+
+        using IDisposable _ = worldState.BeginScope(current.Header);
+
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+
+        current.Header.ParentHash = new Hash256(parentHash);
+        IReleaseSpec spec = specProvider.GetSpec(current.Header);
+        store.ApplyBlockhashStateChanges(current.Header, spec);
+
+        Hash256? expected = store.GetBlockHashFromState(current.Header, current.Header.Number - 1, spec);
+
+        Span<byte> actual = stackalloc byte[Hash256.Size];
+        bool found = store.TryGetBlockHashFromState(current.Header, current.Header.Number - 1, spec, actual);
+
+        Assert.That(found, Is.EqualTo(expected is not null));
+        if (expected is not null)
+        {
+            Assert.That(actual.ToArray(), Is.EqualTo(expected.Bytes.ToArray()));
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Eip2935_poc_trimmed_hashes()
     {

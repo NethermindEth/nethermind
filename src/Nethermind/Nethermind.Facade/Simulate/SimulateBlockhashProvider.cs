@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -20,6 +21,14 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
             ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec)
             : blockhashProvider.GetBlockhash(currentBlock, number, spec);
+    }
+
+    public bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, Span<byte> destination)
+    {
+        ulong bestKnown = blockTree.BestKnownNumber;
+        return bestKnown < number && blockTree.BestSuggestedHeader is not null
+            ? blockhashProvider.TryGetBlockhash(blockTree.BestSuggestedHeader!, bestKnown, spec, destination)
+            : blockhashProvider.TryGetBlockhash(currentBlock, number, spec, destination);
     }
 
     public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => blockhashProvider.Prefetch(currentBlock, token);
