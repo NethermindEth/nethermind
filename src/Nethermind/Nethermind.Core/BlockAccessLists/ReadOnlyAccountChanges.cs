@@ -50,8 +50,11 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public CodeChange[] CodeChanges { get; }
 
-    private readonly Dictionary<UInt256, ReadOnlySlotChanges>? _storageChanges;
-    private readonly HashSet<UInt256>? _storageReadSet;
+    /// <summary>Every slot this account declares, changed or read-only, mapped to its changes.</summary>
+    /// <remarks>A <c>null</c> value marks a slot declared only as a read. Holding both kinds here lets a
+    /// storage access answer "is this declared, and was it written" in one probe: reads are the common
+    /// case and used to cost a miss in the changes map followed by a hit in a separate read set.</remarks>
+    private readonly Dictionary<UInt256, ReadOnlySlotChanges?>? _declaredSlots;
 
     public ReadOnlyAccountChanges(
         Address address,
@@ -63,51 +66,78 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         Address = address;
         StorageChanges = storageChanges;
+        StorageReads = storageReads;
+        BalanceChanges = balanceChanges;
+        NonceChanges = nonceChanges;
+        CodeChanges = codeChanges;
+
         if (storageChanges.Length > 0)
         {
-            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length, UInt256Comparer.GetOptimized());
             UInt256[] changedSlots = new UInt256[storageChanges.Length];
             for (int i = 0; i < storageChanges.Length; i++)
             {
-                ReadOnlySlotChanges sc = storageChanges[i];
-                _storageChanges.Add(sc.Key, sc);
-                changedSlots[i] = sc.Key;
+                changedSlots[i] = storageChanges[i].Key;
             }
             ChangedSlots = changedSlots;
         }
         else
         {
-            _storageChanges = null;
             ChangedSlots = [];
         }
-        StorageReads = storageReads;
-        BalanceChanges = balanceChanges;
-        NonceChanges = nonceChanges;
-        CodeChanges = codeChanges;
-        // Hash-set lookup beats array.Contains() for accounts with many declared reads; allocated
-        // lazily to avoid the overhead on accounts that never get queried via IsStorageRead.
-        _storageReadSet = storageReads.Length > 4 ? new HashSet<UInt256>(storageReads, UInt256Comparer.GetOptimized()) : null;
+
+        // A map is worth its allocation once there is anything to change or more than a handful of reads;
+        // below that the arrays are scanned, as the separate read set used to be.
+        if (storageChanges.Length > 0 || storageReads.Length > ReadScanThreshold)
+        {
+            _declaredSlots = new Dictionary<UInt256, ReadOnlySlotChanges?>(
+                storageChanges.Length + storageReads.Length, UInt256Comparer.GetOptimized());
+
+            foreach (ReadOnlySlotChanges sc in storageChanges)
+            {
+                _declaredSlots.Add(sc.Key, sc);
+            }
+
+            foreach (UInt256 slot in storageReads)
+            {
+                _declaredSlots.TryAdd(slot, null);
+            }
+        }
+        else
+        {
+            _declaredSlots = null;
+        }
     }
 
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
 
-    public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-        => _storageChanges.TryGetValueOrNull(key, out slotChanges);
+    /// <summary>Reads below this count are scanned rather than mapped.</summary>
+    private const int ReadScanThreshold = 4;
 
-    public bool IsStorageRead(UInt256 slot)
+    /// <summary>Whether the BAL declares <paramref name="slot"/> for this account at all.</summary>
+    /// <param name="slotChanges">The slot's changes, or <c>null</c> when it is declared only as a read.</param>
+    /// <returns><c>true</c> when the slot is declared, whether written or only read.</returns>
+    public bool TryGetDeclaredSlot(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
     {
-        if (_storageReadSet is not null)
+        if (_declaredSlots is not null)
         {
-            return _storageReadSet.Contains(slot);
+            return _declaredSlots.TryGetValue(slot, out slotChanges);
         }
 
+        slotChanges = null;
         ReadOnlySpan<UInt256> reads = StorageReads;
         for (int i = 0; i < reads.Length; i++)
         {
             if (reads[i].Equals(slot)) return true;
         }
+
         return false;
     }
+
+    public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
+        => TryGetDeclaredSlot(key, out slotChanges) && slotChanges is not null;
+
+    /// <summary>Whether the slot is declared as a read, meaning it is accessed but never written.</summary>
+    public bool IsStorageRead(UInt256 slot) => TryGetDeclaredSlot(slot, out ReadOnlySlotChanges? changes) && changes is null;
 
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
 
@@ -189,13 +219,12 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         if (other is null) return false;
         if (Address != other.Address) return false;
         if (StorageChanges.Length != other.StorageChanges.Length) return false;
-        if (_storageChanges is not null)
+        foreach (ReadOnlySlotChanges slotChanges in StorageChanges)
         {
-            Dictionary<UInt256, ReadOnlySlotChanges> otherDict = other._storageChanges!;
-            foreach (KeyValuePair<UInt256, ReadOnlySlotChanges> kv in _storageChanges)
+            if (!other.TryGetSlotChanges(slotChanges.Key, out ReadOnlySlotChanges? otherVal)
+                || !slotChanges.Equals(otherVal))
             {
-                if (!otherDict.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
-                    return false;
+                return false;
             }
         }
         // Span casts force MemoryExtensions.SequenceEqual (zero-alloc) over LINQ's.
