@@ -826,9 +826,8 @@ public class JsonRpcProcessorTests
         await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Invalid_batch_item_precedes_response_limit(bool segmentedInput)
+    [Test]
+    public async Task Invalid_batch_item_precedes_response_limit([Values] bool segmentedInput)
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service);
@@ -862,11 +861,8 @@ public class JsonRpcProcessorTests
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public async Task Empty_batch_returns_invalid_request(bool segmentedInput, bool isAuthenticated)
+    [Test]
+    public async Task Empty_batch_returns_invalid_request([Values] bool segmentedInput, [Values] bool isAuthenticated)
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service);
