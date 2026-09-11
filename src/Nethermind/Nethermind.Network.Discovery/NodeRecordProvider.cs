@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
+using System.Net.Sockets;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -8,7 +10,6 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
-using System.Net;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -21,7 +22,8 @@ public sealed class NodeRecordProvider(
     IBlockTree blockTree,
     IForkInfo forkInfo,
     ITimestamper timestamper,
-    ILogManager logManager
+    ILogManager logManager,
+    NetworkListenerState listenerState
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -33,6 +35,7 @@ public sealed class NodeRecordProvider(
     public async ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
     {
         Task<LocalNodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
+        TaskCompletionSource<LocalNodeRecord>? initialRecord = null;
         if (task is null)
         {
             lock (_lock)
@@ -40,47 +43,93 @@ public sealed class NodeRecordProvider(
                 if (!_subscribed)
                 {
                     blockTree.NewHeadBlock += OnNewHeadBlock;
+                    listenerState.Changed += OnListenerChanged;
                     _subscribed = true;
                 }
 
                 // Build once, guarding concurrent callers (Ping/HandleEnrRequest run from concurrent
                 // discovery handlers). Use CancellationToken.None so the cached ENR isn't faulted by a
                 // single caller's token; per-call cancellation is honored via WaitAsync below.
-                task = _nodeRecordTask ??= PrepareNodeRecord(GetEffectiveHeader(null), previousSequence: 0, CancellationToken.None);
+                task = _nodeRecordTask;
+                if (task is null)
+                {
+                    initialRecord = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    task = _nodeRecordTask = initialRecord.Task;
+                }
             }
         }
 
-        return (await task.WaitAsync(cancellationToken)).Record;
+        if (initialRecord is not null)
+        {
+            _ = CompleteInitialRecord(initialRecord);
+        }
+
+        try
+        {
+            return (await task.WaitAsync(cancellationToken)).Record;
+        }
+        catch when (task.IsFaulted)
+        {
+            _ = Interlocked.CompareExchange(ref _nodeRecordTask, null, task);
+            throw;
+        }
+    }
+
+    private async Task CompleteInitialRecord(TaskCompletionSource<LocalNodeRecord> completion)
+    {
+        try
+        {
+            completion.SetResult(await PrepareNodeRecord(GetEffectiveHeader(null), previousSequence: 0, CancellationToken.None));
+        }
+        catch (Exception e)
+        {
+            completion.SetException(e);
+        }
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        Task<LocalNodeRecord>? task = Volatile.Read(ref _nodeRecordTask);
-        if (task is null)
-        {
-            return;
-        }
+        => RefreshRecord(e.Block.Header);
 
+    private void OnListenerChanged(object? sender, EventArgs e)
+        => RefreshRecord(effectiveHeader: null);
+
+    private void RefreshRecord(BlockHeader? effectiveHeader)
+    {
         lock (_lock)
         {
-            task = _nodeRecordTask;
-            if (task is not null)
+            if (_nodeRecordTask is { } task)
             {
-                _nodeRecordTask = RefreshNodeRecord(task, e.Block.Header);
+                _nodeRecordTask = RefreshNodeRecord(task, effectiveHeader);
             }
         }
     }
 
-    private async Task<LocalNodeRecord> RefreshNodeRecord(Task<LocalNodeRecord> currentTask, BlockHeader head)
+    private async Task<LocalNodeRecord> RefreshNodeRecord(Task<LocalNodeRecord> currentTask, BlockHeader? effectiveHeader)
     {
-        LocalNodeRecord current = await currentTask;
+        LocalNodeRecord current;
+        try
+        {
+            current = await currentTask;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rebuilding the local ENR after the previous attempt failed. {e}");
+            return await PrepareNodeRecord(effectiveHeader, previousSequence: 0, CancellationToken.None);
+        }
+
         try
         {
             IIPResolver.NethermindIp ip = await ipResolver.Resolve(CancellationToken.None);
-            LocalNodeRecordState state = CreateState(head, ip);
+            LocalNodeRecordState state = CreateState(effectiveHeader, ip);
             if (current.State == state)
             {
                 return current;
+            }
+
+            if (!Equals(current.State.ExternalIpV4, state.ExternalIpV4) ||
+                !Equals(current.State.ExternalIpV6, state.ExternalIpV6))
+            {
+                LogEndpointIssues(ip, state);
             }
 
             return CreateSignedRecord(state, NextSequence(current.Record.EnrSequence));
@@ -105,13 +154,23 @@ public sealed class NodeRecordProvider(
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        (IPAddress? externalIpV4, IPAddress? externalIpV6) = DiscoveryAddressSupport.SelectAdvertised(
-            ip.LocalIp,
-            ip.ExternalIpV4,
-            ip.ExternalIpV6);
+        IPAddress? rlpxAddress = listenerState.RlpxAddress;
+        IPAddress? discoveryAddress = listenerState.DiscoveryAddress;
+        bool advertiseV4 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetwork);
+        bool advertiseV6 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetworkV6);
 
-        return new LocalNodeRecordState(externalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        return new LocalNodeRecordState(
+            advertiseV4 ? ip.ExternalIpV4 : null,
+            rlpxAddress is not null ? networkConfig.P2PPort : null,
+            discoveryAddress is not null ? networkConfig.DiscoveryPort : null,
+            advertiseV6 ? ip.ExternalIpV6 : null,
+            currentForkId);
     }
+
+    private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)
+        => (rlpxAddress is not null || discoveryAddress is not null) &&
+           (rlpxAddress is null || DiscoveryAddressSupport.SupportsFamily(rlpxAddress, family)) &&
+           (discoveryAddress is null || DiscoveryAddressSupport.SupportsFamily(discoveryAddress, family));
 
     private void LogEndpointIssues(IIPResolver.NethermindIp ip, LocalNodeRecordState state)
     {
@@ -122,12 +181,12 @@ public sealed class NodeRecordProvider(
 
         if (ip.ExternalIpV4 is not null && state.ExternalIpV4 is null)
         {
-            _logger.Warn("External IPv4 address is available but not advertised because the node does not listen on IPv4 (set LocalIp to an IPv4 address or ::).");
+            _logger.Warn("External IPv4 address is available but cannot be advertised for the bound listener combination.");
         }
 
         if (ip.ExternalIpV6 is not null && state.ExternalIpV6 is null)
         {
-            _logger.Warn("External IPv6 address is available but not advertised because the node does not listen on IPv6 (set LocalIp to an IPv6 address).");
+            _logger.Warn("External IPv6 address is available but cannot be advertised for the bound listener combination.");
         }
 
         if (state.ExternalIpV4 is null && state.ExternalIpV6 is null)
@@ -145,16 +204,16 @@ public sealed class NodeRecordProvider(
         if (state.ExternalIpV4 is not null)
         {
             selfNodeRecord.SetEntry(new IpEntry(state.ExternalIpV4));
-            selfNodeRecord.SetEntry(new TcpEntry(state.TcpPort));
-            selfNodeRecord.SetEntry(new UdpEntry(state.UdpPort));
+            if (state.TcpPort is { } tcpPort) selfNodeRecord.SetEntry(new TcpEntry(tcpPort));
+            if (state.UdpPort is { } udpPort) selfNodeRecord.SetEntry(new UdpEntry(udpPort));
         }
 
         if (state.ExternalIpV6 is not null)
         {
             selfNodeRecord.SetEntry(new Ip6Entry(state.ExternalIpV6));
             // Some ENR consumers do not implement EIP-778's fallback from tcp6/udp6 to tcp/udp.
-            selfNodeRecord.SetEntry(new Tcp6Entry(state.TcpPort));
-            selfNodeRecord.SetEntry(new Udp6Entry(state.UdpPort));
+            if (state.TcpPort is { } tcpPort) selfNodeRecord.SetEntry(new Tcp6Entry(tcpPort));
+            if (state.UdpPort is { } udpPort) selfNodeRecord.SetEntry(new Udp6Entry(udpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = sequence;
@@ -177,8 +236,8 @@ public sealed class NodeRecordProvider(
 
     private readonly record struct LocalNodeRecordState(
         IPAddress? ExternalIpV4,
+        int? TcpPort,
+        int? UdpPort,
         IPAddress? ExternalIpV6,
-        int TcpPort,
-        int UdpPort,
         NetworkForkId ForkId);
 }

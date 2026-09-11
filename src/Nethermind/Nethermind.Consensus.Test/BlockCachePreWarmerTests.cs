@@ -35,7 +35,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;

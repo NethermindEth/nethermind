@@ -1,7 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Config;
@@ -9,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
+using Nethermind.Init;
 using Nethermind.Init.Modules;
 using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -20,6 +28,68 @@ namespace Nethermind.Core.Test.Modules;
 
 public class PseudoNethermindModuleTests
 {
+    [Test]
+    public void Default_backend_is_flat([Range(0, 3)] int constructor)
+    {
+        TestNethermindModule module = constructor switch
+        {
+            0 => new TestNethermindModule(Osaka.Instance),
+            1 => new TestNethermindModule(Array.Empty<IConfig>()),
+            2 => new TestNethermindModule(new ChainSpec()),
+            _ => TestNethermindModule.CreateWithRealChainSpec()
+        };
+        using IContainer container = new ContainerBuilder().AddModule(module).Build();
+
+        Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.True);
+    }
+
+    [Test]
+    public void Explicit_backend_is_preserved([Values] bool enabled, [Values] bool historyEnabled, [Values] bool useProvider)
+    {
+        FlatDbConfig flatDbConfig = new() { Enabled = enabled, HistoryEnabled = historyEnabled };
+        TestNethermindModule module = useProvider
+            ? new TestNethermindModule(new ConfigProvider(flatDbConfig))
+            : new TestNethermindModule(flatDbConfig);
+        using IContainer container = new ContainerBuilder().AddModule(module).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
+            Assert.That(container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
+        }
+    }
+
+    [Test]
+    public async Task Test_blockchain_preserves_explicit_history_configuration([Values] bool historyEnabled)
+    {
+        using BackendTestBlockchain chain = new(new FlatDbConfig { HistoryEnabled = historyEnabled });
+        await chain.Initialize();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Container.Resolve<IFlatDbConfig>().Enabled, Is.True);
+            Assert.That(chain.Container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
+        }
+    }
+
+    [Test]
+    public void Test_blockchain_rejects_explicit_flat_disable()
+    {
+        using BackendTestBlockchain chain = new(new FlatDbConfig { Enabled = false });
+
+        DependencyResolutionException exception = Assert.ThrowsAsync<DependencyResolutionException>(async () => await chain.Initialize())!;
+        Assert.That(exception.ToString(), Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+    }
+
+    private sealed class BackendTestBlockchain(FlatDbConfig? flatDbConfig) : BasicTestBlockchain
+    {
+        public Task<TestBlockchain> Initialize() => Build();
+
+        protected override IEnumerable<IConfig> CreateConfigs() => flatDbConfig is null
+            ? base.CreateConfigs()
+            : [.. base.CreateConfigs(), flatDbConfig];
+    }
+
     // Regeneration re-executes a block, so it must stay unreachable from everything that is not a read-only query:
     // peer-facing serving, and consensus components that read receipts while processing (AuRa validator contract,
     // Shutter). Those resolve the unkeyed registration, which must therefore never become the regenerating one.

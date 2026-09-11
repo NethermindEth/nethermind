@@ -9,7 +9,6 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Monitoring;

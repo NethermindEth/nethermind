@@ -94,6 +94,7 @@ internal static class DiscoveryContainer
                 new SameKeyGenerator(context.ResolveKeyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey).Unprotect()))
             .AddSingleton<INodeIdResolver, NodeIdResolver>()
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
+            .AddSingleton<NetworkListenerState>()
             .AddSingleton<INodeStatsManager>(context => new NodeStatsManager(
                 context.Resolve<ITimerFactory>(),
                 context.Resolve<ILogManager>(),

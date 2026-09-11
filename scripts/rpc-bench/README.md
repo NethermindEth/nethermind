@@ -12,20 +12,19 @@ and post-process it to XML.
 `arm64` is `reproducible-benchmarks-arm` with snapshots under `/data`. Every
 path below follows that choice. **Never compare timings across the two boxes.**
 
-The amd64 box holds the full snapshot set, so it serves every `client` and
-`reference_client`. The arm64 box carries the Nethermind
-**flat** set plus one directory per additionally provisioned client
-(`/data/<client>/<client>-<block>`), so there any single provisioned `client`
-runs in single-node mode, `reference_client` is held to `none`, and an image it
-would have to build is refused as well (that box's
-small root disk dies under a build). `resolve` checks those limits against the
-selected runner.
+The amd64 box holds the full snapshot set, so it serves every `client`,
+`reference_client` and `state_layout`. The arm64 box carries exactly one kind of
+snapshot set — Nethermind in the **flat** layout — so there `client`,
+`reference_client` and `state_layout` are held to `nethermind` / `none` / `flat`,
+and an image it would have to build is refused as well (that box's ~19G root disk
+dies under a build). `resolve` checks those limits against the selected runner.
 
-**Sweep mode** (`jsonbench-sweep`) resolves a snapshot set per client type, so
-`tool_config.clients` may name geth/reth arms alongside Nethermind ones.
-`tool_config.state_layout` selects the FlatDB snapshot for Nethermind. Every requested type's set is
-checked before any node starts, because a missing one would otherwise surface as
-a per-client warning and a silently partial matrix.
+Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
+Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
+a non-Nethermind entry in `tool_config.clients`
+instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
+geth/reth is a matter of provisioning the snapshot set and
+widening those two guards.
 
 ## Goals
 
@@ -166,13 +165,13 @@ the workflow's defensive-cleanup step).
 | Input | Meaning |
 |---|---|
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
-| `client` | `nethermind`, or any client with a snapshot set on the selected runner. Superseded by `tool_config.clients` in sweep mode. |
+| `client` | `nethermind` — the only client with a snapshot set on this runner. |
 | `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
 | `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
-| `state_layout` | `flat` (the FlatDB snapshot). In sweep mode pass it as `tool_config.state_layout`. |
+| `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
 | `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
 | `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a Nethermind `jsonbench` benchmark with no reference client (the only shape with a warm-up to attach the collector after; one is supplied when the dispatch sets none). See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |

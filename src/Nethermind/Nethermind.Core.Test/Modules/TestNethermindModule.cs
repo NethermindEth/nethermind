@@ -23,9 +23,9 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
 {
     private readonly IReleaseSpec? _releaseSpec;
 
-    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider()) => _releaseSpec = releaseSpec;
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(DefaultConfigProvider()) => _releaseSpec = releaseSpec;
 
-    public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
+    public TestNethermindModule(params IConfig[] configs) : this(DefaultConfigProvider(configs))
     {
     }
 
@@ -40,7 +40,7 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
     {
     }
 
-    public TestNethermindModule(ChainSpec chainSpec) : this(new ConfigProvider(), chainSpec)
+    public TestNethermindModule(ChainSpec chainSpec) : this(DefaultConfigProvider(), chainSpec)
     {
     }
 
@@ -48,8 +48,11 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
-        return new TestNethermindModule(new ConfigProvider(), spec, useTestSpecProvider: false);
+        return new TestNethermindModule(DefaultConfigProvider(), spec, useTestSpecProvider: false);
     }
+
+    private static ConfigProvider DefaultConfigProvider(params IConfig[] configs) =>
+        new(configs);
 
     protected override void Load(ContainerBuilder builder)
     {

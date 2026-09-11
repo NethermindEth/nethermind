@@ -196,25 +196,28 @@ public class InitializeNetwork : IStep
     }
 
     private static string GetDbLayoutPostfix(IFlatDbConfig flatDbConfig) => flatDbConfig.Layout switch
-        {
-            FlatLayout.Flat => "-f",
-            FlatLayout.FlatInTrie => "-fit",
-            FlatLayout.PreimageFlat => "-pf",
-            _ => ""
-        };
+    {
+        FlatLayout.Flat => "-f",
+        FlatLayout.FlatInTrie => "-fit",
+        FlatLayout.PreimageFlat => "-pf",
+        _ => ""
+    };
 
-    private Task StartDiscovery()
+    private async Task StartDiscovery()
     {
         if (!_initConfig.DiscoveryEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
-            return Task.CompletedTask;
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
-        _ = _discoveryApp.StartAsync();
+        await _discoveryApp.StartAsync();
+        if (!_networkConfig.DisableDiscV4DnsFeeder)
+        {
+            _ = _enrDiscoveryAppFeeder.Run();
+        }
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
-        return Task.CompletedTask;
     }
 
     private void StartPeer()
@@ -257,12 +260,6 @@ public class InitializeNetwork : IStep
     {
         // Force creation so the protocols manager subscribes to session events before the RLPx listener starts.
         _ = _protocolsManager.Value;
-
-        if (!_networkConfig.DisableDiscV4DnsFeeder)
-        {
-            // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _ = _enrDiscoveryAppFeeder.Run();
-        }
 
         // Capabilities must be resolved before the RLPx listener accepts peers. Otherwise
         // early sessions can negotiate only the default ETH version and never upgrade.

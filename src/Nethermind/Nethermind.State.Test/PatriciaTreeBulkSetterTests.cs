@@ -354,7 +354,7 @@ public class PatriciaTreeBulkSetterTests
         long preSortedWriteCount;
         {
             TestMemDb db = new();
-        IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)));
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)));
             PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -412,7 +412,7 @@ public class PatriciaTreeBulkSetterTests
         {
             // Just the bulk set one stack
             TestMemDb db = new();
-        IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)));
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)));
             PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
@@ -464,7 +464,7 @@ public class PatriciaTreeBulkSetterTests
         long baselineWriteCount = 0;
         {
             TestMemDb db = new();
-        IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)));
+            IScopedTrieStore trieStore = new StrictRawScopedTrieStore(new RawScopedTrieStore(new TestNodeStorage(db)));
             PatriciaTree pTree = new(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 

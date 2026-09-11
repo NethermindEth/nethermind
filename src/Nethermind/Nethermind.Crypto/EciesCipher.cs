@@ -18,12 +18,19 @@ namespace Nethermind.Crypto;
 public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 {
     private const int KeySize = 128;
+    private static readonly int MacSize = CreateMac().GetMacSize();
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly PrivateKeyGenerator _keyGenerator = new(cryptoRandom);
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
+    /// <inheritdoc/>
     public (bool Success, byte[]? PlainText) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)
     {
+        if (cipherText.Length < ephemBytesLength + KeySize / 8 + MacSize)
+        {
+            return (false, null);
+        }
+
         if (cipherText[0] != 4) // if not a compressed public key then probably we need to use EIP8
         {
             return (false, null);
@@ -68,12 +75,14 @@ public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 
     private static readonly IesWithCipherParameters _iesParameters = new([], [], KeySize, KeySize);
 
+    private static HMac CreateMac() => new(new Sha256Digest());
+
     private static EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
     {
         IBlockCipher aesFastEngine = AesUtilities.CreateEngine();
 
         EthereumIesEngine iesEngine = new(
-            new HMac(new Sha256Digest()),
+            CreateMac(),
             new Sha256Digest(),
             new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 

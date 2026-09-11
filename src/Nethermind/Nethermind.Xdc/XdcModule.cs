@@ -79,6 +79,13 @@ public class XdcModule : Module
                 IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
+            .AddSingleton<XdcSyncReadOnlyTxProcessingEnvFactory>()
+            .AddKeyedSingleton<IMasternodeVotingContract>(
+                XdcStateSyncSnapshotManager.StateSyncContractKey,
+                context => CreateVotingContract(
+                    context.Resolve<IAbiEncoder>(),
+                    context.Resolve<ISpecProvider>(),
+                    context.Resolve<XdcSyncReadOnlyTxProcessingEnvFactory>()))
             .AddSingleton<IMintedRecordContract, MintedRecordContract>()
 
             // sealer

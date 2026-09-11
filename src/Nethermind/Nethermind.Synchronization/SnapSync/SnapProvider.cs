@@ -15,7 +15,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync
 {

@@ -471,8 +471,8 @@ public class TestBlockchain : IDisposable
 
     public virtual void Dispose()
     {
-        BlockProducerRunner.StopAsync();
-        Container.Dispose();
+        BlockProducerRunner?.StopAsync();
+        Container?.Dispose();
     }
 
     /// <summary>

@@ -124,6 +124,27 @@ public static unsafe partial class KeccakCache
                     return;
                 }
             }
+            else if (input.Length == 64)
+            {
+                Vector256<byte> copyLow = Unsafe.ReadUnaligned<Vector256<byte>>(ref e.Value.Start);
+                Vector256<byte> copyHigh = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref e.Value.Start, 32));
+                ValueHash256 cachedKeccak = e.Keccak256;
+
+                if (!Sse.IsSupported)
+                    Interlocked.MemoryBarrier();
+
+                if (seq1 == Volatile.Read(ref e.Combined))
+                {
+                    ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                    Vector256<byte> difference = (copyLow ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref inputRef)) |
+                        (copyHigh ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref inputRef, 32)));
+                    if (difference == Vector256<byte>.Zero)
+                    {
+                        keccak256 = cachedKeccak;
+                        return;
+                    }
+                }
+            }
             else
             {
                 // Uncommon path: copy full Payload for other lengths

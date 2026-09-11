@@ -11,7 +11,6 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;

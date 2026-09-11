@@ -5,7 +5,6 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 

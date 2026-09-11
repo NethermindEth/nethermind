@@ -1,0 +1,2035 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.History.Walk;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
+using Nethermind.Core.Test;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.State.Flat.History.Test;
+
+public class ArchiveProofTests
+{
+    private const int AccountCount = 120;
+    private const ulong Blocks = 140;
+
+    private static readonly Address Contract = TestItem.AddressA;
+    private static readonly Address Absent = TestItem.AddressF;
+    private static readonly UInt256[] ContractSlots = [1, 2, 300, 40000];
+
+    private SnapshotableMemColumnsDb<FlatDbColumns> _flatDb = null!;
+    private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
+    private ArchiveProofTestChain _chain = null!;
+    private Address[] _accounts = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _flatDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _chain = new ArchiveProofTestChain(_historyColumns);
+        _accounts = BuildAddresses(AccountCount);
+        _policy = TestPolicy;
+        _recentEpochs = 0;
+        _fineEpochs = 0;
+        BuildChain();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _reclaimer?.Dispose();
+        foreach (CommitmentMetadata metadata in _metadatas) metadata.Dispose();
+        _metadatas.Clear();
+        _chain.Dispose();
+        _flatDb.Dispose();
+        _historyColumns.Dispose();
+    }
+
+    [TestCase(1ul, TestName = "FirstBlock")]
+    [TestCase(7ul, TestName = "MidChain")]
+    [TestCase(64ul, TestName = "OnACheckpointBoundary")]
+    [TestCase(65ul, TestName = "InsideAnOpenWindow")]
+    [TestCase(Blocks, TestName = "Head")]
+    public void A_proof_built_from_commitments_equals_the_proof_that_blocks_own_trie_gives(ulong block)
+    {
+        BuildCommitments();
+
+        foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
+        {
+            AssertProofMatchesTheTrie(address, block);
+        }
+    }
+
+    [TestCase(1ul, 1L, TestName = "StreamedBuild_FirstBlock")]
+    [TestCase(65ul, 1L, TestName = "StreamedBuild_InsideAnOpenWindow")]
+    [TestCase(Blocks, 1L, TestName = "StreamedBuild_Head")]
+    [TestCase(1ul, 40L, TestName = "SplitBuild_FirstBlock")]
+    [TestCase(65ul, 40L, TestName = "SplitBuild_InsideAnOpenWindow")]
+    [TestCase(Blocks, 40L, TestName = "SplitBuild_Head")]
+    public void A_build_under_a_row_budget_that_splits_subtrees_or_streams_keys_yields_the_same_proofs(ulong block, long maxRowsPerPartition)
+    {
+        BuildCommitments(maxRowsPerPartition);
+
+        foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
+        {
+            AssertProofMatchesTheTrie(address, block, address == Contract ? ContractSlots : []);
+        }
+
+        CorruptEveryAccountRow();
+        AccountProof fromCommitments = ProveFromArchive(_accounts[3], block: 6);
+        Assert.That(fromCommitments.Proof,
+            Is.EqualTo(_chain.ExpectedProof(_accounts[3], 6).Proof),
+            "rows combined upward from single-key partitions must leave the same commitment column a whole-subtree replay leaves");
+    }
+
+    [Test]
+    public void A_build_interrupted_inside_a_subtree_resumes_from_its_last_checkpoint_and_yields_the_same_proofs()
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, retrofit.Metadata);
+        using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
+
+        using CancellationTokenSource interrupt = new();
+        int checkpoints = 0;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item < 256 && ++checkpoints == 1) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut right after an account subtree's first checkpoint");
+
+        bool partial = false;
+        for (int item = 0; item < 256 && !partial; item++) partial = metadata.TryGetWalkItemProgress(item, out _);
+        Assert.That(partial, Is.True, "precondition: at least one subtree left a block-level checkpoint behind");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+        Assert.That(resumed.Mismatches, Is.Empty, "the resumed run fast-forwards to the checkpoint without rehashing and finishes the range");
+        retrofit.PublishCoverage(0, _chain.Head);
+
+        foreach (ulong block in (ulong[])[1, 40, 64, 100, Blocks])
+        {
+            AssertProofMatchesTheTrie(_accounts[0], block);
+            AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void A_verify_only_run_interrupted_inside_a_subtree_resumes_from_its_checkpoint_without_false_mismatches()
+    {
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
+
+        using CancellationTokenSource interrupt = new();
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item < 256) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut right after an account subtree's first checkpoint");
+        bool partial = false;
+        for (int item = 0; item < 256 && !partial; item++) partial = metadata.TryGetWalkItemProgress(item, out _);
+        Assert.That(partial, Is.True, "precondition: a subtree left a block-level checkpoint behind");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.Empty,
+            "without a build the depth-2 series is scratch; a resume that deleted it would fold an empty series below the checkpoint and report a state root mismatch at every one of those blocks");
+    }
+
+    [Test]
+    public void Mismatches_of_a_subtree_finished_before_an_interruption_survive_the_restart()
+    {
+        CorruptEveryStorageRow();
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected, Is.Not.Empty, "precondition: corrupt slot rows rebuild to storage roots the account rows do not claim");
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        using CancellationTokenSource interrupt = new();
+        int contractItem = ContractStorageItem;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, interrupt.Token, item => { if (item == contractItem) interrupt.Cancel(); }),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut right after the contract's storage subtree is marked done");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "a finished subtree is skipped on resume, so the mismatches it found must be persisted with its done mark or the resumed verdict passes a corrupt archive");
+    }
+
+    [Test]
+    public void A_scan_derived_mismatch_is_reported_once_however_often_the_partition_resumes()
+    {
+        Address moved = _accounts[5];
+        HistoryColumnsWriter.RecordAccount(_historyColumns, moved, block: 70, new Account(1, 2005 + 5 * 70, Keccak.Compute("moved"), Keccak.OfAnEmptyString));
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected.Count(static m => m.Kind == HistoryWalkMismatchKind.MissingSlotHistory), Is.EqualTo(2), "precondition: the storage root moves out at block 70 and back at the account's next change, both without slot rows");
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        int movedItem = Keccak.Compute(moved.Bytes).Bytes[0];
+        using CancellationTokenSource first = new();
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item == movedItem) first.Cancel(); }, first.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: cut at the moved account's partition checkpoint, after the scan already found the move");
+        using CancellationTokenSource second = new();
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item == movedItem) second.Cancel(); }, second.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: cut there a second time, so the persisted findings went through two resumes");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "the scan re-derives its findings on every run, so only the replay's findings may ride along with a checkpoint or every restart would add another copy");
+    }
+
+    [Test]
+    public void A_partition_that_splits_on_the_resumed_run_does_not_duplicate_the_findings_its_checkpoint_carried()
+    {
+        Address hot = _accounts[5];
+        byte partition = Keccak.Compute(hot.Bytes).Bytes[0];
+        for (ulong block = 1; block <= Blocks; block++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, hot, block, new Account(block, 7000 + block, block == 20 ? Keccak.Compute("moved") : Keccak.EmptyTreeHash, Keccak.OfAnEmptyString));
+        }
+
+        foreach (Address neighbour in AddressesSortingAfter(hot, count: 2))
+        {
+            for (ulong block = 10; block <= 50; block += 10) HistoryColumnsWriter.RecordAccount(_historyColumns, neighbour, block, new Account(1, block, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString));
+        }
+
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected.Count(static m => m.Kind == HistoryWalkMismatchKind.MissingSlotHistory), Is.EqualTo(2), "precondition: the hot account's root moves out and back without slot rows");
+
+        using CancellationTokenSource interrupt = new();
+        Assert.That(
+            () => CreateVerifyOnlyVerifier(maxRowsPerPartition: 12).VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, block) => { if (item == partition) interrupt.Cancel(); }, interrupt.Token),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the hot account streams, its neighbours fit, and the partition is cut at its checkpoint with the streamed moves persisted");
+
+        HistoryWalkVerdict resumed = CreateVerifyOnlyVerifier(maxRowsPerPartition: 6).VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "a smaller budget splits the partition on resume; its children replay the whole range, so what the checkpoint carried must be dropped or it is reported twice");
+    }
+
+    [Test]
+    public void Mismatches_found_before_a_checkpoint_survive_the_restart()
+    {
+        CorruptEveryStorageRow();
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier().VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier();
+        using CancellationTokenSource interrupt = new();
+        int contractItem = ContractStorageItem;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, checkpointBlocks: 32, (item, progress) => { if (item == contractItem) interrupt.Cancel(); }, interrupt.Token, checkpointGroups: 1),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the run is cut at the storage range's checkpoint right after the contract's group");
+        Assert.That(Metadata(TestPolicy).TryGetWalkItemProgress(contractItem, out _), Is.True, "precondition: the storage range left a group checkpoint behind");
+
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(resumed.Mismatches, Is.EquivalentTo(expected),
+            "groups below the checkpoint are not rescanned on resume, so what they found must ride along with the checkpoint");
+    }
+
+    [Test]
+    public void Groups_of_one_storage_range_replayed_on_borrowed_slots_prove_the_same_as_the_trie()
+    {
+        Address[] siblings = RebuildTheChainWithContractsInTheSameStorageRange(12);
+
+        BuildCommitments(maxRowsPerPartition: 40, minRowsToBorrow: 1);
+
+        foreach (Address sibling in siblings) AssertProofMatchesTheTrie(sibling, Blocks, ContractSlots);
+        AssertProofMatchesTheTrie(Contract, 65, ContractSlots);
+    }
+
+    [Test]
+    public void Groups_of_one_storage_range_replayed_on_borrowed_slots_report_the_same_findings_and_resume_without_losing_or_repeating_them()
+    {
+        RebuildTheChainWithContractsInTheSameStorageRange(12);
+        CorruptEveryStorageRow();
+        List<HistoryWalkMismatch> expected = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40).VerifyRangeParallel(0, _chain.Head, workers: 1, CancellationToken.None).Mismatches.ToList();
+        Assert.That(expected.Count, Is.GreaterThan(12), "precondition: every contract in the range rebuilds to storage roots its account rows do not claim");
+
+        List<HistoryWalkMismatch> parallel = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40).VerifyRangeParallel(0, _chain.Head, workers: 8, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: 1).Mismatches.ToList();
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40);
+        using CancellationTokenSource interrupt = new();
+        int contractItem = ContractStorageItem;
+        Assert.That(
+            () => verifier.VerifyRangeParallel(0, _chain.Head, workers: 8, checkpointBlocks: 32, (item, progress) => { if (item == contractItem) interrupt.Cancel(); }, interrupt.Token, checkpointGroups: 3, minRowsToBorrow: 1),
+            Throws.InstanceOf<OperationCanceledException>(), "precondition: the range is cut at its first group checkpoint while later groups may still be replaying on borrowed slots");
+        HistoryWalkVerdict resumed = verifier.VerifyRangeParallel(0, _chain.Head, workers: 8, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EquivalentTo(expected), "groups replayed concurrently find exactly what the sequential replay finds");
+            Assert.That(resumed.Mismatches, Is.EquivalentTo(expected), "the checkpoint carries only the findings of groups below it, so the resume neither loses the rest nor reports them twice");
+        }
+    }
+
+    [Test]
+    public void A_build_leaves_no_scratch_series_behind([Values(1L, 40L)] long maxRowsPerPartition)
+    {
+        BuildCommitments(maxRowsPerPartition);
+
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        Assert.That(column.GetAllKeys().Any(static key => key[0] == SeriesKey.ScratchMarker), Is.False,
+            "the per-block series that carry subtree roots between partitions and their combine are scratch and must be deleted once consumed");
+    }
+
+    [Test]
+    public void An_account_created_and_deleted_inside_one_checkpoint_window_is_served_from_commitments_alone()
+    {
+        Address transient = TestItem.AddressE;
+        ulong born = Blocks + 6;
+        ulong died = Blocks + 10;
+        ulong queried = Blocks + 8;
+        for (ulong number = Blocks + 1; number <= Blocks + 20; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[(int)(current % AccountCount)], (UInt256)(9000 + current));
+                if (current == born) block.SetBalance(transient, 777);
+                if (current == died) block.SetAccount(transient, null);
+            });
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(transient, queried);
+
+        CorruptEveryAccountRow();
+        AccountProof actual = ProveFromArchive(transient, queried);
+
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
+            "a child that appeared and vanished inside one window is in neither the anchor's nor the window's end presence, so only its changed bit lets the resolver find it without a rebuild");
+    }
+
+    [Test]
+    public void A_storage_proof_built_from_commitments_equals_the_proof_that_blocks_own_trie_gives()
+    {
+        BuildCommitments();
+
+        foreach (ulong block in (ulong[])[3, 9, 64, 100, Blocks])
+        {
+            AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void Proofs_resolve_across_epoch_buckets([Values(1ul, 64ul, 127ul, 128ul, 130ul, Blocks)] ulong block)
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+
+        foreach (Address address in new[] { _accounts[0], _accounts[AccountCount / 2], _accounts[^1], Contract })
+        {
+            AssertProofMatchesTheTrie(address, block, address == Contract ? ContractSlots : []);
+        }
+    }
+
+    [Test]
+    public void A_node_untouched_in_an_epoch_still_resolves_from_commitments_alone_through_the_epoch_start_snapshot()
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+        Address quiet = _accounts.First(static a => a != Contract && Keccak.Compute(a.Bytes).Bytes[0] != Keccak.Compute(Contract.Bytes).Bytes[0]);
+        AccountProof expected = _chain.ExpectedProof(quiet, 130);
+
+        CorruptEveryAccountRow();
+
+        AccountProof actual = ProveFromArchive(quiet, 130);
+        Assert.That(actual.Proof, Is.EqualTo(expected.Proof),
+            "block 130 sits in the second epoch; every node on the path has a row there, either from a change or from the snapshot written at the epoch's first block, so the corrupt account rows are never read");
+    }
+
+    [TestCase(HistoryWalkVerifier.DefaultMaxRowsPerPartition, TestName = "OnePartition")]
+    [TestCase(40L, TestName = "SplitPartitions")]
+    [TestCase(6L, TestName = "TwiceSplitPartitions")]
+    public void An_epoch_boundary_where_a_contract_stood_still_is_not_reported_as_a_missing_account_row(long maxRowsPerPartition)
+    {
+        _policy = EpochPolicy;
+        _chain.Dispose();
+        _historyColumns.Dispose();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _chain = new ArchiveProofTestChain(_historyColumns);
+        _chain.AddBlock(0, block =>
+        {
+            for (int i = 0; i < _accounts.Length; i++) block.SetBalance(_accounts[i], (UInt256)(1000 + i));
+            for (int slot = 1; slot <= 200; slot++) block.SetStorage(Contract, (UInt256)slot, [0x20, (byte)slot]);
+        });
+
+        for (ulong number = 1; number <= Blocks; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[(int)(current % AccountCount)], (UInt256)(3000 + current)));
+        }
+
+        _chain.PublishWatermark();
+
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, retrofit, retrofit.Metadata);
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches, Is.Empty,
+            "the contract's storage never moves after genesis, but every epoch start publishes its subtree view so the row is there for a later read; that publish must not read as a storage root change, or the verdict fails on a healthy archive and no coverage is ever published");
+    }
+
+    [TestCase(6, TestName = "SixIsTheSmallestIntervalButFarTooSmallAnEpoch")]
+    [TestCase(15, TestName = "TwoShortOfReaching")]
+    [TestCase(16, TestName = "OneShortOfReaching")]
+    public void An_epoch_whose_two_byte_number_cannot_reach_a_plausible_chain_height_is_refused(int epochLog2) =>
+        Assert.That(() => CommitmentDepthPolicy.FromConfig(new FlatDbConfig { ArchiveProofEpochLog2 = epochLog2 }), Throws.InstanceOf<InvalidConfigurationException>(),
+            "the epoch is a two-byte key prefix, so too small an epoch runs out of numbers partway up the chain and every later row would throw where nothing names the setting");
+
+    [Test]
+    public void The_smallest_epoch_the_refusal_names_is_accepted() =>
+        Assert.That(() => CommitmentDepthPolicy.FromConfig(new FlatDbConfig { ArchiveProofEpochLog2 = CommitmentDepthPolicy.MinEpochLog2ForConfig }), Throws.Nothing,
+            "an operator who follows the message must not land in the same exception");
+
+    [Test]
+    public void A_node_that_keeps_only_recent_epochs_builds_only_those_epochs()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+
+        ulong first = retrofit.FirstBlockToBuild(_chain.Head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(128), "the head sits in the second epoch of 128 blocks, so a node keeping one epoch starts the walk there instead of at genesis, which is the difference between hours and days on a real archive");
+            Assert.That(Metadata(_policy).RetainedFromEpoch, Is.EqualTo(1), "the floor is recorded before anything is built, so a height below it is refused rather than half-built");
+        }
+
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        retrofit.Prepare();
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, retrofit.Metadata);
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(first, _chain.Head, workers: 3, CancellationToken.None);
+        retrofit.PublishCoverage(first, _chain.Head);
+
+        Assert.That(verdict.Mismatches, Is.Empty, "a walk that starts inside the chain builds its start state from the rows at that block and still matches every header from there on");
+        AssertProofMatchesTheTrie(_accounts[3], 135);
+        AssertProofMatchesTheTrie(Contract, 130, ContractSlots);
+        Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(100)), Is.False, "nothing below the floor was built, so nothing below it is served");
+    }
+
+    [Test]
+    public void A_demoted_epoch_still_proves_every_height_it_covers()
+    {
+        _policy = EpochPolicy;
+        _fineEpochs = 1;
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        foreach (ulong block in (ulong[])[1, 64, 100, 127, 135, Blocks])
+        {
+            AssertProofMatchesTheTrie(_accounts[2], block);
+            AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void Demotion_drops_the_per_block_rows_and_keeps_the_checkpoint_rows()
+    {
+        _policy = EpochPolicy;
+        _fineEpochs = 1;
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.False, "the per-block rows of the demoted epoch are gone in one range delete");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.True, "its window rows stay, which is what keeps that range provable");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 1, CommitmentKeyLayout.FineTier)), Is.True, "the epoch inside the fine window keeps both");
+        }
+    }
+
+    [Test]
+    public void Epochs_older_than_the_recent_window_are_dropped_and_proofs_below_them_refused()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(_accounts[1], 130);
+
+        Prune(_chain.Head);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier) || IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.False, "every account row of epoch 0 is gone in one range delete per tier");
+            Assert.That(storages.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier) || IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.False, "every storage row of epoch 0 is gone");
+            Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(100)), Is.False, "a block in the dropped epoch is refused, not served from raw history");
+            Assert.That(CreateSource(_policy).CanServe(_chain.StateIdAt(130)), Is.True, "the retained epoch stays servable");
+        }
+
+        CorruptEveryAccountRow();
+        AccountProof actual = ProveFromArchive(_accounts[1], 130);
+        Assert.That(actual.Proof, Is.EqualTo(expected.Proof),
+            "a retained epoch resolves on its own: its snapshot rows stand in for whatever the dropped epoch held, so the corrupt history rows are never read");
+    }
+
+    [Test]
+    public void A_small_storage_trie_gets_no_storage_rows_under_the_default_policy_and_still_proves()
+    {
+        _policy = new CommitmentDepthPolicy(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2);
+        BuildCommitments();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys(), Is.Empty,
+                "a trie of a handful of slots never reaches the rows signal depth; its whole rebuild is one range scan, so rows for it would only duplicate the slot history");
+            foreach (ulong block in (ulong[])[3, 64, 100, Blocks]) AssertProofMatchesTheTrie(Contract, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void A_proof_resolves_from_history_rows_alone_when_no_commitments_were_built()
+    {
+        AssertProofMatchesTheTrie(_accounts[3], block: 5);
+        AssertProofMatchesTheTrie(Contract, block: 5, ContractSlots);
+    }
+
+    [Test]
+    public void An_account_that_did_not_exist_at_the_queried_block_proves_its_absence()
+    {
+        BuildCommitments();
+
+        AccountProof proof = ProveFromArchive(Absent, block: 4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero), "an absent account is reported by EIP-1186's zero hashes");
+            Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
+            Assert.That(proof.Proof,
+                Is.EqualTo(_chain.ExpectedProof(Absent, 4).Proof),
+                "the absence proof must be the same path the full trie would have walked");
+        }
+    }
+
+    [Test]
+    public void A_covered_height_is_served_within_a_budget_too_small_for_a_root_rebuild()
+    {
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(Contract, 9, ContractSlots);
+
+        AccountProofCollector collector = new(Contract, ContractSlots);
+        CreateSource(TestPolicy, maxScannedRows: 1500).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null);
+        AccountProof actual = collector.BuildResult();
+
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
+            "the root and the top of the path must come from commitment rows; this budget is an order of magnitude below what rebuilding the root from history rows would scan");
+    }
+
+    [Test]
+    public void A_proof_served_from_commitments_never_touches_the_history_rows()
+    {
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(_accounts[3], 6);
+
+        CorruptEveryAccountRow();
+
+        AccountProof actual = ProveFromArchive(_accounts[3], block: 6);
+
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
+            "a fully covered height resolves from the commitment chain alone, every node verified against its parent down from the header");
+    }
+
+    [Test]
+    public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone([Values(1L, 40L)] long maxRowsPerPartition)
+    {
+        BuildCommitments(maxRowsPerPartition);
+        AccountProof expected = _chain.ExpectedProof(Contract, Blocks, ContractSlots);
+
+        CorruptEveryStorageRow();
+
+        AccountProof actual = ProveFromArchive(Contract, Blocks, ContractSlots);
+
+        for (int i = 0; i < ContractSlots.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.StorageProofs![i].Proof,
+                    Is.EqualTo(expected.StorageProofs![i].Proof),
+                    "at the last block a window row describes, every storage node of a small trie materializes from its window row, so the slot rows are never read; a missing or wrong storage row would make the resolver fall back to the now-corrupt slot rows and refuse");
+                Assert.That(actual.StorageProofs[i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()));
+            }
+        }
+    }
+
+    [Test]
+    public void A_rebuild_reads_one_row_per_account_rather_than_one_per_version()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        Address[] accounts = BuildAddresses(8);
+        for (ulong block = 1; block <= 200; block++)
+        {
+            foreach (Address account in accounts) HistoryColumnsWriter.RecordAccount(columns, account, block, new Account(block, (UInt256)(1000 + block)));
+        }
+
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        AccountHistoryScope scope = new(
+            (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory),
+            rowFormat,
+            new CommitmentStore(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), TestPolicy, 0),
+            TestPolicy);
+
+        List<TrieLeaf> leaves = [];
+        scope.EnumerateLeaves(TreePath.Empty, block: 150, new ResolutionBudget(accounts.Length * 4), leaves);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leaves, Has.Count.EqualTo(accounts.Length),
+                "eight accounts of two hundred versions each must cost a seek or two per account, not a row per version: a proof rebuilds the bottom of the path from these rows, and one busy neighbour would otherwise spend the whole budget before the node is built");
+            foreach (TrieLeaf leaf in leaves)
+            {
+                Assert.That(Rlp.Decode<Account>(leaf.Value)!.Nonce, Is.EqualTo(150UL), "each account resolves to its newest version at or below the queried block");
+            }
+        }
+    }
+
+    [Test]
+    public void A_covered_height_is_refused_when_the_budget_cannot_even_read_its_commitment_rows()
+    {
+        BuildCommitments();
+
+        AccountProofCollector collector = new(_accounts[3], Array.Empty<UInt256>());
+        Assert.That(() => CreateSource(TestPolicy, maxScannedRows: 1).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "commitment rows are charged against the same budget as history rows, so a budget of one row cannot walk even the root's chain and must fail closed");
+    }
+
+    [Test]
+    public void A_commitment_row_that_disagrees_with_the_rows_below_it_is_repaired_instead_of_corrupting_the_proof()
+    {
+        BuildCommitments();
+        AccountProof expected = _chain.ExpectedProof(_accounts[3], 6);
+
+        OverwriteEveryCommitmentValue();
+
+        AccountProof actual = ProveFromArchive(_accounts[3], block: 6);
+
+        Assert.That(actual.Proof,
+            Is.EqualTo(expected.Proof),
+            "a node whose commitment does not match what its parent commits to is rebuilt from the history rows");
+    }
+
+    [Test]
+    public void A_history_row_that_no_longer_reproduces_the_state_root_is_refused_rather_than_proved()
+    {
+        CorruptEveryAccountRow();
+
+        Assert.That(() => ProveFromArchive(_accounts[3], block: 6),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "a proof that cannot be anchored to the header's state root must fail closed, never be served");
+    }
+
+    [Test]
+    public void Commitments_written_under_a_different_layout_are_refused_before_they_are_mixed()
+    {
+        CreateRetrofit(TestPolicy).Prepare();
+
+        CommitmentDepthPolicy other = new(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
+
+        Assert.That(() => CreateRetrofit(other).Prepare(),
+            Throws.InstanceOf<InvalidConfigurationException>(),
+            "rows written under two layouts cannot be read together, so the second build must refuse rather than interleave them");
+    }
+
+    [Test]
+    public void A_layout_change_discards_the_old_columns_and_rebuilds_when_the_operator_asks()
+    {
+        BuildCommitments();
+        CommitmentDepthPolicy other = new(intervalLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
+        Assert.That(CreateSource(other).CanServe(_chain.StateIdAt(6)), Is.False, "precondition: the old columns are unreadable under the new layout");
+
+        CreateRetrofit(other, discardMismatchedLayout: true).Prepare();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys(), Is.Empty, "every storage row of the old layout is gone");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().Count(), Is.EqualTo(1), "only the new stamp remains: rows, coverage and walk marks of the old layout are gone");
+            Assert.That(CreateSource(other).CanServe(_chain.StateIdAt(6)), Is.False, "nothing is served until the new build publishes");
+        }
+
+        _policy = other;
+        BuildCommitments();
+        AssertProofMatchesTheTrie(_accounts[0], 6);
+        AssertProofMatchesTheTrie(Contract, 100, ContractSlots);
+    }
+
+    [TestCase(5, TestName = "BelowRange")]
+    [TestCase(13, TestName = "AboveRange")]
+    public void A_checkpoint_interval_outside_the_supported_range_is_refused(int intervalLog2) =>
+        Assert.That(() => new CommitmentDepthPolicy(intervalLog2), Throws.InstanceOf<InvalidConfigurationException>(),
+            "an interval that either explodes the disk or makes every proof replay seconds of changes must be rejected at startup, not discovered in production");
+
+    [Test]
+    public void Only_the_heights_the_build_published_are_served()
+    {
+        _chain.PublishWatermark();
+        ArchiveProofSource source = CreateSource(TestPolicy);
+
+        Assert.That(source.CanServe(_chain.StateIdAt(6)), Is.False, "nothing is servable before a build publishes its coverage");
+
+        BuildCommitments();
+        source = CreateSource(TestPolicy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.CanServe(_chain.StateIdAt(6)), Is.True, "a height inside the published coverage is servable");
+            Assert.That(source.CanServe(new StateId(Blocks + 5, _chain.StateIdAt(Blocks).StateRoot)), Is.False,
+                "a height above the coverage is not");
+        }
+    }
+
+    [Test]
+    public void A_windowed_database_never_serves_historical_proofs()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> windowed = new();
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 128, ArchiveProofServeEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(windowed, config);
+
+        using CommitmentMetadata windowedMetadata = new(windowed, CommitmentDepthPolicy.Default);
+        ArchiveProofSource source = new(
+            _flatDb,
+            windowed,
+            new HistoryReader(_flatDb, windowed, availability, rowFormat, LimboLogs.Instance),
+            rowFormat,
+            TestPolicy,
+            windowedMetadata,
+            new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
+            config,
+            LimboLogs.Instance);
+
+        Assert.That(source.Enabled, Is.False,
+            "windowed rows are pre-values behind a retention floor, which a proof resolution cannot replay");
+    }
+
+    [Test]
+    public void The_walk_promotes_a_deep_storage_trie_to_the_per_block_tier_without_the_tip()
+    {
+        _policy = new CommitmentDepthPolicy(
+            CommitmentDepthPolicy.MinIntervalLog2,
+            CommitmentDepthPolicy.DefaultAccountExactDepth,
+            CommitmentDepthPolicy.DefaultAccountCheckpointDepth,
+            storageExactDepth: 0,
+            storageCheckpointDepth: 0,
+            largeTrieSignalDepth: 2,
+            storageRowsSignalDepth: 1);
+
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            for (int slot = 0; slot < 24; slot++) block.SetStorage(Contract, (UInt256)(5000 + slot), [(byte)(slot + 1), 0x02]);
+        });
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        ValueHash256 identity = Keccak.Compute(Contract.Bytes).ValueHash256;
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                Metadata(_policy).StorageTrieDepth(identity),
+                Is.GreaterThanOrEqualTo(_policy.LargeTrieSignalDepth),
+                "a trie that carries a branch below the collected ceiling is deeper than that ceiling, and the walk is the only observer a retrofit has");
+            Assert.That(
+                storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 0) && key[CommitmentKeyLayout.EpochLength] == CommitmentKeyLayout.FineTier),
+                Is.True,
+                "without this the per-block storage tier only ever exists for contracts the tip happened to touch while the walk ran");
+        }
+    }
+
+    [TestCase(HistoryWalkVerifier.DefaultMaxRowsPerPartition, TestName = "WholeSubtree")]
+    [TestCase(40L, TestName = "SplitBySlotPrefix")]
+    public void A_quiet_contract_keeps_its_deep_storage_rows_in_the_epoch_that_survives_the_drop(long maxRowsPerPartition)
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+
+        Address quiet = TestItem.AddressD;
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            for (int slot = 0; slot < 64; slot++) block.SetStorage(quiet, (UInt256)(5000 + slot), [(byte)(slot + 1), 0x02]);
+        });
+
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block => block.SetBalance(_accounts[0], (UInt256)(9000 + current)));
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments(maxRowsPerPartition);
+        Prune(_chain.Head);
+
+        ValueHash256 identity = Keccak.Compute(quiet.Bytes).ValueHash256;
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 0)),
+                Is.True,
+                "sixty-four slot rows overflow a forty-row budget, so the contract is split by slot prefix and its root is only ever folded from the partitions' series; the epoch start has to reach that fold, or the root of a contract that stood still has no row in the epoch that survives the drop");
+            Assert.That(
+                storages.GetAllKeys().Any(key => IsStorageRow(key, identity, pathLength: 2)),
+                Is.True,
+                "dropping an epoch carries every node without a newer row into the next one, so a contract that stood still keeps its deep rows in the epoch that survives, split or not");
+        }
+    }
+
+    [Test]
+    public void Dropping_an_epoch_carries_every_live_node_forward_so_quiet_state_still_proves()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        IDb storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments);
+        AccountProof expected = _chain.ExpectedProof(quiet, 300, slots[..4]);
+        AccountProof actual = ProveFromArchive(quiet, 300, maxScannedRows: 192, slots[..4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metadata(_policy).DroppedThroughEpoch, Is.EqualTo(2ul));
+            Assert.That(storages.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier) || IsEpochTier(key, epoch: 1, CommitmentKeyLayout.CoarseTier)), Is.False, "both older epochs are gone");
+            Assert.That(actual.Proof, Is.EqualTo(expected.Proof), "a contract untouched since a dropped epoch proves from the rows carried into the retained one, under a budget too small for a rebuild of its slots");
+            AssertStorageProofsMatch(actual, expected, "the carried rows must reproduce every slot proof");
+        }
+    }
+
+    [Test]
+    public void The_carried_anchors_are_synced_to_the_log_before_the_epoch_they_replace_is_unlinked()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        BuildCommitments();
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        int syncsWithTheDroppedEpochStillOnDisk = 0;
+        WalSyncObservingColumns observing = new(_historyColumns, () =>
+        {
+            ulong dropping = retrofit.Metadata.DroppedThroughEpoch;
+            bool carried = retrofit.Metadata.IsCarried(dropping);
+            bool stillOnDisk = accounts.GetAllKeys().Any(key => IsEpochTier(key, dropping, CommitmentKeyLayout.CoarseTier));
+            if (carried && stillOnDisk) syncsWithTheDroppedEpochStillOnDisk++;
+        });
+        using CommitmentReclaimer reclaimer = new(observing, _policy, retrofit.Metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+
+        retrofit.PruneBelow(_chain.Head);
+        reclaimer.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.GreaterThan(0ul), "precondition: at least one epoch was dropped");
+            Assert.That(syncsWithTheDroppedEpochStillOnDisk, Is.GreaterThanOrEqualTo((int)retrofit.Metadata.DroppedThroughEpoch),
+                "the carried anchors are ordinary batch writes and the epoch delete unlinks files: a crash between the two must not keep the unlink and lose the anchors, so every drop syncs the log after the carry and before the delete");
+        }
+    }
+
+    private sealed class WalSyncObservingColumns(IColumnsDb<FlatHistoryColumns> inner, Action onSync) : IColumnsDb<FlatHistoryColumns>
+    {
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => inner.StartWriteBatch();
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false)
+        {
+            if (onlyWal) onSync();
+            inner.Flush(onlyWal);
+        }
+
+        public void SyncWal()
+        {
+            onSync();
+            inner.SyncWal();
+        }
+
+        public void Dispose() { }
+    }
+
+    [Test]
+    public void A_child_change_that_lands_on_an_epoch_start_keeps_its_changed_row_after_the_snapshot()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        TreePath parent = TreePath.FromHexString("abc");
+        SeriesKey own = SeriesScope.Accounts.Key(parent, scratch: true);
+        SeriesKey Child(int nibble) => SeriesScope.Accounts.Key(parent.Append(nibble), scratch: true);
+        ulong epochStart = EpochPolicy.EpochBlocks;
+        using (SeriesWriter children = new(_historyColumns))
+        {
+            children.WriteWhole(Child(0), 0, NodeView.Leaf([0x1, 0x2, 0x3], [0xA1, 0xA2, 0xA3, 0xA4]).Rlp);
+            children.WriteWhole(Child(1), 0, NodeView.Leaf([0x4, 0x5, 0x6], [0xB1, 0xB2, 0xB3, 0xB4]).Rlp);
+            children.WriteWhole(Child(0), epochStart, NodeView.Leaf([0x1, 0x2, 0x3], [0xC1, 0xC2, 0xC3, 0xC4]).Rlp);
+        }
+
+        SeriesReader reader = new(_historyColumns, EpochPolicy);
+        using (CommitmentEmitter emitter = CommitmentEmitter.ForWalk(_historyColumns, EpochPolicy, metadata))
+        using (SeriesWriter series = new(_historyColumns))
+        {
+            new SubtreeCombiner(reader, HistoryWalkVerifier.DefaultMaxRowsPerPartition).Combine(SeriesScope.Accounts, parent, Child, own, 0, 2 * epochStart - 1, emitter, series, observer: null, CancellationToken.None);
+        }
+
+        using SeriesReader.SeriesCursor atEpochStart = reader.Open(own, epochStart - 1, epochStart, SeriesReader.SeriesCursor.MinRowsBuffered, CancellationToken.None);
+        Assert.That(atEpochStart.MoveNext(), Is.True, "precondition: the parent published a row at the block its child changed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atEpochStart.Block, Is.EqualTo(epochStart));
+            Assert.That(ParentRowCodec.Changed(atEpochStart.Row) & 1, Is.EqualTo(1),
+                "the child that changed at the epoch start must stay marked changed in the row at that block: an epoch-start snapshot republished after the block overwrote it with a changed mask of zero, and the fold then read the child from its pre-block value");
+        }
+    }
+
+    [Test]
+    public void A_tip_series_joined_to_the_published_coverage_keeps_extending_it_as_it_advances()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        metadata.TryPublishVerifiedCoverage(0, 2, out _, out _);
+
+        metadata.AdvanceTipSeries(3, 8, out _);
+        bool afterJoin = metadata.TryGetCoverage(out ulong joinedFrom, out ulong joinedTo);
+        metadata.AdvanceTipSeries(9, 12, out _);
+        bool afterAdvance = metadata.TryGetCoverage(out ulong advancedFrom, out ulong advancedTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterJoin && joinedFrom == 0 && joinedTo == 8, Is.True, "a tip series that starts right after the verified range is part of what the node can serve");
+            Assert.That(afterAdvance && advancedFrom == 0 && advancedTo == 12, Is.True,
+                "on a retrofitted node the tip series never starts at genesis, so every capture round must carry the served coverage forward with it or the node stops serving proofs at the block the walk ended");
+        }
+    }
+
+    [Test]
+    public void Coverage_that_expired_below_the_retained_floor_does_not_fence_a_newly_retained_range()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        ulong epoch = EpochPolicy.EpochBlocks;
+        Assert.That(metadata.TryPublishVerifiedCoverage(0, epoch - 1, out _, out _), Is.True, "precondition: the first epoch was published");
+        metadata.TryRaiseRetainedFromEpoch(3);
+
+        bool published = metadata.TryPublishVerifiedCoverage(3 * epoch, 3 * epoch + 1, out ulong coveredFrom, out ulong coveredTo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(published, Is.True, "the old interval is wholly below the retained floor and no reader can see it, so it must not be the range a new build has to touch");
+            Assert.That((coveredFrom, coveredTo), Is.EqualTo((3 * epoch, 3 * epoch + 1)));
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 3 * epoch && to == 3 * epoch + 1, Is.True);
+        }
+    }
+
+    [Test]
+    public void The_storage_trie_depth_is_one_record_however_the_contract_is_identified()
+    {
+        ValueHash256 full = Keccak.Compute(Contract.Bytes).ValueHash256;
+        ValueHash256 truncated = default;
+        full.Bytes[..CommitmentKeyLayout.IdentityLength].CopyTo(truncated.BytesAsSpan);
+        using (CommitmentMetadata metadata = new(_historyColumns, EpochPolicy))
+        {
+            metadata.NoteStorageTrieDepth(full, 4);
+            metadata.NoteStorageTrieDepth(truncated, 6);
+            metadata.NoteStorageTrieDepth(full, 5);
+        }
+
+        using CommitmentMetadata reread = new(_historyColumns, EpochPolicy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reread.StorageTrieDepth(full), Is.EqualTo(6),
+                "the tip names a contract by its full hashed address and the walk by the twenty bytes the row key keeps; both must land on one cache entry, or a stale entry under one name lets a lower depth overwrite the higher one the other name persisted");
+            Assert.That(reread.StorageTrieDepth(truncated), Is.EqualTo(6));
+        }
+    }
+
+    [Test]
+    public void An_epoch_start_snapshot_anchors_storage_nodes_down_to_the_record_depth()
+    {
+        _policy = EpochPolicy;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+
+        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
+        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
+        byte firstSlotByte = Keccak.Compute(slots[0].ToBigEndian()).Bytes[0];
+        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
+        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(quiet.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
+
+        Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Not.Null,
+            "a contract that stands still gets no row from its changes; the epoch-start snapshot is the only anchor its checkpoint nodes have, so it must reach the record depth as the account snapshot does, or every drop re-composes them");
+    }
+
+    [Test]
+    public void A_node_that_moves_once_inside_the_retained_epoch_still_gets_its_anchor_carried()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet, (block, number) =>
+        {
+            if (number == 270) block.SetStorage(quiet, (UInt256)5000, [0x33, 0x44]);
+        });
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (ulong block in (ulong[])[260, 300])
+            {
+                AccountProof expected = _chain.ExpectedProof(quiet, block, slots[..4]);
+                AccountProof actual = ProveFromArchive(quiet, block, maxScannedRows: 192, slots[..4]);
+                AssertStorageProofsMatch(actual, expected,
+                    $"at block {block}: a later row inside the retained epoch is a delta over the dropped one, so the anchor must still be carried into the retained epoch below every row it holds, or heights before and after the move both fall to a rebuild");
+            }
+        }
+    }
+
+    [Test]
+    public void Nodes_the_walk_already_anchored_at_the_epoch_start_are_not_carried_again()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = Slots(64, 5000);
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
+        });
+
+        UInt256[] transient = Slots(8, 424242);
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[0], (UInt256)(9000 + current));
+                if (current == 250) foreach (UInt256 slot in transient) block.SetStorage(quiet, slot, [0x55]);
+                if (current == 254) foreach (UInt256 slot in transient) block.SetStorage(quiet, slot, []);
+            });
+        }
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        Prune(_chain.Head);
+
+        ulong carriedWindow = _policy.WindowAtOrBelow(_policy.EpochStart(2)) - 1;
+        ValueHash256 identity = Keccak.Compute(quiet.Bytes).ValueHash256;
+        List<byte[]> accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).GetAllKeys().ToList();
+        List<byte[]> storages = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments).GetAllKeys().ToList();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.Any(key => IsEpochTier(key, epoch: 2, CommitmentKeyLayout.CoarseTier) && SuffixOf(key) == carriedWindow), Is.False,
+                "the walk snapshots every account tier at the epoch start, so every account node already has its anchor and a carried copy would only sit dead below it");
+            Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 1) && SuffixOf(key) == carriedWindow), Is.False,
+                "the storage snapshot anchors the root's children too, including the one whose epoch-start row remembers the child that appeared and vanished inside that window");
+            Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.False,
+                "the storage snapshot reaches the record depth like the account snapshot, so the checkpoint nodes below the root are anchored at the epoch start and the carry has nothing left to write for a walk-built epoch");
+        }
+    }
+
+    private UInt256[] AddQuietContract(Address quiet, Action<ArchiveProofTestChain.BlockBuilder, ulong>? onLaterBlock = null)
+    {
+        UInt256[] slots = Slots(16384, 5000);
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (UInt256 slot in slots) block.SetStorage(quiet, slot, [(byte)((slot.u0 & 0x7F) + 1), 0x02]);
+        });
+
+        for (ulong number = Blocks + 2; number <= 300; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                block.SetBalance(_accounts[0], (UInt256)(9000 + current));
+                onLaterBlock?.Invoke(block, current);
+            });
+        }
+
+        _chain.PublishWatermark();
+        return slots;
+    }
+
+    private static ulong SuffixOf(byte[] key) => CommitmentKeyLayout.ReadSuffix(key);
+
+    [Test]
+    public void Proofs_keep_resolving_while_a_moved_floor_waits_for_its_reclaim()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+
+        CreateRetrofit(_policy).PruneBelow(_chain.Head);
+
+        AccountProof expected = _chain.ExpectedProof(quiet, 300, slots[..4]);
+        AccountProof actual = ProveFromArchive(quiet, 300, maxScannedRows: 192, slots[..4]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metadata(_policy).RetainedFromEpoch, Is.EqualTo(2ul), "the served floor moved at once");
+            Assert.That(Metadata(_policy).DroppedThroughEpoch, Is.EqualTo(0ul), "nothing has been reclaimed yet");
+            Assert.That(actual.Proof, Is.EqualTo(expected.Proof), "the reader descends to what is physically on disk, not to what is served, so the rows of the epoch awaiting reclaim still answer");
+        }
+    }
+
+    [Test]
+    public void Pruning_does_not_need_the_walk()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+
+        retrofit.PruneBelow(_chain.Head);
+        _reclaimer!.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.GreaterThan(0ul), "precondition: the head is past the first epoch");
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.EqualTo(retrofit.Metadata.RetainedFromEpoch), "with no walk ever run, the reclaimer still carries and drops every epoch below the floor: pruning is driven by the tip capture alone");
+            Assert.That(retrofit.Metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Floors_only_ever_rise()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        bool retainedRaised = metadata.TryRaiseRetainedFromEpoch(3);
+        bool retainedLowered = metadata.TryRaiseRetainedFromEpoch(2);
+        bool droppedRaised = metadata.TryRaiseDroppedThroughEpoch(3);
+        bool droppedLowered = metadata.TryRaiseDroppedThroughEpoch(2);
+        bool demotedRaised = metadata.TryRaiseDemotedThroughEpoch(3);
+        bool demotedRepeated = metadata.TryRaiseDemotedThroughEpoch(3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedRaised, Is.True);
+            Assert.That(retainedLowered, Is.False, "the capture round and the walk both prune, and a stale write from either must not move a floor back");
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(3ul));
+            Assert.That(droppedRaised, Is.True);
+            Assert.That(droppedLowered, Is.False, "the physical floors go through the mirrored path and are just as monotone");
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
+            Assert.That(demotedRaised, Is.True);
+            Assert.That(demotedRepeated, Is.False);
+            Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(3ul));
+        }
+    }
+
+    [Test]
+    public void A_drop_records_its_carry_so_a_retry_deletes_without_carrying_again_and_completes_in_one_write()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+
+        metadata.MarkCarried(4);
+        bool carriedBefore = metadata.IsCarried(4);
+        bool completed = metadata.TryCompleteDrop(4);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(carriedBefore, Is.True, "a crash between the carry and the deletes must not rerun the carry over an epoch whose files are already partly gone");
+            Assert.That(completed, Is.True);
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(5ul));
+            Assert.That(metadata.IsCarried(4), Is.False, "the mark and the floor move in one batch, so no state has the floor raised with the mark still set or the reverse");
+            Assert.That(metadata.TryCompleteDrop(3), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_start_epoch_hint_never_seeks_above_the_queried_block()
+    {
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), EpochPolicy, identityLength: 0);
+        byte[] prefixBuffer = new byte[CommitmentKeyLayout.MaxKeyLength];
+        ReadOnlySpan<byte> prefix = prefixBuffer.AsSpan(0, CommitmentKeyLayout.WritePathPrefix(prefixBuffer, TreePath.FromHexString("ab"), exact: true));
+        ulong laterBlock = EpochPolicy.EpochStart(3) + 3;
+        ulong queried = EpochPolicy.EpochStart(2) + 5;
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            byte[] row = new byte[64];
+            store.Write(prefix, laterBlock, row.AsSpan(0, ParentRowCodec.EncodeEmpty(laterBlock, row)), batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments));
+        }
+
+        using CommitmentStore.RowChain chain = store.OpenAtOrBelow(prefix, queried, budget: null, minEpoch: 3, startEpoch: 0);
+
+        Assert.That(!chain.MoveNext() || chain.CurrentSuffix <= queried, Is.True, "a demoted floor above the query's epoch may lower where the seek starts, never raise it: a row from a later epoch is not the state at the queried block");
+    }
+
+    [Test]
+    public void Serving_disabled_creates_no_cache_and_resolves_nothing()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofServeEnabled = false };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        ArchiveProofSource source = new(_flatDb, _historyColumns, new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance), rowFormat, _policy, Metadata(_policy), settings, config, LimboLogs.Instance);
+
+        bool served = source.TryRunTreeVisitor(new AccountProofCollector(_accounts[0], Array.Empty<UInt256>()), _chain.StateIdAt(1), null, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.False);
+            Assert.That(source.ServingResourcesCreated, Is.False, "a node that only builds pays nothing for the serving side: no node cache, no slot-encoding probe");
+        }
+    }
+
+    [Test]
+    public void With_both_pruning_knobs_set_the_reclaimer_drops_to_the_retained_floor_and_demotes_to_the_fine_floor()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 2;
+        _fineEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.PruneBelow(4 * EpochPolicy.EpochBlocks);
+        using CancellationTokenSource stuck = new(TimeSpan.FromSeconds(20));
+
+        Assert.That(() => _reclaimer!.ReclaimNow(stuck.Token), Throws.Nothing, "the reclaimer must finish: a pass that compares the derived cursor never advances it and the loop spins until the token fires");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.GreaterThan(0ul), "precondition: at least one epoch is dropped, so the dropped floor stands above the stored demote cursor");
+            Assert.That(retrofit.Metadata.RetainedFromEpoch, Is.LessThan(retrofit.Metadata.FineFromEpoch), "precondition: the two floors differ, so the demote branch runs on epochs the drop never reaches");
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.EqualTo(retrofit.Metadata.RetainedFromEpoch));
+            Assert.That(retrofit.Metadata.DemotedThroughEpoch, Is.EqualTo(retrofit.Metadata.FineFromEpoch), "the demote cursor starts below the dropped floor, so the pass must compare against the stored cursor and write the derived target, or it never advances");
+        }
+    }
+
+    [Test]
+    public void Disposing_the_metadata_twice_is_harmless()
+    {
+        CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        metadata.Dispose();
+
+        Assert.That(metadata.Dispose, Throws.Nothing,
+            "the container owns the singleton and disposes it through more than one scope; a second dispose must not take a turn on a semaphore the first one already disposed");
+    }
+
+    [Test]
+    public void A_walk_start_waiting_behind_a_reclaim_pass_is_cancellable()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        bool joined = HoldingTheReclaimTurn(metadata, () =>
+        {
+            using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
+            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+                "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined, Is.True);
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_verify_only_walk_takes_the_turn_of_the_metadata_it_was_given()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, TestPolicy);
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier(metadata);
+        bool joined = HoldingTheReclaimTurn(metadata, () =>
+        {
+            using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
+            Assert.That(() => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+                "a walk without a build still excludes the reclaimer through the one metadata both were given, so it must wait behind the held turn");
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined, Is.True);
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a walk on a turn of its own would have begun in the shared columns while the reclaim held the real one");
+        }
+    }
+
+    [Test]
+    public void The_historical_seam_serves_the_proof_collector_and_no_other_visitor()
+    {
+        BuildCommitments();
+        ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
+        visitor.IsFullDbScan.Returns(true);
+        ArchiveProofSource source = CreateSource(_policy);
+        StateId covered = _chain.StateIdAt(Blocks / 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.TryRunTreeVisitor(visitor, covered, visitingOptions: null, diagnostics: null), Is.False,
+                "a full scan over commitment columns fans out per node until the budget trips; the seam is for a proof of one path, everything else keeps the fast refusal");
+            Assert.That(source.TryRunTreeVisitor(new AccountProofCollector(_accounts[0]), covered, visitingOptions: null, diagnostics: null), Is.True);
+        }
+    }
+
+    [Test]
+    public void A_child_whose_row_chain_runs_out_is_rebuilt_on_its_own_rather_than_dragging_its_parent_into_a_rebuild()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        CommitmentDepthPolicy policy = CommitmentDepthPolicy.Default;
+        TreePath parent = TreePath.FromHexString("abc");
+        Address[] accounts = AddressesUnderPrefix(0xab, 0xc, count: 48);
+        RawScopedTrieStore store = new(new MemoryNodeStorage());
+        StateTree tree = new(store, LimboLogs.Instance);
+        ushort presence = 0;
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            Account account = new((ulong)(i + 1), (UInt256)(1000 + i));
+            HistoryColumnsWriter.RecordAccount(columns, accounts[i], block: 1, account);
+            tree.Set(accounts[i], account);
+            presence |= (ushort)(1 << (Keccak.Compute(accounts[i].Bytes).Bytes[1] & 0x0F));
+        }
+
+        tree.UpdateRootHash();
+        NodeView parentView = NodeViews.FromRoot(tree.RootRef, parent.Length, store);
+        Hash256 expected = parentView.Hash.ToCommitment();
+        parentView.Release();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        ISortedKeyValueStore accountRows = (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        CommitmentStore commitments = new(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), policy, 0);
+        const ulong block = 10;
+
+        ResolutionBudget clean = new(maxScannedRows: 0);
+        byte[] cleanRlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, clean, fanOut: 1, cache: null).LoadRlp(parent, expected);
+
+        int child = Keccak.Compute(accounts[0].Bytes).Bytes[1] & 0x0F;
+        ulong window = policy.WindowAtOrBelow(block) + 1;
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        byte[] row = new byte[ParentRowCodec.MaxBranchRowLength];
+        ChildVector references = ChildVector.Rent();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch())
+        {
+            IWriteBatch commitmentBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments);
+            for (int index = 0; index < BranchRlp.ChildCount; index++)
+            {
+                if (((presence >> index) & 1) == 1) references.SetHash(index, TestItem.KeccakA.ValueHash256);
+            }
+
+            int parentPrefix = CommitmentKeyLayout.WritePathPrefix(prefix, parent, exact: false);
+            commitments.Write(prefix.AsSpan(0, parentPrefix), window, row.AsSpan(0, ParentRowCodec.EncodeBranch(block + 1, presence, presence, references, row)), commitmentBatch);
+
+            references.Clear();
+            references.SetHash(0, TestItem.KeccakB.ValueHash256);
+            int childPrefix = CommitmentKeyLayout.WritePathPrefix(prefix, parent.Append(child), exact: false);
+            commitments.Write(prefix.AsSpan(0, childPrefix), window, row.AsSpan(0, ParentRowCodec.EncodeBranch(block - 5, presence: 0b11, changed: 0b01, references, row)), commitmentBatch);
+        }
+
+        ChildVector.Return(references);
+
+        ResolutionBudget truncated = new(maxScannedRows: 0);
+        byte[] rlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, truncated, fanOut: 1, cache: null).LoadRlp(parent, expected);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp, Is.EqualTo(cleanRlp));
+            Assert.That(truncated.ScannedRows, Is.LessThanOrEqualTo(clean.ScannedRows + 16),
+                "the parent moved after the queried block, so its children are re-resolved; the one child whose chain ends before every reference is filled must rebuild itself from its own rows, not read as absent and cost a rebuild of the whole parent on top of the children already rebuilt");
+        }
+    }
+
+    [Test]
+    public void A_zero_valued_storage_row_is_a_tombstone_for_the_proof_scope_as_it_is_for_the_walk()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        Address contract = TestItem.AddressC;
+        HistoryColumnsWriter.RecordStorage(columns, contract, 1, block: 1, [0x11]);
+        HistoryColumnsWriter.RecordStorage(columns, contract, 2, block: 1, [0x00]);
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        using CommitmentMetadata metadata = new(columns, TestPolicy);
+        StorageHistoryScope scope = new(
+            (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.StorageHistory),
+            rowFormat,
+            new CommitmentStore(columns.GetColumnDb(FlatHistoryColumns.StorageCommitments), TestPolicy, CommitmentKeyLayout.IdentityLength),
+            metadata,
+            TestPolicy,
+            new StorageClearStore(columns.GetColumnDb(FlatHistoryColumns.StorageClears)),
+            Keccak.Compute(contract.Bytes).ValueHash256,
+            rlpWrapSlots: true);
+
+        List<TrieLeaf> leaves = [];
+        scope.EnumerateLeaves(TreePath.Empty, block: 5, new ResolutionBudget(64), leaves);
+
+        Assert.That(leaves, Has.Count.EqualTo(1),
+            "a stored zero is not a slot: the walk drops it when it rebuilds the storage trie, so the proof scope must drop it too or the two compute different storage roots and every proof of the contract is refused");
+    }
+
+    [Test]
+    public void A_node_that_rebuilt_during_resolution_and_still_mismatched_is_not_rebuilt_a_second_time()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TreePath parent = TreePath.FromHexString("abc");
+        Address[] accounts = AddressesUnderPrefix(0xab, 0xc, count: 32);
+        for (int i = 0; i < accounts.Length; i++) HistoryColumnsWriter.RecordAccount(columns, accounts[i], block: 1, new Account((ulong)(i + 1), (UInt256)(1000 + i)));
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
+        ISortedKeyValueStore accountRows = (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        CommitmentStore commitments = new(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), CommitmentDepthPolicy.Default, 0);
+        RawScopedTrieStore store = new(new MemoryNodeStorage());
+        StateTree tree = new(store, LimboLogs.Instance);
+        for (int i = 0; i < accounts.Length; i++) tree.Set(accounts[i], new Account((ulong)(i + 1), (UInt256)(1000 + i)));
+        tree.UpdateRootHash();
+        NodeView parentView = NodeViews.FromRoot(tree.RootRef, parent.Length, store);
+        Hash256 expected = parentView.Hash.ToCommitment();
+        parentView.Release();
+        ResolutionBudget oneRebuild = new(maxScannedRows: 0);
+        new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, oneRebuild, fanOut: 1, cache: null).LoadRlp(parent, expected);
+
+        ResolutionBudget budget = new(maxScannedRows: oneRebuild.ScannedRows + oneRebuild.ScannedRows / 2 + 1);
+        HistoricalTrieNodeBuilder builder = new(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, budget, fanOut: 1, cache: null);
+
+        Assert.That(() => builder.LoadRlp(parent, TestItem.KeccakA), Throws.InstanceOf<StateUnavailableException>().With.Message.Contains("instead of the"),
+            "the checkpoint path already rebuilt this node from rows before the hash check failed; rebuilding it again reads the same rows a second time and turns a real mismatch into a misleading budget refusal");
+    }
+
+    private static Address[] AddressesUnderPrefix(byte firstByte, int thirdNibble, int count)
+    {
+        List<Address> found = [];
+        for (uint seed = 1; found.Count < count; seed++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), 0x3000_0000 + seed);
+            Address candidate = new(bytes);
+            ReadOnlySpan<byte> hash = Keccak.Compute(candidate.Bytes).Bytes;
+            if (hash[0] == firstByte && hash[1] >> 4 == thirdNibble) found.Add(candidate);
+        }
+
+        return [.. found];
+    }
+
+    private static bool HoldingTheReclaimTurn(CommitmentMetadata metadata, Action whileHeld)
+    {
+        using ManualResetEventSlim inside = new();
+        using ManualResetEventSlim hold = new();
+        Task reclaim = Task.Run(() => metadata.TryReclaimOutsideWalk(() =>
+        {
+            inside.Set();
+            hold.Wait();
+        }));
+        bool joined;
+        try
+        {
+            Assert.That(inside.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the reclaim pass is inside its callback and holds the turn");
+            whileHeld();
+        }
+        finally
+        {
+            hold.Set();
+            joined = reclaim.ContinueWith(static _ => { }, TaskContinuationOptions.ExecuteSynchronously).Wait(TimeSpan.FromSeconds(5));
+        }
+
+        Assert.That(reclaim.Exception, Is.Null, "the reclaim pass itself must not have failed");
+        return joined;
+    }
+
+    [Test]
+    public void A_walk_refuses_emitters_bound_to_another_metadata()
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        using CommitmentMetadata other = new(_historyColumns, TestPolicy);
+
+        Assert.That(
+            () => new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, other),
+            Throws.ArgumentException,
+            "the reclaim turn, the layout flag and the window lock live on the metadata; a walk marking one while its emitters write through another would unshare all three");
+    }
+
+    [Test]
+    public void A_series_publisher_deduplicates_on_the_hash_of_the_view_it_published()
+    {
+        using SeriesWriter writer = new(_historyColumns);
+        using SeriesPublisher publisher = new(SeriesScope.Accounts, TreePath.FromNibble([1, 2]), key: null, writer);
+        NodeView view = NodeView.Leaf([0x3, 0x4], [0xAA]);
+        NodeView other = NodeView.Leaf([0x3, 0x4], [0xBB]);
+        try
+        {
+            bool freshBefore = publisher.IsNew(view.Hash);
+            publisher.Publish(1, view, emitter: null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(freshBefore, Is.True);
+                Assert.That(publisher.IsNew(view.Hash), Is.False, "the guard compares against the hash of the view it published, the prefix-stripped node, not the whole tree's root");
+                Assert.That(publisher.IsNew(other.Hash), Is.True);
+            }
+        }
+        finally
+        {
+            view.Release();
+            other.Release();
+        }
+    }
+
+    [Test]
+    public void The_reclaimer_warns_about_nodes_it_could_not_carry()
+    {
+        _recentEpochs = 1;
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofRecentEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments), EpochPolicy, identityLength: 0);
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            store.Write(0, [0x02, 0xab], 5, [0x01, 0xC0], batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments));
+        }
+
+        TestLogger log = new();
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<CommitmentReclaimer>().Returns(new ILogger(log));
+        using CommitmentReclaimer reclaimer = new(_historyColumns, EpochPolicy, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), logManager);
+        reclaimer.PruneBelow(EpochPolicy.EpochStart(2));
+
+        reclaimer.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.LogList, Has.Some.Contains("could not be carried"), "an operator learns that a proof crossing that node in a retained epoch will rebuild from history rows");
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(metadata.RetainedFromEpoch), "an uncarriable node does not stop the epoch from being reclaimed");
+        }
+    }
+
+    [Test]
+    public void Tier_boundaries_are_where_the_policy_says()
+    {
+        CommitmentDepthPolicy policy = CommitmentDepthPolicy.Default;
+        int large = policy.LargeTrieSignalDepth + 1;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.AccountTier(policy.AccountExactDepth), Is.EqualTo(CommitmentTier.PerChange));
+            Assert.That(policy.AccountTier(policy.AccountExactDepth + 1), Is.EqualTo(CommitmentTier.Checkpoint), "the first depth below the exact tier keeps window rows only");
+            Assert.That(policy.AccountTier(policy.AccountCheckpointDepth), Is.EqualTo(CommitmentTier.Checkpoint));
+            Assert.That(policy.AccountTier(policy.AccountCheckpointDepth + 1), Is.EqualTo(CommitmentTier.Recomputed), "the first depth below the checkpoint tier has no row of its own");
+            Assert.That(policy.StorageTier(policy.StorageExactDepth, large), Is.EqualTo(CommitmentTier.PerChange));
+            Assert.That(policy.StorageTier(policy.StorageExactDepth + 1, large), Is.EqualTo(CommitmentTier.Checkpoint));
+            Assert.That(policy.StorageTier(policy.StorageCheckpointDepth, large), Is.EqualTo(CommitmentTier.Checkpoint));
+            Assert.That(policy.StorageTier(policy.StorageCheckpointDepth + 1, large), Is.EqualTo(CommitmentTier.Recomputed));
+        }
+    }
+
+    [Test]
+    public void A_proof_reads_the_rows_of_its_path_and_nothing_twice()
+    {
+        _policy = EpochPolicy;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => ProveFromArchive(_accounts[3], 300, maxScannedRows: 80), Throws.Nothing,
+                "an account proof resolves every node of its path from commitments once; the levels are fetched together and a rebuilt subtree publishes its nodes, so no level is read a second time on the way down");
+            Assert.That(() => ProveFromArchive(quiet, 300, maxScannedRows: 96, slots[..4]), Throws.Nothing,
+                "the same for a contract with four slots, whose storage levels are probed once, when the account leaf is reached; before this the proof needed 128 rows");
+        }
+    }
+
+    [Test]
+    public void A_rebuilt_subtree_serves_the_levels_below_it()
+    {
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2, 2, 2, 0, 0, 1, 1);
+        Address[] cluster = AddressesSharingPrefix(_accounts[3], nibbles: 4, count: 3).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (Address address in cluster) block.SetBalance(address, 777);
+        });
+
+        _chain.PublishWatermark();
+        BuildCommitments();
+
+        Assert.That(() => ProveFromArchive(cluster[0], Blocks + 1, maxScannedRows: 36), Throws.Nothing,
+            "three accounts sharing four nibbles put the leaf two levels below the checkpoint depth; the rebuild above them publishes every node it built, so the descent does not scan the same range again for each level");
+    }
+
+    private static IEnumerable<Address> AddressesSharingPrefix(Address anchor, int nibbles, int count)
+    {
+        const int maxSeeds = 1 << 22;
+        ValueHash256 anchorPath = Keccak.Compute(anchor.Bytes).ValueHash256;
+        for (int seed = 0; count > 0; seed++)
+        {
+            if (seed == maxSeeds)
+            {
+                Assert.Fail($"No {count} more addresses share {nibbles} nibbles with {anchor} within {maxSeeds} seeds; a wider prefix needs a wider search");
+                yield break;
+            }
+
+            Address candidate = new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[12..]);
+            ValueHash256 path = Keccak.Compute(candidate.Bytes).ValueHash256;
+            if (!SharesNibbles(path, anchorPath, nibbles)) continue;
+
+            count--;
+            yield return candidate;
+        }
+    }
+
+    private static bool SharesNibbles(in ValueHash256 left, in ValueHash256 right, int nibbles)
+    {
+        int wholeBytes = nibbles / 2;
+        if (!left.Bytes[..wholeBytes].SequenceEqual(right.Bytes[..wholeBytes])) return false;
+
+        return (nibbles & 1) == 0 || (left.Bytes[wholeBytes] & 0xF0) == (right.Bytes[wholeBytes] & 0xF0);
+    }
+
+    [Test]
+    public void A_malformed_commitment_is_refused_or_rebuilt_never_served_truncated()
+    {
+        BuildCommitments();
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        byte[] malformed = new byte[ParentRowCodec.WholeNodeRowLength(1)];
+        int length = ParentRowCodec.EncodeWholeNode(Blocks, [0xC1], malformed);
+        int poisoned = 0;
+        foreach (byte[] key in accounts.GetAllKeys().ToList())
+        {
+            if (key.Length <= CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength + sizeof(ulong)) continue;
+            if ((key[CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength] & ~CommitmentKeyLayout.ExactRowFlag) != 2) continue;
+
+            accounts.PutSpan(key, malformed.AsSpan(0, length));
+            poisoned++;
+        }
+
+        Assert.That(poisoned, Is.GreaterThan(0));
+        AccountProof expected = _chain.ExpectedProof(_accounts[3], Blocks);
+        AccountProof? actual = null;
+        Assert.That(() => { actual = ProveFromArchive(_accounts[3], Blocks); }, Throws.Nothing.Or.InstanceOf<StateUnavailableException>(),
+            "a commitment that does not parse is a corrupt cache entry: the resolver rebuilds from rows or refuses, and never lets the decoding error reach the visitor, which would swallow it and hand back a truncated proof as success");
+        if (actual is not null) Assert.That(actual.Proof, Is.EqualTo(expected.Proof));
+    }
+
+    [Test]
+    public void A_malformed_short_node_at_a_composed_level_is_refused_not_thrown()
+    {
+        BuildCommitments();
+        byte route = (byte)(_accounts[3].ToAccountPath.Bytes[0] >> 4);
+        byte nibble = (byte)((route + 1) & 0x0F);
+        IDb history = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        foreach (byte[] key in history.GetAllKeys().ToList())
+        {
+            if (key.Length > Hash256.Size && key[0] >> 4 == nibble) history.Remove(key);
+        }
+
+        byte[] shortList = Bytes.FromHexString("c58083616263");
+        byte[] row = new byte[ParentRowCodec.WholeNodeRowLength(shortList.Length)];
+        int rowLength = ParentRowCodec.EncodeWholeNode(Blocks, shortList, row);
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        const int header = CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength;
+        byte[]? kept = null;
+        foreach (byte[] key in accounts.GetAllKeys().ToList())
+        {
+            if (key.Length <= header + sizeof(ulong)) continue;
+
+            int depth = key[header] & ~CommitmentKeyLayout.ExactRowFlag;
+            if (depth < 2 || key[header + 1] >> 4 != nibble) continue;
+
+            ReadOnlySpan<byte> prefix = key.AsSpan(header + 1, CommitmentKeyLayout.PathBytes(depth));
+            if (depth == 2 && (kept is null || prefix.SequenceEqual(kept)))
+            {
+                kept ??= prefix.ToArray();
+                accounts.PutSpan(key, row.AsSpan(0, rowLength));
+            }
+            else accounts.Remove(key);
+        }
+
+        Assert.That(kept, Is.Not.Null);
+        AccountProof expected = _chain.ExpectedProof(_accounts[3], Blocks);
+        AccountProof? actual = null;
+        Assert.That(() => { actual = ProveFromArchive(_accounts[3], Blocks); }, Throws.Nothing.Or.InstanceOf<StateUnavailableException>(),
+            "a composed level with a single surviving child merges that child's nibble into it; when the child's bytes are a short node that does not decode, the merge must be refused like any other malformed commitment rather than let the decoding error reach the visitor");
+        if (actual is not null) Assert.That(actual.Proof, Is.EqualTo(expected.Proof));
+    }
+
+    [Test]
+    public void Physical_floors_read_back_what_this_instance_raised_and_what_another_persisted()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
+        Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.DroppedThroughEpoch, Is.EqualTo(3ul));
+            Assert.That(Metadata(EpochPolicy).DroppedThroughEpoch, Is.EqualTo(3ul), "the mirror is a cache of the persisted key, not a replacement for it");
+        }
+
+        metadata.TryRaiseDemotedThroughEpoch(5);
+        metadata.LowerDemotedThroughEpoch(2);
+        Assert.That(metadata.DemotedThroughEpoch, Is.EqualTo(2ul));
+    }
+
+    [Test]
+    public void A_reclaim_requested_while_the_walk_runs_waits_for_the_root_fold()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, retrofit.Metadata);
+        bool reclaimAttempted = false;
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, onItemDone: item =>
+        {
+            if (item != HistoryWalkRun.WorkItems / 2 - 1) return;
+
+            retrofit.PruneBelow(_chain.Head);
+            _reclaimer!.ReclaimNow(CancellationToken.None);
+            reclaimAttempted = true;
+        });
+
+        ulong droppedDuringWalk = retrofit.Metadata.DroppedThroughEpoch;
+        _reclaimer!.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reclaimAttempted, Is.True);
+            Assert.That(verdict.Mismatches, Is.Empty, "the depth-2 exact rows double as the series the root fold reads, so a reclaim that lands between the last partition and the fold would remove the fold's input and report a false state root mismatch; the reclaim has to wait for the walk");
+            Assert.That(droppedDuringWalk, Is.Zero, "nothing was dropped while the walk was recorded in progress");
+            Assert.That(retrofit.Metadata.DroppedThroughEpoch, Is.GreaterThan(0ul), "once the walk has published, the deferred reclaim runs");
+        }
+    }
+
+    [Test]
+    public void The_reclaimer_deletes_nothing_under_a_layout_it_cannot_validate()
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+        CommitmentDepthPolicy other = new(CommitmentDepthPolicy.MinIntervalLog2 + 1);
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, ArchiveProofFineEpochs = 1 };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        using CommitmentMetadata metadata = new(_historyColumns, other);
+        metadata.TryRaiseFineFromEpoch(1);
+        using CommitmentReclaimer reclaimer = new(_historyColumns, other, metadata, new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance), LimboLogs.Instance);
+
+        reclaimer.ReclaimNow(CancellationToken.None);
+
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.True,
+            "rows written under another layout are not this node's to delete: with the discard flag off the build refuses them, and the reclaimer has to refuse just the same rather than run ahead of that check");
+    }
+
+    [Test]
+    public void Per_block_rows_a_walk_wrote_into_a_demoted_epoch_are_swept_again_when_it_finishes()
+    {
+        _policy = EpochPolicy;
+        _fineEpochs = 1;
+        Metadata(_policy).TryRaiseFineFromEpoch(1);
+        Metadata(_policy).TryRaiseDemotedThroughEpoch(1);
+
+        BuildCommitments();
+        IDb accounts = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.True,
+            "the walk needs its per-block rows as the series its root fold reads, so it writes them even below the fine floor");
+
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.ResweepDemotionFrom(0);
+        _reclaimer!.ReclaimNow(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.FineTier)), Is.False,
+                "a walk that wrote into an epoch the reclaimer had already demoted lowers the demotion cursor back to its start when it finishes, so those rows do not outlive every later pass");
+            Assert.That(accounts.GetAllKeys().Any(key => IsEpochTier(key, epoch: 0, CommitmentKeyLayout.CoarseTier)), Is.True);
+        }
+    }
+
+    [Test]
+    public void A_prefix_with_many_oversized_keys_splits_instead_of_streaming_them_all()
+    {
+        Address[] cluster = AddressesSharingPrefix(_accounts[3], nibbles: 2, count: HistoryRowScanner.MaxStreamedKeys + 4).ToArray();
+        _chain.AddBlock(Blocks + 1, block =>
+        {
+            foreach (Address address in cluster) block.SetBalance(address, 777);
+        });
+
+        _chain.PublishWatermark();
+        BuildCommitments(maxRowsPerPartition: 1);
+
+        AssertProofMatchesTheTrie(cluster[0], Blocks + 1);
+    }
+
+    private static bool IsStorageRow(byte[] key, in ValueHash256 identity, int pathLength)
+    {
+        int identityOffset = CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength;
+        int pathOffset = identityOffset + CommitmentKeyLayout.IdentityLength;
+        return key.Length > pathOffset
+            && key.AsSpan(identityOffset, CommitmentKeyLayout.IdentityLength).SequenceEqual(identity.Bytes[..CommitmentKeyLayout.IdentityLength])
+            && (key[pathOffset] & ~CommitmentKeyLayout.ExactRowFlag) == pathLength;
+    }
+
+    private static bool IsEpochTier(byte[] key, ulong epoch, byte tier) =>
+        key.Length > CommitmentKeyLayout.EpochLength + CommitmentKeyLayout.TierLength
+        && key[0] == (byte)(epoch >> 8)
+        && key[1] == (byte)epoch
+        && key[CommitmentKeyLayout.EpochLength] == tier;
+
+    private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
+
+    private readonly List<CommitmentMetadata> _metadatas = [];
+
+    private CommitmentMetadata Metadata(CommitmentDepthPolicy policy)
+    {
+        CommitmentMetadata metadata = new(_historyColumns, policy);
+        _metadatas.Add(metadata);
+        return metadata;
+    }
+
+    private HistoryWalkVerifier CreateVerifyOnlyVerifier(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition) =>
+        CreateVerifyOnlyVerifier(Metadata(_policy), maxRowsPerPartition);
+
+    private HistoryWalkVerifier CreateVerifyOnlyVerifier(CommitmentMetadata metadata, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
+    {
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        return new HistoryWalkVerifier(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null, metadata);
+    }
+
+    private static IEnumerable<Address> AddressesSortingAfter(Address anchor, int count)
+    {
+        ValueHash256 anchorPath = Keccak.Compute(anchor.Bytes).ValueHash256;
+        for (int seed = 0; count > 0; seed++)
+        {
+            Address candidate = new(Keccak.Compute(BitConverter.GetBytes(seed)).Bytes[12..]);
+            ValueHash256 path = Keccak.Compute(candidate.Bytes).ValueHash256;
+            if (path.Bytes[0] != anchorPath.Bytes[0] || path.CompareTo(anchorPath) <= 0) continue;
+
+            count--;
+            yield return candidate;
+        }
+    }
+
+    private static CommitmentDepthPolicy EpochPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1, CommitmentDepthPolicy.DefaultAccountComposedDepths, epochLog2: CommitmentDepthPolicy.MinIntervalLog2 + 1);
+
+    private int _recentEpochs;
+    private int _fineEpochs;
+    private CommitmentReclaimer? _reclaimer;
+
+    private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
+
+    private CommitmentDepthPolicy _policy = null!;
+
+    private void BuildChain(IReadOnlyList<Address>? siblingContracts = null)
+    {
+        IReadOnlyList<Address> siblings = siblingContracts ?? [];
+        _chain.AddBlock(0, block =>
+        {
+            for (int i = 0; i < _accounts.Length; i++) block.SetBalance(_accounts[i], (UInt256)(1000 + i));
+            foreach (UInt256 slot in ContractSlots) block.SetStorage(Contract, slot, [0x10, (byte)slot.u0]);
+            foreach (Address sibling in siblings) block.SetStorage(sibling, ContractSlots[0], [0x20, sibling.Bytes[^1]]);
+        });
+
+        for (ulong number = 1; number <= Blocks; number++)
+        {
+            ulong current = number;
+            _chain.AddBlock(number, block =>
+            {
+                for (int i = (int)(current % 5); i < _accounts.Length; i += 5)
+                {
+                    block.SetBalance(_accounts[i], (UInt256)(2000 + (ulong)i * current));
+                }
+
+                block.SetStorage(Contract, ContractSlots[current % (ulong)ContractSlots.Length], [(byte)(current + 1), 0x7F]);
+                for (int i = 0; i < siblings.Count; i++)
+                {
+                    if ((current + (ulong)i) % 3 == 0) block.SetStorage(siblings[i], ContractSlots[(current + (ulong)i) % (ulong)ContractSlots.Length], [(byte)(current + 2), (byte)i]);
+                }
+            });
+        }
+
+        _chain.PublishWatermark();
+    }
+
+    private Address[] RebuildTheChainWithContractsInTheSameStorageRange(int count)
+    {
+        const int maxSeeds = 1 << 20;
+        byte range = Keccak.Compute(Contract.Bytes).Bytes[0];
+        List<Address> siblings = [];
+        for (uint seed = 1; siblings.Count < count; seed++)
+        {
+            if (seed == maxSeeds) Assert.Fail($"No {count} addresses hash into storage range 0x{range:x2} within {maxSeeds} seeds");
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), 0x2000_0000 + seed);
+            Address candidate = new(bytes);
+            if (Keccak.Compute(candidate.Bytes).Bytes[0] == range) siblings.Add(candidate);
+        }
+
+        _chain.Dispose();
+        _historyColumns.Dispose();
+        _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
+        _chain = new ArchiveProofTestChain(_historyColumns);
+        BuildChain(siblings);
+        return [.. siblings];
+    }
+
+    private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+
+        (HistoryAvailability _, HistoryRowFormat rowFormat) =
+            HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+
+        HistoryWalkVerifier verifier = new(
+            _historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance,
+            maxRowsPerPartition, retrofit, retrofit.Metadata);
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: minRowsToBorrow);
+
+        Assert.That(verdict.Mismatches, Is.Empty, "the walk that emits the commitments is also what proves them against the headers");
+        retrofit.PublishCoverage(0, _chain.Head);
+    }
+
+    private ArchiveProofRetrofit CreateRetrofit(CommitmentDepthPolicy policy, bool discardMismatchedLayout = false)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofDiscardMismatchedLayout = discardMismatchedLayout, ArchiveProofRecentEpochs = _recentEpochs, ArchiveProofFineEpochs = _fineEpochs };
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        CommitmentMetadata metadata = Metadata(policy);
+        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
+        _reclaimer?.Dispose();
+        _reclaimer = new CommitmentReclaimer(_historyColumns, policy, metadata, settings, LimboLogs.Instance);
+        return new ArchiveProofRetrofit(_historyColumns, policy, metadata, settings, _reclaimer, LimboLogs.Instance);
+    }
+
+    private void Prune(ulong head)
+    {
+        CreateRetrofit(_policy).PruneBelow(head);
+        _reclaimer!.ReclaimNow(CancellationToken.None);
+    }
+
+    private ArchiveProofSource CreateSource(CommitmentDepthPolicy policy, long maxScannedRows = 0)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofServeEnabled = true, ArchiveProofMaxScannedRows = maxScannedRows };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        return new ArchiveProofSource(
+            _flatDb,
+            _historyColumns,
+            new HistoryReader(_flatDb, _historyColumns, availability, rowFormat, LimboLogs.Instance),
+            rowFormat,
+            policy,
+            Metadata(policy),
+            new ArchiveProofSettings(config, rowFormat, LimboLogs.Instance),
+            config,
+            LimboLogs.Instance);
+    }
+
+    private static void AssertStorageProofsMatch(AccountProof actual, AccountProof expected, string message)
+    {
+        Assert.That(actual.StorageProofs!, Has.Length.EqualTo(expected.StorageProofs!.Length), message);
+        for (int i = 0; i < expected.StorageProofs.Length; i++)
+        {
+            Assert.That(actual.StorageProofs[i].Proof, Is.EqualTo(expected.StorageProofs[i].Proof), message);
+        }
+    }
+
+    private AccountProof ProveFromArchive(Address address, ulong block, params UInt256[] storageKeys) => ProveFromArchive(address, block, maxScannedRows: 0, storageKeys);
+
+    private AccountProof ProveFromArchive(Address address, ulong block, long maxScannedRows, params UInt256[] storageKeys)
+    {
+        AccountProofCollector collector = new(address, storageKeys);
+        CreateSource(_policy, maxScannedRows).RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
+        return collector.BuildResult();
+    }
+
+    private void AssertProofMatchesTheTrie(Address address, ulong block, params UInt256[] storageKeys)
+    {
+        AccountProof expected = _chain.ExpectedProof(address, block, storageKeys);
+        AccountProof actual = ProveFromArchive(address, block, storageKeys);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Proof,
+                Is.EqualTo(expected.Proof),
+                $"the account path proven for {address} at block {block} must be the one the full trie holds");
+            Assert.That(actual.Balance, Is.EqualTo(expected.Balance), "the proven account must be the account of that block");
+            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
+            Assert.That(actual.StorageRoot, Is.EqualTo(expected.StorageRoot));
+            Assert.That(actual.CodeHash, Is.EqualTo(expected.CodeHash));
+
+            for (int i = 0; i < storageKeys.Length; i++)
+            {
+                Assert.That(actual.StorageProofs![i].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs![i].Value!.Value.ToArray()),
+                    $"slot {storageKeys[i]} must hold its block-{block} value");
+                Assert.That(actual.StorageProofs[i].Proof,
+                    Is.EqualTo(expected.StorageProofs![i].Proof),
+                    $"the storage path proven for slot {storageKeys[i]} at block {block} must be the one the full trie holds");
+            }
+        }
+    }
+
+    private static Address[] BuildAddresses(int count)
+    {
+        Address[] addresses = new Address[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), 0x1000_0000 + i);
+            addresses[i] = new Address(bytes);
+        }
+
+        return addresses;
+    }
+
+    private void OverwriteEveryCommitmentValue()
+    {
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        List<byte[]> keys = [];
+        using (ISortedView view = ((ISortedKeyValueStore)column).GetViewBetween(ReadOnlySpan<byte>.Empty, Bytes.FromHexString("0xff".PadRight(130, 'f'))))
+        {
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length > 2) keys.Add(view.CurrentKey.ToArray());
+            }
+        }
+
+        foreach (byte[] key in keys) column.PutSpan(key, [0x01, 0xC0]);
+    }
+
+    private void CorruptEveryStorageRow()
+    {
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
+        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
+    }
+
+    private void CorruptEveryAccountRow()
+    {
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        foreach (byte[] key in AllKeys(column)) column.PutSpan(key, tampered);
+    }
+
+    private static List<byte[]> AllKeys(IDb column)
+    {
+        List<byte[]> keys = [];
+        using ISortedView view = ((ISortedKeyValueStore)column).GetViewBetween(ReadOnlySpan<byte>.Empty, Bytes.FromHexString("0xff".PadRight(130, 'f')));
+        while (view.MoveNext()) keys.Add(view.CurrentKey.ToArray());
+        return keys;
+    }
+
+    private static UInt256[] Slots(int count, ulong first)
+    {
+        UInt256[] slots = new UInt256[count];
+        for (int index = 0; index < count; index++) slots[index] = first + (ulong)index;
+        return slots;
+    }
+}

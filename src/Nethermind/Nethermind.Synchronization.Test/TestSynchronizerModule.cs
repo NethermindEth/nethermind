@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
-using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.SnapSync;

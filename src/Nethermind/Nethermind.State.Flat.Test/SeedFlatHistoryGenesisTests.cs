@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test;
-using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Init.Steps;
@@ -40,7 +39,7 @@ public class SeedFlatHistoryGenesisTests
         FlatDbConfig config = new() { HistoryEnabled = true };
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
-        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
 

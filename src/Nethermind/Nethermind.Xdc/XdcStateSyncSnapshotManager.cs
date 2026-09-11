@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using Nethermind.Xdc.Contracts;
+using Autofac.Features.AttributeFilters;
 using System;
 
 namespace Nethermind.Xdc;
@@ -21,9 +22,11 @@ public class XdcStateSyncSnapshotManager(
     IEpochSwitchManager epochSwitchManager,
     IBlockTree blockTree,
     ISnapshotManager snapshotManager,
-    IMasternodeVotingContract masternodeVotingContract
+    [KeyFilter(XdcStateSyncSnapshotManager.StateSyncContractKey)] IMasternodeVotingContract masternodeVotingContract
     ) : IXdcStateSyncSnapshotManager
 {
+    internal const string StateSyncContractKey = "XdcStateSyncContract";
+
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private readonly IBlockTree _blockTree = blockTree;
