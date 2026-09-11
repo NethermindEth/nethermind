@@ -57,7 +57,13 @@ public sealed class BalReadCoverage
     public bool TryMark(in StorageCell cell)
     {
         ObjectDisposedException.ThrowIf(Plan is null, this);
-        if (cell.Address == _lastAddress && cell.Index == _lastSlot) return _lastOrdinal >= 0;
+        if (ReferenceEquals(cell.Address, _lastAddress) && cell.Index == _lastSlot) return _lastOrdinal >= 0;
+        return MarkSlow(cell);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool MarkSlow(in StorageCell cell)
+    {
         Plan!.TryGetOrdinal(cell, out _lastOrdinal);
         _lastAddress = cell.Address;
         _lastSlot = cell.Index;

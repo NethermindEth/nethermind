@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -23,7 +24,7 @@ public class BlockAccessListJournalTests
 {
     [Test]
     public void Coverage_reduces_workers_and_checks_partial_words(
-        [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast, [Values] bool wideKeys,
+        [Values(0, 1, 7, 8, 9, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast, [Values] bool wideKeys,
         [Values(1, 2, 8)] int workerCount)
     {
         UInt256[] slots = new UInt256[count];
@@ -47,6 +48,52 @@ public class BlockAccessListJournalTests
         {
             Assert.That(chargeableReads, Is.EqualTo((ulong)marked));
             Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
+        }
+    }
+
+    [Test]
+    public void Coverage_resolves_collisions_and_rejects_missing_keys([Values] bool collideAccounts)
+    {
+        List<StorageCell> reads = [];
+        ReadOnlyAccountChanges[] accounts = new ReadOnlyAccountChanges[collideAccounts ? 16 : 1];
+        for (int account = 0; account < accounts.Length; account++)
+        {
+            Address address = collideAccounts ? CollidingAddress(account + 1) : TestItem.AddressA;
+            UInt256[] slots = new UInt256[collideAccounts ? account % 3 + 1 : 16];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                ulong limb = (ulong)i + 1;
+                slots[i] = collideAccounts ? (UInt256)limb : new UInt256(limb, limb, limb, limb);
+                reads.Add(new StorageCell(address, slots[i]));
+            }
+            accounts[account] = new(address, [], slots, [], [], []);
+        }
+        using BalReadStoragePlan plan = new(new ReadOnlyBlockAccessList(accounts, accounts.Length + reads.Count));
+        BalReadCoverage coverage = plan.CreateCoverage();
+        for (int i = 0; i < reads.Count; i++)
+        {
+            StorageCell cell = reads[i];
+            Assert.That(plan.TryGetOrdinal(new StorageCell(new Address(cell.Address.Bytes), cell.Index), out int ordinal), Is.True);
+            Assert.That(ordinal, Is.EqualTo(i));
+            Assert.That(coverage.TryMark(cell), Is.True);
+        }
+        StorageCell missing = collideAccounts
+            ? new StorageCell(CollidingAddress(17), UInt256.One)
+            : new StorageCell(TestItem.AddressA, new UInt256(17, 17, 17, 17));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(plan.TryGetOrdinal(missing, out _), Is.False);
+            Assert.That(plan.TryGetOrdinal(new StorageCell(reads[0].Address, UInt256.MaxValue), out _), Is.False);
+            if (!collideAccounts) Assert.That(plan.TryGetOrdinal(new StorageCell(TestItem.AddressA, UInt256.One), out _), Is.False);
+            Assert.That(plan.TryFindUncovered(out _), Is.False);
+            Assert.That(coverage.ChargeableReadCount, Is.EqualTo(reads.Count));
+        }
+
+        static Address CollidingAddress(int index)
+        {
+            byte[] bytes = new byte[Address.Size];
+            bytes[0] = bytes[8] = (byte)index;
+            return new Address(bytes);
         }
     }
 

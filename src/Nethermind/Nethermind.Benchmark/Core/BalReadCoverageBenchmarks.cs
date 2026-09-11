@@ -16,6 +16,8 @@ namespace Nethermind.Benchmarks.Core;
 /// <remarks>
 /// Each invocation covers one block with 4,096 declared reads across 16 accounts. Each worker
 /// traverses the whole declaration in sparse or dense slices, repeating it to measure reuse.
+/// Slots are sequential integers or seeded full-width keys accessed in unsorted order.
+/// Declared accounts and executed reads use equal but distinct address instances.
 /// Workers run serially to isolate CPU and allocation costs from scheduling. Both paths include
 /// account recording, slice reset, block aggregation and coverage checking; bitmap setup and
 /// disposal are measured. This does not measure EVM execution, database reads or parallel speedup.
@@ -37,9 +39,14 @@ public class BalReadCoverageBenchmarks
     [Params(1, 4)]
     public int Passes { get; set; }
 
+    [Params(false, true)]
+    public bool WideSlots { get; set; }
+
     [GlobalSetup]
     public void Setup()
     {
+        Random random = new(42);
+        Span<byte> slotBytes = stackalloc byte[32];
         _reads = new StorageCell[ReadCount];
         ReadOnlyAccountChanges[] accounts = new ReadOnlyAccountChanges[AccountCount];
         for (int account = 0; account < AccountCount; account++)
@@ -50,11 +57,13 @@ public class BalReadCoverageBenchmarks
             UInt256[] slots = new UInt256[ReadCount / AccountCount];
             for (int slot = 0; slot < slots.Length; slot++)
             {
-                slots[slot] = (UInt256)slot;
+                if (WideSlots) random.NextBytes(slotBytes);
+                slots[slot] = WideSlots ? new UInt256(slotBytes, isBigEndian: false) : (UInt256)slot;
                 // Interleave accounts so sparse slices touch distant bitmap words.
                 _reads[slot * AccountCount + account] = new StorageCell(address, slots[slot]);
             }
-            accounts[account] = new(address, [], slots, [], [], []);
+            Array.Sort(slots);
+            accounts[account] = new(new Address(bytes), [], slots, [], [], []);
         }
         _declared = new(accounts, AccountCount + ReadCount);
         ulong expected = (ulong)(ReadCount * WorkerCount * Passes);
