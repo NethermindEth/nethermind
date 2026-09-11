@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -105,6 +106,75 @@ public static partial class EvmInstructions
 
         return EvmExceptionType.None;
         // Label for error handling when the stack does not have the required element.
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Executes ISZERO, fusing it with a following <c>PUSH2; JUMPI</c> when the bytecode has that shape.
+    /// </summary>
+    /// <remarks>
+    /// The conditional jump only asks whether the word ISZERO wrote is non-zero, which is the same question
+    /// as whether ISZERO's operand is zero. A fused sequence therefore branches on the operand in place and
+    /// skips both the boolean the stack slot would have carried and the dispatch into <c>PUSH2</c>, which
+    /// already fuses the jump itself. Gas, the stack limit, and the pop stay in bytecode order, so a
+    /// sequence that faults faults for the same reason and at the same counter as the three opcodes do.
+    /// </remarks>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionIsZero<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        const int Push2Size = sizeof(ushort);
+        // ISZERO's own cost and operand, whether or not the sequence fuses.
+        if (!TGasPolicy.UpdateGas<OpIsZero>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+
+        ref byte code = ref stack.Code;
+        nint pc = programCounter;
+        // The PUSH2 opcode, its two immediate bytes, and the JUMPI all have to be present to be read.
+        if (stack.CodeLength - pc < Push2Size + 2 ||
+            (Instruction)Add(ref code, pc) != Instruction.PUSH2 ||
+            (Instruction)Add(ref code, pc + 1 + Push2Size) != Instruction.JUMPI)
+        {
+            return Math1ParamCore<OpIsZero, OffFlag>(ref stack);
+        }
+
+        // PUSH2 is counted and charged before the jump, and its stack limit still applies even though the
+        // fused sequence leaves the stack one word shorter than it found it.
+        vm.OpCodeCount++;
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (stack.Head >= EvmStack.MaxStackSize - 1)
+        {
+            programCounter = pc + 1 + Push2Size;
+            return EvmExceptionType.StackOverflow;
+        }
+
+        vm.OpCodeCount++;
+        if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        // The depth check above covers the condition as well: ISZERO neither grows nor shrinks the stack.
+        // The branch is taken exactly when the operand is zero, which is when ISZERO would have written one.
+        if (!EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
+        {
+            // Move past the two immediate bytes and the JUMPI.
+            programCounter = pc + 1 + Push2Size + 1;
+            goto Success;
+        }
+
+        ushort destination = BinaryPrimitives.ReverseEndianness(As<byte, ushort>(ref Add(ref code, pc + 1)));
+        nint jumpTarget = JumpDestination(destination, ref stack);
+        if (jumpTarget < 0) goto InvalidJumpDestination;
+        // Skip the JUMPDEST byte we just validated, charging its gas and count here.
+        programCounter = jumpTarget + 1;
+        PrefetchCodeAtDestination(ref stack, programCounter);
+        vm.OpCodeCount++;
+        if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+    Success:
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    InvalidJumpDestination:
+        return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

@@ -96,7 +96,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.SLT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSLt, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.SGT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpSGt, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.EQ] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseEq, TTracingInst>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.ISZERO] = OpcodeHandler<Math1Opcode<EvmInstructions.OpIsZero, TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.ISZERO] = OpcodeHandler<IsZeroOpcode<TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.AND] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseAnd, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.OR] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseOr, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.XOR] = OpcodeHandler<BitwiseOpcode<EvmInstructions.OpBitwiseXor, TTracingInst>, TTracingInst, TCancelable>();
@@ -574,6 +574,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             return EvmInstructions.Math1ParamCore<TOpMath, OffFlag>(ref stack);
         }
+    }
+
+    /// <summary>
+    /// ISZERO, which reads the bytecode after it to fuse with a following <c>PUSH2; JUMPI</c>.
+    /// </summary>
+    /// <remarks>
+    /// The body owns its gas and depth guards rather than taking the checked path: a fused sequence can
+    /// still fault on PUSH2's stack limit or an invalid destination, which dispatch discards for a checked
+    /// body. A traced run keeps the plain operation, since the fused form would hide two opcodes.
+    /// </remarks>
+    [SkipLocalsInit]
+    private readonly struct IsZeroOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static bool UsesVm => true;
+
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            TTracingInst.IsActive
+                ? EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionIsZero(ref stack, ref gas, vm, ref programCounter);
     }
 
     [SkipLocalsInit]
