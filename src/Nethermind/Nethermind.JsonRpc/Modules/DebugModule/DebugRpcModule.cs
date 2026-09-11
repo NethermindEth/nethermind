@@ -6,7 +6,6 @@ using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -308,9 +307,9 @@ public class DebugRpcModule(
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
 
-        // Not disposing blockTrace itself: DisposableResettableList<T>.Dispose() only disposes its
-        // items, and the backing List<T> holds no pooled or unmanaged resource, so abandoning it
-        // leaks nothing. Disposing it would also double-dispose the trace we are about to return.
+        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
+        // including the one we return. The collection holds no pooled or unmanaged resource of
+        // its own, so abandoning it leaks nothing.
         GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
 
         if (transactionTrace is null)
@@ -322,14 +321,13 @@ public class DebugRpcModule(
     }
 
     /// <remarks>
-    /// A throwing Dispose() on one discarded trace must not stop the rest from being drained, or a single
-    /// bad trace leaks the whole collection. If any dispose failed, the selected trace is disposed here too
-    /// (the caller returns it, not us) and the failure is surfaced rather than swallowed.
+    /// A dispose failure on a discarded trace is logged and draining continues: the trace the caller asked for
+    /// was already produced, so a cleanup fault on an unrelated transaction's tracer must not turn the call into
+    /// an internal error.
     /// </remarks>
-    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    private GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
     {
         GethLikeTxTrace? selected = null;
-        ExceptionDispatchInfo? disposeFailure = null;
         int index = 0;
         foreach (GethLikeTxTrace trace in blockTrace)
         {
@@ -345,28 +343,11 @@ public class DebugRpcModule(
             }
             catch (Exception ex)
             {
-                disposeFailure = disposeFailure is null
-                    ? ExceptionDispatchInfo.Capture(ex)
-                    : ExceptionDispatchInfo.Capture(new AggregateException(disposeFailure.SourceException, ex));
+                if (_logger.IsError) _logger.Error("Failed to dispose discarded block traces", ex);
             }
         }
 
-        if (disposeFailure is null)
-        {
-            return selected;
-        }
-
-        try
-        {
-            selected?.Dispose();
-        }
-        catch (Exception ex)
-        {
-            disposeFailure = ExceptionDispatchInfo.Capture(new AggregateException(disposeFailure.SourceException, ex));
-        }
-
-        disposeFailure.Throw();
-        return null;
+        return selected;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>

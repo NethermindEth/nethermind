@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -512,55 +511,6 @@ public class DebugModuleTests
             engines[0].Received(1).Dispose();
             engines[1].Received(1).Dispose();
         }
-    }
-
-    [Test]
-    public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_WhenADiscardedTraceDisposeThrows_StillDisposesEveryTraceAndSurfacesTheFailure()
-    {
-        (IDisposable[] engines, GethLikeTxTrace[] traces) = CreateSentinelTraces(3);
-        SetUpBlockTrace(traces);
-        Exception disposeFailure = new("dispose boom");
-        engines[0].When(static e => e.Dispose()).Do(_ => throw disposeFailure);
-
-        GethTraceOptions options = new() { Tracer = "callTracer" };
-
-        Exception thrown = Assert.Throws<Exception>(() =>
-            CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(3), 1, options))!;
-
-        Assert.That(thrown, Is.SameAs(disposeFailure), "the original dispose failure must propagate, not be swallowed");
-        using (Assert.EnterMultipleScope())
-        {
-            engines[0].Received(1).Dispose();
-            // The selected trace (index 1) is disposed here too: since the method throws instead of
-            // returning it, nothing downstream is left to dispose it.
-            engines[1].Received(1).Dispose();
-            engines[2].Received(1).Dispose();
-        }
-    }
-
-    [Test]
-    public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_WhenADiscardedTraceDisposeThrows_PreservesTheOriginalStackTrace()
-    {
-        GethLikeTxTrace[] traces = [new GethLikeTxTrace(new DisposeThrowingSentinel()), new GethLikeTxTrace()];
-        SetUpBlockTrace(traces);
-
-        GethTraceOptions options = new() { Tracer = "callTracer" };
-
-        Exception thrown = Assert.Throws<InvalidOperationException>(() =>
-            CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(2), 1, options))!;
-
-        // Only a single dispose fails here (the AggregateException path already keeps its inner exceptions'
-        // traces intact) - this is the path a plain "throw disposeException;" rethrow would reset to the
-        // rethrow site, discarding the frames from inside Dispose().
-        Assert.That(thrown.StackTrace, Does.Contain(nameof(DisposeThrowingSentinel.ThrowFromSentinelDispose)));
-    }
-
-    private sealed class DisposeThrowingSentinel : IDisposable
-    {
-        public void Dispose() => ThrowFromSentinelDispose();
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void ThrowFromSentinelDispose() => throw new InvalidOperationException("dispose boom");
     }
 
     private static byte[] BlockRlpFixture(int txCount)
