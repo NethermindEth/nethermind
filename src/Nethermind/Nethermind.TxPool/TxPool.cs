@@ -73,6 +73,9 @@ namespace Nethermind.TxPool
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
         private readonly ConcurrentDictionary<ValueHash256, (long Head, int Heads)> _frameEvictionAttempts = new();
+        // Above one is the predicate for "the retry ledger can hold an entry", read by insert, removal and
+        // eviction alike, so it is snapshot here rather than dispatched through the config interface.
+        private readonly int _frameEvictionRetryBudget;
 
         /// <summary>Stands for a staged retry ledger entry no production failure has spent yet; head generations start at zero.</summary>
         private const long NoHeadSpent = -1;
@@ -187,6 +190,7 @@ namespace Nethermind.TxPool
                 : null;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
+            _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
@@ -222,8 +226,8 @@ namespace Nethermind.TxPool
                     TimeProvider.System,
                     RequestCurrentSpecRevalidation)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // Records restored inside the pool's constructor predate the handlers below, so the count and both
-            // ledgers are seeded before subscribing: UpdatePool evicts during startup, and a removal must
+            // Records restored inside the pool's constructor predate the handlers below, so the count and every
+            // ledger are seeded before subscribing: UpdatePool evicts during startup, and a removal must
             // release against a ledger that already covers what it removes.
             if (_blobTransactions.Count > 0)
             {
@@ -466,14 +470,18 @@ namespace Nethermind.TxPool
         /// <remarks>Staged on insert and dropped in <see cref="OnRemovedTx"/>, both under the owning pool's lock,
         /// so an entry cannot outlive pool membership. Opening one on demand instead would leave an orphan
         /// whenever a removal's cleanup ran between the membership observation and the entry it was to clean up.
+        /// Tying the entry to membership also makes the budget per-residency rather than per-transaction: a
+        /// resubmitted transaction is staged afresh, which is intended, since the failures it is granted heads
+        /// for turn on chain state that re-entry may have cleared, and a spent count that outlived removal
+        /// would be bounded by gossip rather than by pool capacity.
         /// Nothing is staged at the default budget of one, where no call reads the ledger.</remarks>
         private void StageFrameEvictionRetries(Transaction tx)
         {
-            if (_txPoolConfig.FrameTxEvictionRetryBudget <= 1 || !tx.SupportsFrames) return;
+            if (_frameEvictionRetryBudget <= 1 || !tx.SupportsFrames) return;
 
             if (_frameEvictionAttempts.TryAdd(tx.Hash!.ValueHash256, (NoHeadSpent, 0)))
             {
-                Interlocked.Increment(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+                Interlocked.Increment(ref Metrics.FrameTxEvictionRetryLedgerEntries);
             }
         }
 
@@ -491,9 +499,11 @@ namespace Nethermind.TxPool
             if (args.Value.SupportsFrames)
             {
                 _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
-                if (!_frameEvictionAttempts.IsEmpty && _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _))
+                // The budget, not IsEmpty: this runs under the owning pool's lock, and IsEmpty takes all of the
+                // dictionary's locks whenever it is empty, which is always at the default budget.
+                if (_frameEvictionRetryBudget > 1 && _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _))
                 {
-                    Interlocked.Decrement(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+                    Interlocked.Decrement(ref Metrics.FrameTxEvictionRetryLedgerEntries);
                 }
             }
         }
@@ -567,10 +577,14 @@ namespace Nethermind.TxPool
                 Dictionary<AddressAsKey, UInt256> pooledExposure = [];
                 Dictionary<AddressAsKey, int> pooledPaymasters = [];
                 int pooledExpiring = 0;
-                AccumulateFrameTxBookkeeping(_transactions.GetSnapshot(), pooledExposure, pooledPaymasters, ref pooledExpiring);
-                AccumulateFrameTxBookkeeping(_blobTransactions.GetSnapshot(), pooledExposure, pooledPaymasters, ref pooledExpiring);
+                int pooledFrameTxs = 0;
+                AccumulateFrameTxBookkeeping(_transactions.GetSnapshot(), pooledExposure, pooledPaymasters, ref pooledExpiring, ref pooledFrameTxs);
+                AccumulateFrameTxBookkeeping(_blobTransactions.GetSnapshot(), pooledExposure, pooledPaymasters, ref pooledExpiring, ref pooledFrameTxs);
 
                 int recordedExpiring = Volatile.Read(ref _expiringFrameTxCount);
+                // Staged for every pooled frame tx above the default budget and for none at or below it.
+                int expectedRetryRecords = _frameEvictionRetryBudget > 1 ? pooledFrameTxs : 0;
+                int recordedRetryRecords = _frameEvictionAttempts.Count;
                 List<KeyValuePair<AddressAsKey, UInt256>> recordedExposure = [.. _payerExposure.Reservations];
                 List<KeyValuePair<AddressAsKey, int>> recordedPaymasters = [.. _pendingPaymasters.Counts];
 
@@ -584,6 +598,8 @@ namespace Nethermind.TxPool
                     $"Payer exposure ledger holds {recordedExposure.Count} payers, but {pooledExposure.Count} are pooled.");
                 Debug.Assert(recordedPaymasters.Count == pooledPaymasters.Count,
                     $"Paymaster cap ledger holds {recordedPaymasters.Count} paymasters, but {pooledPaymasters.Count} are pooled.");
+                Debug.Assert(recordedRetryRecords == expectedRetryRecords,
+                    $"Eviction retry ledger holds {recordedRetryRecords} records, but {expectedRetryRecords} are pooled.");
 
                 foreach (KeyValuePair<AddressAsKey, UInt256> reservation in recordedExposure)
                 {
@@ -612,10 +628,11 @@ namespace Nethermind.TxPool
 #if DEBUG
         // A restored record's payer and paymaster are both persisted, so it is inside this check's reach.
         private static void AccumulateFrameTxBookkeeping(
-            Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring)
+            Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, Dictionary<AddressAsKey, int> paymasters, ref int expiring, ref int frameTxs)
         {
             foreach (Transaction tx in snapshot)
             {
+                if (tx.SupportsFrames) frameTxs++;
                 if (HasExpiryDeadline(tx)) expiring++;
 
                 if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)
@@ -2364,7 +2381,7 @@ namespace Nethermind.TxPool
         /// <remarks>The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure turns on chain state that can change.</remarks>
         public bool EvictTransaction(Transaction tx)
         {
-            if (tx.SupportsFrames && TrySpendEvictionRetry(tx.Hash!.ValueHash256)) return false;
+            if (_frameEvictionRetryBudget > 1 && tx.SupportsFrames && TrySpendEvictionRetry(tx.Hash!.ValueHash256)) return false;
 
             if (!RemoveTransaction(tx.Hash)) return false;
 
@@ -2381,16 +2398,13 @@ namespace Nethermind.TxPool
         /// <returns><see langword="true"/> if the transaction keeps its place in the pool.</returns>
         private bool TrySpendEvictionRetry(in ValueHash256 hash)
         {
-            int budget = _txPoolConfig.FrameTxEvictionRetryBudget;
-            if (budget <= 1) return false;
-
             long generation = Volatile.Read(ref _headGeneration);
             while (_frameEvictionAttempts.TryGetValue(hash, out (long Head, int Heads) spent))
             {
-                if (spent.Head == generation) return spent.Heads < budget;
+                if (spent.Head == generation) return spent.Heads < _frameEvictionRetryBudget;
 
                 (long Head, int Heads) advanced = (generation, spent.Heads + 1);
-                if (_frameEvictionAttempts.TryUpdate(hash, advanced, spent)) return advanced.Heads < budget;
+                if (_frameEvictionAttempts.TryUpdate(hash, advanced, spent)) return advanced.Heads < _frameEvictionRetryBudget;
             }
 
             return false;
@@ -2545,6 +2559,8 @@ namespace Nethermind.TxPool
             _blobTransactions.Removed -= OnRemovedTx;
             // Removed no longer fires, so anything still reserved would be counted by a gauge no pool can decrement.
             _payerExposure.Clear();
+            Interlocked.Add(ref Metrics.FrameTxEvictionRetryLedgerEntries, -_frameEvictionAttempts.Count);
+            _frameEvictionAttempts.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

@@ -4807,14 +4807,17 @@ namespace Nethermind.TxPool.Test
         // EIP-8141: the retry budget follows the transaction, not the pool its blob count routed it to, so a
         // blob-carrying frame tx is kept across the same number of heads as a frameless one.
         [Test]
+        [NonParallelizable]
         public async Task Blob_carrying_frame_tx_spends_its_eviction_retry_budget_per_head()
         {
+            long held = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, FrameTxEvictionRetryBudget = 2 };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            long whilePooled = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
 
             bool droppedOnFirstHead = _txPool.EvictTransaction(frameTx);
             int keptForRetry = _txPool.GetPendingBlobTransactionsCount();
@@ -4828,6 +4831,9 @@ namespace Nethermind.TxPool.Test
                 Assert.That(keptForRetry, Is.EqualTo(1), "the blob pool is where a blob-carrying frame tx is kept");
                 Assert.That(droppedOnSecondHead, Is.True, "failing on a second head spends the last unit and evicts");
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero, "it leaves the blob pool once its budget is spent");
+                Assert.That(whilePooled, Is.EqualTo(held + 1), "the blob pool's insert opens the record");
+                Assert.That(Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries), Is.EqualTo(held),
+                    "and the blob pool's removal releases it");
             }
         }
 
