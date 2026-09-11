@@ -47,34 +47,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public ResultWrapper<TransactionForRpcWithProof?> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
-            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
-            if (blockHash is null)
+            if (!TryResolveTransaction(txHash, out ResolvedTransaction resolved, out SearchResult<Block> failure))
             {
-                // No block for this tx hash means it never made it into the chain — mirrors
-                // eth_getTransactionByHash's null-on-miss result.
-                return ResultWrapper<TransactionForRpcWithProof>.Success(null);
+                return failure.IsError ? ResultWrapper<TransactionForRpcWithProof>.Fail(failure) : ResultWrapper<TransactionForRpcWithProof>.Success(null);
             }
 
-            SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
-            {
-                // Unknown blocks yield null and mirror eth_; other search failures (e.g. pruned history) keep their error.
-                return searchResult.Error == BlockFinderExtensions.HeaderNotFound
-                    ? ResultWrapper<TransactionForRpcWithProof>.Success(null)
-                    : ResultWrapper<TransactionForRpcWithProof>.Fail(searchResult);
-            }
-
-            Block block = searchResult.Object;
+            (Block block, int txIndex, TxReceipt receipt) = resolved;
             Transaction[] txs = block.Transactions;
-            int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
-            if (txIndex < 0 || receipt is null)
-            {
-                // The resolved block may not contain this transaction, or its receipt set may no longer include it —
-                // e.g. a reorg re-resolved the stored block number to a different canonical block. Not an error, mirrors eth_.
-                return ResultWrapper<TransactionForRpcWithProof>.Success(null);
-            }
-
             Transaction transaction = txs[txIndex];
 
             TransactionForRpcWithProof txWithProof = new();
@@ -98,33 +77,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         public ResultWrapper<ReceiptWithProof?> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
         {
-            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
-            if (blockHash is null)
+            if (!TryResolveTransaction(txHash, out ResolvedTransaction resolved, out SearchResult<Block> failure))
             {
-                // No block for this tx hash means it never made it into the chain — mirrors
-                // eth_getTransactionReceipt's null-on-miss result.
-                return ResultWrapper<ReceiptWithProof>.Success(null);
+                return failure.IsError ? ResultWrapper<ReceiptWithProof>.Fail(failure) : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
-            SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
-            {
-                // Unknown blocks yield null and mirror eth_; other search failures (e.g. pruned history) keep their error.
-                return searchResult.Error == BlockFinderExtensions.HeaderNotFound
-                    ? ResultWrapper<ReceiptWithProof>.Success(null)
-                    : ResultWrapper<ReceiptWithProof>.Fail(searchResult);
-            }
-
-            Block block = searchResult.Object;
+            (Block block, int txIndex, TxReceipt receipt) = resolved;
             Transaction[] txs = block.Transactions;
-            int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
-            if (txIndex < 0 || receipt is null)
-            {
-                // The resolved block may not contain this transaction, or its receipt set may no longer include it —
-                // e.g. a reorg re-resolved the stored block number to a different canonical block. Not an error, mirrors eth_.
-                return ResultWrapper<ReceiptWithProof>.Success(null);
-            }
 
             using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
 
@@ -136,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-            int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
+            int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(txIndex);
 
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
@@ -144,6 +103,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 block.Timestamp,
                 txs[txIndex].GetGasInfo(spec, block.Header),
                 logIndexStart);
+            // ReceiptForRpc (and each LogEntryForRpc) copies the stored Index; the proofs below attest to the block-derived position.
+            receiptWithProof.Receipt.TransactionIndex = txIndex;
+            foreach (LogEntryForRpc log in receiptWithProof.Receipt.Logs ?? [])
+            {
+                log.TransactionIndex = txIndex;
+            }
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, txIndex);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
 
@@ -194,6 +159,43 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     MaxDepth = diagnostics.MaxDepth,
                 },
             });
+        }
+
+        private readonly record struct ResolvedTransaction(Block Block, int TxIndex, TxReceipt Receipt);
+
+        /// <remarks>
+        /// <paramref name="failure"/> is populated only for a search error the caller must surface, and left default
+        /// when the caller should return a null result instead.
+        /// </remarks>
+        private bool TryResolveTransaction(Hash256 txHash, out ResolvedTransaction resolved, out SearchResult<Block> failure)
+        {
+            resolved = default;
+            failure = default;
+
+            // A tx hash with no stored block never made it into the chain — mirrors the eth_ equivalents' null-on-miss result.
+            Hash256 blockHash = receiptFinder.FindBlockHash(txHash);
+            if (blockHash is null) return false;
+
+            SearchResult<Block> searchResult = blockFinder.SearchForBlock(new BlockParameter(blockHash));
+            if (searchResult.IsError)
+            {
+                // Unknown blocks yield null and mirror eth_; other search failures (e.g. pruned history) keep their error.
+                failure = searchResult.Error == BlockFinderExtensions.HeaderNotFound ? default : searchResult;
+                return false;
+            }
+
+            Block block = searchResult.Object;
+            int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
+            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
+            if (txIndex < 0 || receipt is null)
+            {
+                // The resolved block may not contain this transaction, or its receipt set may no longer include it —
+                // e.g. a reorg re-resolved the stored block number to a different canonical block. Not an error, mirrors eth_.
+                return false;
+            }
+
+            resolved = new ResolvedTransaction(block, txIndex, receipt);
+            return true;
         }
 
         private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);

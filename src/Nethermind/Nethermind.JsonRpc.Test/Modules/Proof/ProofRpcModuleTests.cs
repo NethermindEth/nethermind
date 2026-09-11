@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
@@ -149,11 +150,47 @@ public class ProofRpcModuleTests
         Assert.That(response, Is.EqualTo(NullResultResponse));
     }
 
+    /// <remarks>
+    /// Unlike <see cref="NotServableScenario"/>, a pruned block is a genuine <c>SearchForBlock</c> error, not an
+    /// unknown-block miss — <c>TryResolveTransaction</c> must preserve it rather than fold it into a null result.
+    /// </remarks>
+    [Test]
+    public void When_resolved_block_is_pruned_transaction_by_hash_returns_the_preserved_error()
+    {
+        Hash256 txHash = ArrangePrunedBlock();
+
+        ResultWrapper<TransactionForRpcWithProof?> result = _proofRpcModule.proof_getTransactionByHash(txHash, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+        }
+    }
+
+    /// <remarks>
+    /// Unlike <see cref="NotServableScenario"/>, a pruned block is a genuine <c>SearchForBlock</c> error, not an
+    /// unknown-block miss — <c>TryResolveTransaction</c> must preserve it rather than fold it into a null result.
+    /// </remarks>
+    [Test]
+    public void When_resolved_block_is_pruned_transaction_receipt_returns_the_preserved_error()
+    {
+        Hash256 txHash = ArrangePrunedBlock();
+
+        ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+        }
+    }
+
     [Test]
     public void When_receipt_index_is_stale_transaction_by_hash_serves_the_requested_transaction([Values] StaleReceiptIndexScenario scenario)
     {
         Block block = _blockTree.FindBlock(1)!;
-        Hash256 txHash = ArrangeStaleReceiptIndex(scenario);
+        Hash256 txHash = ArrangeStaleReceiptIndex(scenario).TxHash;
 
         TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data!;
 
@@ -176,13 +213,16 @@ public class ProofRpcModuleTests
         // call for the same tx pins the same proof the stale-index arrangement below must still produce.
         byte[][] expectedReceiptProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data!.ReceiptProof;
 
-        ArrangeStaleReceiptIndex(scenario);
+        int expectedLogIndexStart = ArrangeStaleReceiptIndex(scenario).LogIndexStart;
 
         ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data!;
 
         Assert.That(receiptWithProof, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(receiptWithProof.Receipt.TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
+            Assert.That(receiptWithProof.Receipt.Logs[0].LogIndex, Is.EqualTo(expectedLogIndexStart));
+            Assert.That(receiptWithProof.Receipt.Logs[0].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
             Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
             Assert.That(receiptWithProof.ReceiptProof, Is.EqualTo(expectedReceiptProof));
         }
@@ -288,20 +328,79 @@ public class ProofRpcModuleTests
         return txHash;
     }
 
-    private Hash256 ArrangeStaleReceiptIndex(StaleReceiptIndexScenario scenario)
+    /// <remarks>
+    /// Reproduces <c>SearchForBlock</c>'s <see cref="ErrorCodes.PrunedHistoryUnavailable"/> path: the resolved
+    /// block's header is known but its body has been pruned below the served floor. The real test chain has no
+    /// pruned blocks, so the block finder is substituted directly rather than the block tree.
+    /// </remarks>
+    private Hash256 ArrangePrunedBlock()
+    {
+        Hash256 txHash = TestItem.KeccakD;
+        Hash256 blockHash = TestItem.KeccakE;
+        BlockHeader prunedHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(blockHash);
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(prunedHeader.Number + 1).TestObject);
+        // The block-hash overload is a default interface member; stubbing it directly (rather than the
+        // Hash256 overload it would otherwise delegate to) is what NSubstitute actually intercepts.
+        blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(prunedHeader);
+        blockFinder.LowestServedBlock.Returns(prunedHeader.Number + 1);
+
+        RebuildContainerWith(receiptFinder, blockFinder: blockFinder);
+
+        return txHash;
+    }
+
+    /// <remarks>
+    /// The substituted set is wider than the block and carries logs, so <c>GetBlockLogFirstIndex</c> answers
+    /// differently for the requested transaction's position in the block than for the receipt's stale stored
+    /// index, which makes the served <c>logIndex</c> evidence of which of the two the receipt was served at.
+    /// </remarks>
+    /// <returns>The requested transaction's hash, and the first log index its receipt must be served with.</returns>
+    private (Hash256 TxHash, int LogIndexStart) ArrangeStaleReceiptIndex(StaleReceiptIndexScenario scenario)
     {
         Block block = _blockTree.FindBlock(1)!;
         Hash256 txHash = block.Transactions[StaleReceiptIndexTxIndex].Hash!;
-        int staleIndex = scenario switch
+
+        const int logsBeforeRequested = 3;
+        const int logsOnDroppedTransaction = 5;
+        const int logsOnRequested = 1;
+
+        (int staleIndex, int logIndexStart) = scenario switch
         {
-            StaleReceiptIndexScenario.BeyondBlockTransactions => block.Transactions.Length,
-            StaleReceiptIndexScenario.PointsToDifferentTransaction => 0,
+            // Only the leading receipt's stored index is below the requested position.
+            StaleReceiptIndexScenario.BeyondBlockTransactions => (block.Transactions.Length, logsBeforeRequested),
+            // A stale 0 leaves the requested receipt's own logs below the requested position too.
+            StaleReceiptIndexScenario.PointsToDifferentTransaction => (0, logsBeforeRequested + logsOnRequested),
             _ => throw new ArgumentOutOfRangeException(nameof(scenario))
         };
 
-        ArrangeReceiptFinder(block, txHash, [new TxReceipt { TxHash = txHash, Index = staleIndex }]);
+        // A blob left by a block that carried a third transaction: the receipt stored at the position the
+        // requested transaction now occupies is for a transaction this block no longer contains.
+        TxReceipt[] receipts =
+        [
+            ReceiptWithLogs(block.Transactions[0].Hash!, 0, logsBeforeRequested),
+            ReceiptWithLogs(TestItem.KeccakF, StaleReceiptIndexTxIndex, logsOnDroppedTransaction),
+            ReceiptWithLogs(txHash, staleIndex, logsOnRequested)
+        ];
 
-        return txHash;
+        ArrangeReceiptFinder(block, txHash, receipts);
+
+        return (txHash, logIndexStart);
+    }
+
+    private static TxReceipt ReceiptWithLogs(Hash256 txHash, int index, int logCount)
+    {
+        LogEntry[] logs = new LogEntry[logCount];
+        for (int i = 0; i < logCount; i++)
+        {
+            logs[i] = Build.A.LogEntry.TestObject;
+        }
+
+        return new TxReceipt { TxHash = txHash, Index = index, Logs = logs, Bloom = new Bloom(logs) };
     }
 
     private void ArrangeReceiptFinder(Block block, Hash256 txHash, TxReceipt[] receipts, IOverridableEnv<ITracer>? tracerEnv = null)
@@ -316,9 +415,12 @@ public class ProofRpcModuleTests
     /// Swaps in a substituted <see cref="IReceiptFinder"/> while keeping the real block tree, so
     /// <c>FindBlockHash</c> and <c>Get(block)</c> can be driven independently — used to reproduce a
     /// resolved block whose receipt set doesn't contain the tx. A supplied <paramref name="tracerEnv"/>
-    /// replaces the environment the receipt method traces the block in.
+    /// replaces the environment the receipt method traces the block in, and a supplied
+    /// <paramref name="blockFinder"/> replaces the block tree's own <c>SearchForBlock</c> resolution —
+    /// used to reproduce a search failure (e.g. pruned history) the real, fully-populated test chain
+    /// cannot otherwise produce.
     /// </remarks>
-    private void RebuildContainerWith(IReceiptFinder receiptFinder, IOverridableEnv<ITracer>? tracerEnv = null)
+    private void RebuildContainerWith(IReceiptFinder receiptFinder, IOverridableEnv<ITracer>? tracerEnv = null, IBlockFinder? blockFinder = null)
     {
         _container.Dispose();
         ContainerBuilder builder = new ContainerBuilder()
@@ -334,6 +436,11 @@ public class ProofRpcModuleTests
         if (tracerEnv is not null)
         {
             builder.AddSingleton<IOverridableEnv<ITracer>>(tracerEnv);
+        }
+
+        if (blockFinder is not null)
+        {
+            builder.AddSingleton<IBlockFinder>(blockFinder);
         }
 
         _container = builder.Build();
