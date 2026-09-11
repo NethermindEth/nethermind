@@ -122,6 +122,23 @@ public partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
+
+    private byte[] _precompileScratch = [];
+
+    /// <summary>A buffer reused to hold the output of a precompile whose result is a copy of its input.</summary>
+    /// <remarks>Its contents are only guaranteed until the next precompile served this way. That is safe
+    /// because <see cref="ReturnDataBuffer"/> is replaced by every call, and the only path that uses this
+    /// buffer already refuses to run when a tracer is attached, so nothing can retain the previous one.</remarks>
+    internal Memory<byte> RentPrecompileScratch(int length)
+    {
+        byte[] buffer = _precompileScratch;
+        if (buffer.Length < length)
+        {
+            _precompileScratch = buffer = GC.AllocateUninitializedArray<byte>(Math.Max(length, 4096));
+        }
+
+        return buffer.AsMemory(0, length);
+    }
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;

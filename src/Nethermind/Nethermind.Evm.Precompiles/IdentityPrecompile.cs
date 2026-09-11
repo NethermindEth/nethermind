@@ -23,6 +23,9 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
     // making caching strictly worse than direct execution for this precompile.
     public bool SupportsCaching => false;
 
+    /// <inheritdoc cref="IPrecompile.OutputEqualsInput"/>
+    public bool OutputEqualsInput => true;
+
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 15UL;
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>

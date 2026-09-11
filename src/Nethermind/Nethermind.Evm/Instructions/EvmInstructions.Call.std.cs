@@ -56,20 +56,33 @@ public static partial class EvmInstructions
             return true;
         }
 
-        if (!(vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
+        ReadOnlyMemory<byte> outputData;
+        if (precompile.OutputEqualsInput)
         {
-            TGasPolicy.ClearExecutionGas(ref childGas);
-            TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
-            vm.ReturnDataBuffer = default;
-            result = stack.PushZero<TTracingInst, OnFlag>();
-            return true;
+            // ID cannot fail and returns its input unchanged, so copy straight into a reusable buffer
+            // rather than allocating an array per call. The data still has to live somewhere this frame
+            // cannot overwrite, because RETURNDATACOPY may read it after the frame writes memory again.
+            Memory<byte> scratch = vm.RentPrecompileScratch(callData.Length);
+            callData.Span.CopyTo(scratch.Span);
+            outputData = scratch;
+        }
+        else
+        {
+            if (!(vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
+            {
+                TGasPolicy.ClearExecutionGas(ref childGas);
+                TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
+                vm.ReturnDataBuffer = default;
+                result = stack.PushZero<TTracingInst, OnFlag>();
+                return true;
+            }
+
+            outputData = output.Data;
         }
 
         vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
 
         TGasPolicy.Refund(ref gas, in childGas);
-
-        ReadOnlyMemory<byte> outputData = output.Data;
         vm.ReturnDataBuffer = outputData;
 
         int copyLength = outputData.Length;

@@ -22,6 +22,12 @@ namespace Nethermind.Evm.Precompiles
         /// </remarks>
         ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => inputData;
 
+        /// <summary>Whether this precompile's output is byte-for-byte its input.</summary>
+        /// <remarks>Lets a caller that is about to copy the output somewhere skip materialising a separate
+        /// array for it. Only <c>ID</c> qualifies, and it is the one precompile whose output can be
+        /// arbitrarily large, so the allocation it avoids is proportional to the data copied.</remarks>
+        bool OutputEqualsInput => false;
+
         ulong BaseGasCost(IReleaseSpec releaseSpec);
         ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
