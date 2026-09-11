@@ -151,6 +151,30 @@ public class InclusionListBuilderTests
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }
 
+    // A too-small reservoir would leave the byte budget under-filled even at the smallest transactions the
+    // pool could offer, silently shrinking every inclusion list. 255 senders each with a minimal legacy tx
+    // (to=null, zero-valued fields — the ~74-75 byte floor the sample capacity is now sized against) must
+    // still saturate most of the byte cap.
+    [Test]
+    public void Reservoir_saturates_the_byte_budget_at_the_smallest_encoded_transaction_size()
+    {
+        Transaction[] txs = [.. TestItem.PrivateKeys.Select(key => Build.A.Transaction
+            .WithNonce(0)
+            .WithValue(0)
+            .WithGasPrice(0)
+            .WithGasLimit(0)
+            .WithTo(null)
+            .WithData([])
+            .SignedAndResolved(key)
+            .TestObject)];
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
+        int totalBytes = il.Sum(t => t.Count);
+
+        Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 200));
+        Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
     [Test]
     public void Returned_bytes_are_valid_RLP_decoding_back_to_originals()
     {
