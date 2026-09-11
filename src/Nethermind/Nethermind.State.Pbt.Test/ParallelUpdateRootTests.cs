@@ -149,6 +149,78 @@ public class ParallelUpdateRootTests
         }
     }
 
+    [Test]
+    public void Sibling_prefix_jumps_restore_paths_across_mutations_and_reopen([Values] bool parallel)
+    {
+        using PbtNodeGroupStore store = new();
+        EipReferenceTree oracle = new();
+        Dictionary<string, byte[]> surviving = [];
+        List<(byte[] Key, byte[]? Value)> initial = [];
+        foreach (string zone in new[] { "00", "01", "FF" })
+        foreach (string sibling in new[] { "0F", "10", "F0" })
+        foreach (string suffix in new[] { "00", "01", "F0" })
+        {
+            string padding = new('D', zone == "FF" ? 126 : 62);
+            initial.Add((Bytes.FromHexString(zone + sibling + padding + suffix), Value(1)));
+        }
+        ValueHash256 root = default;
+        ApplyAndCompare(store, initial);
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        for (int index = 0; index < initial.Count; index++)
+            changes.Add((initial[index].Key, index % 3 == 0 ? Value(2) : null));
+        ApplyAndCompare(store, changes);
+        using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
+        ApplyAndCompare(reopened, initial);
+        ApplyAndCompare(reopened, changes);
+
+        void ApplyAndCompare(PbtNodeGroupStore target, List<(byte[] Key, byte[]? Value)> writes)
+        {
+            if (parallel)
+            {
+                using PbtPartitionBatches partitions = PreparePartitions([.. writes]);
+                root = TrieUpdater.UpdateRoot(target, root, partitions);
+            }
+            else
+            {
+                using PbtWriteBatchBuilder<PbtStorageFullKey> builder = new(0);
+                foreach ((byte[] key, byte[]? value) in writes)
+                {
+                    if (value is null) builder.Delete(new PbtStorageFullKey(key));
+                    else builder.Set(new PbtStorageFullKey(key), new ValueHash256(value));
+                }
+                root = TrieUpdater.UpdateRoot(target, root, builder.Build());
+            }
+            foreach ((byte[] key, byte[]? value) in writes)
+            {
+                if (value is null)
+                {
+                    oracle.Delete(key);
+                    surviving.Remove(Convert.ToHexString(key));
+                }
+                else
+                {
+                    oracle.Insert(key, value);
+                    surviving[Convert.ToHexString(key)] = value;
+                }
+            }
+            using PbtTreeHarness rebuilt = new();
+            List<(byte[] Key, byte[]? Value)> remaining = [];
+            foreach ((string key, byte[] value) in surviving)
+                remaining.Add((Bytes.FromHexString(key), value));
+            rebuilt.ApplyBatch(remaining);
+            IReadOnlyList<PbtNodeRecord> records = target.EnumerateRecords();
+            string[] canonicalRecords = new string[records.Count];
+            for (int index = 0; index < records.Count; index++)
+                canonicalRecords[index] = Convert.ToHexString(records[index].Path.ToEncodedArray()) + Convert.ToHexString(records[index].Encoding.Span);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+                Assert.That(root, Is.EqualTo(rebuilt.RootHash));
+                Assert.That(canonicalRecords, Is.EqualTo(rebuilt.CanonicalRecords()));
+            }
+        }
+    }
+
     [TestCase(0x00)]
     [TestCase(0x01)]
     public void Storage_singleton_survives_small_partition_expansion_promotion_and_reopen(byte smallZone)
@@ -353,13 +425,13 @@ public class ParallelUpdateRootTests
         internal List<(PbtStorageNodePath Path, ValueHash256 Hash)> Reads { get; } = [];
         internal List<(PbtStorageNodePath Path, ValueHash256 Hash, bool IsNull)> Writes { get; } = [];
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
         {
             lock (Reads) Reads.Add((groupKey.ToPath<PbtStorageNodePath>(), hash));
             return _store.GetNodeGroup(groupKey, hash);
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
         {
             lock (Writes) Writes.Add((groupKey.ToPath<PbtStorageNodePath>(), hash, payload is null));
             _store.SetNodeGroup(groupKey, hash, payload);
@@ -413,7 +485,7 @@ public class ParallelUpdateRootTests
         internal int ActiveReads => _activeReads;
         internal bool DuplicateWrites { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
         {
             Interlocked.Increment(ref _activeReads);
             try
@@ -424,7 +496,7 @@ public class ParallelUpdateRootTests
                     if (!_barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
                         throw new TimeoutException("The independent zone folds did not overlap.");
                 }
-                if (FailWorker && groupKey.BitDepth > 12 && groupKey.GetByte(0) == 0x01 && groupKey.GetByte(1) >= 0x10)
+                if (FailWorker && groupKey.BitDepth > 12 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == 0x01 && groupKey.ToPath<PbtStorageNodePath>().GetByte(1) >= 0x10)
                     throw new InvalidDataException("Injected worker failure after folding the first nibble.");
                 return Inner.GetNodeGroup(groupKey, hash);
             }
@@ -434,7 +506,7 @@ public class ParallelUpdateRootTests
             }
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
         {
             lock (_writtenGroups)
             {

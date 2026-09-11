@@ -1351,13 +1351,13 @@ public class PbtSnapshotBundleTests
     {
         public int ApplyCount { get; private set; }
         public int? FailedZone { get; init; }
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath> => bundle.GetNodeGroup(groupKey, groupHash);
-        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash) => bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), groupHash);
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         {
-            if (groupKey.BitDepth == 8 && groupKey.GetByte(0) == FailedZone)
+            if (groupKey.BitDepth == 8 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == FailedZone)
                 throw new InvalidDataException("Configured partition write failure.");
             ApplyCount++;
-            bundle.SetNodeGroup(groupKey, groupHash, payload);
+            bundle.SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), groupHash, payload);
         }
     }
 }

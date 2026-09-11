@@ -17,13 +17,16 @@ internal static class PbtTrieWarmer
 
         PbtStorageNodePath path = new([], 0);
         ValueHash256 groupHash = root;
+        Span<byte> groupPathBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
         while (true)
         {
             PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
-            using RefCountingMemory? payload = store.GetNodeGroup(location.GroupKey, groupHash);
+            PbtStorageNodePath groupKey = location.GroupKey;
+            PbtTraversalPath groupPath = PbtTraversalPath.FromPath(groupPathBuffer, groupKey);
+            using RefCountingMemory? payload = store.GetNodeGroup(groupPath, groupHash);
             if (payload is null) return;
 
-            PbtNodeGroupReader<PbtStorageNodePath> group = new(location.GroupKey, payload.GetSpan());
+            PbtNodeGroupReader group = new(groupPath, payload.GetSpan());
             do
             {
                 if (!group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding)) return;
@@ -36,12 +39,12 @@ internal static class PbtTrieWarmer
                 int direction = key.GetBit(branchDepth);
                 PbtStorageNodePath childPath = path.Append(node.Prefix, direction);
                 location = PbtFourLevelGroupGeometry.Locate(childPath);
-                if (!location.GroupKey.Equals(group.GroupKey))
+                if (!location.GroupKey.Equals(groupKey))
                 {
                     groupHash = HashAtBoundary(node, location.GroupKey.BitDepth - path.BitDepth);
                 }
                 path = childPath;
-            } while (location.GroupKey.Equals(group.GroupKey));
+            } while (location.GroupKey.Equals(groupKey));
         }
     }
 

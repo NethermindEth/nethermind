@@ -198,11 +198,11 @@ public static class PbtNodeGroupCodec
 }
 
 /// <summary>Provides a validated, allocation-free view over a borrowed node-group payload.</summary>
-public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtNodePath<TPath>
+public readonly ref struct PbtNodeGroupReader
 {
     private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
     private const uint AllowedPositionBits = (1u << PbtFourLevelGroupGeometry.PositionCount) - 1;
-    private readonly TPath _groupKey;
+    private readonly int _groupDepth;
     private readonly ReadOnlySpan<byte> _payload;
     private readonly OffsetBuffer _offsets;
     private readonly LengthBuffer _lengths;
@@ -210,15 +210,18 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
     private readonly bool _initialized;
 
     /// <summary>Validates and borrows a complete node-group payload.</summary>
-    public PbtNodeGroupReader(TPath groupKey, ReadOnlySpan<byte> payload)
+    /// <remarks>The path is used only for validation; advancing the cursor cannot change this reader or its enumerators.
+    /// The payload must remain valid and immutable for the lifetime of the reader and its enumerators.</remarks>
+    public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload)
     {
-        ValidateGroupKey(groupKey);
+        int groupDepth = path.BitDepth;
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(path));
         if (payload.Length < PbtNodeGroupCodec.HeaderLength || !payload[..PbtNodeGroupCodec.HeaderLength].SequenceEqual(PbtNodeGroupCodec.Header))
             throw new InvalidDataException("Unsupported or missing PBT node group format header.");
         payload = payload[PbtNodeGroupCodec.HeaderLength..];
         if (payload.Length < sizeof(uint)) throw new InvalidDataException("Truncated PBT node group footer.");
         uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^sizeof(uint)..]);
-        if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupKey.BitDepth != 0 && (availability & ReservedRootBit) != 0))
+        if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupDepth != 0 && (availability & ReservedRootBit) != 0))
             throw new InvalidDataException("Invalid PBT node group availability bits.");
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability);
         if (payload.Length < trailerLength) throw new InvalidDataException("Truncated PBT node group offset table.");
@@ -254,14 +257,14 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
             try
             {
                 PbtNodeCodec.ValidateExact(encoding);
-                ValidateLeafPath(groupKey, position, encoding);
+                ValidateLeafPath(path, position, encoding);
             }
             catch (InvalidDataException exception) { throw new InvalidDataException("Invalid PBT node in group.", exception); }
             lengths[position] = nextOffset - start;
             nextOffset = start;
         }
 
-        _groupKey = groupKey;
+        _groupDepth = groupDepth;
         _payload = payload;
         _offsets = offsets;
         _lengths = lengths;
@@ -269,8 +272,6 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
         _initialized = true;
     }
 
-    /// <summary>Gets the key identifying this group.</summary>
-    public TPath GroupKey => InitializedGroupKey();
     /// <summary>Gets the availability bits.</summary>
     public uint Availability { get { EnsureInitialized(); return _availability; } }
     /// <summary>Gets the number of nodes in this group.</summary>
@@ -314,20 +315,22 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
         return new(this);
     }
 
-    private TPath InitializedGroupKey() { EnsureInitialized(); return _groupKey; }
     private void ValidatePosition(int position)
     {
         EnsureInitialized();
-        if ((uint)position >= PbtNodeGroupCodec.PositionCount || (position == PbtFourLevelGroupGeometry.RootPosition && _groupKey.BitDepth != 0))
+        if ((uint)position >= PbtNodeGroupCodec.PositionCount || (position == PbtFourLevelGroupGeometry.RootPosition && _groupDepth != 0))
             throw new ArgumentOutOfRangeException(nameof(position));
     }
     private void EnsureInitialized() { if (!_initialized) throw new InvalidOperationException("The PBT node-group reader is not initialized."); }
-    private static void ValidateGroupKey(TPath groupKey)
-    {
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-    }
     [System.Diagnostics.Conditional("DEBUG")]
-    internal static void ValidateLeafPath(TPath groupKey, int position, ReadOnlySpan<byte> encoding)
+    internal static void ValidateLeafPath<TPath>(TPath groupKey, int position, ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
+    {
+        PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        ValidateLeafPath(path, position, encoding);
+    }
+
+    [System.Diagnostics.Conditional("DEBUG")]
+    internal static void ValidateLeafPath(scoped in PbtTraversalPath groupKey, int position, ReadOnlySpan<byte> encoding)
     {
         if (encoding[0] != 0 || position == PbtFourLevelGroupGeometry.RootPosition) return;
         Span<byte> directions = stackalloc byte[PbtFourLevelGroupGeometry.LevelsPerGroup];
@@ -337,12 +340,12 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
         if (keyLength * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
         ReadOnlySpan<byte> key = encoding.Slice(3, keyLength);
         int completeBytes = groupKey.BitDepth >> 3;
-        if (!groupKey.MatchesPrefix(key, completeBytes * 8))
+        if (!groupKey.Bytes[..completeBytes].SequenceEqual(key[..completeBytes]))
             throw new InvalidDataException("PBT leaf does not match its group position.");
 
         // Four-level group alignment keeps the group tail and relative path in one byte.
         int groupTailBits = groupKey.BitDepth & 7;
-        int expectedTail = groupTailBits == 0 ? 0 : groupKey.GetByte(completeBytes);
+        int expectedTail = groupTailBits == 0 ? 0 : groupKey.Bytes[completeBytes];
         for (int index = 0; index < relativeDepth; index++)
             expectedTail |= directions[index] << (7 - groupTailBits - index);
         int tailMask = 0xFF << (8 - groupTailBits - relativeDepth);
@@ -367,9 +370,9 @@ public readonly ref struct PbtNodeGroupReader<TPath> where TPath : struct, IPbtN
     /// <summary>Enumerates present positions without allocating.</summary>
     public ref struct Enumerator
     {
-        private readonly PbtNodeGroupReader<TPath> _reader;
+        private readonly PbtNodeGroupReader _reader;
         private int _position;
-        internal Enumerator(PbtNodeGroupReader<TPath> reader) { _reader = reader; _position = -1; Current = default; CurrentPosition = -1; }
+        internal Enumerator(PbtNodeGroupReader reader) { _reader = reader; _position = -1; Current = default; CurrentPosition = -1; }
         /// <summary>Gets the current node encoding.</summary>
         public ReadOnlySpan<byte> Current { get; private set; }
         /// <summary>Gets the current post-order position.</summary>

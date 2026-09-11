@@ -2297,8 +2297,8 @@ public class Eip8297CanonicalTreeTests
 
     private sealed class FailingPublishStore(IPbtStore store, int failedDepth) : IPbtStore
     {
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash) where TPath : struct, IPbtNodePath<TPath> => store.GetNodeGroup(groupKey, hash);
-        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash) => store.GetNodeGroup(groupKey, hash);
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
         {
             if (groupKey.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
             store.SetNodeGroup(groupKey, hash, payload);
@@ -2366,9 +2366,9 @@ public class Eip8297CanonicalTreeTests
         IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
         Assert.That(payloads, Has.Count.EqualTo(1));
         PbtStorageNodePath groupKey = new([], 0);
-        PbtNodeGroupReader<PbtStorageNodePath> reader = new(groupKey, payloads[0].Payload.Span);
+        PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(groupKey, payloads[0].Payload.Span);
         List<PbtNodeRecord> records = [];
-        PbtNodeGroupReader<PbtStorageNodePath>.Enumerator nodes = reader.EnumerateNodes();
+        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
         while (nodes.MoveNext())
             records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[payloads[0].Payload.Length];
@@ -2403,7 +2403,7 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath groupKey = new([], 0);
         using (RefCountingMemory? original = store.GetPhysicalNodeGroup(groupKey))
         {
-            PbtNodeGroupReader<PbtStorageNodePath> reader = new(groupKey, original!.GetSpan());
+            PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(groupKey, original!.GetSpan());
             PbtNodeReader branch = new(reader[18]);
             Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 4));
         }
@@ -2412,7 +2412,7 @@ public class Eip8297CanonicalTreeTests
         oracle.Insert(left, Value(1));
         oracle.Insert(right, Value(2));
         using RefCountingMemory? updated = store.GetPhysicalNodeGroup(groupKey);
-        PbtNodeGroupReader<PbtStorageNodePath> updatedReader = new(groupKey, updated!.GetSpan());
+        PbtNodeGroupReader updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
         PbtNodeReader promoted = new(updatedReader[30]);
         using (Assert.EnterMultipleScope())
         {
@@ -2565,7 +2565,7 @@ public class Eip8297CanonicalTreeTests
         internal bool ThrowOnApply { get; set; }
         internal Action<PbtStorageNodePath>? OnApply { get; set; }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
         {
             Reads++;
             PbtStorageNodePath storageGroupKey = groupKey.ToPath<PbtStorageNodePath>();
@@ -2581,7 +2581,7 @@ public class Eip8297CanonicalTreeTests
                 for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
                 {
                     if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                    PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position).ToPath<PbtStorageNodePath>();
+                    PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(storageGroupKey, position);
                     byte[]? encoding = overrideNode(path);
                     if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
                 }
@@ -2590,7 +2590,7 @@ public class Eip8297CanonicalTreeTests
                 BufferWriter writer = new(MemoryProvider);
                 try
                 {
-                    PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
+                    PbtNodeGroupCodec.Encode(ref writer, storageGroupKey, records);
                     RefCountingMemory payload = writer.Detach()!;
                     return payload;
                 }
@@ -2604,7 +2604,7 @@ public class Eip8297CanonicalTreeTests
             return innerPayload;
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
         {
             Applies++;
             OnApply?.Invoke(groupKey.ToPath<PbtStorageNodePath>());

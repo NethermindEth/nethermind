@@ -241,7 +241,7 @@ public class PbtRocksDbPersistenceTests
         }
 
         byte[] payload = db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8)!;
-        PbtNodeGroupReader<PbtNodePath> reader = new(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
+        PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payload.Length, Is.EqualTo(node.Length + PbtNodeGroupCodec.HeaderLength + 6));
@@ -392,7 +392,7 @@ public class PbtRocksDbPersistenceTests
             foreach (PbtStorageNodePath groupKey in reader.EnumerateNodeGroupKeys())
             {
                 using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-                PbtNodeGroupReader<PbtStorageNodePath> group = new(groupKey, payload.GetSpan());
+                PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
                 if (groupKey.BitDepth != 0)
                     Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
                 persisted.Add(new PbtPhysicalPayload(groupKey.ToEncodedArray(), payload.GetSpan()));
@@ -446,7 +446,7 @@ public class PbtRocksDbPersistenceTests
             using (IPbtPersistence.IReader reader = persistence.CreateReader())
             {
                 payload = reader.GetNodeGroup(groupKey)!;
-                Assert.That(new PbtNodeGroupReader<PbtNodePath>(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+                Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
                     Is.EqualTo(originalNode));
             }
 
@@ -457,7 +457,7 @@ public class PbtRocksDbPersistenceTests
                 batch.Commit();
             }
 
-            Assert.That(new PbtNodeGroupReader<PbtNodePath>(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+            Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
                 Is.EqualTo(originalNode));
             ((IDisposable)payload).Dispose();
         }
@@ -731,7 +731,7 @@ public class PbtRocksDbPersistenceTests
         PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
         using RefCountingMemory? payload = reader.GetNodeGroup(location.GroupKey);
         if (payload is null) return null;
-        PbtNodeGroupReader<TPath> group = new(location.GroupKey, payload.GetSpan());
+        PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
         return group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding) ? encoding.ToArray() : null;
     }
 

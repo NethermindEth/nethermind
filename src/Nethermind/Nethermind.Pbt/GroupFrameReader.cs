@@ -23,26 +23,27 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private uint _hashed;
     internal uint Taken;
 
-    internal GroupFrameReader(IPbtStore store, TPath groupKey, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
+    internal GroupFrameReader(IPbtStore store, int bitDepth, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
     {
-        GroupKey = groupKey;
+        BitDepth = bitDepth;
         _groupHash = groupHash;
         _store = store;
         _metrics = metrics;
         metrics?.IncrementGroupFrameResolutions();
     }
 
-    private void EnsureLoaded()
+    private void EnsureLoaded(scoped in PbtTraversalPath path)
     {
+        Debug.Assert(path.BitDepth == BitDepth);
         if (_loaded) return;
         _metrics?.IncrementPhysicalGroupFetches();
-        _lease = _store.GetNodeGroup(GroupKey, _groupHash);
+        _lease = _store.GetNodeGroup(path, _groupHash);
         _loaded = true;
         if (_lease is null) return;
         try
         {
             _metrics?.IncrementGroupParses();
-            PbtNodeGroupReader<TPath> reader = new(GroupKey, _lease.GetSpan());
+            PbtNodeGroupReader reader = new(path, _lease.GetSpan());
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
                 if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;
@@ -58,19 +59,18 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         }
     }
 
-    internal TPath GroupKey { get; }
-    internal int BitDepth => GroupKey.BitDepth;
+    internal int BitDepth { get; }
 
-    internal ReadOnlyMemory<byte> GetEncoding(int position)
+    internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)
     {
-        EnsureLoaded();
+        EnsureLoaded(path);
         return _lengths[position] == 0 ? default : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
     }
 
-    internal int CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
+    internal int CopyRange(scoped in PbtTraversalPath path, PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
     {
         if (startPosition == endPosition) return 0;
-        EnsureLoaded();
+        EnsureLoaded(path);
         while (startPosition < endPosition && _lengths[startPosition] == 0) startPosition++;
         if (startPosition == endPosition) return 0;
         int lastPosition = endPosition - 1;
@@ -81,33 +81,33 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
-    internal TrieUpdater<TKey, TPath>.Subtree Acquire(int position)
+    internal TrieUpdater<TKey, TPath>.Subtree Acquire(scoped in PbtTraversalPath path, int position)
     {
-        ReadOnlyMemory<byte> encoding = GetEncoding(position);
+        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
         if (encoding.IsEmpty)
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(position);
             if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
-            ValueHash256 left = GetHash(position - width);
-            ValueHash256 right = GetHash(position - 1);
-            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.PathOf(GroupKey, position), left, right);
+            ValueHash256 left = GetHash(path, position - width);
+            ValueHash256 right = GetHash(path, position - 1);
+            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.PathOf<TPath>(path, position), left, right);
         }
-        TPath? path = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? null : PbtFourLevelGroupGeometry.PathOf(GroupKey, position);
-        return new(encoding, path);
+        TPath? nodePath = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? null : PbtFourLevelGroupGeometry.PathOf<TPath>(path, position);
+        return new(encoding, nodePath);
     }
 
-    private ValueHash256 GetHash(int position)
+    private ValueHash256 GetHash(scoped in PbtTraversalPath path, int position)
     {
         uint bit = 1u << position;
         if ((_hashed & bit) != 0) return _hashes[position];
-        ReadOnlyMemory<byte> encoding = GetEncoding(position);
+        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
         ValueHash256 hash = default;
         if (!encoding.IsEmpty)
             hash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding.Span));
         else if (PbtFourLevelGroupGeometry.WidthOf(position) is int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
         {
-            ValueHash256 left = GetHash(position - width);
-            ValueHash256 right = GetHash(position - 1);
+            ValueHash256 left = GetHash(path, position - width);
+            ValueHash256 right = GetHash(path, position - 1);
             if (left != default && right != default)
             {
                 Span<byte> branch = stackalloc byte[67];
@@ -157,11 +157,11 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         private int _element;
     }
 
-    internal TrieUpdater<TKey, TPath>.Subtree Take(PbtNodeGroupWriter<TPath> writer, int position, bool allowAbsent = false)
+    internal TrieUpdater<TKey, TPath>.Subtree Take(scoped in PbtTraversalPath path, PbtNodeGroupWriter<TPath> writer, int position, bool allowAbsent = false)
     {
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         TrieUpdater<TKey, TPath>.Subtree node = (Taken & (1U << position)) == 0
-            ? Acquire(position)
+            ? Acquire(path, position)
             : default;
         if (node.IsEmpty && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
         Taken |= 1U << position;
