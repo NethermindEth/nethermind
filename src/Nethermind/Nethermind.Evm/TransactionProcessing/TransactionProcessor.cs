@@ -309,7 +309,8 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
-                SuppressLogs = opts.HasFlag(ExecutionOptions.Warmup) && ReferenceEquals(tracer, NullTxTracer.Instance)
+                SuppressLogs = !tracer.IsCollectingLogs && !tracer.IsTracingLogs,
+                MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();
