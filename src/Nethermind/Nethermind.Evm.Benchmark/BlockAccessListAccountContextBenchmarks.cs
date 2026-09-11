@@ -39,6 +39,19 @@ public class BlockAccessListAccountContextBenchmarks
     [GlobalSetup]
     public void Setup()
     {
+        try
+        {
+            SetupCore();
+        }
+        catch
+        {
+            Cleanup();
+            throw;
+        }
+    }
+
+    private void SetupCore()
+    {
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Amsterdam.Instance))
             .Build();
@@ -104,9 +117,13 @@ public class BlockAccessListAccountContextBenchmarks
     [GlobalCleanup]
     public void Cleanup()
     {
-        _state.ClearParentReader();
-        _stateScope.Dispose();
-        _processingScope.Dispose();
-        _container.Dispose();
+        _state?.ClearParentReader();
+        _stateScope?.Dispose();
+        _processingScope?.Dispose();
+        _container?.Dispose();
+        _state = null!;
+        _stateScope = null!;
+        _processingScope = null!;
+        _container = null!;
     }
 }

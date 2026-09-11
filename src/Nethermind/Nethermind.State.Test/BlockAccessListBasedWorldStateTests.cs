@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Store.Test;
 
@@ -37,7 +38,8 @@ public class BlockAccessListBasedWorldStateTests
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
-        Action<IWorldState>? genesisSetup = null)
+        Action<IWorldState>? genesisSetup = null,
+        ILogManager? logManager = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -51,7 +53,7 @@ public class BlockAccessListBasedWorldStateTests
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
 
-        BlockAccessListBasedWorldState bws = new(inner, Logger);
+        BlockAccessListBasedWorldState bws = new(inner, logManager ?? Logger);
         bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         bws.Setup(block);
@@ -81,6 +83,8 @@ public class BlockAccessListBasedWorldStateTests
             Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
                 () => bws.GetBalance(TestItem.AddressC));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.GetBalance(TestItem.AddressC));
             Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
 
             bws.SetBlockAccessIndex(2);
@@ -93,6 +97,29 @@ public class BlockAccessListBasedWorldStateTests
             Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)40));
             bws.ClearParentReader();
             Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+        }
+    }
+
+    [Test]
+    public void AccountContext_DoesNotRetainPreviousBlockAfterSetupFails()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 10)).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            1, bal, logManager: new OneLoggerLogManager(new ILogger(logger)));
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            ReadOnlyBlockAccessList next = Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(0, 40)).TestObject).TestObject;
+            logger.When(log => log.Trace(Arg.Any<string>()))
+                .Do(_ => throw new InvalidOperationException("Injected reset failure"));
+            Assert.Throws<InvalidOperationException>(() => bws.Setup(Build.A.Block.WithBlockAccessList(next).TestObject));
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)40));
         }
     }
 

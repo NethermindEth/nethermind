@@ -44,12 +44,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public void Setup(Block suggestedBlock)
     {
+        _contextAccount = null;
+        _contextChanges = null;
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
-        _contextAccount = null;
-        _contextChanges = null;
     }
 
     public void SetParentReader(IWorldState parentReader)
