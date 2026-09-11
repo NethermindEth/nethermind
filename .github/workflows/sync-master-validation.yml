@@ -16,15 +16,6 @@ on:
         description: "Docker image tag to test (e.g. nethermindeth/nethermind:master)"
         default: ""
         required: false
-      mode:
-        description: "Sync mode"
-        type: choice
-        options:
-          - Both
-          - HalfPath
-          - Flat
-        default: Both
-        required: true
       chain_filter:
         description: "Run specific chain(s) only (partial name match, e.g. 'mainnet')"
         default: ""
@@ -83,41 +74,23 @@ jobs:
       - name: Set Matrix
         id: set-matrix
         env:
-          MODE_INPUT: ${{ github.event.inputs.mode }}
           CHAIN_FILTER: ${{ github.event.inputs.chain_filter }}
           PROVISIONING_INPUT: ${{ github.event.inputs.provisioning_model }}
           MACHINE_TYPE_INPUT: ${{ github.event.inputs.machine_type }}
         run: |
-          requested_mode="${MODE_INPUT:-Both}"
-          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
-
-          case "$requested_mode" in
-            both)     modes='["HalfPath","Flat"]' ;;
-            halfpath) modes='["HalfPath"]' ;;
-            flat)     modes='["Flat"]' ;;
-            *)
-              echo "Unsupported mode '$requested_mode'. Expected 'Both', 'HalfPath', or 'Flat'."
-              exit 1
-              ;;
-          esac
-
           # master-validation chains; op-mainnet dropped to cut cost (kept in sync-supported-chains)
           MASTER_CHAINS='["mainnet","gnosis"]'
 
           matrix=$(cat scripts/config/testnet-matrix.json | jq \
             --argjson chains "$MASTER_CHAINS" \
-            --argjson modes "$modes" \
             --arg run_id "$GITHUB_RUN_ID" \
             --arg model "$PROVISIONING_INPUT" \
             --arg machine_type "$MACHINE_TYPE_INPUT" \
             '[.[] | select(.network as $n | $chains | index($n)) ] |
-             [.[] as $config
-              | $modes[] as $mode
+              [.[] as $config
               | ($config + {
-                  mode: $mode,
                   runner_label: (
-                    (if $mode == "Flat" then "f-" else "hp-" end)
-                    + $run_id + "-master-" + $config.network
+                    "f-" + $run_id + "-master-" + $config.network
                   ),
                   machine_type: (if $machine_type == "" then $config.machine_type else $machine_type end),
                   # This is the path that pages people on Slack, and a reclaimed Spot VM is
@@ -127,7 +100,7 @@ jobs:
                     if $model == "Spot" then "SPOT" else "STANDARD" end
                   ),
                   timeout: (
-                    if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
+                    if $config.network == "mainnet" or $config.network == "gnosis" then 360
                     else $config.timeout end
                   )
                 })
@@ -153,12 +126,11 @@ jobs:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    name: "Sync ${{ matrix.config.network }} (${{ matrix.config.mode }})"
+    name: "Sync ${{ matrix.config.network }} (Flat)"
     uses: ./.github/workflows/sync-one-chain.yml
     secrets: inherit
     with:
       network: ${{ matrix.config.network }}
-      mode: ${{ matrix.config.mode }}
       runner_label: ${{ matrix.config.runner_label }}
       machine_type: ${{ matrix.config.machine_type }}
       local_ssd_count: ${{ matrix.config.local_ssd_count }}

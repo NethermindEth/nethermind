@@ -163,7 +163,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. FlatDB nodes advertise snap serving by default.", DefaultValue = "true", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
 
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]

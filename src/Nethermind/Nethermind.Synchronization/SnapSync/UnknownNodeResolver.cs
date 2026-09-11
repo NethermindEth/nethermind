@@ -29,5 +29,4 @@ internal sealed class UnknownNodeResolver : ITrieNodeResolver
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
 
-    public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
 }

@@ -21,9 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Container;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -191,8 +189,7 @@ public class BlockProcessingBenchmark
 
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        IWorldStateManager wsm = _container.Resolve<IWorldStateManager>();
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();

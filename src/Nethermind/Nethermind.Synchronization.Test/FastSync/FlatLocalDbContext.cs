@@ -16,23 +16,15 @@ namespace Nethermind.Synchronization.Test.FastSync;
 
 public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager) : IStateSyncTestOperation
 {
-    public Hash256 RootHash
-    {
-        get
-        {
-            using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            return reader.CurrentState.StateRoot.ToHash256();
-        }
-    }
+    private Hash256 _rootHash = Keccak.EmptyTreeHash;
+
+    public Hash256 RootHash => _rootHash;
 
     public void UpdateRootHash()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
-        WritableTrieStore adapter = new(reader, writeBatch);
-        StateTree tree = new(adapter, logManager);
-        tree.UpdateRootHash();
-        tree.Commit();
+        byte[]? rootRlp = reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None);
+        _rootHash = rootRlp is null ? Keccak.EmptyTreeHash : ValueKeccak.Compute(rootRlp).ToHash256();
     }
 
     public void SetAccountsAndCommit(params (Hash256 Address, Account? Account)[] accounts)
@@ -45,17 +37,19 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         foreach ((Hash256? address, Account? account) in accounts)
             tree.Set(address, account);
         tree.Commit();
+        _rootHash = tree.RootHash;
     }
 
     public void AssertFlushed()
     {
-        // For flat, sync finalization writes to persistence. Verify root node exists.
+        // Sync write batches are visible in persistence as soon as they are disposed. Verify the root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Not.Null, "root node should exist after flush");
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
     {
+        UpdateRootHash();
         if (!skipLogs) logger.Info($"==================== {stage} ====================");
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -84,7 +78,9 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
         // The whole state trie is under the empty-path root, so [Zero, MaxValue] removes every node (heal re-fetches).
+        writeBatch.DeleteAccountRange(ValueKeccak.Zero, ValueKeccak.MaxValue);
         writeBatch.DeleteStateTrieNodeRange(ValueKeccak.Zero, ValueKeccak.MaxValue);
+        _rootHash = Keccak.EmptyTreeHash;
     }
 
     /// <summary>

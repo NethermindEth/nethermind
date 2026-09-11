@@ -1110,9 +1110,11 @@ public partial class EngineModuleTests
         List<PeerInfo> peerInfos = [new(syncPeer)];
         syncPeerPool.InitializedPeers.Returns(peerInfos);
 
+        IFullStateFinder fullStateFinder = Substitute.For<IFullStateFinder>();
+        fullStateFinder.FindBestFullState().Returns(peerHeader.Number);
         SyncProgressResolver syncProgressResolver = new(
             chain.BlockTree,
-            new FullStateFinder(chain.BlockTree, chain.StateReader),
+            fullStateFinder,
             new SyncConfig(),
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),

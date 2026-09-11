@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -50,7 +49,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
-                Substitute.For<IWorldStateManager>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
                 Substitute.For<IReceiptFinder>(),

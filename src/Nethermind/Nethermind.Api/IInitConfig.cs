@@ -81,8 +81,8 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DisableMallocOpts { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Key scheme for state db. Only effect new db.", DefaultValue = "Current", HiddenFromDocs = true)]
-    INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
+    [ConfigItem(Description = "Deprecated state database schema selector. Hash and HalfPath are no longer supported; use FlatDB.", DefaultValue = "Current", HiddenFromDocs = true)]
+    string StateDbKeyScheme { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? ExitOnBlockNumber { get; set; }

@@ -225,7 +225,7 @@ jobs:
   # NUnit TEST_SKIP_HEAVY=1 scope those variant jobs used: the heavy engine / sync /
   # Amsterdam-BAL fixtures are skipped (build-config bugs live in the EVM + crypto, which
   # blockTest exercises as well as engineTest), leaving block + state + tx. Sequential
-  # (patricia) config, coarsely chunked, once per variant. checked builds the runner with
+  # (FlatDB) config, coarsely chunked, once per variant. checked builds the runner with
   # DEBUG defines; no-intrinsics disables hardware intrinsics at run time.
   pyspec-checked:
     name: EEST nethtest (checked)

@@ -257,8 +257,6 @@ case "$CLIENT" in
       # Park the node at the snapshot head: no peers, no discovery, no sync writes.
       "--Init.DiscoveryEnabled=false"
       "--Network.MaxActivePeers=0"
-      # No background pruning while serving a parked snapshot.
-      "--Pruning.Mode=None"
       "--HealthChecks.Enabled=false"
       "--Metrics.Enabled=false"
     )

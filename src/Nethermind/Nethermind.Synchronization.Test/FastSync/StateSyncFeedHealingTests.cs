@@ -171,7 +171,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         }
 
         SafeContext ctx = container.Resolve<SafeContext>();
-        await ActivateAndWait(ctx, timeout: 20000);
+        await ActivateAndWait(ctx);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 

@@ -51,9 +51,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("fast", true)]
     public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.FastSync, fastSyncEnabled);
 
-    [TestCase("archive")]
-    public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
-
     [TestCase("archive", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]
@@ -291,7 +288,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [Test]
-    public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
+    public void Archive_named_configs_enable_flat_history_in_all_runner_configs()
     {
         int archiveConfigs = 0;
         foreach (string configFile in AllConfigFiles())
@@ -302,8 +299,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
             }
 
             archiveConfigs++;
-            IPruningConfig pruningConfig = GetConfigFromFile<IPruningConfig>(configFile);
-            Assert.That(pruningConfig.Mode, Is.EqualTo(PruningMode.None), configFile);
+            IFlatDbConfig flatDbConfig = GetConfigFromFile<IFlatDbConfig>(configFile);
+            Assert.That(flatDbConfig.Enabled, Is.True, configFile);
+            Assert.That(flatDbConfig.HistoryEnabled, Is.True, configFile);
         }
 
         Assert.That(archiveConfigs, Is.GreaterThan(0));

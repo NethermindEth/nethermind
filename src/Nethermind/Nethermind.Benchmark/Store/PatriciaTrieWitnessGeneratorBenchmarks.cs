@@ -8,7 +8,6 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -32,7 +31,7 @@ namespace Nethermind.Benchmarks.Store
         [Params(0.0, 0.5)]
         public double DeleteFraction { get; set; }
 
-        private MemDb _db;
+        private MemoryNodeStorage _db;
         private Hash256 _root;
         private PatriciaTrieWitnessGenerator.PathEntry[] _entries;
         private Hash256[] _reads;
@@ -43,7 +42,7 @@ namespace Nethermind.Benchmarks.Store
         {
             Random rng = new(0);
 
-            MemDb db = new();
+            MemoryNodeStorage db = new();
             RawScopedTrieStore store = new(db);
             PatriciaTree tree = new(store, LimboLogs.Instance);
 
@@ -133,8 +132,6 @@ namespace Nethermind.Benchmarks.Store
             }
 
             public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseStore.GetStorageTrieNodeResolver(address);
-
-            public INodeStorage.KeyScheme Scheme => baseStore.Scheme;
 
             public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseStore.BeginCommit(root, writeFlags);
         }

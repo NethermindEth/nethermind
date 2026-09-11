@@ -12,9 +12,6 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Metrics": {
     "NodeName": "LineaMainnetArchive"
   },
@@ -26,6 +23,8 @@
     "Port": 8545
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

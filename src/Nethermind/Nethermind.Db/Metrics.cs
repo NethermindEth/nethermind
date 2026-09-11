@@ -73,10 +73,6 @@ namespace Nethermind.Db
         internal static void IncrementStateSkippedWrites(long value) => Interlocked.Add(ref _stateSkippedWrites.Value, value);
 
         [CounterMetric]
-        [Description("Number of State DB duplicate writes during full pruning.")]
-        public static int StateDbInPruningWrites;
-
-        [CounterMetric]
         [Description("Number of storage trie cache hits.")]
         public static long StorageTreeCache => _mainStorageTreeCache.Value + _otherStorageTreeCache.Value;
         private static CacheLinePaddedLong _mainStorageTreeCache;
@@ -141,20 +137,6 @@ namespace Nethermind.Db
         public static long StorageSkippedWrites => _storageSkippedWrites.Value;
         private static CacheLinePaddedLong _storageSkippedWrites;
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
-
-        [GaugeMetric]
-        [Description("Indicator if StateDb is being pruned.")]
-        public static int StateDbPruning { get; set; }
-
-        [GaugeMetric]
-        [Description("Duration of the last full pruning's trie copy and commit (excludes waiting for a suitable state root), in seconds.")]
-        public static long FullPruningLastDurationSeconds { get; set; }
-
-        [CounterMetric]
-        [Description("Number of full prunings completed since the node started.")]
-        public static long FullPruningCount => _fullPruningCount;
-        private static long _fullPruningCount;
-        internal static void IncrementFullPruningCount() => Interlocked.Increment(ref _fullPruningCount);
 
 #if ZK_EVM
         public static Dictionary<string, long> DbReads { get; } = [];

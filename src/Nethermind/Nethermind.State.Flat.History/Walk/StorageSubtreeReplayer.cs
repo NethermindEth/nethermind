@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Persistence;
@@ -189,7 +188,7 @@ internal sealed class StorageSubtreeReplayer(
         public void Reset(CommitmentEmitter? emitter, ILogManager logManager)
         {
             _emitter = emitter;
-            _store ??= new RawScopedTrieStore(new MemDb());
+            _store ??= new RawScopedTrieStore(new MemoryNodeStorage());
             Tree = new StorageTree(_store, logManager);
         }
 

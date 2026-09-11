@@ -36,7 +36,7 @@ public class SnapP2PCapabilityResolverTests
 
     private static SnapP2PCapabilityResolver CreateResolver(
         out ISyncModeSelector syncModeSelector,
-        bool snapServing = false, bool snapSync = false, bool balEnabled = true,
+        bool? snapServing = false, bool snapSync = false, bool balEnabled = true,
         bool balHealing = true, bool balPivot = true, bool healDecided = true, params ulong[] bestFullStates)
     {
         ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync, BalHealing = balHealing };
@@ -74,7 +74,8 @@ public class SnapP2PCapabilityResolverTests
     [TestCase(true, false, true, TestName = "Serving advertises snap regardless of sync")]
     [TestCase(false, true, true, TestName = "Snap-syncing advertises snap")]
     [TestCase(false, false, false, TestName = "Neither serving nor snap-syncing")]
-    public void Resolve_advertises_snap1(bool snapServing, bool snapSync, bool expected)
+    [TestCase(null, false, true, TestName = "Unspecified serving advertises snap by default")]
+    public void Resolve_advertises_snap1(bool? snapServing, bool snapSync, bool expected)
     {
         using SnapP2PCapabilityResolver resolver = CreateResolver(out ISyncModeSelector syncModeSelector, snapServing, snapSync);
         PublishSyncProgress(syncModeSelector);

@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -50,8 +49,6 @@ namespace Nethermind.Db.Test.Rpc
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.CodeDb);
 
-            ValidateDb<FullPruningDb>(
-                memDbProvider.StateDb);
         }
     }
 }

@@ -19,13 +19,12 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Merge": {
     "Enabled": false
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

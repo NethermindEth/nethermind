@@ -16,9 +16,6 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "JsonRpc": {
     "Enabled": true,
     "Port": 8545,
@@ -34,6 +31,8 @@
     "SequencerUrl": "https://sepolia-sequencer.optimism.io"
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

@@ -111,7 +111,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             CancelHintBal();
 
-            // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
+            // This trie-store path has no trie warmer, so HintBal only does work when a sink is given.
             if (sink is null) return Task.CompletedTask;
 
             int accountCount = bal.AccountChanges.Count;

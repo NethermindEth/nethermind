@@ -279,7 +279,7 @@ public class OpcodeTracingPluginTests
             "--OpcodeTracing.StartBlock", "1",
             "--OpcodeTracing.EndBlock", "3",
             "--OpcodeTracing.OutputDirectory", OutputDir,
-            "--Pruning.Mode", "None"));
+            "--FlatDb.HistoryEnabled", "true"));
 
         await ProduceBlocksAsync(version: 3, count: 3, timestamp: SepoliaCancunTimestamp);
 
@@ -300,7 +300,7 @@ public class OpcodeTracingPluginTests
     {
         // Phase A produces blocks with the plugin disabled, persisting db+keystore on the host;
         // Phase B replays with RetrospectiveExecution and asserts captured opcodes.
-        // Pruning.Mode None required so state survives the restart.
+        // FlatDB history is enabled so state survives the restart.
         const int targetBlocks = 8;
         string dataDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-data-{Guid.NewGuid():N}");
         string keystoreDir = Path.Combine(Path.GetTempPath(), $"nethermind-it-keystore-{Guid.NewGuid():N}");
@@ -314,7 +314,7 @@ public class OpcodeTracingPluginTests
             await StartNodeAsync(PrivateMergeCommand(
                 "--OpcodeTracing.Enabled", "false",
                 "--Blocks.ParallelExecution", parallelExecution.ToString().ToLowerInvariant(),
-                "--Pruning.Mode", "None"),
+                "--FlatDb.HistoryEnabled", "true"),
                 useTestChainspec: true,
                 persistentDataDirHostPath: dataDir,
                 persistentKeystoreHostPath: keystoreDir);
@@ -333,7 +333,7 @@ public class OpcodeTracingPluginTests
                 "--OpcodeTracing.EndBlock", blocksProduced.ToString(),
                 "--OpcodeTracing.OutputDirectory", OutputDir,
                 "--OpcodeTracing.MaxDegreeOfParallelism", maxDegreeOfParallelism.ToString().ToLowerInvariant(),
-                "--Pruning.Mode", "None",
+                "--FlatDb.HistoryEnabled", "true",
                 "--Blocks.ParallelExecution", parallelExecution.ToString().ToLowerInvariant()),
                 useTestChainspec: true,
                 persistentDataDirHostPath: dataDir,
@@ -386,7 +386,7 @@ public class OpcodeTracingPluginTests
             await StartNodeAsync(PrivateMergeCommand(
                 "--OpcodeTracing.Enabled", "false",
                 "--Blocks.ParallelExecution", blocksParallelExecution.ToString().ToLowerInvariant(),
-                "--Pruning.Mode", "None"),
+                "--FlatDb.HistoryEnabled", "true"),
                 useAmsterdamChainspec: true,
                 persistentDataDirHostPath: dataDir,
                 persistentKeystoreHostPath: keystoreDir);
@@ -406,7 +406,7 @@ public class OpcodeTracingPluginTests
                 "--OpcodeTracing.OutputDirectory", OutputDir,
                 "--OpcodeTracing.MaxDegreeOfParallelism", maxDegreeOfParallelism.ToString().ToLowerInvariant(),
                 "--Blocks.ParallelExecution", blocksParallelExecution.ToString().ToLowerInvariant(),
-                "--Pruning.Mode", "None"),
+                "--FlatDb.HistoryEnabled", "true"),
                 useAmsterdamChainspec: true,
                 persistentDataDirHostPath: dataDir,
                 persistentKeystoreHostPath: keystoreDir);

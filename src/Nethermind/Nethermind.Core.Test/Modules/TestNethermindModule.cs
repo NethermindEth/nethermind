@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -52,14 +51,8 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
         return new TestNethermindModule(DefaultConfigProvider(), spec, useTestSpecProvider: false);
     }
 
-    /// <summary>
-    /// Builds a config provider this module owns, with the suite-wide state backend applied
-    /// (<see cref="TestStateBackend"/>). A caller that passes its own <see cref="IFlatDbConfig"/> here — or
-    /// that constructs the <see cref="IConfigProvider"/> itself and uses the provider overload — keeps full
-    /// control of the backend.
-    /// </summary>
     private static ConfigProvider DefaultConfigProvider(params IConfig[] configs) =>
-        TestStateBackend.ApplyDefaultBackend(new ConfigProvider(configs), configs);
+        new(configs);
 
     protected override void Load(ContainerBuilder builder)
     {

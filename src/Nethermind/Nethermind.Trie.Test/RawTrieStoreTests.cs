@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -13,10 +12,25 @@ namespace Nethermind.Trie.Test;
 public class RawTrieStoreTests
 {
     [Test]
+    public void Memory_storage_preserves_empty_root_and_deletes_nodes()
+    {
+        MemoryNodeStorage storage = new();
+        ValueHash256 hash = Keccak.Compute("node").ValueHash256;
+
+        Assert.That(storage.Get(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.EqualTo(new byte[] { 128 }));
+        Assert.That(storage.KeyExists(null, TreePath.Empty, Keccak.EmptyTreeHash.ValueHash256), Is.True);
+
+        storage.Set(null, TreePath.Empty, hash, [1]);
+        Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.True);
+        storage.Set(null, TreePath.Empty, hash, default);
+        Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.False);
+    }
+
+    [Test]
     public void SmokeTest()
     {
-        MemDb db = new();
-        PatriciaTree patriciaTree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        MemoryNodeStorage storage = new();
+        PatriciaTree patriciaTree = new(new RawTrieStore(storage).GetTrieStore(null), LimboLogs.Instance);
 
         patriciaTree.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         patriciaTree.Set(TestItem.KeccakB.Bytes, TestItem.KeccakB.BytesToArray());
@@ -28,7 +42,7 @@ public class RawTrieStoreTests
         Hash256 rootHash = patriciaTree.RootHash;
 
         // Recreate
-        patriciaTree = new PatriciaTree(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        patriciaTree = new PatriciaTree(new RawTrieStore(storage).GetTrieStore(null), LimboLogs.Instance);
         patriciaTree.RootHash = rootHash;
 
         Assert.That(patriciaTree.Get(TestItem.KeccakA.Bytes).ToArray(), Is.EqualTo(TestItem.KeccakA.BytesToArray()));

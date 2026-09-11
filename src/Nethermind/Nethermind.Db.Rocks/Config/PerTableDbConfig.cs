@@ -70,11 +70,6 @@ public class PerTableDbConfig : IRocksDbConfig
 
     private string[] GetPrefixes()
     {
-        if (_tableName.StartsWith("State"))
-        {
-            return ["StateDb"];
-        }
-
         if (_columnName != null)
         {
             return [

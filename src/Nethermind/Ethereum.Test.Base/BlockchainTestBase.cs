@@ -74,12 +74,6 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual ILogManager? ComponentLogManagerOverride => null;
 
-    /// <summary>
-    /// Whether to run under the flat state layout, from the suite-wide selection.
-    /// See <see cref="TestStateBackend.UseFlatDb"/>.
-    /// </summary>
-    protected static bool UseFlatDb => TestStateBackend.UseFlatDb;
-
     protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     /// <summary>
@@ -140,8 +134,9 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
+        // FlatDB is the only supported state layout.
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-        flatDbConfig.Enabled = UseFlatDb;
+        flatDbConfig.Enabled = true;
         // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
         // and a fire-and-forget background convert from one test can race another test's files. Long finality is
         // irrelevant at EF-test chain lengths, so keep the on-disk tier off.

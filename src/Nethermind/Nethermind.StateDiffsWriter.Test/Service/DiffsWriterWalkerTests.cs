@@ -6,12 +6,12 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.StateDiff.Core.Data;
 using Nethermind.StateDiff.Core.Diff;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -29,7 +29,7 @@ public class DiffsWriterWalkerTests
         return new Account(0, 0, storageRoot, Keccak.Compute(code));
     }
 
-    private static Hash256 CommitStorage(MemDb db, Address address, params (UInt256 Index, byte[] Value)[] slots)
+    private static Hash256 CommitStorage(MemoryNodeStorage db, Address address, params (UInt256 Index, byte[] Value)[] slots)
     {
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
         StorageTree storageTree = new(new RawScopedTrieStore(db, addressHash), LimboLogs.Instance);
@@ -45,7 +45,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void AddContractWithStorage_EmitsSlotCountDelta()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB,
             (UInt256.Zero, [1]),
             (UInt256.One, [2]),
@@ -80,7 +80,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void RemoveContractWithStorage_EmitsNegativeSlotDelta()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB,
             (UInt256.Zero, [1]),
             (UInt256.One, [2]));
@@ -112,7 +112,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void EqualRoots_EmitsEmptyDiff()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
@@ -130,7 +130,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void ForwardAndReverse_SlotDeltasAreOpposite()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB, (UInt256.Zero, [1]), (UInt256.One, [2]));
 
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
@@ -156,7 +156,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void AddContractWithStorage_PreservesLegacyOutputsAndPopulatesNewDeltas()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB,
             (UInt256.Zero, [1]),
             (UInt256.One, [2]),
@@ -191,7 +191,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void RemoveContractWithStorage_NegativeByteAndAccountDeltas()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB,
             (UInt256.Zero, [1]),
             (UInt256.One, [2]));
@@ -223,7 +223,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void EqualRoots_AllNewDeltasAreZero()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
@@ -242,7 +242,7 @@ public class DiffsWriterWalkerTests
     [Test]
     public void ForwardAndReverse_NewDeltasAreOpposite()
     {
-        MemDb db = new();
+        MemoryNodeStorage db = new();
         Hash256 storageRoot = CommitStorage(db, TestItem.AddressB,
             (UInt256.Zero, [1]),
             (UInt256.One, [2]));

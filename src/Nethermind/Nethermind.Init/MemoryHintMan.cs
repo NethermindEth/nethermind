@@ -67,9 +67,6 @@ namespace Nethermind.Init
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
                 if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / OneMB,5} MB");
-                AssignTrieCacheMemory(dbConfig);
-                _remainingMemory -= TrieCacheMemory;
-                if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / OneMB,5} MB");
                 UpdateDbConfig(dbConfig, initConfig);
                 _remainingMemory -= DbMemory;
                 if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / OneMB,5} MB");
@@ -105,14 +102,6 @@ namespace Nethermind.Init
         public ulong NettyMemory { get; private set; }
         public ulong TxPoolMemory { get; private set; }
         public ulong PeersMemory { get; private set; }
-        public ulong TrieCacheMemory { get; private set; }
-
-        private void AssignTrieCacheMemory(IDbConfig dbConfig)
-        {
-            TrieCacheMemory = _remainingMemory / 5;
-            dbConfig.StateDbRowCacheSize = TrieCacheMemory;
-        }
-
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
             PeersMemory = (ulong)networkConfig.MaxActivePeers.MB;

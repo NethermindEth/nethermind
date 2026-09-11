@@ -23,7 +23,7 @@ Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
 Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
 a non-Nethermind entry in `tool_config.clients`
 instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
-geth/reth or a second layout is a matter of provisioning the snapshot set and
+geth/reth is a matter of provisioning the snapshot set and
 widening those two guards.
 
 ## Goals
@@ -50,8 +50,8 @@ which uses the same snapshots on this runner:
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
   including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
   fallback).
-- The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
-  `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
+- The node is isolated from network noise (`--Init.DiscoveryEnabled=false`,
+  `--Network.MaxActivePeers=0`) but otherwise runs
   production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
   inside the measured window; treat a run's first test/rate as warm-up, or for
   `jsonbench` set `corpus_warmup_duration` (see below). One-off code-gen

@@ -29,9 +29,6 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         Resolve(address).TryLoadRlp(in path, hash, flags);
 
-    public INodeStorage.KeyScheme Scheme =>
-        _adapter?.Scheme ?? INodeStorage.KeyScheme.HalfPath;
-
     // ITrieStore
     public bool HasRoot(Hash256 stateRoot) => true;
 

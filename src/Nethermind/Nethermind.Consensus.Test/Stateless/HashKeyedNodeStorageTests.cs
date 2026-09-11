@@ -6,11 +6,12 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -160,43 +161,43 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Fixes_the_key_scheme()
+    public void Host_witness_storage_supports_concurrent_reads_and_writes()
     {
-        HashKeyedNodeStorage storage = Storage();
+        const int NodeCount = 4096;
+        byte[][] nodes = new byte[NodeCount][];
+        for (int i = 0; i < nodes.Length; i++) nodes[i] = [(byte)i, (byte)(i >> 8), 0xa5];
 
-        Assert.That(storage.Scheme, Is.EqualTo(INodeStorage.KeyScheme.Hash));
-        Assert.That(storage.RequirePath, Is.True);
-        Assert.Throws<NotSupportedException>(() => storage.Scheme = INodeStorage.KeyScheme.HalfPath);
-    }
+        using IOwnedReadOnlyList<byte[]> witness = nodes.ToPooledList();
+        INodeStorage storage = WitnessNodeStorage.Create(witness);
+        ValueHash256[] hashes = Array.ConvertAll(nodes, HashOf);
 
-    [Test]
-    public void Reads_the_same_as_the_MemDb_backed_store_it_replaces()
-    {
-        HashKeyedNodeStorage storage = Storage(Nodes);
-        INodeStorage reference = ReferenceStorage(Nodes);
-
-        foreach (byte[] node in Nodes)
+        Parallel.For(0, nodes.Length, i =>
         {
-            ValueHash256 hash = HashOf(node);
-            Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(reference.Get(null, TreePath.Empty, hash)));
-            Assert.That(storage.KeyExists(null, TreePath.Empty, hash), Is.EqualTo(reference.KeyExists(null, TreePath.Empty, hash)));
+            using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
+            _ = storage.Get(null, TreePath.Empty, hashes[i]);
+            batch.Set(null, TreePath.Empty, hashes[i], null, WriteFlags.None);
+            _ = storage.KeyExists(null, TreePath.Empty, hashes[i]);
+        });
+
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.Null);
+            Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.False);
         }
 
-        Assert.That(storage.Get(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.Get(null, TreePath.Empty, UnknownHash)));
-        Assert.That(storage.KeyExists(null, TreePath.Empty, UnknownHash), Is.EqualTo(reference.KeyExists(null, TreePath.Empty, UnknownHash)));
-        Assert.That(storage.Scheme, Is.EqualTo(reference.Scheme));
-    }
-
-    /// <summary>The host's form of the same store: a <see cref="MemDb"/> behind a hash-scheme <see cref="NodeStorage"/>.</summary>
-    private static INodeStorage ReferenceStorage(params byte[][] state)
-    {
-        IKeyValueStore db = MemDb.WithCapacity(state.Length);
-        foreach (byte[] stateElement in state)
+        Parallel.For(0, nodes.Length, i =>
         {
-            db.Set(ValueKeccak.Compute(stateElement).Bytes, stateElement);
-        }
+            using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
+            batch.Set(null, TreePath.Empty, hashes[i], nodes[i], WriteFlags.None);
+            _ = storage.Get(null, TreePath.Empty, hashes[i]);
+            _ = storage.KeyExists(null, TreePath.Empty, hashes[i]);
+        });
 
-        return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            Assert.That(storage.Get(null, TreePath.Empty, hashes[i]), Is.EqualTo(nodes[i]));
+            Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.True);
+        }
     }
 
     private static void Write(HashKeyedNodeStorage storage, bool throughBatch, in ValueHash256 hash, byte[] data)

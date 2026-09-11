@@ -258,8 +258,8 @@ public class FlatTreeSyncStore(
             historyPivotSeeder.SeedPivot(pivotHeader.Number, pivotStateRoot);
         }
 
-        // Create and immediately dispose to increment state ID
-        // This pattern is used by Importer - the from->to transition updates the current state pointer
+        // Create and immediately dispose to increment state ID. The from-to transition updates the current
+        // state pointer.
         using (persistence.CreateWriteBatch(from, to))
         {
             // Empty batch - just incrementing state
