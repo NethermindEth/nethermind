@@ -31,6 +31,16 @@ Run the `nice` command a second time, then the `observe` command a second time, 
 
 The timings from amd64 and arm64 are separate experiments; do not compare their absolute values. This prototype does not make a performance claim. It checks whether the intended per-thread state was applied and restored so that timing comparisons are interpretable.
 
+### Fusaka ARM snapshot alignment
+
+The current Fusaka payload corpus starts at block `25489990`, while the ARM runner's available snapshot is at `25490000`. For that corpus and snapshot pairing only, append the following to every arm so the ten pre-snapshot records are skipped and block `25490000` is the single unmeasured warmup; block `25490001` is then the first measured block:
+
+```bash
+-f expb_env='EXPB_SKIP_OVERRIDE=10,EXPB_WARMUP_OVERRIDE=1,EXPB_NETHERMIND_PRIORITY_MODE=observe'
+```
+
+Use `EXPB_NETHERMIND_PRIORITY_MODE=nice` for the nice arm. Confirm the corpus start and snapshot head before reusing these values with another dataset; old ARM payload datasets require the snapshot corresponding to their own starting range.
+
 ## Verify the raw logs
 
 Download or copy the `expb-run.log` artifact for each arm and run:
