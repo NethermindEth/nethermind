@@ -222,7 +222,10 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
+        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() =>
+            new PbtIterator<KeyValuePair<ValueHash256, Account>>(EnumerateAccountsCore());
+
+        private IEnumerator<KeyValuePair<ValueHash256, Account>> EnumerateAccountsCore()
         {
             ISortedKeyValueStore accounts = (ISortedKeyValueStore)_accounts;
             Span<byte> upper = stackalloc byte[ValueHash256.MemorySize + 1];
@@ -232,7 +235,10 @@ public class PbtRocksDbPersistence(
                 yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
         }
 
-        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null)
+        public IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) =>
+            new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(EnumerateStorageCore(prefix));
+
+        private IEnumerator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorageCore(PbtStorageFullKey? prefix)
         {
             ISortedKeyValueStore storage = (ISortedKeyValueStore)_storages;
             Span<byte> upper = stackalloc byte[PbtStorageFullKey.MaxLength + 1];
@@ -264,7 +270,10 @@ public class PbtRocksDbPersistence(
             return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
-        public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys()
+        public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() =>
+            new PbtIterator<PbtStorageNodePath>(EnumerateNodeGroupKeysCore());
+
+        private IEnumerator<PbtStorageNodePath> EnumerateNodeGroupKeysCore()
         {
             if (_metadata.Get(RootNodeGroupKey) is not null)
                 yield return PbtStorageNodePath.Create([], 0);

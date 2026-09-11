@@ -28,8 +28,10 @@ public interface IPbtPersistence
         Account? GetAccount(in ValueHash256 addressHash);
         EvmWord GetSlot(PbtStorageFullKey key);
         CodeInfo? GetCode(in ValueHash256 codeHash);
-        IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
-        IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null);
+        /// <summary>Gets a caller-owned iterator over persisted accounts.</summary>
+        IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
+        /// <summary>Gets a caller-owned iterator over persisted storage matching the optional prefix.</summary>
+        IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null);
 
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
@@ -44,8 +46,8 @@ public interface IPbtPersistence
         /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
         RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
 
-        /// <summary>Enumerates group keys in ascending <see cref="PbtStorageNodePath.CompareTo"/> order.</summary>
-        IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys();
+        /// <summary>Gets a caller-owned iterator over group keys in ascending <see cref="PbtStorageNodePath.CompareTo"/> order.</summary>
+        IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys();
 
         ulong GetCodeReference(in ValueHash256 codeHash);
     }

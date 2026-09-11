@@ -41,8 +41,22 @@ internal static class PbtFlatState
         }
     }
 
-    internal static IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(IPbtPersistence.IReader reader) =>
-        EnumerateLeaves(reader.EnumerateAccounts(), reader.EnumerateStorage(), hash => reader.GetCode(hash));
+    internal static IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(IPbtPersistence.IReader reader)
+    {
+        return EnumerateLeaves(Accounts(), Storage(), hash => reader.GetCode(hash));
+
+        IEnumerable<KeyValuePair<ValueHash256, Account>> Accounts()
+        {
+            using IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts();
+            while (accounts.MoveNext()) yield return accounts.Current;
+        }
+
+        IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> Storage()
+        {
+            using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage();
+            while (storage.MoveNext()) yield return storage.Current;
+        }
+    }
 
     internal static IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(
         IEnumerable<KeyValuePair<ValueHash256, Account>> accounts,

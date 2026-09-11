@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -242,7 +243,7 @@ public class PbtCachedReaderPersistenceTests
             payload.AcquireLease();
             return payload;
         });
-        ctx.Reader.EnumerateNodeGroupKeys().Returns(new PbtStorageNodePath[] { groupKey.ToPath<PbtStorageNodePath>() });
+        ctx.Reader.EnumerateNodeGroupKeys().Returns(_ => new PbtIterator<PbtStorageNodePath>(((IEnumerable<PbtStorageNodePath>)[groupKey.ToPath<PbtStorageNodePath>()]).GetEnumerator()));
         await using PbtCachedReaderPersistence persistence = ctx.Build();
         using IPbtPersistence.IReader reader = persistence.CreateReader();
         using RefCountingMemory lease = reader.GetNodeGroup(groupKey)!;
@@ -255,7 +256,7 @@ public class PbtCachedReaderPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(lease, Is.SameAs(payload));
-            Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
+            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
         }
         ctx.Batch.Received(1).SetNodeGroup(groupKey, payload);
         ctx.Batch.Received(1).SetNodeGroup(groupKey, null);

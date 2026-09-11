@@ -122,8 +122,10 @@ public class PbtRebuilderTests
         }
 
         int physicalNodeCount = 0;
-        foreach (PbtStorageNodePath groupKey in reader.EnumerateNodeGroupKeys())
+        using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();
+        while (groupKeys.MoveNext())
         {
+            PbtStorageNodePath groupKey = groupKeys.Current;
             using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
             PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
             physicalNodeCount += group.Count;
@@ -135,7 +137,7 @@ public class PbtRebuilderTests
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and windowed rebuild must have the same root");
-            Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys(), reader.GetNodeGroup),
+            Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys().Drain(), reader.GetNodeGroup),
                 Is.EqualTo(CanonicalGroups(incrementalStore.EnumerateNodeGroupKeys(), incrementalStore.GetPhysicalNodeGroup)),
                 "incremental replay and windowed rebuild must have the exact same group keys and payloads");
             Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
@@ -246,7 +248,7 @@ public class PbtRebuilderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
-            Assert.That(reader.EnumerateNodeGroupKeys(), Is.Empty);
+            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
         }
     }
 
@@ -283,7 +285,7 @@ public class PbtRebuilderTests
                     Assert.That(rebuilding.IsCompleted, Is.False);
                     Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
                     Assert.That(target.IsValid, Is.False);
-                    Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys(), reader.GetNodeGroup),
+                    Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys().Drain(), reader.GetNodeGroup),
                         Is.EqualTo(CanonicalGroups(expectedStore.EnumerateNodeGroupKeys(), expectedStore.GetPhysicalNodeGroup)));
                     Assert.Throws<ObjectDisposedException>(() => chunk.AsSpan());
                 }
@@ -329,7 +331,7 @@ public class PbtRebuilderTests
             {
                 Assert.That(failure, cancel ? Is.InstanceOf<OperationCanceledException>() : Is.TypeOf<InvalidDataException>());
                 Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
-                Assert.That(reader.EnumerateNodeGroupKeys(), Is.Not.Empty);
+                Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.Not.Empty);
                 Assert.That(target.IsValid, Is.False);
                 Assert.Throws<ObjectDisposedException>(() => chunk.AsSpan());
             }

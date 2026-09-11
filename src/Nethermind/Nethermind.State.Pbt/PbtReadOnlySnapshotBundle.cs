@@ -99,7 +99,8 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         GuardDispose();
         Dictionary<ValueHash256, Account?> visible = [];
-        foreach ((ValueHash256 hash, Account account) in reader.EnumerateAccounts()) visible[hash] = account;
+        using (IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts())
+            while (accounts.MoveNext()) visible[accounts.Current.Key] = accounts.Current.Value;
         foreach (PbtSnapshot snapshot in snapshots)
             foreach ((ValueHash256 hash, Account? account) in snapshot.Content.Accounts) visible[hash] = account;
         foreach ((ValueHash256 hash, Account? account) in visible)
@@ -112,7 +113,8 @@ public sealed class PbtReadOnlySnapshotBundle(
         SortedDictionary<PbtStorageFullKey, EvmWord> visible = [];
         if (addressFilter is null)
         {
-            foreach ((PbtStorageFullKey key, EvmWord value) in reader.EnumerateStorage()) visible[key] = value;
+            using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage();
+            while (storage.MoveNext()) visible[storage.Current.Key] = storage.Current.Value;
         }
         else
         {
@@ -121,7 +123,8 @@ public sealed class PbtReadOnlySnapshotBundle(
             foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
             {
                 prefix[0] = zone;
-                foreach ((PbtStorageFullKey key, EvmWord value) in reader.EnumerateStorage(new PbtStorageFullKey(prefix))) visible[key] = value;
+                using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage(new PbtStorageFullKey(prefix));
+                while (storage.MoveNext()) visible[storage.Current.Key] = storage.Current.Value;
             }
         }
         foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);

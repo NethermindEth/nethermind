@@ -927,9 +927,9 @@ public class PbtWorldStateScopeTests
         public EvmWord GetSlot(PbtStorageFullKey key) => default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
-        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => [];
-        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => [];
-        public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys() => _store.EnumerateNodeGroupKeys();
+        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
+        public IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>>)[]).GetEnumerator());
+        public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(_store.EnumerateNodeGroupKeys().GetEnumerator());
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             BeforeRead?.Invoke();

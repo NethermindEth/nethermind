@@ -28,6 +28,28 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtRocksDbPersistenceTests
 {
+    [Test]
+    public void Iterator_disposes_underlying_enumerator_on_completion_early_exit_or_failure([Range(0, 2)] int exitMode)
+    {
+        IEnumerator<int> enumerator = Substitute.For<IEnumerator<int>>();
+        enumerator.MoveNext().Returns(_ => true, _ => exitMode == 2 ? throw new InvalidDataException() : false);
+        enumerator.Current.Returns(7);
+
+        void Iterate()
+        {
+            using IPbtIterator<int> iterator = new PbtIterator<int>(enumerator);
+            while (iterator.MoveNext())
+            {
+                Assert.That(iterator.Current, Is.EqualTo(7));
+                if (exitMode == 1) break;
+            }
+        }
+
+        if (exitMode == 2) Assert.Throws<InvalidDataException>(Iterate);
+        else Iterate();
+        enumerator.Received(1).Dispose();
+    }
+
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
@@ -128,8 +150,8 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.GetSlot(stagedKey), Is.EqualTo(default(EvmWord)));
             Assert.That(reader.GetSlot(otherAddressKey), Is.EqualTo(original));
             Assert.That(olderReader.GetSlot(persistedKey), Is.EqualTo(original));
-            Assert.That(reader.EnumerateStorage(), Has.Exactly(2).Items);
-            Assert.That(reader.EnumerateStorage(new PbtStorageFullKey(persistedKey.Bytes[..33])).Single().Value, Is.EqualTo(replacement));
+            Assert.That(reader.EnumerateStorage().Drain(), Has.Exactly(2).Items);
+            Assert.That(reader.EnumerateStorage(new PbtStorageFullKey(persistedKey.Bytes[..33])).Drain().Single().Value, Is.EqualTo(replacement));
         }
     }
 
@@ -167,8 +189,8 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.CurrentState, Is.EqualTo(commit ? second : first));
             Assert.That(reader.GetAccount(addressHash), Is.EqualTo(commit ? null : Account.TotallyEmpty));
             Assert.That(reader.GetSlot(storageKey), Is.EqualTo(commit ? default : slot));
-            Assert.That(reader.EnumerateAccounts().Count(), Is.EqualTo(commit ? 0 : 1));
-            Assert.That(reader.EnumerateStorage().Count(), Is.EqualTo(commit ? 0 : 1));
+            Assert.That(reader.EnumerateAccounts().Drain().Count, Is.EqualTo(commit ? 0 : 1));
+            Assert.That(reader.EnumerateStorage().Drain().Count, Is.EqualTo(commit ? 0 : 1));
             Assert.That(reader.GetCode(codeHash), Is.EqualTo(code));
             Assert.That(reader.GetCode(codeHash)!.CodeHash, Is.EqualTo(codeHash));
             Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256), Is.Null);
@@ -205,7 +227,7 @@ public class PbtRocksDbPersistenceTests
 
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
         {
-            PbtStorageNodePath[] groupKeys = [.. reader.EnumerateNodeGroupKeys()];
+            PbtStorageNodePath[] groupKeys = [.. reader.EnumerateNodeGroupKeys().Drain()];
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ReadNode(reader, firstPath), Is.Null);
@@ -294,10 +316,10 @@ public class PbtRocksDbPersistenceTests
             new(Bytes.FromHexString("80"), 8), new(Bytes.FromHexString("ff"), 8), new(Bytes.FromHexString("0000"), 16)] : [];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(olderReader.EnumerateNodeGroupKeys(), Is.Empty);
+            Assert.That(olderReader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
             Assert.That(olderReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
             foreach (PbtNodePath path in paths) Assert.That(ReadNode(olderReader, path), Is.Null);
-            Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(expected));
+            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(expected));
             Assert.That(reader.CurrentState, Is.EqualTo(commit ? new StateId(1, default) : StateId.PreGenesis));
             foreach (PbtNodePath path in paths)
                 Assert.That(ReadNode(reader, path), commit ? Is.EqualTo(BranchNode(1)) : Is.Null);
@@ -389,8 +411,10 @@ public class PbtRocksDbPersistenceTests
                 Assert.That(reader.GetAccount(addressHash), Is.EqualTo(new Account(5, 15)));
             }
             List<PbtPhysicalPayload> persisted = [];
-            foreach (PbtStorageNodePath groupKey in reader.EnumerateNodeGroupKeys())
+            using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();
+            while (groupKeys.MoveNext())
             {
+                PbtStorageNodePath groupKey = groupKeys.Current;
                 using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
                 PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
                 if (groupKey.BitDepth != 0)
@@ -662,7 +686,7 @@ public class PbtRocksDbPersistenceTests
             {
                 Assert.That(ReadNode(reader, path), Is.EqualTo(BranchNode(2)));
                 Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
-                Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
+                Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
                 Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Not.Null);
                 foreach (PbtColumns otherColumn in new[] { PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
                     if (otherColumn != column) Assert.That(db.GetColumnDb(otherColumn).GetAll(), Is.Empty, otherColumn.ToString());
@@ -678,7 +702,7 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ReadNode(deletedReader, path), Is.Null);
-            Assert.That(deletedReader.EnumerateNodeGroupKeys(), Is.Empty);
+            Assert.That(deletedReader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
             Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Null);
             Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(12)));

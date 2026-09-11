@@ -145,7 +145,7 @@ public class PbtRocksDbConfigAdjusterTests
         {
             PbtRocksDbPersistence persistence = new(db, new PbtConfig());
             using IPbtPersistence.IReader reader = persistence.CreateReader();
-            using IEnumerator<PbtStorageNodePath> enumerator = reader.EnumerateNodeGroupKeys().GetEnumerator();
+            using IPbtIterator<PbtStorageNodePath> enumerator = reader.EnumerateNodeGroupKeys();
             Assert.That(enumerator.MoveNext(), Is.True);
             Assert.That(enumerator.Current, Is.EqualTo(expectedPaths[0]));
             Assert.That(enumerator.MoveNext(), Is.True);
@@ -164,7 +164,7 @@ public class PbtRocksDbConfigAdjusterTests
                 Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
                 Assert.That(reader.GetCode(account.CodeHash.ValueHash256), Is.EqualTo(code));
                 Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
-                Assert.That(reader.EnumerateNodeGroupKeys(), Is.EqualTo(expectedPaths));
+                Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(expectedPaths));
             }
             foreach ((PbtStorageNodePath path, PbtColumns column) in groups)
             {

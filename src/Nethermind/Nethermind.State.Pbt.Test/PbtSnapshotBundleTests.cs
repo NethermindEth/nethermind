@@ -1384,8 +1384,11 @@ public class PbtSnapshotBundleTests
         public Account? GetAccount(in ValueHash256 addressHash) => null;
         public EvmWord GetSlot(PbtStorageFullKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-        public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => [];
-        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null)
+        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
+        public IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) =>
+            new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(EnumerateStorageCore(prefix));
+
+        private IEnumerator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorageCore(PbtStorageFullKey? prefix)
         {
             if (value is { } word && (prefix is null || prefix.Value.IsPrefixOf(key)))
                 yield return new(key, EvmWordSlot.FromStripped(word.Bytes));
@@ -1399,7 +1402,7 @@ public class PbtSnapshotBundleTests
             GroupPayload.CopyTo(memory.GetSpan());
             return memory;
         }
-        public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys() => [];
+        public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(((IEnumerable<PbtStorageNodePath>)[]).GetEnumerator());
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
         public void Dispose() { }
     }
