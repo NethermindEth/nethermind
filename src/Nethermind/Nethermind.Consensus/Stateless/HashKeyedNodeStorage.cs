@@ -12,25 +12,17 @@ using Nethermind.Trie;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>A node storage that maps a witness node's keccak straight to its bytes.</summary>
-/// <remarks>
-/// The alternative is a <c>MemDb</c> behind <see cref="NodeStorage"/>, which keys a dictionary by
-/// <c>byte[]</c>: every witness node pays a key-array allocation on load, and every read builds a
-/// key span, hashes its bytes and compares them against the stored array. Here the keccak is the key,
-/// so a read is one word-wise probe.
-/// <para>
-/// Only the zkEVM guest uses this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
-/// the host commits storage tries in parallel — <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>
-/// — so the host keeps the <c>MemDb</c> form, whose dictionary is concurrent.
-/// </para>
-/// </remarks>
+/// <remarks>Reads are direct hash probes. The synchronized mode is used by the host witness verifier
+/// because storage tries can be committed concurrently.</remarks>
 internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
 {
     private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
 
     private readonly Dictionary<NodeKey, byte[]> _nodes;
+    private readonly object? _syncRoot;
 
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
-    public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state)
+    public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state, bool threadSafe = false)
     {
         Dictionary<NodeKey, byte[]> nodes = new(state.Length + 1);
 
@@ -40,39 +32,32 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         }
 
         // Some of the code does not save the empty tree at all, so the empty root has to resolve
-        // whether the witness carries it or not. Seeding it here keeps NodeStorage's special case
+        // whether the witness carries it or not. Seeding it here keeps the empty-root special case
         // out of every read.
         nodes[EmptyRootKey] = [128];
 
         _nodes = nodes;
+        _syncRoot = threadSafe ? new object() : null;
     }
 
-    /// <inheritdoc/>
-    /// <remarks>The scheme is fixed: only <c>FullPruner</c> reassigns it, and it does not run in the guest.</remarks>
-    public INodeStorage.KeyScheme Scheme
-    {
-        get => INodeStorage.KeyScheme.Hash;
-        set => throw new NotSupportedException();
-    }
-
-    public bool RequirePath => true;
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// <see cref="NodeStorage"/> falls back to a half-path key when the hash key misses. Nothing writes
-    /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
-    /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-        => _nodes.TryGetValue(new NodeKey(keccak), out byte[]? node) ? node : null;
+    {
+        if (_syncRoot is null) return TryGet(keccak);
+        lock (_syncRoot) return TryGet(keccak);
+    }
 
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Null <paramref name="data"/> evicts the node. <see cref="NodeStorage"/>'s direct <c>Set</c> keeps
-    /// the hash-keyed entry and removes only the half-path one, but every stateless write arrives
-    /// through <see cref="INodeStorage.IWriteBatch"/>, whose <see cref="NodeStorage"/> form removes the
-    /// hash key as well.
-    /// </remarks>
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
+    {
+        if (_syncRoot is not null)
+        {
+            lock (_syncRoot) SetCore(keccak, data);
+            return;
+        }
+
+        SetCore(keccak, data);
+    }
+
+    private void SetCore(in ValueHash256 keccak, ReadOnlySpan<byte> data)
     {
         NodeKey key = new(keccak);
         if (key.Equals(EmptyRootKey))
@@ -92,7 +77,12 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
     // The empty root is seeded, so it needs no special case here.
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
-        => _nodes.ContainsKey(new NodeKey(keccak));
+    {
+        if (_syncRoot is null) return _nodes.ContainsKey(new NodeKey(keccak));
+        lock (_syncRoot) return _nodes.ContainsKey(new NodeKey(keccak));
+    }
+
+    private byte[]? TryGet(in ValueHash256 keccak) => _nodes.TryGetValue(new NodeKey(keccak), out byte[]? node) ? node : null;
 
     public INodeStorage.IWriteBatch StartWriteBatch() => this;
 

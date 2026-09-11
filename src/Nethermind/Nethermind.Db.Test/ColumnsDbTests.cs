@@ -33,7 +33,7 @@ public class ColumnsDbTests
                 DeleteOnStart = true,
             },
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            new RocksDbConfigFactory(new DbConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>()
         );
@@ -186,7 +186,7 @@ public class ColumnsDbTests
         _db = new ColumnsDb<ReceiptsColumns>(DbPath,
             new("Blocks", DbPath),
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            new RocksDbConfigFactory(new DbConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>());
 

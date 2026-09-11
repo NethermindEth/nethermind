@@ -22,9 +22,6 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Blocks": {
     "GasToken": "VT"
   },
@@ -32,6 +29,8 @@
     "Enabled": false
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

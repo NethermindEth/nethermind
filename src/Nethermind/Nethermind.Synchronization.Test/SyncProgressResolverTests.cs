@@ -21,14 +21,9 @@ namespace Nethermind.Synchronization.Test
     public class SyncProgressResolverTests
     {
         private IBlockTree _blockTree = null!;
-        private IStateReader _stateReader = null!;
 
         [SetUp]
-        public void Setup()
-        {
-            _blockTree = Substitute.For<IBlockTree>();
-            _stateReader = Substitute.For<IStateReader>();
-        }
+        public void Setup() => _blockTree = Substitute.For<IBlockTree>();
 
         [Test]
         public void Header_block_is_0_when_no_header_was_suggested()
@@ -98,32 +93,6 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Best_state_is_head_when_there_are_no_suggested_blocks()
-        {
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
-            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
-            _blockTree.Head.Returns(head);
-            _blockTree.BestSuggestedHeader.Returns(head.Header);
-            _stateReader.HasStateForBlock(head.Header).Returns(true);
-            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
-        }
-
-        [TestCase(true, 6UL)]
-        [TestCase(false, 5UL)]
-        public void Best_state_depends_on_whether_suggested_block_has_state(bool suggestedHasState, ulong expectedNumber)
-        {
-            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
-            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
-            BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
-            _blockTree.Head.Returns(head);
-            _blockTree.BestSuggestedHeader.Returns(suggested);
-            _blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
-            _stateReader.HasStateForBlock(head.Header!).Returns(true);
-            _stateReader.HasStateForBlock(suggested).Returns(suggestedHasState);
-            Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(expectedNumber));
-        }
-
-        [Test]
         public void Is_fast_block_finished_returns_true_when_no_fast_sync_is_used()
         {
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { FastSync = false, PivotNumber = 1 });
@@ -173,7 +142,7 @@ namespace Nethermind.Synchronization.Test
 
             return new SyncProgressResolver(
                 _blockTree,
-                new FullStateFinder(_blockTree, _stateReader),
+                Substitute.For<IFullStateFinder>(),
                 syncConfig,
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),

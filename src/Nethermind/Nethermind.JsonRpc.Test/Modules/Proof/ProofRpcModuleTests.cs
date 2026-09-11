@@ -20,7 +20,6 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
@@ -33,19 +32,19 @@ public class ProofRpcModuleTests
 {
     private IProofRpcModule _proofRpcModule = null!;
     private IBlockTree _blockTree = null!;
-    private IDbProvider _dbProvider = null!;
     private TestSpecProvider _specProvider = null!;
-    private WorldStateManager _worldStateManager = null!;
-    private IContainer _container;
+    private IWorldStateManager _worldStateManager = null!;
+    private IContainer _worldStateContainer = null!;
+    private IContainer _container = null!;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
-        _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
+        (IWorldState worldState, _, _worldStateContainer) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+        _worldStateManager = _worldStateContainer.Resolve<IWorldStateManager>();
+        IDbProvider dbProvider = _worldStateContainer.Resolve<IDbProvider>();
 
         Hash256 stateRoot;
-        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
         using (IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
@@ -65,7 +64,7 @@ public class ProofRpcModuleTests
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
-            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IDbProvider>(dbProvider)
             .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
             .AddSingleton<IReceiptStorage>(receiptStorage)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
@@ -74,7 +73,11 @@ public class ProofRpcModuleTests
     }
 
     [TearDown]
-    public void TearDown() => _container.Dispose();
+    public void TearDown()
+    {
+        _container.Dispose();
+        _worldStateContainer.Dispose();
+    }
 
     [Test]
     public async Task Can_get_transaction([Values] bool withHeader)
@@ -198,13 +201,14 @@ public class ProofRpcModuleTests
         _receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
         _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
+        IDbProvider dbProvider = _worldStateContainer.Resolve<IDbProvider>();
         _container.Dispose();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IReceiptFinder>(_receiptFinder)
-            .AddSingleton<IDbProvider>(_dbProvider)
+            .AddSingleton<IDbProvider>(dbProvider)
             .AddSingleton<IWorldStateManager>(_worldStateManager)
             .Build();
         _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();

@@ -415,9 +415,8 @@ jobs:
           retention-days: 3
 
   # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
-  # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
-  # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
-  # layout runs from nethermind-tests-flat.yml.
+  # through the reusable nethtest workflow: same fixture releases, default FlatDB
+  # configuration plus the Amsterdam variant toggles, all fixture formats.
   nethtest:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml

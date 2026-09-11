@@ -48,20 +48,11 @@ jobs:
           if-no-files-found: error
 
   sync-hoodi:
-    name: "Sync hoodi (${{ matrix.mode }})"
+    name: "Sync hoodi (Flat)"
     needs: build-image
     if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [HalfPath, Flat]
-        include:
-          - mode: HalfPath
-            flatdb: false
-          - mode: Flat
-            flatdb: true
 
     steps:
       - name: Authenticate App
@@ -135,11 +126,8 @@ jobs:
 
       - name: Generate and run Sedge
         working-directory: sedge
-        env:
-          SYNC_MODE: ${{ matrix.mode }}
-          FLATDB: ${{ matrix.flatdb }}
         run: |
-          node_name="SyncPRGate-hoodi-${SYNC_MODE}-${GITHUB_RUN_ID}"
+          node_name="SyncPRGate-hoodi-flat-${GITHUB_RUN_ID}"
           echo "node_name=$node_name" >> $GITHUB_ENV
 
           ./build/sedge deps install
@@ -157,7 +145,7 @@ jobs:
             --no-mev-boost \
             --no-validator \
             --network hoodi \
-            --el-extra-flag FlatDb.Enabled=$FLATDB \
+            --el-extra-flag FlatDb.Enabled=true \
             --el-extra-flag Sync.NonValidatorNode=true \
             --el-extra-flag Sync.DownloadBodiesInFastSync=false \
             --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -189,7 +177,6 @@ jobs:
       - name: Wait for hoodi to sync
         env:
           NETWORK: hoodi
-          SYNC_MODE: ${{ matrix.mode }}
         run: python scripts/wait-for-sync.py
 
       - name: Get Nethermind Debug Logs
@@ -199,7 +186,7 @@ jobs:
           cd "$target_dir/logs"
           log_file=$(find . -type f -name "*.log" | head -n 1)
           echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file")-hoodi-${{ matrix.mode }}-${{ github.run_id }}
+          artifact_name=$(basename "$log_file")-hoodi-flat-${{ github.run_id }}
           zip "${artifact_name}.zip" "$log_file"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV

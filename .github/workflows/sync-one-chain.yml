@@ -11,9 +11,6 @@ on:
       network:
         type: string
         required: true
-      mode:
-        type: string
-        required: true
       runner_label:
         type: string
         required: true
@@ -142,7 +139,6 @@ jobs:
         uses: ./.github/actions/sync-chain
         with:
           network: ${{ inputs.network }}
-          mode: ${{ inputs.mode }}
           docker_image: ${{ inputs.docker_image }}
           node_name_prefix: ${{ inputs.node_name_prefix }}
           cl: ${{ inputs.cl }}

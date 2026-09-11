@@ -16,10 +16,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
     [Parallelizable(ParallelScope.All)]
-    public class PatriciaTreeTests(bool useFullTrieStore)
+    public class PatriciaTreeTests
     {
         [Test]
         public void Create_commit_change_balance_get()
@@ -64,8 +62,6 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_commit_reset_change_balance_get()
         {
-            if (useFullTrieStore) Assert.Ignore("immediate key count does not work with pruning try store");
-
             MemDb db = new();
             Account account = new(1);
             using ITrieStore trieStore = CreateTrieStore(db);
@@ -86,7 +82,6 @@ namespace Nethermind.Store.Test
                 stateTree.Commit();
             }
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
         }
 
         [TestCase(true, false)]
@@ -152,9 +147,7 @@ namespace Nethermind.Store.Test
         private ITrieStore CreateTrieStore(IDb db = null)
         {
             db ??= new MemDb();
-            return useFullTrieStore
-                ? TestTrieStoreFactory.Build(db, LimboLogs.Instance)
-                : new TestRawTrieStore(new NodeStorage(db));
+            return TestTrieStoreFactory.Build(db, LimboLogs.Instance);
         }
     }
 }

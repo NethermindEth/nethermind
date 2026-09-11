@@ -540,23 +540,6 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_get_storage_at_no_state_reports_state_unavailable_like_sibling_methods()
-    {
-        // A block with no state must fail with -32002 "No state available", matching eth_getBalance/getCode/
-        // getTransactionCount/call — not surface a backend exception through the generic -32603 handler.
-        using Context ctx = await Context.Create(useFlatDb: false);
-        await Task.Delay(100); // Wait a bit for pruning
-        ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
-        ctx.Test.StateDb.Clear();
-        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(serialized, Does.Contain("\"code\":-32002"));
-            Assert.That(serialized, Does.Contain("No state available for block"));
-        }
-    }
-
     private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
     {
         string addressA = TestItem.AddressA.Bytes.ToHexString(true);
@@ -3003,7 +2986,6 @@ public partial class EthRpcModuleTests
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
-            bool? useFlatDb = null,
             int estimateErrorMargin = 0)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
@@ -3018,7 +3000,6 @@ public partial class EthRpcModuleTests
                     .WithBlockchainBridge(blockchainBridge!)
                     .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
                     .Build(wrappedConfigurer).Result,
 
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)

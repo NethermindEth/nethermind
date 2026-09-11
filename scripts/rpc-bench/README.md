@@ -12,18 +12,18 @@ and post-process it to XML.
 `arm64` is `reproducible-benchmarks-arm` with snapshots under `/data`. Every
 path below follows that choice. **Never compare timings across the two boxes.**
 
-The amd64 box holds the full snapshot set, so it serves every `client`,
-`reference_client` and `state_layout`. The arm64 box carries the Nethermind
+The amd64 box holds the full snapshot set, so it serves every `client` and
+`reference_client`. The arm64 box carries the Nethermind
 **flat** set plus one directory per additionally provisioned client
 (`/data/<client>/<client>-<block>`), so there any single provisioned `client`
-runs in single-node mode, `reference_client` is held to `none`, `state_layout`
-to `flat`, and an image it would have to build is refused as well (that box's
+runs in single-node mode, `reference_client` is held to `none`, and an image it
+would have to build is refused as well (that box's
 small root disk dies under a build). `resolve` checks those limits against the
 selected runner.
 
 **Sweep mode** (`jsonbench-sweep`) resolves a snapshot set per client type, so
-`tool_config.clients` may name geth/reth arms alongside Nethermind ones and
-`tool_config.state_layout` may select `halfpath`. Every requested type's set is
+`tool_config.clients` may name geth/reth arms alongside Nethermind ones.
+`tool_config.state_layout` selects the FlatDB snapshot for Nethermind. Every requested type's set is
 checked before any node starts, because a missing one would otherwise surface as
 a per-client warning and a silently partial matrix.
 
@@ -47,14 +47,12 @@ which uses the same snapshots on this runner:
   `NethermindConfig`.
 - `state_layout=flat` → `<snapshot root>/nethermind-flat-<block>` +
   `--FlatDb.Enabled=true` (the `snapshot_source` of
-  `github-action-mainnet-flat.yaml`); `halfpath` → `<snapshot root>/nethermind-<block>`.
-  Sweep mode states `--FlatDb.Enabled` either way, since the client default has moved
-  between the releases a sweep may span. Override via `node_config.db_source`.
+  `github-action-mainnet-flat.yaml`). Override via `node_config.db_source`.
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
   including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
   fallback).
-- The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
-  `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
+- The node is isolated from network noise (`--Init.DiscoveryEnabled=false`,
+  `--Network.MaxActivePeers=0`) but otherwise runs
   production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
   inside the measured window; treat a run's first test/rate as warm-up, or for
   `jsonbench` set `corpus_warmup_duration` (see below). One-off code-gen
@@ -174,7 +172,7 @@ the workflow's defensive-cleanup step).
 | `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
-| `state_layout` | `flat` or `halfpath` (amd64 only — the arm64 box carries the flat set alone). In sweep mode pass it as `tool_config.state_layout`. |
+| `state_layout` | `flat` (the FlatDB snapshot). In sweep mode pass it as `tool_config.state_layout`. |
 | `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
 | `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a Nethermind `jsonbench` benchmark with no reference client (the only shape with a warm-up to attach the collector after; one is supplied when the dispatch sets none). See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |

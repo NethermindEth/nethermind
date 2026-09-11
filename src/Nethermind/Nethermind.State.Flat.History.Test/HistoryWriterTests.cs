@@ -18,6 +18,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using System.IO;
 using NSubstitute;
@@ -1459,7 +1460,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, accountA), (AddrB, accountB)]);
         _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        StateTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree expected = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         expected.Set(AddrA, accountA);
         expected.Set(AddrB, accountB);
         expected.UpdateRootHash();
@@ -1470,7 +1471,7 @@ public class HistoryWriterTests
                 "an account row has to carry the whole trie path, otherwise a scan of the column cannot place its leaf and no root can be rebuilt from history");
         }
 
-        StateTree rebuilt = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree rebuilt = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         foreach (Address address in new[] { AddrA, AddrB })
         {
             Assert.That(_reader.TryGetAccount(2, address, out AccountStruct account), Is.True,

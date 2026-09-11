@@ -16,7 +16,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
-    [ConfigItem(Description = "Enabled", DefaultValue = "false")]
+    [ConfigItem(Description = "FlatDB is always enabled. The false value is retained as a migration tombstone and rejected.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
@@ -52,7 +52,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Rows the every-block history verification may hold in memory before it declines the run. Its working set follows state size rather than range length, so a full archive needs a large value and a machine to match. 0 uses the built-in ceiling.", DefaultValue = "0")]
     long HistoryVerifyMaxRows { get; set; }
 
-    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    [ConfigItem(Description = "Deprecated migration flag. Use the supported Nethermind 2.1 binary or a fresh FlatDB sync.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ImportFromPruningTrieState { get; set; }
 
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]

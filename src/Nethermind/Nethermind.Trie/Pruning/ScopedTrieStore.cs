@@ -20,8 +20,6 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
         address1 == address ? this : new ScopedTrieStore(fullTrieStore, address1);
 
-    public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
-
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         fullTrieStore.BeginCommit(address, root, writeFlags);
 }

@@ -105,11 +105,10 @@ on:
         type: boolean
         default: false
       state_layout:
-        description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
+        description: FlatDB state layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
         type: choice
         options:
-          - halfpath
           - flat
         default: flat
       additional_nethermind_flags:
@@ -424,8 +423,8 @@ jobs:
 
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
-          if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
-            echo "::error::The reproducible-benchmarks-arm runner only supports the flat state layout - dispatch with arch=amd64 for halfpath."
+          if [[ "${state_layout}" != "flat" ]]; then
+            echo "::error::Only the FlatDB state layout is supported."
             exit 1
           fi
 
@@ -441,11 +440,7 @@ jobs:
             local c="$1"
             if [[ -n "${snapshot_block}" ]]; then
               if [[ "${c}" == "nethermind" ]]; then
-                if [[ "${state_layout}" == "flat" ]]; then
-                  echo "${snapshot_root}/nethermind-flat-${snapshot_block}"
-                else
-                  echo "${snapshot_root}/nethermind-${snapshot_block}"
-                fi
+                echo "${snapshot_root}/nethermind-flat-${snapshot_block}"
               elif [[ "${arch}" == "arm64" ]]; then
                 # The ARM box keeps one directory per client under /data; its snapshot root is the Nethermind one.
                 echo "$(dirname "${snapshot_root}")/${c}/${c}-${snapshot_block}"
@@ -453,18 +448,12 @@ jobs:
                 echo "${snapshot_root}/${c}-${snapshot_block}"
               fi
             else
-              # Legacy expb snapshots exist for nethermind only (guarded above).
-              if [[ "${state_layout}" == "flat" ]]; then
-                echo "${snapshot_root}/nethermind-flat-snapshot"
-              else
-                echo "${snapshot_root}/nethermind-snapshot"
-              fi
+              echo "${snapshot_root}/nethermind-flat-snapshot"
             fi
           }
 
           client_layout_flags() {
-            # --FlatDb.Enabled applies to any nethermind instance on the flat snapshot.
-            if [[ "$1" == "nethermind" && "${state_layout}" == "flat" ]]; then
+            if [[ "$1" == "nethermind" ]]; then
               echo "--FlatDb.Enabled=true"
             fi
           }

@@ -46,7 +46,6 @@ namespace Nethermind.State
             stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB, // Gonna guess that if you are running this, you have a decent setup.
             });
             collector.Finish();
             return collector.Stats;

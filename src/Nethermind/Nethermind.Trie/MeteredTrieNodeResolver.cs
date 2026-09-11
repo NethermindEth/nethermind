@@ -31,6 +31,5 @@ namespace Nethermind.Trie
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             new MeteredTrieNodeResolver(inner.GetStorageTrieNodeResolver(address), diagnostics);
 
-        public INodeStorage.KeyScheme Scheme => inner.Scheme;
     }
 }

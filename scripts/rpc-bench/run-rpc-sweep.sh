@@ -111,14 +111,12 @@ WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
 SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
 ARCH="${ARCH:-amd64}"
 
-# The Nethermind set is layout-resolved: `nethermind-flat-<block>` opens with --FlatDb.Enabled=true and
-# `nethermind-<block>` with it off. Both flags are stated explicitly because the client default is still
-# moving between releases, and this sweep runs images from either side of that change.
-case "$STATE_LAYOUT" in
-  flat)     SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="--FlatDb.Enabled=true" ;;
-  halfpath) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-${SNAPSHOT_BLOCK}";      NM_LAYOUT_FLAGS="--FlatDb.Enabled=false" ;;
-  *) echo "::error::sweep mode resolves a flat or halfpath Nethermind snapshot; state_layout '${STATE_LAYOUT}' cannot run here"; exit 1 ;;
-esac
+if [[ "$STATE_LAYOUT" != "flat" ]]; then
+  echo "::error::only the FlatDB state layout is supported; state_layout '$STATE_LAYOUT' cannot run here"
+  exit 1
+fi
+SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
+NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
 
 # Each non-Nethermind type has its own block-tagged set, mirroring the single-node path: `<root>/<client>-<block>`
 # on amd64, and `<root>/../<client>/<client>-<block>` on arm64, where each client owns a directory under /data.

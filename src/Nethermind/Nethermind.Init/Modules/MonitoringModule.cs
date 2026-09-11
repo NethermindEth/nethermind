@@ -28,7 +28,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         {
             builder
                 .AddSingleton<IMonitoringService, MonitoringService>()
-                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig, ISpecProvider>(
+                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, ISpecProvider>(
                     PrepareProductInfoMetrics)
 
                 .AddSingleton<AllocatorMetricsUpdater>()
@@ -59,7 +59,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         }
     }
 
-    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig, ISpecProvider specProvider)
+    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, ISpecProvider specProvider)
     {
         // Need to be set here, or we cant start before blocktree, which is the one that set this normally.
         ProductInfo.Network = $"{(specProvider.ChainId == specProvider.NetworkId ? BlockchainIds.GetBlockchainName(specProvider.NetworkId) : specProvider.ChainId)}";
@@ -71,7 +71,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
            : "Full";
 
 
-        ProductInfo.PruningMode = pruningConfig.Mode.ToString();
+        ProductInfo.PruningMode = "Flat";
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
 
         IMetricsController controller = new MetricsController(metricsConfig);

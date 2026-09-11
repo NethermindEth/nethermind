@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -47,7 +48,7 @@ public class HistoryWalkVerifierTests
 
     private static Hash256 StorageRootOf(params (UInt256 Slot, byte[] Value)[] slots)
     {
-        StorageTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        StorageTree tree = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         foreach ((UInt256 slot, byte[] value) in slots)
         {
             tree.Set(slot, value);
@@ -59,7 +60,7 @@ public class HistoryWalkVerifierTests
 
     private static ValueHash256 StateRootOf(params (Address Address, Account Account)[] accounts)
     {
-        StateTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree tree = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         foreach ((Address address, Account account) in accounts)
         {
             tree.Set(address, account);

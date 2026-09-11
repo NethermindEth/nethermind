@@ -11,7 +11,6 @@ namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
 /// Tracks mapping from state root hash to StateId for serving snap sync requests.
-/// Similar to <see cref="Nethermind.Blockchain.Utils.LastNStateRootTracker"/> but stores StateId for lookup.
 /// </summary>
 public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
 {

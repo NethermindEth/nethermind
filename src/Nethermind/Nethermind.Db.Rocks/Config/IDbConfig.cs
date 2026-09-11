@@ -87,22 +87,6 @@ public interface IDbConfig : IConfig
     string CodeDbRocksDbOptions { get; set; }
     string? CodeDbAdditionalRocksDbOptions { get; set; }
 
-
-    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
-    ulong StateDbWriteBufferSize { get; set; }
-    ulong StateDbWriteBufferNumber { get; set; }
-    bool? StateDbVerifyChecksum { get; set; }
-    ulong? StateDbRowCacheSize { get; set; }
-    bool StateDbEnableFileWarmer { get; set; }
-    double StateDbCompressibilityHint { get; set; }
-    string StateDbRocksDbOptions { get; set; }
-    string? StateDbAdditionalRocksDbOptions { get; set; }
-    string StateDbLargeMemoryRocksDbOptions { get; set; }
-    string StateDbArchiveModeRocksDbOptions { get; set; }
-    ulong StateDbLargeMemoryWriteBufferSize { get; set; }
-    ulong StateDbArchiveModeWriteBufferSize { get; set; }
-
-
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 

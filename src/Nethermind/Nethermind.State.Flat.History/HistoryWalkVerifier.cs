@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History;
@@ -190,7 +191,7 @@ public sealed class HistoryWalkVerifier
             }
         }
 
-        StateTree state = new(new RawScopedTrieStore(new MemDb()), _logManager);
+        StateTree state = new(new RawScopedTrieStore(new MemoryNodeStorage()), _logManager);
         Dictionary<byte[], ValueHash256> lastAccountStorageRoots = new(Bytes.EqualityComparer);
         foreach ((ValueHash256 path, Account account) in data.StartAccounts)
         {
@@ -220,7 +221,7 @@ public sealed class HistoryWalkVerifier
                 touched = new HashSet<byte[]>(Bytes.EqualityComparer);
                 foreach (byte[] identity in clearedIdentities)
                 {
-                    storageTries[identity] = new StorageTree(new RawScopedTrieStore(new MemDb()), _logManager);
+                    storageTries[identity] = new StorageTree(new RawScopedTrieStore(new MemoryNodeStorage()), _logManager);
                     touched.Add(identity);
                 }
             }
@@ -526,7 +527,7 @@ public sealed class HistoryWalkVerifier
     {
         if (tries.TryGetValue(identity, out StorageTree? tree)) return tree;
 
-        tree = new StorageTree(new RawScopedTrieStore(new MemDb()), _logManager);
+        tree = new StorageTree(new RawScopedTrieStore(new MemoryNodeStorage()), _logManager);
         if (startSlots.TryGetValue(identity, out List<(ValueHash256 SlotPath, byte[] Value)>? slots))
         {
             foreach ((ValueHash256 slotPath, byte[] value) in slots)

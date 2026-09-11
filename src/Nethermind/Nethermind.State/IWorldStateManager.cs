@@ -15,7 +15,6 @@ public interface IWorldStateManager
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
     ISnapStateServer SnapStateServer { get; }
-    IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.
@@ -26,9 +25,7 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
 
     /// <summary>
-    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
-    /// For trie mode, returns the existing read-only trie store.
-    /// For flat mode, returns an adapter over the flat DB's trie node data.
+    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations such as witness generation.
     /// </summary>
     IReadOnlyTrieStore CreateReadOnlyTrieStore();
 

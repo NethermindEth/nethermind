@@ -477,19 +477,10 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
-        IContainer? containerToDispose = null;
-        IWorldStateManager manager;
-        if (useFlat)
-        {
-            (_, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
-            containerToDispose = container;
-            manager = container.Resolve<IWorldStateManager>();
-        }
-        else
-        {
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
-        }
+        if (!useFlat) Assert.Ignore("The overridable world-state manager is provided by FlatDB.");
+
+        (IWorldStateScopeProvider _, IContainer containerToDispose) = TestWorldStateFactory.CreateFlatScopeProvider();
+        IWorldStateManager manager = containerToDispose.Resolve<IWorldStateManager>();
 
         try
         {

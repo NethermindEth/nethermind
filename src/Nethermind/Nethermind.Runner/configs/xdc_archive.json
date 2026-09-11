@@ -3,8 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc_archive",
-    "LogFileName": "xdc_archive.log",
-    "StateDbKeyScheme": "Hash"
+    "LogFileName": "xdc_archive.log"
   },
   "Network": {
     "EnableEnrDiscovery": false,
@@ -29,9 +28,6 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Merge": {
     "Enabled": false
   },
@@ -39,6 +35,8 @@
     "Enabled": false
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

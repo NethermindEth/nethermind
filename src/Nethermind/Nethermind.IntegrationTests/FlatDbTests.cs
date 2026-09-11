@@ -75,46 +75,6 @@ public class FlatDbTests
         }
     }
 
-    [Test]
-    public async Task FlatDb_DoesNotReplaceAnExistingPatriciaStateDatabase()
-    {
-        string databasePath = Path.Combine(Path.GetTempPath(), $"nethermind-flatdb-patricia-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(databasePath);
-
-        try
-        {
-            IContainer patriciaNode = await StartNodeAsync(databasePath, ["--FlatDb.Enabled", "false"]);
-            try
-            {
-                Assert.That(await patriciaNode.GetCleanStdoutAsync(), Does.Contain("State backend: patricia (flat DB disabled)."));
-                await ProduceBlocksAsync(patriciaNode, 1);
-            }
-            finally
-            {
-                await patriciaNode.DisposeAsync();
-            }
-
-            IContainer restartedNode = await StartNodeAsync(databasePath);
-            try
-            {
-                string restartLogs = await restartedNode.GetCleanStdoutAsync();
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(restartLogs, Does.Contain("State backend: patricia (existing patricia state detected)."));
-                    Assert.That(await GetBlockNumberAsync(restartedNode), Is.EqualTo("0x1"));
-                }
-            }
-            finally
-            {
-                await restartedNode.DisposeAsync();
-            }
-        }
-        finally
-        {
-            TryDeleteDirectory(databasePath);
-        }
-    }
-
     [TestCase("3", "1048576", "Compact size must be a power of 2")]
     [TestCase("4", "2", "Persisted snapshot max compact size must not be smaller than CompactSize")]
     [TestCase("2", "3", "Persisted snapshot max compact size must be a power of 2")]
@@ -234,10 +194,7 @@ public class FlatDbTests
             "--Sync.SnapSync", "false"
         ];
 
-        if (flatDbOptions?.Contains("--FlatDb.Enabled") != true)
-        {
-            command.AddRange(["--FlatDb.Enabled", "true"]);
-        }
+        command.AddRange(["--FlatDb.Enabled", "true"]);
         if (flatDbOptions?.Contains("--FlatDb.Layout") != true)
         {
             command.AddRange(["--FlatDb.Layout", "Flat"]);

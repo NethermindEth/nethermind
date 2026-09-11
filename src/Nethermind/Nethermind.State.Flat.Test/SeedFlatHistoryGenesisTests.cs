@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test;
+using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Init.Steps;
@@ -121,21 +124,8 @@ public class SeedFlatHistoryGenesisTests
         Assert.That(_reader.HasHistoryForBlock(0), Is.True);
     }
 
-    // On-disk state can keep an upgraded node on patricia even with the flag on; then nothing reads this history
-    // and the step must not seed it.
-    [Test]
-    public async Task Skips_seeding_on_a_patricia_backend()
-    {
-        ChainSpec chainSpec = new() { Allocations = new() { [TestItem.AddressA] = new ChainSpecAllocation(1000) } };
-
-        SeedFlatHistoryGenesis step = new(CreatePolicy(flatActive: false), chainSpec, BlockTree(), _writer, _reader, LimboLogs.Instance);
-        await step.Execute(CancellationToken.None);
-
-        Assert.That(_reader.HasHistoryForBlock(0), Is.False);
-    }
-
     private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true) =>
-        new(CreatePolicy(flatActive: true), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
+        new(CreatePolicy(), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
 
     private static IBlockTree BlockTree(int headBlockNumber = 100, bool hasGenesis = true)
     {
@@ -145,21 +135,30 @@ public class SeedFlatHistoryGenesisTests
         return blockTree;
     }
 
-    private static FlatStateActivationPolicy CreatePolicy(bool flatActive)
+    private static FlatStateActivationPolicy CreatePolicy()
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(flatActive);
+        flatDbConfig.Enabled.Returns(true);
+        flatDbConfig.ImportFromPruningTrieState.Returns(false);
+        flatDbConfig.Layout.Returns(FlatLayout.Flat);
 
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.StateDbKeyScheme.Returns("Current");
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(flatActive ? new StateId(1, Keccak.Zero) : StateId.PreGenesis);
+        reader.CurrentState.Returns(new StateId(1, Keccak.Zero));
         IPersistence flatPersistence = Substitute.For<IPersistence>();
         flatPersistence.CreateReader().Returns(reader);
 
+        IDbFactory dbFactory = Substitute.For<IDbFactory>();
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+
         return new FlatStateActivationPolicy(
             flatDbConfig,
+            initConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IPersistence>(() => flatPersistence),
-            new Lazy<IDb>(() => new MemDb()),
+            dbFactory,
+            fileSystem,
             LimboLogs.Instance);
     }
 }

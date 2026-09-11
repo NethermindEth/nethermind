@@ -74,7 +74,7 @@ public class PseudoNethermindModuleTests
     {
         ConfigProvider configProvider = new(
             new ReceiptConfig { DeriveFromState = true, StoreReceipts = storeReceipts },
-            new FlatDbConfig { Enabled = historyEnabled, HistoryEnabled = historyEnabled },
+            new FlatDbConfig { Enabled = true, HistoryEnabled = historyEnabled },
             new LogIndexConfig { Enabled = logIndexEnabled });
 
         void Validate() => NethermindModule.ValidateReceiptDerivationConfig(configProvider);

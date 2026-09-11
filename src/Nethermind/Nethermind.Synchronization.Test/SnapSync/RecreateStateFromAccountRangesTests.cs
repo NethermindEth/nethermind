@@ -38,7 +38,7 @@ public class RecreateStateFromAccountRangesTests
     private ContainerBuilder CreateContainerBuilder() =>
         new ContainerBuilder()
             .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-            .AddSingleton<ISnapTestHelper, PatriciaSnapTestHelper>()
+            .AddSingleton<ISnapTestHelper, FlatSnapTestHelper>()
             ;
 
     private IContainer CreateContainer() =>
@@ -61,7 +61,7 @@ public class RecreateStateFromAccountRangesTests
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
         MemDb db = new();
-        IScopedTrieStore store = new RawScopedTrieStore(db);
+        IScopedTrieStore store = new RawScopedTrieStore(new TestNodeStorage(db));
         StateTree tree = new(store, LimboLogs.Instance);
 
         IList<TrieNode> nodes = [];

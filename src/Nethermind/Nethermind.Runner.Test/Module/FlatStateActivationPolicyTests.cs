@@ -1,13 +1,25 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using Autofac;
+using Autofac.Core;
+using Nethermind.Api;
+using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Init.Modules;
+using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using NSubstitute;
@@ -19,84 +31,194 @@ namespace Nethermind.Runner.Test.Module;
 [Parallelizable(ParallelScope.All)]
 public class FlatStateActivationPolicyTests
 {
-    [Flags]
-    public enum Flags
+    [Test]
+    public void FreshFlatDbStarts()
     {
-        None = 0,
-        Enabled = 1,
-        FlatHasData = 2,
-        ImportFromPruningTrieState = 4,
-        PatriciaHasData = 8
+        FlatStateActivationPolicy policy = CreatePolicy();
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
     }
 
-    // Branch 1: Enabled=false → false, regardless of db content
-    // Branch 2: Enabled=true, flat persistence has committed state → true
-    // Branch 3: Enabled=true, no committed state, ImportFromPruningTrieState=true → true
-    // Branch 4: Enabled=true, no committed state, ImportFromPruningTrieState=false, patricia has data → false
-    // Branch 5: Enabled=true, no committed state, ImportFromPruningTrieState=false, no patricia data → true
-    [TestCase(Flags.None, false, Description = "Disabled → always false")]
-    [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → true")]
-    [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState=true → true")]
-    [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → false")]
-    [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → true")]
-    public void ShouldTurnOnFlatDb_ReturnsExpected(Flags flags, bool expected)
+    [Test]
+    public void ExistingFlatDbIsPreservedWhenLegacyFilesRemain()
     {
+        (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001");
         FlatStateActivationPolicy policy = CreatePolicy(
-            enabled: flags.HasFlag(Flags.Enabled),
-            importFromPruning: flags.HasFlag(Flags.ImportFromPruningTrieState),
-            flatHasData: flags.HasFlag(Flags.FlatHasData),
-            patriciaHasData: flags.HasFlag(Flags.PatriciaHasData),
-            layout: FlatLayout.Flat,
-            availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance);
+            fileSystem: fileSystem,
+            dbFactory: dbFactory,
+            flatState: new StateId(1, Nethermind.Core.Crypto.Keccak.Zero));
 
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.EqualTo(expected));
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+        fileSystem.Directory.Received(0).EnumerateFiles(Arg.Any<string>(), "*", SearchOption.AllDirectories);
     }
 
-    // Advisory fires only when flat is actually activated, the layout is not FlatInTrie, and available memory < 16 GB.
-    [TestCase(true, FlatLayout.Flat, 8, true, Description = "Flat active, Flat layout, low RAM → warn")]
-    [TestCase(true, FlatLayout.FlatInTrie, 8, false, Description = "Already FlatInTrie → no warn")]
-    [TestCase(true, FlatLayout.Flat, 32, false, Description = "Ample RAM → no warn")]
-    [TestCase(false, FlatLayout.Flat, 8, false, Description = "Flat disabled (patricia) → no warn")]
-    public void AdvisesFlatInTrieLayout_OnlyWhenLowMemoryAndFlatActive(bool enabled, FlatLayout layout, int availableMemoryGiB, bool expectWarn)
+    [Test]
+    public void LegacyFilesInNestedStateDirectoryAreRejected()
+    {
+        (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001");
+
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
+            CreatePolicy(fileSystem: fileSystem, dbFactory: dbFactory))!;
+
+        Assert.That(exception.Message, Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+        dbFactory.Received().GetFullDbPath(Arg.Is<DbSettings>(s => s.DbName == "State" && s.DbPath == DbNames.State));
+    }
+
+    [Test]
+    public void WorldStateBoundaryResolutionRejectsLegacyStateBeforeBoundaryConstruction()
+    {
+        (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001");
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(true);
+        flatDbConfig.ImportFromPruningTrieState.Returns(false);
+        flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.StateDbKeyScheme.Returns("Current");
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        using IContainer container = new ContainerBuilder()
+            .AddSingleton<IFlatDbConfig>(flatDbConfig)
+            .AddSingleton<IInitConfig>(initConfig)
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(32L * 1024 * 1024 * 1024))
+            .AddSingleton<IPersistence>(persistence)
+            .AddSingleton<IDbFactory>(dbFactory)
+            .AddSingleton<IFileSystem>(fileSystem)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddModule(new WorldStateModule(initConfig))
+            .Build();
+
+        DependencyResolutionException exception = Assert.Throws<DependencyResolutionException>(() => container.Resolve<IStateBoundary>())!;
+        Assert.That(exception.GetBaseException(), Is.TypeOf<InvalidConfigurationException>());
+        Assert.That(exception.ToString(), Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+    }
+
+    [TestCase("Hash")]
+    [TestCase(" hash ")]
+    [TestCase("HALFPATH")]
+    [TestCase("0")]
+    [TestCase("1")]
+    public void ExplicitLegacyStateSchemaIsRejected(string schema)
+    {
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.StateDbKeyScheme.Returns(schema);
+
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
+            CreatePolicy(initConfig: initConfig))!;
+
+        Assert.That(exception.Message, Does.Contain("Hash and HalfPath schemas"));
+        Assert.That(exception.Message, Does.Contain("flatdbimportfrompruningtriestate"));
+    }
+
+    [TestCase("Enabled")]
+    [TestCase("ImportFromPruningTrieState")]
+    public void ExplicitLegacyFlatDbSettingIsRejected(string setting)
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(setting != nameof(IFlatDbConfig.Enabled));
+        flatDbConfig.ImportFromPruningTrieState.Returns(setting == nameof(IFlatDbConfig.ImportFromPruningTrieState));
+
+        Assert.That(
+            () => CreatePolicy(flatDbConfig: flatDbConfig),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains(FlatStateActivationPolicy.LegacySchemaMessage));
+    }
+
+    [Test]
+    public void FlatDbDisabledByTypedConfigurationIsRejected()
+    {
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(false);
+
+        Assert.That(
+            () => CreatePolicy(flatDbConfig: flatDbConfig),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains(FlatStateActivationPolicy.LegacySchemaMessage));
+    }
+
+    [TestCase(true, FlatLayout.Flat, 8, true)]
+    [TestCase(true, FlatLayout.FlatInTrie, 8, false)]
+    [TestCase(true, FlatLayout.Flat, 32, false)]
+    public void AdvisesFlatInTrieLayoutOnLowMemory(bool enabled, FlatLayout layout, int availableMemoryGiB, bool expectWarn)
     {
         TestLogger testLogger = new();
+        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
+        flatDbConfig.Enabled.Returns(enabled);
+        flatDbConfig.Layout.Returns(layout);
         FlatStateActivationPolicy policy = CreatePolicy(
-            enabled: enabled,
-            importFromPruning: false,
-            flatHasData: false,
-            patriciaHasData: false,
-            layout: layout,
+            flatDbConfig: flatDbConfig,
             availableMemoryBytes: availableMemoryGiB.GiB,
             logManager: new OneLoggerLogManager(new ILogger(testLogger)));
 
+        _ = policy.ShouldTurnOnFlatDb();
         bool warned = testLogger.LogList.Any(l => l.Contains("--FlatDb.Layout") && l.Contains(nameof(FlatLayout.FlatInTrie)));
         Assert.That(warned, Is.EqualTo(expectWarn));
     }
 
     private static FlatStateActivationPolicy CreatePolicy(
-        bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
-        FlatLayout layout, long availableMemoryBytes, ILogManager logManager)
+        IFlatDbConfig? flatDbConfig = null,
+        IInitConfig? initConfig = null,
+        IFileSystem? fileSystem = null,
+        IDbFactory? dbFactory = null,
+        StateId? flatState = null,
+        long availableMemoryBytes = 32L * 1024 * 1024 * 1024,
+        ILogManager? logManager = null)
     {
-        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(enabled);
-        flatDbConfig.ImportFromPruningTrieState.Returns(importFromPruning);
-        flatDbConfig.Layout.Returns(layout);
+        if (flatDbConfig is null)
+        {
+            flatDbConfig = Substitute.For<IFlatDbConfig>();
+            flatDbConfig.Enabled.Returns(true);
+            flatDbConfig.ImportFromPruningTrieState.Returns(false);
+            flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        }
+
+        if (initConfig is null)
+        {
+            initConfig = Substitute.For<IInitConfig>();
+            initConfig.StateDbKeyScheme.Returns("Current");
+        }
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(flatHasData ? new StateId(1, Nethermind.Core.Crypto.Keccak.Zero) : StateId.PreGenesis);
+        reader.CurrentState.Returns(flatState ?? StateId.PreGenesis);
         IPersistence flatPersistence = Substitute.For<IPersistence>();
         flatPersistence.CreateReader().Returns(reader);
 
-        MemDb patriciaDb = new();
-        if (patriciaHasData)
-            patriciaDb.Set([1], [1]);
+        if (fileSystem is null)
+        {
+            fileSystem = Substitute.For<IFileSystem>();
+            IDirectory directory = Substitute.For<IDirectory>();
+            fileSystem.Directory.Returns(directory);
+            directory.Exists(Arg.Any<string>()).Returns(false);
+        }
+
+        if (dbFactory is null)
+        {
+            dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns("state");
+        }
 
         return new FlatStateActivationPolicy(
             flatDbConfig,
+            initConfig,
             new TestHardwareInfo(availableMemoryBytes),
             new Lazy<IPersistence>(() => flatPersistence),
-            new Lazy<IDb>(() => patriciaDb),
-            logManager);
+            dbFactory,
+            fileSystem,
+            logManager ?? LimboLogs.Instance);
+    }
+
+    private static (IFileSystem FileSystem, IDbFactory DbFactory) CreateLegacyFileSystem(string marker)
+    {
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        IDirectory directory = Substitute.For<IDirectory>();
+        fileSystem.Directory.Returns(directory);
+        directory.Exists(Arg.Any<string>()).Returns(true);
+        directory.EnumerateFiles(Arg.Any<string>(), "*", SearchOption.AllDirectories).Returns([marker]);
+
+        IDbFactory dbFactory = Substitute.For<IDbFactory>();
+        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns("state");
+        return (fileSystem, dbFactory);
     }
 }

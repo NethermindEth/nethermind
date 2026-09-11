@@ -9,7 +9,6 @@ on:
         type: choice
         options:
           - flat
-          - halfpath
         default: flat
       payload_set:
         description: Payload set mode
@@ -130,18 +129,13 @@ jobs:
         id: resolve
         shell: bash
         env:
-          STATE_LAYOUT: ${{ inputs.state_layout || 'flat' }}
           PAYLOAD_SET: ${{ inputs.payload_set || 'realblocks' }}
         run: |
           set -euo pipefail
-          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
+          if [[ "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
-            config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet.yaml"
           else
-            config_file="github-action-mainnet.yaml"
+            config_file="github-action-mainnet-flat.yaml"
           fi
           echo "config_file=${config_file}" >> "${GITHUB_OUTPUT}"
 

@@ -7,15 +7,14 @@ using System.Threading;
 namespace Nethermind.Trie
 {
     /// <summary>
-    /// Per-call counters populated by <see cref="MeteredTrieNodeResolver"/> while a single
-    /// <see cref="PatriciaTree.Accept{TNodeContext}"/> traversal runs with a non-null
+    /// Per-call counters populated while a single <see cref="PatriciaTree.Accept{TNodeContext}"/> traversal runs with a non-null
     /// <c>diagnostics</c> argument. Values aggregate across the account and any storage tries
     /// visited during that traversal.
     /// </summary>
     /// <remarks>
     /// Counter mutations use <see cref="Interlocked"/> so the same instance is safe to share
     /// across multiple threads when the visitor runs with <c>MaxDegreeOfParallelism &gt; 1</c>
-    /// (e.g. the <c>BatchedTrieVisitor</c> path). For the default proof-RPC code path the
+    /// (e.g. a full database walk). For the default proof-RPC code path the
     /// traversal is single-threaded and the atomic ops are uncontended.
     /// <para>
     /// Reader properties read each counter independently, so <see cref="CacheHits"/> is not a
@@ -30,14 +29,12 @@ namespace Nethermind.Trie
         private int _maxDepth;
 
         /// <summary>
-        /// Total number of <c>FindCachedOrUnknown</c> calls observed by the metered resolver
-        /// during the traversal — i.e. one per visited trie node.
+        /// Total number of <c>FindCachedOrUnknown</c> calls observed during the traversal.
         /// </summary>
         public long NodeLookups => Interlocked.Read(ref _nodeLookups);
 
         /// <summary>
-        /// Number of <c>LoadRlp</c> / <c>TryLoadRlp</c> calls observed — i.e. node fetches that
-        /// missed the in-process trie store cache and required reading from the underlying store.
+        /// Number of <c>LoadRlp</c> / <c>TryLoadRlp</c> calls observed during the traversal.
         /// </summary>
         public long CacheMisses => Interlocked.Read(ref _cacheMisses);
 
