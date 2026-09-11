@@ -199,10 +199,15 @@ public class FrameTxValidationPrefixSimulationTests
         AssertPrefixVerdictParity(tx, expectedValid);
     }
 
-    [Test]
-    public void Simulate_PrefixNeverSetsPayer_Rejected()
+    // The prefix leaves no payer either way: one halts without approving, the other reverts.
+    [TestCase(false, TestName = "Simulate_PrefixNeverSetsPayer_Rejected")]
+    [TestCase(true, TestName = "Simulate_PrefixReverts_Rejected")]
+    public void Simulate_PrefixResolvingNoPayer_Rejected(bool reverts)
     {
-        DeployContract(Sender, Prepare.EvmCode.Op(Instruction.STOP).Done, 1.Ether);
+        byte[] prefix = reverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done;
+        DeployContract(Sender, prefix, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
@@ -215,24 +220,8 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixReverts_Rejected()
-    {
-        DeployContract(Sender, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done, 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-
-        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(tracer.Payer, Is.Null);
-        }
-    }
-
-    [TestCase(Instruction.ORIGIN)]
-    [TestCase(Instruction.BLOBHASH)]
-    [TestCase(Instruction.TLOAD)]
-    public void Simulate_PrefixUsesRelaxedOpcode_ResolvesPayer(Instruction opcode)
+    public void Simulate_PrefixUsesRelaxedOpcode_ResolvesPayer(
+        [Values(Instruction.ORIGIN, Instruction.BLOBHASH, Instruction.TLOAD)] Instruction opcode)
     {
         // Each reads the frame or transaction payload, not the block environment, so none makes the
         // prefix depend on state that could differ between simulation and inclusion.

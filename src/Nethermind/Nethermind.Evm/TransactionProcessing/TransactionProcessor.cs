@@ -67,7 +67,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
     }
 
-    public abstract class TransactionProcessorBase
+    public abstract partial class TransactionProcessorBase
     {
         internal static bool ForceSimpleTransferDisabled;
 

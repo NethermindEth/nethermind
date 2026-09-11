@@ -19,9 +19,14 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     /// <remarks>Absent for an envelope nonce, which is a different signing payload from the key set <c>[0]</c>.</remarks>
     public UInt256[]? NonceKeys { get; set; }
 
+    /// <summary>EIP-8141 <c>frames</c>, in execution order; the field that discriminates this envelope.</summary>
+    /// <remarks>The transaction's <c>gas</c> is their summed limits, so a frame's own budget is read here
+    /// rather than from that total.</remarks>
     [JsonDiscriminator]
     public FrameForRpc[]? Frames { get; set; }
 
+    /// <summary>EIP-8141 <c>signatures</c>: the entries hoisted out of the frames, verified before any frame
+    /// runs and read by frame code through <c>SIGPARAM</c> by index into this list.</summary>
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
     /// <summary><c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>

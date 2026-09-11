@@ -340,12 +340,9 @@ namespace Nethermind.TxPool.Test
 
             _txPool = CreatePool(specProvider: provider);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(followUpTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
-            }
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(followUpTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
 
             await AddEmptyBlock();
             AssertRevalidatedForHead();
@@ -1902,9 +1899,10 @@ namespace Nethermind.TxPool.Test
             Transaction dropped = null;
             _txPool.EvictedPending += (_, e) => dropped = e.Transaction;
 
+            Assert.That(_txPool.EvictTransaction(transaction), Is.True);
+
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_txPool.EvictTransaction(transaction), Is.True);
                 Assert.That(dropped, Is.SameAs(transaction), "the drop is surfaced to EvictedPending subscribers");
                 Assert.That(_txPool.IsKnown(transaction.Hash), Is.False, "the long-term cache is cleared so the tx can re-enter");
             }
@@ -2981,21 +2979,7 @@ namespace Nethermind.TxPool.Test
             // MAX_VERIFY_GAS disabled: this covers payer resolution, not the verify-gas bound.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
             // A default-code self_verify frame tx: the sender is its own payer, resolved natively.
-            Transaction frameTx = new()
-            {
-                Type = TxType.FrameTx,
-                ChainId = _specProvider.ChainId,
-                Nonce = 0,
-                SenderAddress = TestItem.PrivateKeyA.Address,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
-                FrameSignatures = [],
-                GasLimit = 1_000_000,
-                GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 1.GWei,
-            };
-            frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
-            frameTx.Hash = frameTx.CalculateHash();
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction frameTx = SelfVerifyFrameTx();
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
 
@@ -3011,28 +2995,11 @@ namespace Nethermind.TxPool.Test
         public void EvictTransaction_drops_a_frame_tx_on_the_first_failure_under_the_default_budget()
         {
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
-            Transaction frameTx = new()
-            {
-                Type = TxType.FrameTx,
-                ChainId = _specProvider.ChainId,
-                Nonce = 0,
-                SenderAddress = TestItem.PrivateKeyA.Address,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
-                FrameSignatures = [],
-                GasLimit = 1_000_000,
-                GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 1.GWei,
-            };
-            frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
-            frameTx.Hash = frameTx.CalculateHash();
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction frameTx = SelfVerifyFrameTx();
             _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "the default budget evicts on the first failed attempt");
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the frame transaction leaves the pool at once");
-            }
+            Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "the default budget evicts on the first failed attempt");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the frame transaction leaves the pool at once");
         }
 
         [Test]
@@ -3051,18 +3018,15 @@ namespace Nethermind.TxPool.Test
             int evicted = 0;
             _txPool.EvictedPending += (_, _) => evicted++;
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "the first production failure on a head is kept");
-                Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "a second failure on the same head spends no further unit");
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction stays pending while its budget lasts");
-            }
+            Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "the first production failure on a head is kept");
+            Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "a second failure on the same head spends no further unit");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction stays pending while its budget lasts");
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "failing on a second head spends the last unit and evicts");
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "failing on a second head spends the last unit and evicts");
                 Assert.That(evicted, Is.EqualTo(1), "eviction is surfaced exactly once");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the frame transaction leaves the pool once its budget is spent");
             }
@@ -3245,11 +3209,8 @@ namespace Nethermind.TxPool.Test
             _headInfo.BlockGasLimit = long.MaxValue;
             Transaction frameTx = ForkGatedFrameTx(gate, preForkSpec, postForkSpec, revokedAtFork);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-            }
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
             AssertRevalidatedForHead();
@@ -3554,12 +3515,9 @@ namespace Nethermind.TxPool.Test
             // No deadline, so it is never itself a shed candidate: it is only here to fill the pool.
             Transaction staleNonce = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: null);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.SubmitTx(nearlyExpired, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(staleNonce, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "the pool must be full, or nothing would be shed either way");
-            }
+            Assert.That(_txPool.SubmitTx(nearlyExpired, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(staleNonce, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "the pool must be full, or nothing would be shed either way");
 
             // The new head consumes B's nonce, so UpdateBuckets drops that transaction and the pool is
             // no longer full by the time shedding runs.
@@ -4099,30 +4057,20 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test]
-        public void SubmitTx_SponsoredFrameTx_IsAdmittedWithAnUnfundedSender()
-        {
-            // The whole point of EIP-8141 sponsorship: the payer covers the fee, so pricing it against the
-            // sender turns every sponsored transaction away before the payer is resolved at all.
-            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
-
-            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
-            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx));
-
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-        }
-
-        [Test]
-        public void SubmitTx_UnfundedSender_WhoseSponsorCannotCoverTheMaxCost_IsRejected()
+        // The whole point of EIP-8141 sponsorship: the payer covers the fee, so pricing it against the
+        // sender turns every sponsored transaction away before the payer is resolved at all.
+        [TestCase(true, TestName = "SubmitTx_SponsoredFrameTx_IsAdmittedWithAnUnfundedSender")]
+        [TestCase(false, TestName = "SubmitTx_UnfundedSender_WhoseSponsorCannotCoverTheMaxCost_IsRejected")]
+        public void SubmitTx_UnfundedSender_IsPricedAgainstItsSponsor(bool sponsorCoversMaxCost)
         {
             CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
 
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
-            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+            EnsureSenderBalance(TestItem.AddressD, sponsorCoversMaxCost ? MaxCostOf(tx) : MaxCostOf(tx) - 1);
 
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None),
+                Is.EqualTo(sponsorCoversMaxCost ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxPayerExposureExceeded));
         }
 
         [Test]
@@ -4167,12 +4115,9 @@ namespace Nethermind.TxPool.Test
             UInt256 both = MaxCostOf(first) + MaxCostOf(second);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, rejected ? both - 1 : both);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None),
-                    Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
-            }
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None),
+                Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
         }
 
         [TestCase(false, TestName = "the sender covers both")]
@@ -4194,13 +4139,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(selfPaid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             SimulatesAs(simulator, FrameTxSimulationResult.Undecided("simulator unavailable"));
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(selfPaid.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address),
-                    "the incumbent must be self-paid, or the walk sees it and the ledger is not what binds");
-                Assert.That(_txPool.SubmitTx(payerless, TxHandlingOptions.None),
-                    Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
-            }
+            Assert.That(selfPaid.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address),
+                "the incumbent must be self-paid, or the walk sees it and the ledger is not what binds");
+            Assert.That(_txPool.SubmitTx(payerless, TxHandlingOptions.None),
+                Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
         }
 
         [TestCase(false, TestName = "the sender still covers the priced cost")]
