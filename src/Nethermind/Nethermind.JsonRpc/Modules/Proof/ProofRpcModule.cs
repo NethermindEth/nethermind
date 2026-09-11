@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return failure.IsError ? ResultWrapper<TransactionForRpcWithProof>.Fail(failure) : ResultWrapper<TransactionForRpcWithProof>.Success(null);
             }
 
-            (Block block, int txIndex, TxReceipt receipt) = resolved;
+            (Block block, int txIndex, _, TxReceipt receipt) = resolved;
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
 
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return failure.IsError ? ResultWrapper<ReceiptWithProof>.Fail(failure) : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
-            (Block block, int txIndex, TxReceipt receipt) = resolved;
+            (Block block, int txIndex, TxReceipt[] storedReceipts, TxReceipt receipt) = resolved;
             Transaction[] txs = block.Transactions;
 
             using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
@@ -91,13 +91,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             scope.Component.Trace(block, receiptsTracer);
 
-            TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
+            TxReceipt[] tracedReceipts = receiptsTracer.TxReceipts.ToArray();
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-            // The traced receipts carry their executed position in Index (BlockReceiptsTracer assigns it sequentially),
-            // so the logs counted and the threshold counted against are both block-derived, as they are in the proofs.
-            int logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
+            // Counted over the stored set the served logs come from, so the served logIndex identifies the same log
+            // eth_getTransactionReceipt and eth_getLogs do; the block-derived position keeps a stale stored Index
+            // from shifting it.
+            int logIndexStart = storedReceipts.GetBlockLogFirstIndex(txIndex);
 
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
@@ -111,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             {
                 log.TransactionIndex = txIndex;
             }
-            receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, txIndex);
+            receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, tracedReceipts, txIndex);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
 
             if (includeHeader)
@@ -163,7 +164,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             });
         }
 
-        private readonly record struct ResolvedTransaction(Block Block, int TxIndex, TxReceipt Receipt);
+        private readonly record struct ResolvedTransaction(Block Block, int TxIndex, TxReceipt[] StoredReceipts, TxReceipt Receipt);
 
         /// <remarks>
         /// <paramref name="failure"/> is populated only for a search error the caller must surface, and left default
@@ -188,7 +189,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = searchResult.Object;
             int txIndex = block.GetTransactionIndex(txHash.ValueHash256);
-            TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
+            TxReceipt[] storedReceipts = receiptFinder.Get(block);
+            TxReceipt receipt = storedReceipts.ForTransaction(txHash);
             if (txIndex < 0 || receipt is null)
             {
                 // The resolved block may not contain this transaction, or its receipt set may no longer include it —
@@ -196,7 +198,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return false;
             }
 
-            resolved = new ResolvedTransaction(block, txIndex, receipt);
+            resolved = new ResolvedTransaction(block, txIndex, storedReceipts, receipt);
             return true;
         }
 
