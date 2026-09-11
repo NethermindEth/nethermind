@@ -37,7 +37,9 @@ public class FrameTxPayerResolverTests
 
     private static FrameTxPayerResolution Resolve(Transaction tx, TestReadOnlyStateProvider state)
     {
-        state.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount);
+        // As every production caller does: a missing sender is normalised to the empty account, never left
+        // as the zeroed out-value, whose IsNull the resolver would then answer on.
+        if (!state.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;
         return FrameTxPayerResolver.Resolve(tx, senderAccount);
     }
 
@@ -69,10 +71,72 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerify(PrefixFrameGas), Pay(Sponsor, PrefixFrameGas)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A never-seen sender still resolves: the zeroed account reads as default (empty) code.
-        yield return Case("SelfVerify_NonExistentSender_PayerIsSender",
+        // A never-seen sender reads as default (empty) code, but approving payment also creates the
+        // account, a state charge the frame's budget may not cover.
+        yield return Case("SelfVerify_NonExistentSender_RequiresSimulation",
             _ => FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]),
+            FrameTxPayerOutcome.RequiresSimulation, null);
+
+        // Budgeting the creation charge covers the worst case, so the shortcut needs no lookup to know it.
+        yield return Case("SelfVerify_NonExistentSenderBudgetingItsCreation_PayerIsSender",
+            _ => FrameTx([SelfVerifyWithStateGas((ulong)GasCostOf.NewAccountState)], [Secp256k1Signature(Sender)]),
             FrameTxPayerOutcome.Resolved, Sender);
+
+        // The default code halts before it runs unless the frame can pay its target's warm access, so a
+        // budget under that charge is not the provable success the shortcut stands on.
+        yield return Case("SelfVerify_FrameBelowItsEntryCharge_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess - 1)], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        yield return Case("SelfVerify_FrameCoveringItsEntryCharge_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([SelfVerify(Eip8038Constants.WarmAccess)], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        // EIP-8250: a fresh key's slot is a state charge, and a frame budgeting none of it cannot afford
+        // the set it declares.
+        yield return Case("SelfVerify_NonceKeysWithoutStateGas_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                tx.NonceKeys = [UInt256.One];
+                return tx;
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        // Pricing every key as a first use is the worst case, so a frame budgeting it needs no chain state.
+        yield return Case("SelfVerify_NonceKeysBudgetingEveryKeyAsFirstUse_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                Transaction tx = FrameTx([SelfVerifyWithStateGas(2 * (ulong)GasCostOf.SSetState)], [Secp256k1Signature(Sender)]);
+                tx.NonceKeys = [UInt256.One, (UInt256)2];
+                return tx;
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        yield return Case("SelfVerify_NonceKeysOneSlotShortOfTheWorstCase_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                Transaction tx = FrameTx([SelfVerifyWithStateGas(2 * (ulong)GasCostOf.SSetState - 1)], [Secp256k1Signature(Sender)]);
+                tx.NonceKeys = [UInt256.One, (UInt256)2];
+                return tx;
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        // The set [0] aliases the account nonce and writes no NONCE_MANAGER slot, so it owes no state gas.
+        yield return Case("SelfVerify_AccountNonceKeySet_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                Transaction tx = FrameTx([SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+                tx.NonceKeys = [UInt256.Zero];
+                return tx;
+            }, FrameTxPayerOutcome.Resolved, Sender);
 
         yield return Case("OnlyVerifyWithoutPay_NoPayer",
             state =>
@@ -163,6 +227,22 @@ public class FrameTxPayerResolverTests
                 return FrameTx([ExpiryAt(9999), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
+        // A skipped expiry frame still has to run ahead of the self relay, and its predeploy target owes a cold
+        // account access plus the verifier's own draw before it can succeed.
+        yield return Case("ExpiryAtItsExactCostThenSelfVerify_PayerIsSender",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([ExpiryAt(9999, Eip8141Constants.ExpiryFrameExecutionGas), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        yield return Case("ExpiryOneGasBelowItsCostThenSelfVerify_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([ExpiryAt(9999, Eip8141Constants.ExpiryFrameExecutionGas - 1), SelfVerify(PrefixFrameGas)], [Secp256k1Signature(Sender)]);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
         // The only shape where both prefix skips apply; the deploy frame still forces simulation.
         yield return Case("ExpiryThenDeployThenSelfVerify_RequiresSimulation",
             state =>
@@ -237,6 +317,9 @@ public class FrameTxPayerResolverTests
         FrameTxTestFrames.FrameTx(Sender, signatures, frames);
 
     private static TxFrame Frame(byte mode) => new(mode, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
+
+    private static TxFrame SelfVerifyWithStateGas(ulong stateGasLimit) =>
+        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, PrefixFrameGas, stateGasLimit, UInt256.Zero, default);
 
     private static TxFrame DeployFrame() => Frame(TxFrame.ModeDefault);
 }

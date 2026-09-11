@@ -37,4 +37,14 @@ public static class Eip8141Constants
     public static readonly byte[] ExpiryVerifierCode = Bytes.FromHexString("0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd");
 
     public static readonly ValueHash256 ExpiryVerifierCodeHash = ValueKeccak.Compute(ExpiryVerifierCode);
+
+    /// <summary>Execution gas a well-formed expiry frame must budget to run: its predeploy target's cold account
+    /// access plus what <see cref="ExpiryVerifierCode"/> itself draws on the path that does not revert.</summary>
+    /// <remarks>Fixed because every input is: the code is a predeploy and the calldata length is structural. Cold
+    /// access is the worst case, a pre-warmed target only costing less. Whether the deadline has passed is a
+    /// separate question, and a reverting expiry frame invalidates the transaction whatever it budgeted.
+    /// Pinned by <c>Execute_ExpiryFrameAtItsExactCost_IsTheBoundary</c>.</remarks>
+    public const ulong ExpiryFrameExecutionGas = Eip8038Constants.ColdAccountAccess + ExpiryVerifierCodeGas;
+
+    private const ulong ExpiryVerifierCodeGas = 51;
 }

@@ -4055,6 +4055,50 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The native shortcut skips simulation, so it may only name a payer for a frame that provably
+        // succeeds. One that cannot pay the access charge its own dispatch owes does not, and admitting
+        // it hands the pool a transaction execution rejects.
+        [TestCase(0UL, false, TestName = "SubmitTx_SelfVerifyFrameBelowItsEntryCharge_IsSimulated")]
+        [TestCase(Eip8038Constants.WarmAccess - 1, false, TestName = "SubmitTx_SelfVerifyFrameOneGasBelowItsEntryCharge_IsSimulated")]
+        [TestCase(Eip8038Constants.WarmAccess, true, TestName = "SubmitTx_SelfVerifyFrameCoveringItsEntryCharge_TakesTheNativeShortcut")]
+        public void SubmitTx_NativeSelfVerifyFrame_IsSimulatedUnlessItCanPayItsEntryCharge(ulong executionGasLimit, bool shortcut)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("validation prefix frame reverted"));
+            Transaction tx = SignedFrameTx([
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
+                Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            }
+        }
+
+        // A skipped leading expiry frame still has to run successfully ahead of the approving one, and its
+        // predeploy target owes a cold account access plus the verifier's own draw before it can.
+        [TestCase(Eip8141Constants.ExpiryFrameExecutionGas - 1, false, TestName = "SubmitTx_LeadingExpiryFrameBelowItsEntryCharge_IsSimulated")]
+        [TestCase(Eip8141Constants.ExpiryFrameExecutionGas, true, TestName = "SubmitTx_LeadingExpiryFrameCoveringItsEntryCharge_TakesTheNativeShortcut")]
+        public void SubmitTx_SelfVerifyBehindALeadingExpiryFrame_IsSimulatedUnlessThatFrameCanPayItsEntryCharge(ulong expiryGasLimit, bool shortcut)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("validation prefix frame reverted"));
+            Transaction tx = SignedFrameTx([FrameTxTestFrames.ExpiryAt(ulong.MaxValue, expiryGasLimit), SelfVerifyPrefixFrame()]);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
+                Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            }
+        }
+
         [Test]
         public void SubmitTx_SponsoredFrameTx_IsAdmittedWithAnUnfundedSender()
         {
@@ -4098,7 +4142,9 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void SubmitTx_UnfundedSender_PayingForItsOwnFrameTx_IsRejected()
         {
-            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            // An unfunded sender reads back as the empty account, which the resolver cannot tell from one
+            // execution has to create, so it takes the simulated verdict — the sender either way.
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
 
             Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 1), TxHandlingOptions.None),
