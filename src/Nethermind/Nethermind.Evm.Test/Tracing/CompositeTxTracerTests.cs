@@ -15,6 +15,30 @@ namespace Nethermind.Evm.Test.Tracing;
 public class CompositeTxTracerTests
 {
     [Test]
+    public void Forwards_action_gas_only_to_action_tracers([Values] bool tracingActions)
+    {
+        ITxTracer inner = Substitute.For<ITxTracer>();
+        inner.IsTracingActions.Returns(tracingActions);
+        using CompositeTxTracer tracer = new(inner);
+
+        tracer.ReportActionRemainingGas(1234);
+
+        inner.Received(tracingActions ? 1 : 0).ReportActionRemainingGas(1234);
+    }
+
+    [Test]
+    public void Cancellation_forwards_action_gas_only_to_action_tracers([Values] bool tracingActions)
+    {
+        ITxTracer inner = Substitute.For<ITxTracer>();
+        inner.IsTracingActions.Returns(tracingActions);
+        using CancellationTxTracer tracer = new(inner);
+
+        tracer.ReportActionRemainingGas(1234);
+
+        inner.Received(tracingActions ? 1 : 0).ReportActionRemainingGas(1234);
+    }
+
+    [Test]
     public void Aggregates_receipt_log_requirements([Values] bool firstRequiresLogs, [Values] bool secondRequiresLogs)
     {
         ITxTracer first = Substitute.For<ITxTracer>();

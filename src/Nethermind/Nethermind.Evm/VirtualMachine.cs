@@ -661,6 +661,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // If action-level tracing is enabled, report the error associated with the action.
         if (IsTracingActions)
         {
+            txTracer.ReportActionRemainingGas(0);
             txTracer.ReportActionError(errorType);
         }
 
@@ -1304,6 +1305,10 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
             }
+            if (IsTracingActions)
+            {
+                _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
+            }
         }
 
         // CALL already expanded this range; returned output is clipped to the requested length.
@@ -1364,6 +1369,8 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             if (TTracingInst.IsActive && !tracedImplicitStop)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            if (IsTracingActions)
+                _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in gas));
             int stackHead = (int)stack.Head;
             VmState<TGasPolicy> state = VmState;
             state.ProgramCounter = (int)programCounter;
@@ -1404,6 +1411,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
         if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
+        if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
         {

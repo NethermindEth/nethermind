@@ -381,6 +381,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
 
+    void ReportActionRemainingGas(ulong gas) { }
+
     /// <summary>
     ///
     /// </summary>

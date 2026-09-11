@@ -388,6 +388,15 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    public void ReportActionRemainingGas(ulong gas)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportActionRemainingGas(gas);
+        }
+    }
+
     public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         token.ThrowIfCancellationRequested();

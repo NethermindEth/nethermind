@@ -424,6 +424,18 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
+    public void ReportActionRemainingGas(ulong gas)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportActionRemainingGas(gas);
+            }
+        }
+    }
+
     public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         for (int index = 0; index < _txTracers.Count; index++)
