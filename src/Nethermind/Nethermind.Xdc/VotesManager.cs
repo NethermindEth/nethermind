@@ -315,7 +315,7 @@ internal class VotesManager : IVotesManager, IDisposable
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+            if (peer.SyncPeer is IXdcConsensusPeer xdcProtocol)
                 xdcProtocol.SendVote(vote);
         }
     }

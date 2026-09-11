@@ -26,6 +26,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using NSubstitute;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -234,6 +235,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             stateReader,
             Substitute.For<IEthereumEcdsa>(),
             Substitute.For<ISpecProvider>(),
+            Substitute.For<ITxValidator>(),
             LimboLogs.Instance);
     }
 }

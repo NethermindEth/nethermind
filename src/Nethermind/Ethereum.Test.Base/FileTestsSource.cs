@@ -27,12 +27,14 @@ namespace Ethereum.Test.Base
 
                 byte[] json = File.ReadAllBytes(_fileName);
 
-                return testType switch
+                IEnumerable<EthereumTest> tests = testType switch
                 {
                     TestType.State => JsonToEthereumTest.ConvertStateTest(json),
                     TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
                     _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
                 };
+
+                return FixtureExclusions.Filter(tests, _fileName);
             }
             catch (Exception e)
             {

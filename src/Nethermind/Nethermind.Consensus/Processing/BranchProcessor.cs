@@ -21,6 +21,7 @@ public class BranchProcessor(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     IBlockhashProvider blockhashProvider,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
@@ -97,6 +98,8 @@ public class BranchProcessor(
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            // Production, tracing and eth_simulate never report inclusion-list compliance.
+            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
@@ -153,6 +156,13 @@ public class BranchProcessor(
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
+
+                // A signal, not a rejection: the block is still committed, and it reads post-execution
+                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
+                bool inclusionListSatisfied = !checkInclusionList
+                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+                suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
                 QueueClearCaches(preWarmTask);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.

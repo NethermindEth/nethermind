@@ -15,14 +15,30 @@ namespace Nethermind.Blockchain.Test.Proofs;
 [Parallelizable(ParallelScope.All)]
 public class WithdrawalTrieTests
 {
+    private static readonly int[] RootCounts = [0, 1, 2, 8, 15, 16, 17, 64, 65, 127, 128, 129, 255, 256, 257];
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool largeFields)
+    {
+        Withdrawal[] withdrawals = new Withdrawal[count];
+        for (int i = 0; i < count; i++)
+            withdrawals[i] = new Withdrawal
+            {
+                Index = largeFields ? ulong.MaxValue - (ulong)i : (ulong)i + 1000,
+                ValidatorIndex = largeFields ? ulong.MaxValue : (ulong)i,
+                Address = i % 2 == 0 ? TestItem.AddressA : TestItem.AddressB,
+                AmountInGwei = largeFields ? ulong.MaxValue : (ulong)i
+            };
+
+        Assert.That(WithdrawalTrie.CalculateRoot(withdrawals), Is.EqualTo(new WithdrawalTrie(withdrawals).RootHash));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_compute_hash_root()
     {
         Block block = Build.A.Block.WithWithdrawals(10).TestObject;
-        WithdrawalTrie trie = new(block.Withdrawals!);
-
         Assert.That(
-            trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
+            WithdrawalTrie.CalculateRoot(block.Withdrawals!).ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

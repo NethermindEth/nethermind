@@ -71,16 +71,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
 
-                message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref RlpReader outerCtx) =>
-                    outerCtx.DecodeArrayPoolList(static (ref RlpReader innerCtx) =>
+                message.Slots = ctx.DecodeNonNullArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref RlpReader outerCtx) =>
+                    outerCtx.DecodeNonNullArrayPoolList(static (ref RlpReader innerCtx) =>
                     {
                         int length = innerCtx.ReadSequenceLength();
                         int checkPosition = innerCtx.Position + length;
-                        Hash256 path = innerCtx.DecodeKeccak() ?? throw new RlpException("Storage slot path cannot be null.");
+                        Hash256 path = innerCtx.DecodeKeccak();
                         byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
                         innerCtx.Check(checkPosition);
                         return new PathWithStorageSlot(in path.ValueHash256, value);
-                    }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
+                    }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit),
+                    limit: SnapMessageLimits.StorageRangeAccountsRlpLimit,
+                    decodeEmptyList: true);
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.StorageRangeProofsRlpLimit);
                 memoryOwner = null;
 

@@ -1,51 +1,43 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Extensions;
 
-/// <summary>
-/// RISC-V (zkVM) substitute for the <see cref="BitOperations"/> primitives
-/// <see cref="SpanExtensions"/> uses for in-memory hashing. RISC-V lacks a CRC32
-/// instruction, so the BCL's <c>Crc32C</c> falls back to a slow software loop.
-/// </summary>
-/// <remarks>
-/// The replacement is a multiply-fold that lowers to one hardware MUL. It is not
-/// CRC32C, but the output only feeds ephemeral <c>GetHashCode</c> values (never
-/// persisted or sent over the wire), so any well-distributed hash suffices.
-/// </remarks>
+/// <summary>Byte-swapping primitives for the RISC-V guest.</summary>
 public static partial class ZkEvmBitOperations
 {
-    // xxHash64 prime — good avalanche when folded against the high bits.
-    private const ulong Prime = 0xD6E8FEB86659FD93UL;
+    private static readonly ulong[] SwapMasks = [0x00FF00FF00FF00FFUL, 0x0000FFFF0000FFFFUL];
 
     // RISC-V has no byte-swap instruction; this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Bswap64(ulong x)
     {
-        x = ((x & 0x00FF00FF00FF00FFUL) << 8) | ((x >> 8) & 0x00FF00FF00FF00FFUL);
-        x = ((x & 0x0000FFFF0000FFFFUL) << 16) | ((x >> 16) & 0x0000FFFF0000FFFFUL);
-        return (x << 32) | (x >> 32);
+        ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
+        return Swap(x, masks, Unsafe.Add(ref masks, 1));
     }
 
+    /// <summary>Loads the swap masks into locals, so a run of <see cref="Swap"/> calls shares them.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, ulong data)
+    internal static void LoadSwapMasks(out ulong m8, out ulong m16)
     {
-        ulong x = (crc ^ data) * Prime;
-        return (uint)(x ^ (x >> 29));
+        ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
+        m8 = masks;
+        m16 = Unsafe.Add(ref masks, 1);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, uint data) => Crc32C(crc, (ulong)data);
+    internal static ulong Swap(ulong x, ulong m8, ulong m16)
+    {
+        // Addition rather than disjunction: the prover charges `or` 60 units against `add`'s 15.5, and
+        // each pair below is disjoint by construction - the masked halves occupy alternating byte, then
+        // halfword, then word lanes - so the operators are equivalent here at a quarter of the price.
+        // Do not carry this over to a pair that can overlap; there the addition would carry.
+        x = ((x & m8) << 8) + ((x >> 8) & m8);
+        x = ((x & m16) << 16) + ((x >> 16) & m16);
+        return (x << 32) + (x >> 32);
+    }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, ushort data) => Crc32C(crc, (ulong)data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint Crc32C(uint crc, byte data) => Crc32C(crc, (ulong)data);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint RotateLeft(uint value, int offset) => BitOperations.RotateLeft(value, offset);
 }

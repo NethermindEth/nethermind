@@ -62,9 +62,10 @@ public class SnapStateServerTests
             Server = new SnapStateServer(_store.AsReadOnly(), LimboLogs.Instance, lastNStateRootTracker);
 
             _clientStateDb = new MemDb();
-            using ProgressTracker progressTracker = new(_clientStateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
             INodeStorage nodeStorage = new NodeStorage(_clientStateDb);
-            SnapProvider = new SnapProvider(progressTracker, new MemDb(), new PatriciaSnapTrieFactory(nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            PatriciaSnapTrieFactory snapTrieFactory = new(nodeStorage, _clientStateDb, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(snapTrieFactory, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+            SnapProvider = new SnapProvider(progressTracker, new MemDb(), snapTrieFactory, LimboLogs.Instance);
         }
 
         public IWriteBatch BeginWriteBatch() => new WriteBatch(this);
@@ -121,7 +122,8 @@ public class SnapStateServerTests
     {
         using IWriteBatch batch = context.BeginWriteBatch();
         foreach (PathWithAccount pwa in TestItem.Tree.AccountsWithPaths)
-            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account);
+            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account
+                ?? throw new InvalidOperationException("A test account entry must contain an account value."));
     }
 
     private static void FillMultipleAccounts(ISnapServerContext context, int count)
@@ -223,7 +225,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(expectedResult));
             // On success the stale empty storage root must be replaced by the verified one.
-            Assert.That(stale.Account.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
+            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
         }
     }
 
@@ -268,7 +270,7 @@ public class SnapStateServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(stale.Account.StorageRoot, Is.EqualTo(storageRoot));
+            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(storageRoot));
         }
     }
 
@@ -302,7 +304,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             // Absent account: nothing adopted, storage root unchanged.
-            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 
@@ -383,9 +385,8 @@ public class SnapStateServerTests
         Assert.That(result.Count, Is.EqualTo(1));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TestNoState(bool withLastNStateTracker)
+    [Test]
+    public void TestNoState([Values] bool withLastNStateTracker)
     {
         ILastNStateRootTracker? lastNStateTracker = null;
         if (withLastNStateTracker)

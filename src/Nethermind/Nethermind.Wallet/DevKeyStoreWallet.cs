@@ -38,11 +38,25 @@ namespace Nethermind.Wallet
 
         public void Import(byte[] keyData, SecureString passphrase) => _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
 
-        public Address[] GetAccounts() => _keyStore.GetKeyAddresses().Addresses.ToArray();
+        public Address[] GetAccounts()
+        {
+            (IReadOnlyCollection<Address> addresses, Result result) = _keyStore.GetKeyAddresses();
+            if (result.ResultType != ResultType.Success || addresses is null)
+            {
+                throw new InvalidOperationException(result.Error ?? "Key address enumeration failed.");
+            }
+
+            return addresses.ToArray();
+        }
 
         public Address NewAccount(SecureString passphrase)
         {
-            (PrivateKey privateKey, _) = _keyStore.GenerateKey(passphrase);
+            (PrivateKey privateKey, Result result) = _keyStore.GenerateKey(passphrase);
+            if (result.ResultType != ResultType.Success || privateKey is null)
+            {
+                throw new InvalidOperationException(result.Error ?? "Key generation failed.");
+            }
+
             return privateKey.Address;
         }
 
@@ -58,7 +72,7 @@ namespace Nethermind.Wallet
             if (_unlockedAccounts.ContainsKey(address)) return true;
 
             (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
-            if (result.ResultType == ResultType.Success)
+            if (result.ResultType == ResultType.Success && key is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Unlocking account: {address}");
                 _unlockedAccounts.Add(key.Address, key);

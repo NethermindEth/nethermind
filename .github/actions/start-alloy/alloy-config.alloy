@@ -48,7 +48,7 @@ discovery.relabel "nethermind_log_labels" {
 
 	rule {
 		target_label = "external_provider"
-		replacement  = "linode"
+		replacement  = coalesce(sys.env("EXTERNAL_PROVIDER"), "linode")
 	}
 
 	// Node specific labels
@@ -107,7 +107,7 @@ discovery.relabel "nethermind_l2_log_labels" {
 
 	rule {
 		target_label = "external_provider"
-		replacement  = "linode"
+		replacement  = coalesce(sys.env("EXTERNAL_PROVIDER"), "linode")
 	}
 
 	// Node specific labels
@@ -162,7 +162,7 @@ prometheus.relabel "nethermind_metric_labels" {
 
 	rule {
 		target_label = "external_provider"
-		replacement  = "linode"
+		replacement  = coalesce(sys.env("EXTERNAL_PROVIDER"), "linode")
 	}
 
 	// Node specific labels
@@ -216,7 +216,7 @@ prometheus.relabel "nethermind_l2_metric_labels" {
 
 	rule {
 		target_label = "external_provider"
-		replacement  = "linode"
+		replacement  = coalesce(sys.env("EXTERNAL_PROVIDER"), "linode")
 	}
 
 	rule {

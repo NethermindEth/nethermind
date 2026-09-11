@@ -17,7 +17,7 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer();
 
         string result = serializer.Serialize(item);
-        T deserialized = serializer.Deserialize<T>(result);
+        T deserialized = serializer.Deserialize<T>(result)!;
 
         if (equalityComparer is null)
         {
@@ -35,7 +35,7 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer();
 
         string result = serializer.Serialize(dictionary);
-        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
+        Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result)!;
 
         Assert.That(deserialized, Is.EqualTo(dictionary));
     }
@@ -50,7 +50,7 @@ public class SerializationTestBase
     {
         IJsonSerializer serializer = BuildSerializer(converters);
 
-        T deserialized = serializer.Deserialize<T>(json);
+        T deserialized = serializer.Deserialize<T>(json)!;
         string result = serializer.Serialize(deserialized);
         Assert.That(result, Is.EqualTo(json));
     }

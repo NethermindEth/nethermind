@@ -26,13 +26,25 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingReceipt { get; }
 
     /// <summary>
+    /// Whether receipt callbacks require the transaction's event logs.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to receipt tracing for compatibility. Tracers that only consume status, gas or output
+    /// can return false. Per-opcode log callbacks are controlled separately by <see cref="IsTracingLogs"/>.
+    /// Returning false permits an incomplete log array in receipt callbacks; it does not guarantee an empty array.
+    /// </remarks>
+    bool IsCollectingLogs => IsTracingReceipt;
+
+    /// <summary>
     /// High level calls with information on the target account
     /// </summary>
     /// <remarks>
     /// Controls
     /// - <see cref="ReportSelfDestruct"/>
     /// - <see cref="ReportAction"/>
-    /// - <see cref="ReportActionEnd"/>
+    /// - <see cref="ReportActionEnd(ulong, ReadOnlyMemory{byte})"/>
+    /// - <see cref="ReportActionEnd(ulong, Address, ReadOnlyMemory{byte})"/>
+    /// - <see cref="ReportActionRevert"/>
     /// - <see cref="ReportActionError"/>
     /// </remarks>
     bool IsTracingActions { get; }

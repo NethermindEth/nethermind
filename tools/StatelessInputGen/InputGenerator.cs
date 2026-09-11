@@ -3,14 +3,19 @@
 
 using System.Buffers.Binary;
 using System.Globalization;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
@@ -27,35 +32,21 @@ internal static class InputGenerator
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
 
-        byte[] data;
+        byte[]? data;
         Witness? witness;
 
         (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host, cancellationToken);
+        if (block is null || witness is null || chainId is null)
+            return 1;
 
         using (witness)
         {
-            if (block is null || witness is null || chainId is null)
-                return 1;
-
             ISpecProvider specProvider = GetSpecProvider(chainId.Value);
-            IReleaseSpec spec = specProvider.GetSpec(block.Header);
-
-            if (!ProtocolForkExtensions.TryGetByName(spec.Name, out ProtocolFork fork))
-            {
-                AnsiConsole.MarkupLine($"[red]Unsupported fork {spec.Name}: the stateless input schema requires a Cancun or later block[/]");
-                return 1;
-            }
-
-            byte[] encoded = fork == ProtocolFork.Amsterdam
-                ? EncodeInput<SszExecutionPayloadV4>(block, witness, chainId.Value, specProvider)
-                : EncodeInput<SszExecutionPayloadV3>(block, witness, chainId.Value, specProvider);
-
-            data = new byte[encoded.Length + sizeof(ushort)];
-
-            BinaryPrimitives.WriteUInt16BigEndian(data, fork.ToRevision1SchemaId());
-
-            Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
+            data = await EncodeInput(block, witness, specProvider, cancellationToken);
         }
+
+        if (data is null)
+            return 1;
 
         if (forZisk)
             data = ZiskFrame.Wrap(data);
@@ -72,22 +63,81 @@ internal static class InputGenerator
         return 0;
     }
 
-    private static byte[] EncodeInput<TExecutionPayload>(Block block, Witness witness, ulong chainId, ISpecProvider specProvider)
-        where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
+    /// <summary>Encodes a block and its witness as a stateless input, recovering missing execution requests.</summary>
+    /// <remarks>Recovery mutates the supplied block: it fills transaction senders, marks the header post-merge,
+    /// and attaches execution requests, generated access lists and account changes from replay.</remarks>
+    internal static async Task<byte[]?> EncodeInput(
+        Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken = default)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        if (!ProtocolForkExtensions.TryGetByName(spec.Name, out ProtocolFork fork))
+        {
+            AnsiConsole.MarkupLine($"[red]Unsupported fork {spec.Name}: the stateless input schema requires a Cancun or later block[/]");
+            return null;
+        }
+
+        await RecoverExecutionRequests(block, witness, specProvider, cancellationToken);
+
+        // Only Amsterdam has a schema of its own; earlier forks share the current-fork schema.
+        bool isAmsterdam = fork == ProtocolFork.Amsterdam;
+        byte[] encoded = isAmsterdam
+            ? EncodeInput(SszExecutionPayloadAmsterdam.From(block), block, witness, specProvider.ChainId)
+            : EncodeInput(SszExecutionPayload.From(block), block, witness, specProvider.ChainId);
+
+        byte[] data = new byte[encoded.Length + sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16BigEndian(
+            data, (isAmsterdam ? ProtocolFork.Amsterdam : ProtocolFork.Current).ToRevision1SchemaId());
+        Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
+        return data;
+    }
+
+    private static byte[] EncodeInput<TExecutionPayload>(
+        TExecutionPayload payload, Block block, Witness witness, ulong chainId)
+        where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
     {
         StatelessInput<TExecutionPayload> input = new()
         {
-            NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block),
+            NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block, payload),
             Witness = ExecutionWitness.From(witness),
-            ChainConfig = new()
-            {
-                ChainId = chainId,
-                ActiveFork = ForkConfig.From(block.Header, specProvider)
-            },
+            ChainId = chainId,
             PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
         };
 
         return StatelessInput<TExecutionPayload>.Encode(input);
+    }
+
+    private static async Task RecoverExecutionRequests(Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken)
+    {
+        // EIP-7685 request bodies are absent from block RLP; only their hash survives debug_getRawBlock.
+        if (block.ExecutionRequests is not null || block.Header.RequestsHash is null ||
+            block.Header.RequestsHash == ExecutionRequestExtensions.EmptyRequestsHash)
+            return;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        if (!spec.RequestsEnabled)
+            throw new InvalidDataException($"Cannot recover execution requests for block {block.Number}: {spec.Name} does not enable execution requests. Check the configured fork schedule.");
+
+        using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
+        if (headers.Count == 0 || headers[^1].Hash != block.ParentHash)
+            throw new InvalidDataException("Witness is missing the block's parent header.");
+
+        if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
+            await KzgPolynomialCommitments.InitializeAsync().WaitAsync(cancellationToken);
+
+        EthereumEcdsa ecdsa = new(specProvider.ChainId);
+        foreach (Transaction tx in block.Transactions)
+            tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
+
+        // Requests are post-merge, but the RLP header does not carry this execution flag.
+        block.Header.IsPostMerge = true;
+        StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance)
+        {
+            ExecutionRequestsProcessorFactory = ExecutionRequestsProcessorFactory.Instance
+        };
+        using IDisposable scope = env.WorldState.BeginScope(headers[^1]);
+        // Normal processed-block validation checks the recovered requests hash against the original header.
+        env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, cancellationToken);
     }
 
     private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host, CancellationToken cancellationToken)
@@ -118,12 +168,20 @@ internal static class InputGenerator
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
-                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoder<Block>()!;
+                IRlpDecoder<Block> blockDecoder = Rlp.GetDecoderOrThrow<Block>();
                 RlpReader blockContext = new(rlp);
-                block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+                Block? decodedBlock = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
 
-                string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
+                if (decodedBlock is null)
+                {
+                    AnsiConsole.MarkupLine("[red]Block decoded as null[/]");
+                    return;
+                }
+
+                block = decodedBlock;
+
+                string blockNumber = EnsureBlockParamIsNumber(blockParam, decodedBlock);
 
                 AnsiConsole.MarkupLine($"[green]✓[/] Fetched block {blockNumber}: {rlp.Length:N0} bytes");
 
@@ -131,7 +189,7 @@ internal static class InputGenerator
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                witness = await client.Post<Witness>("debug_executionWitness", $"0x{block.Number:x}");
+                witness = await client.Post<Witness>("debug_executionWitness", $"0x{decodedBlock.Number:x}");
 
                 if (witness is null)
                 {
@@ -211,10 +269,10 @@ internal static class InputGenerator
             ? specProvider
             : throw new ArgumentException($"Unknown chain id: {chainId}", nameof(chainId));
 
-    private static SszPublicKeys[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
+    private static SszPublicKey[] RecoverPublicKeys(ReadOnlySpan<Transaction> transactions, ulong chainId)
     {
         EthereumEcdsa ecdsa = new(chainId);
-        SszPublicKeys[] publicKeys = new SszPublicKeys[transactions.Length];
+        SszPublicKey[] publicKeys = new SszPublicKey[transactions.Length];
 
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -222,10 +280,7 @@ internal static class InputGenerator
             PublicKey publicKey = ecdsa.RecoverPublicKey(tx)
                 ?? throw new InvalidOperationException($"Failed to recover public key for transaction {tx.Hash}");
 
-            publicKeys[i] = new()
-            {
-                Bytes = publicKey.PrefixedBytes
-            };
+            publicKeys[i] = SszPublicKey.FromSpan(publicKey.PrefixedBytes);
         }
 
         return publicKeys;

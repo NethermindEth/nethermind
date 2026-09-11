@@ -11,10 +11,15 @@ namespace Nethermind.Stateless.Execution.IO;
 /// </summary>
 /// <remarks>
 /// Only forks whose payloads are representable by the stateless input schemas are listed:
-/// Cancun through BPO2 use the pre-BAL payload, Amsterdam adds the EIP-7928/EIP-7843 fields.
+/// Cancun through BPO2 share the <see cref="Current"/> schema's pre-BAL payload,
+/// and Amsterdam adds the EIP-7928/EIP-7843 fields.
 /// </remarks>
 public enum ProtocolFork : byte
 {
+    /// <summary>No pinned fork: the payload's rules come from the chain's own transition schedule.</summary>
+    /// <remarks>Reserved by the execution specs, whose fork identifiers start at Frontier (0x01).</remarks>
+    Current = 0x00,
+
     Cancun = 0x10,
     Prague = 0x11,
     Osaka = 0x12,

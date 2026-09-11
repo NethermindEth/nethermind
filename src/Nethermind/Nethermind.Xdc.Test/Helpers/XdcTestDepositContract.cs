@@ -37,4 +37,10 @@ internal class XdcTestDepositContract(CandidateContainer candidateContainer) : I
 
     public Address GetCandidateOwner(IWorldState worldState, Address candidate) =>
         throw new System.NotImplementedException();
+
+    public Address[] GetVoters(IWorldState worldState, Address candidate) =>
+        throw new System.NotImplementedException();
+
+    public UInt256 GetVoterStake(IWorldState worldState, Address candidate, Address voter) =>
+        throw new System.NotImplementedException();
 }

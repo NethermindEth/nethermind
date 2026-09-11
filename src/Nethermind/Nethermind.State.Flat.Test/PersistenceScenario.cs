@@ -324,7 +324,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
             // Decode and verify
             RlpReader ctx = new(rawAccount);
-            Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(acc));
+            Assert.That(AccountDecoder.Slim.Decode(ref ctx), Is.EqualTo(acc));
         }
 
         // Test raw storage operations

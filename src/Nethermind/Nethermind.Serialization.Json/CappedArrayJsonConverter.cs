@@ -65,7 +65,7 @@ public sealed class CappedArrayByteJsonConverter : JsonConverter<CappedArray<byt
     public override CappedArray<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) return default;
-        byte[] bytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
         return bytes is null ? CappedArray<byte>.Empty : new CappedArray<byte>(bytes);
     }
 

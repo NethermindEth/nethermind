@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
@@ -16,12 +17,13 @@ internal class XdcTxPoolTxSourceFactory(
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IBlockFinder blockFinder,
-        ILogManager logManager) : IBlockProducerTxSourceFactory
+        ILogManager logManager,
+        [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator) : IBlockProducerTxSourceFactory
 {
     public virtual ITxSource Create()
     {
         ITxFilterPipeline txSourceFilterPipeline = new XdcTxFilterPipeline(
             TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig));
-        return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder), logManager, txSourceFilterPipeline, blocksConfig);
+        return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder), logManager, txSourceFilterPipeline, blocksConfig, specChangeTxValidator);
     }
 }

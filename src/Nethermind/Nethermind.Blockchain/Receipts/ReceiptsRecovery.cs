@@ -25,13 +25,10 @@ namespace Nethermind.Blockchain.Receipts
                 if (needRecover)
                 {
                     using IReceiptsRecovery.IRecoveryContext ctx = CreateRecoveryContext(block, forceRecoverSender);
-                    for (int receiptIndex = 0; receiptIndex < block.TransactionCount; receiptIndex++)
+                    for (int receiptIndex = 0; receiptIndex < receipts.Length; receiptIndex++)
                     {
-                        if (receipts.Length > receiptIndex)
-                        {
-                            TxReceipt receipt = receipts[receiptIndex];
-                            ctx.RecoverReceiptData(receipt);
-                        }
+                        TxReceipt receipt = receipts[receiptIndex];
+                        ctx.RecoverReceiptData(receipt);
                     }
 
                     if (_reinsertReceiptOnRecover)
@@ -56,11 +53,24 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
         {
-            if (receipts is null || receipts.Length == 0) return false;
+            if (receipts is null || receipts.Length == 0 || (recoverSenderOnly && !forceRecoverSender)) return false;
 
-            if (recoverSenderOnly) return (forceRecoverSender && receipts[0].Sender is null);
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                if (recoverSenderOnly)
+                {
+                    if (receipt.Sender is null) return true;
+                }
+                else if (receipt.BlockHash is null ||
+                         receipt.TxHash is null ||
+                         (forceRecoverSender && receipt.Sender is null))
+                {
+                    return true;
+                }
+            }
 
-            return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
+            return false;
         }
 
         private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa) : IReceiptsRecovery.IRecoveryContext

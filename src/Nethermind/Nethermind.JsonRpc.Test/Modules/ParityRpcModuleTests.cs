@@ -78,6 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider) { HasSynced = true },
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
+                new SpecChangeTxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
 
@@ -193,7 +194,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.OutSession.RemoteNodeId.Returns(TestItem.PublicKeyA);
 
             IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler, ISyncPeer>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = protocolHandler;
                 return true;
@@ -209,7 +210,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -242,7 +243,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -387,11 +388,23 @@ namespace Nethermind.JsonRpc.Test.Modules
                 """;
 
             EthereumJsonSerializer serializer = new();
-            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
+            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json)!;
 
             Assert.That(tx.PublicKey, Is.Not.Null);
             Assert.That(tx.PublicKey.Bytes.Length, Is.EqualTo(64));
             Assert.That(tx.PublicKey.Bytes, Is.EqualTo(fullPublicKeyBytes));
+        }
+
+        [Test]
+        public void ParityTransaction_WithLeadingZeroPublicKey_SerializesFullWidth()
+        {
+            // The first hex digit is zero. A public key is DATA per EIP-1474. All 128 digits must survive.
+            const string leadingZeroKeyHex = "0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+            ParityTransaction tx = new() { PublicKey = new PublicKey(leadingZeroKeyHex) };
+
+            string json = new EthereumJsonSerializer().Serialize(tx);
+
+            Assert.That(json, Does.Contain($"\"publicKey\":\"0x{leadingZeroKeyHex}\""));
         }
     }
 }

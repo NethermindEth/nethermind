@@ -40,7 +40,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, ICont
     }
 
     public static Address Address { get; } = Address.FromNumber(0x10002);
-    public static string Name => "L1STATICCALL";
+    public string Name => "L1STATICCALL";
 
     // L1STATICCALL calls L1 via RPC — results depend on L1 state and must not be cached.
     // Caching also wraps the precompile in CachedPrecompile which strips IContextAwarePrecompile.

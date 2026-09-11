@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
@@ -27,7 +28,6 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
 {
@@ -42,6 +42,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
         private Task? _peerUpdateLoopTask;
+        private Task? _peerUpdateTimerTask;
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
         private readonly List<PeerStats> _candidates;
@@ -52,8 +53,6 @@ namespace Nethermind.Network
         private int _newActiveNodes;
         private int _failedInitialConnect;
         private int _connectionRounds;
-
-        private Timer? _peerUpdateTimer;
 
         private int _maxPeerPoolLength;
 
@@ -141,12 +140,12 @@ namespace Nethermind.Network
             }
 
             _stats.ReportEvent(peer.Node, NodeStatsEventType.NodeDiscovered);
-            if (_pending < AvailableActivePeersCount && CanConnectToPeer(peer))
+            if (HasAvailableActivePeerSlot() && CanConnectToPeer(peer))
             {
 #pragma warning disable 4014
 
                 // TODO: hack related to not clearly separated peer pool and peer manager
-                if (CanQuickConnect(peer))
+                if (!_nodesBeingAdded.ContainsKey(peer.Node.Id))
                 {
                     // fire and forget - all the surrounding logic will be executed
                     // exceptions can be lost here without issues
@@ -174,6 +173,12 @@ namespace Nethermind.Network
 
         public void Start()
         {
+            int peersUpdateInterval = _networkConfig.PeersUpdateInterval;
+            if (peersUpdateInterval is <= 0)
+            {
+                ThrowInvalidPeersUpdateInterval(peersUpdateInterval);
+            }
+
             lock (_sessionLock)
             {
                 _isStopping = false;
@@ -183,8 +188,7 @@ namespace Nethermind.Network
                 _rlpxHost.SessionDisconnected += _onSessionDisconnected;
             }
 
-            StartPeerUpdateLoop();
-
+            _peerUpdateTimerTask = RunPeerUpdateTimerAsync(peersUpdateInterval);
             _peerUpdateLoopTask = RunPeerUpdateLoopAsync();
 
             _isStarted = true;
@@ -241,7 +245,10 @@ namespace Nethermind.Network
                 }
             }
 
-            StopTimers();
+            if (_peerUpdateTimerTask is not null)
+            {
+                await _peerUpdateTimerTask;
+            }
 
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete. Please wait for all components to close");
         }
@@ -267,10 +274,7 @@ namespace Nethermind.Network
                 {
                     try
                     {
-                        if (ShouldContactPeer(peer))
-                        {
-                            await SetupOutgoingPeerConnection(peer);
-                        }
+                        await SetupOutgoingPeerConnection(peer);
                     }
                     catch (TaskCanceledException)
                     {
@@ -360,8 +364,6 @@ namespace Nethermind.Network
                         await Task.Delay(1000, _cancellationTokenSource.Token);
                     }
                 }
-
-                _peerUpdateTimer?.Start();
             }
 
             taskChannel.Writer.Complete();
@@ -494,9 +496,35 @@ namespace Nethermind.Network
             }
         }
 
+        private bool HasAvailableActivePeerSlot() => AvailableActivePeersCount - _pending > 0;
+
+        /// <summary>
+        /// Reserves one of the <see cref="MaxActivePeers"/> slots for an outgoing connection attempt.
+        /// </summary>
+        /// <remarks>
+        /// Claims first and gives the claim back when there turns out to be no room, so that concurrent
+        /// callers cannot all pass <see cref="HasAvailableActivePeerSlot"/> for the same slot and then
+        /// dial once they resume. Static and trusted peers keep their claim either way: they are must-keep
+        /// and exempt from the cap everywhere else, and once the cap is full nothing re-selects them, so a
+        /// refusal here would drop them for good. The claim is released in
+        /// <see cref="SetupOutgoingPeerConnection"/>.
+        /// </remarks>
+        private bool TryClaimActivePeerSlot(Peer peer)
+        {
+            if (Interlocked.Increment(ref _pending) <= AvailableActivePeersCount
+                || peer.Node.IsStatic
+                || peer.Node.IsTrusted)
+            {
+                return true;
+            }
+
+            Interlocked.Decrement(ref _pending);
+            return false;
+        }
+
         private async Task<bool> EnsureAvailableActivePeerSlotAsync()
         {
-            if (AvailableActivePeersCount - _pending > 0)
+            if (HasAvailableActivePeerSlot())
             {
                 return true;
             }
@@ -506,13 +534,13 @@ namespace Nethermind.Network
             // the active peer count to go down within this time window.
             DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            while (DateTimeOffset.UtcNow < deadline && !HasAvailableActivePeerSlot())
             {
                 // Wait for a signal or poll every 100ms.
                 await _peerUpdateRequested.WaitAsync(TimeSpan.FromMilliseconds(100), _cancellationTokenSource.Token);
             }
 
-            return AvailableActivePeersCount - _pending > 0;
+            return HasAvailableActivePeerSlot();
         }
 
         private void SelectAndRankCandidates()
@@ -544,13 +572,18 @@ namespace Nethermind.Network
                     continue;
                 }
 
+                if (IsSelf(peer))
+                {
+                    continue;
+                }
+
                 _currentSelection.PreCandidates.Add(peer);
             }
 
             bool hasOnlyStaticNodes = false;
             if (_currentSelection.PreCandidates.Count == 0)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
                 hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
@@ -594,7 +627,7 @@ namespace Nethermind.Network
 
             if (!hasOnlyStaticNodes)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
             }
 
             foreach (Peer peer in _currentSelection.Candidates)
@@ -616,35 +649,25 @@ namespace Nethermind.Network
             }
         }
 
-        private void StartPeerUpdateLoop()
+        private async Task RunPeerUpdateTimerAsync(int peersUpdateInterval)
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
-            _peerUpdateTimer = new Timer(_networkConfig.PeersUpdateInterval);
-            _peerUpdateTimer.Elapsed += PeerUpdateTimerOnElapsed;
-
-            _peerUpdateTimer.Start();
-        }
-
-        private void StopTimers()
-        {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping peer timers");
-                Timer? peerUpdateTimer = _peerUpdateTimer;
-                if (peerUpdateTimer is null)
+                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(peersUpdateInterval));
+                while (await timer.WaitForNextTickAsync(_cancellationTokenSource.Token))
                 {
-                    return;
+                    SignalPeerUpdateNeeded();
                 }
-
-                peerUpdateTimer.Elapsed -= PeerUpdateTimerOnElapsed;
-                peerUpdateTimer.Stop();
-                peerUpdateTimer.Dispose();
-                _peerUpdateTimer = null;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException)
             {
-                _logger.Error("Error during peer timers stop", e);
+                if (_logger.IsError) _logger.Error("Peer update timer encountered an exception.", e);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Peer update timer stopped.");
             }
         }
 
@@ -673,12 +696,6 @@ namespace Nethermind.Network
             {
                 ProcessOutgoingConnection(session);
             }
-        }
-
-        private void PeerUpdateTimerOnElapsed(object? sender, System.Timers.ElapsedEventArgs e)
-        {
-            _peerUpdateTimer?.Stop();
-            SignalPeerUpdateNeeded();
         }
 
         private void CleanupCandidatePeers()
@@ -773,23 +790,44 @@ namespace Nethermind.Network
         {
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
-            await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
-
-            // Can happen when In connection is received from the same peer and is initialized before we get here
-            // In this case we do not initialize OUT connection
-            if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+            // Claim the slot before the first await: a caller suspended in the rate limiter is invisible
+            // to a plain capacity check, so without the claim all of them dial past MaxActivePeers.
+            if (!TryClaimActivePeerSlot(peer))
             {
-                if (_logger.IsTrace) TraceActivePeerAlreadyAddedToCollection();
+                // The candidate was selected and queued, so say it went nowhere - otherwise a slot freed
+                // in the meantime idles until the next PeersUpdateInterval.
+                SignalPeerUpdateNeeded();
                 return;
             }
 
-            Interlocked.Increment(ref _tryCount);
-            Interlocked.Increment(ref _pending);
-            bool result = await InitializeOutgoingPeerConnection(peer);
-            // for some time we will have a peer in active that has no session assigned - analyze this?
+            bool result = false;
+            try
+            {
+                // Records the address in the recent-contact filter, so it has to run under the claim:
+                // a candidate refused a slot would otherwise stay suppressed for the whole filter
+                // window without ever having been dialed.
+                if (!ShouldContactPeer(peer)) return;
 
-            Interlocked.Decrement(ref _pending);
-            SignalPeerUpdateNeeded();
+                await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
+
+                // Can happen when In connection is received from the same peer and is initialized before we get here
+                // In this case we do not initialize OUT connection
+                if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+                {
+                    if (_logger.IsTrace) TraceActivePeerAlreadyAddedToCollection();
+                    return;
+                }
+
+                Interlocked.Increment(ref _tryCount);
+                result = await InitializeOutgoingPeerConnection(peer);
+                // for some time we will have a peer in active that has no session assigned - analyze this?
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _pending);
+                SignalPeerUpdateNeeded();
+            }
+
             if (_logger.IsTrace) TraceOutgoingConnectionResult();
 
             if (!result)
@@ -937,16 +975,10 @@ namespace Nethermind.Network
         }
 
         private bool ShouldContactPeer(Peer peer)
-            => _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
+            => !IsSelf(peer)
+               && _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
 
-        /// <summary>
-        /// Fast-path guard for the peer-added event: checks throttle before the IP filter
-        /// so a throttled no-op does not consume a filter entry and block the peer for the full timeout window.
-        /// </summary>
-        private bool CanQuickConnect(Peer peer)
-            => !_nodesBeingAdded.ContainsKey(peer.Node.Id)
-               && !_outgoingConnectionRateLimiter.IsThrottled()
-               && ShouldContactPeer(peer);
+        private bool IsSelf(Peer peer) => peer.Node.Id == _enode.PublicKey;
 
         private bool CanConnectToPeer(Peer peer)
         {
@@ -1345,5 +1377,11 @@ namespace Nethermind.Network
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidOnDisconnectedState(ISession session)
             => throw new InvalidAsynchronousStateException($"Invalid session state in {nameof(OnDisconnected)} - {session.State}");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidPeersUpdateInterval(int peersUpdateInterval)
+            => throw new InvalidConfigurationException(
+                $"{nameof(INetworkConfig.PeersUpdateInterval)} must be greater than zero, but was {peersUpdateInterval}.",
+                ExitCodes.ForbiddenOptionValue);
     }
 }

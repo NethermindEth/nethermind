@@ -121,9 +121,9 @@ public class BlockAccessListItemCountTests
             "_accountChanges",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(bal)!;
         MethodInfo ensureCapacity = accountChanges.GetType().GetMethod(
-            nameof(Dictionary<int, int>.EnsureCapacity),
+            nameof(Dictionary<,>.EnsureCapacity),
             [typeof(int)])!;
-        PropertyInfo capacity = accountChanges.GetType().GetProperty(nameof(Dictionary<int, int>.Capacity))!;
+        PropertyInfo capacity = accountChanges.GetType().GetProperty(nameof(Dictionary<,>.Capacity))!;
         ensureCapacity.Invoke(accountChanges, [OversizedCapacity]);
         int capacityBeforeReset = (int)capacity.GetValue(accountChanges)!;
 

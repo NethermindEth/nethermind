@@ -3,11 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -114,6 +115,42 @@ public class BlockStore : IBlockStore, IClearableCache
         _blockCache.Delete(in blockHash.ValueHash256);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
+    }
+
+    /// <summary>Drops every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever their
+    /// hashes and whether or not a chain level lists them.</summary>
+    /// <remarks>Reaches only block-number-prefixed keys. A database predating those stores bodies under the bare
+    /// 32-byte hash, which <see cref="Get"/> still reads, so it reclaims nothing here and keeps serving blocks below
+    /// the announced boundary. Accepted: it needs a node that never resynced since keys gained their prefix.</remarks>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive) => DeleteRanges([(fromInclusive, toExclusive)]);
+
+    /// <inheritdoc/>
+    public void DeleteRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+    {
+        bool removedAny = false;
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
+            }
+            else
+            {
+                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+            }
+
+            removedAny |= fromInclusive < toExclusive;
+        }
+
+        if (!removedAny) return;
+
+        // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
+        // disk must stop being served whatever the reclaim does.
+        _blockCache.Clear();
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+        }
     }
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)

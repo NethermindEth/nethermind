@@ -51,6 +51,13 @@ public class Startup : IStartup
     private const string ApplicationJsonContentType = "application/json";
     private static readonly StringValues JsonContentTypeHeader = new(ApplicationJsonContentType);
 
+    // Rendered straight into the client-visible JSON-RPC error, so it must not carry transport-layer detail.
+    private const string MalformedRequestBodyMessage = "Invalid request body.";
+
+    // Kestrel's own 408 names MinRequestBodyDataRate. AddServerHeader is false for the same reason, so the server
+    // stack must not be re-advertised through an error this endpoint serves unauthenticated.
+    private const string RequestBodyTimeoutMessage = "Request body read timed out.";
+
     private JsonRpcProcessor _jsonRpcProcessor = null!;
     private JsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
@@ -194,8 +201,8 @@ public class Startup : IStartup
 
         TrustedCidr[] additionalTrustedNetworks = ParseTrustedNetworks(jsonRpcConfig.AdditionalTrustedNetworks, logger);
 
-        // Trusted JSON-RPC HTTP POSTs dispatch directly, skipping routing, CORS,
-        // compression, and WebSocket middleware. Authentication is still enforced
+        // Trusted non-browser JSON-RPC HTTP POSTs dispatch directly, skipping routing,
+        // CORS, compression, and WebSocket middleware. Authentication is still enforced
         // inside the handler for authenticated endpoints.
         app.Use((ctx, next) =>
         {
@@ -282,9 +289,12 @@ public class Startup : IStartup
         TrustedCidr[] additionalTrustedNetworks,
         [NotNullWhen(true)] out JsonRpcUrl? jsonRpcUrl)
     {
+        // Browser requests carry an Origin header and must take the regular pipeline
+        // so the CORS middleware can emit Access-Control-Allow-Origin on the response.
         if (ctx.Request.Method == "POST" &&
             jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
+            StringValues.IsNullOrEmpty(ctx.Request.Headers.Origin) &&
             IsTrustedSource(ctx, additionalTrustedNetworks) &&
             IsJsonContentType(ctx.Request.ContentType))
         {
@@ -500,9 +510,17 @@ public class Startup : IStartup
             if (_logger.IsDebug) LogBadRequest(_logger, e);
             ctx.Response.Headers.ContentType = JsonContentTypeHeader;
             ctx.Response.StatusCode = e.StatusCode;
-            JsonRpcErrorResponse errResp = _jsonRpcService.GetErrorResponse(
-                e.StatusCode == StatusCodes.Status413PayloadTooLarge ? ErrorCodes.LimitExceeded : ErrorCodes.InvalidRequest,
-                e.Message);
+            // Kestrel raises this for its own body-phase rejections too - a MinRequestBodyDataRate 408, a malformed
+            // trailer - and those messages name the server stack or echo the caller's bytes. Only the size limit is
+            // ours to disclose, so every other status answers with a message this repo authored.
+            (int errorCode, string message) = e.StatusCode switch
+            {
+                // ThrowRequestBodyTooLarge below: the configured limit is exactly what the caller needs back.
+                StatusCodes.Status413PayloadTooLarge => (ErrorCodes.LimitExceeded, e.Message),
+                StatusCodes.Status408RequestTimeout => (ErrorCodes.InvalidRequest, RequestBodyTimeoutMessage),
+                _ => (ErrorCodes.InvalidRequest, MalformedRequestBodyMessage),
+            };
+            JsonRpcErrorResponse errResp = _jsonRpcService.GetErrorResponse(errorCode, message);
             await _jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
             await ctx.Response.CompleteAsync();
         }
@@ -554,7 +572,29 @@ public class Startup : IStartup
         {
             while (true)
             {
-                ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
+                ReadResult readResult;
+                try
+                {
+                    readResult = await bodyReader.ReadAsync(cancellationToken);
+                }
+                catch (IOException e) when (e.GetType() == typeof(IOException))
+                {
+                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a *bare*
+                    // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
+                    //
+                    // The exact-type test is deliberate. Everything Kestrel surfaces from the body pipe derives from
+                    // IOException, including BadHttpRequestException (already handled below) and the genuine
+                    // transport failures - ConnectionResetException, a mid-body TLS or stream error, an IOException
+                    // wrapping a socket error. Reframing those as a client error would blame the caller for a
+                    // dropped connection and, because the handler below logs at Debug, would leave a real I/O
+                    // failure with no trace at default log level. They keep propagating instead.
+                    //
+                    // The message is a constant on purpose, even though the handler below no longer echoes an
+                    // arbitrary one: the real transport-layer message stays on the inner exception, which
+                    // LogBadRequest writes at Debug.
+                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(MalformedRequestBodyMessage, StatusCodes.Status400BadRequest, e);
+                }
+
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
 
                 long newBytesRead = collectedBody.BytesRead + buffer.Length;

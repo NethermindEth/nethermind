@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     int length = ctx.ReadSequenceLength();
                     int checkPosition = ctx.Position + length;
-                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.DecodeGuardNotNull(ref ctx)));
                     ctx.Check(checkPosition);
                 }
 

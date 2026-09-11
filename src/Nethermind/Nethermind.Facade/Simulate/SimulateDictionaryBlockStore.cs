@@ -9,7 +9,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : IBlockStore
+/// <remarks>
+/// The base store is the node's live writable one, so every mutator must stay overridden here.
+/// </remarks>
+public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockStore
 {
     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
     private readonly Dictionary<ulong, Block> _blockNumDict = [];
@@ -19,6 +22,25 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     {
         _blockDict[block.Hash] = block;
         _blockNumDict[block.Number] = block;
+    }
+
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        // Iterates what is held rather than the span: the interface promises a cost independent of the range, and
+        // a caller's chunk can be millions of heights wide.
+        List<ulong> covered = [];
+        foreach (ulong number in _blockNumDict.Keys)
+        {
+            if (number >= fromInclusive && number < toExclusive) covered.Add(number);
+        }
+
+        foreach (ulong number in covered)
+        {
+            if (_blockNumDict.Remove(number, out Block? block) && block.Hash is not null)
+            {
+                _blockDict.Remove(block.Hash);
+            }
+        }
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -34,7 +56,7 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
             return block;
         }
 
-        block = readonlyBaseBlockStore.Get(blockNumber, blockHash, rlpBehaviors, false);
+        block = baseBlockStore.Get(blockNumber, blockHash, rlpBehaviors, false);
         if (block is not null && shouldCache)
         {
             Cache(block);
@@ -48,17 +70,17 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         {
             return _blockDecoder.EncodeAsBytes(block);
         }
-        return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
+        return baseBlockStore.GetRlp(blockNumber, blockHash);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
         _blockNumDict.TryGetValue(blockNumber, out Block block)
             ? new ReceiptRecoveryBlock(block)
-            : readonlyBaseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
+            : baseBlockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
 
     public void Cache(Block block)
         => Insert(block);
 
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
-        => _blockNumDict.ContainsKey(blockNumber) || readonlyBaseBlockStore.HasBlock(blockNumber, blockHash);
+        => _blockNumDict.ContainsKey(blockNumber) || baseBlockStore.HasBlock(blockNumber, blockHash);
 }

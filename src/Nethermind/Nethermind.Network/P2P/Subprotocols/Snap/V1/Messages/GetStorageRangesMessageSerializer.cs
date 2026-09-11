@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using System;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -39,9 +40,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
             message.StorageRange = new();
             message.StorageRange.RootHash = ctx.DecodeKeccak();
-            message.StorageRange.Accounts = ctx.DecodeArrayPoolList(static (ref RlpReader c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
-            message.StorageRange.StartingHash = ctx.DecodeKeccak();
-            message.StorageRange.LimitHash = ctx.DecodeKeccak();
+            message.StorageRange.Accounts = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
+            message.StorageRange.StartingHash = ctx.DecodeValueKeccak();
+            message.StorageRange.LimitHash = ctx.DecodeValueKeccak();
             message.ResponseBytes = ctx.DecodeLong();
 
             return message;
@@ -49,8 +50,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
         public override int GetLength(GetStorageRangeMessage message, out int contentLength)
         {
+            Hash256 rootHash = message.StorageRange.RootHash
+                ?? throw new InvalidOperationException("A storage range request requires a root hash.");
             contentLength = Rlp.LengthOf(message.RequestId);
-            contentLength += Rlp.LengthOf(message.StorageRange.RootHash);
+            contentLength += Rlp.LengthOf(rootHash);
             int accountsCount = message.StorageRange.Accounts.Count;
             int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
             contentLength += Rlp.LengthOfSequence(accountsPathsContentLength);

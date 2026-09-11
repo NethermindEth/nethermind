@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
-public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
+public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 {
     [Test]
     public void Can_trace_gas_halt_with_stop()
@@ -466,33 +466,27 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertEntry(trace.Entries[^4], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+            AssertEntry(trace.Entries[^3], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+            AssertEntry(trace.Entries[^2], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+            Assert.That(trace.Entries[^1].ProgramCounter, Is.EqualTo(49));
+            Assert.That(trace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+        }
     }
 
     [Test]
     public void Can_trace_refund_on_storage_clear()
     {
-        // Seed a non-zero slot so clearing it to zero grants a storage-clearing refund.
-        TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(ClearSstoreCode());
 
         GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
         GethTxTraceEntry stop = trace.Entries.Single(e => e.Opcode == "STOP");
 
         using (Assert.EnterMultipleScope())
         {
-            // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
-            Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
+            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
         }
     }
@@ -500,24 +494,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Refund_is_rolled_back_when_frame_reverts()
     {
-        byte[] calleeCode = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .PushData(0)
-            .PushData(0)
-            .Op(Instruction.REVERT)
-            .Done;
-
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.Set(new StorageCell(TestItem.AddressC, 0), new byte[] { 1 });
-        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .Call(TestItem.AddressC, 50000)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(ChildClearThenRevertCode());
 
         GethTxTraceEntry revert = trace.Entries.Single(e => e.Opcode == "REVERT");
         GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
@@ -527,6 +504,38 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             Assert.That(revert.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund visible inside the reverting frame");
             Assert.That(topLevelStop.Refund, Is.Null, "refund rolled back after the frame reverts");
         }
+    }
+
+    [Test]
+    public void Parent_frame_refund_survives_child_revert()
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(RefundThenChildRevertCode());
+
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        Assert.That(
+            topLevelStop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
+            "parent refund must persist after the child frame reverts"
+        );
+    }
+
+    [Test]
+    public void Legacy_self_destruct_refund_is_reported_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        GethLikeTxMemoryTracer tracer = new(null, GethTraceOptions.Default, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportActionEnd(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+
+        Assert.That(tracer.BuildResult().Entries.Single().Refund, Is.EqualTo(destroyRefund));
     }
 
     [Test]

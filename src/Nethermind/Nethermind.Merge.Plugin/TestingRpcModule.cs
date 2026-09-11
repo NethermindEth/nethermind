@@ -130,7 +130,7 @@ public class TestingRpcModule(
         try
         {
             IEnumerable<Transaction> txs = txRlps is null
-                ? env.TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true)
+                ? env.TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true)
                 : DecodeTransactions(txRlps);
 
             transactions = txs.ToArray();
@@ -219,9 +219,9 @@ public class TestingRpcModule(
 
         if (spec.WithdrawalsEnabled)
         {
-            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null || payloadAttributes.Withdrawals.Length == 0
+            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null
                 ? Keccak.EmptyTreeHash
-                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
+                : WithdrawalTrie.CalculateRoot(payloadAttributes.Withdrawals);
         }
 
         return header;
@@ -230,7 +230,8 @@ public class TestingRpcModule(
     private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
     {
         foreach (byte[] txRlp in txRlps)
-            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping);
+            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping)
+                ?? throw new RlpException("Transaction decoding returned null.");
     }
 
     private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)

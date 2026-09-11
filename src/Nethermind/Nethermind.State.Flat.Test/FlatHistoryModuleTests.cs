@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
@@ -28,6 +29,7 @@ public class FlatHistoryModuleTests
             .AddSingleton<IColumnsDb<FlatDbColumns>>(columns)
             .AddSingleton<IColumnsDb<FlatHistoryColumns>>(historyColumns)
             .AddSingleton<IFlatDbConfig>(new FlatDbConfig { HistoryEnabled = true })
+            .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())
             .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
