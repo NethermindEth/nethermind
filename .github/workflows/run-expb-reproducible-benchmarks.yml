@@ -1449,27 +1449,39 @@ jobs:
       - name: Enforce run quality gates
         if: always()
         shell: bash
+        env:
+          RUN_EXPB_OUTCOME: ${{ steps.run-expb.outcome }}
+          EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
+          EXCEPTION_LINES_FILE: ${{ steps.analyze.outputs.exception_lines_file }}
+          INVALID_BLOCK_FOUND: ${{ steps.analyze.outputs.invalid_block_found }}
+          INVALID_BLOCK_LINES_FILE: ${{ steps.analyze.outputs.invalid_block_lines_file }}
         run: |
           set -euo pipefail
+          quality_gate_failed="false"
 
-          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
+          if [[ "${RUN_EXPB_OUTCOME}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully."
-            exit 1
+            quality_gate_failed="true"
           fi
 
-          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
+          if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
             echo "Exceptions were detected in run output. Failing workflow."
-            if [[ -f "${{ steps.analyze.outputs.exception_lines_file }}" ]]; then
-              head -n 40 "${{ steps.analyze.outputs.exception_lines_file }}"
+            if [[ -f "${EXCEPTION_LINES_FILE}" ]]; then
+              head -n 40 "${EXCEPTION_LINES_FILE}"
             fi
-            exit 1
+            quality_gate_failed="true"
           fi
 
-          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
+          if [[ "${INVALID_BLOCK_FOUND}" == "true" ]]; then
             echo "Invalid block lines were detected in run output. Failing workflow."
-            if [[ -f "${{ steps.analyze.outputs.invalid_block_lines_file }}" ]]; then
-              head -n 40 "${{ steps.analyze.outputs.invalid_block_lines_file }}"
+            if [[ -f "${INVALID_BLOCK_LINES_FILE}" ]]; then
+              head -n 40 "${INVALID_BLOCK_LINES_FILE}"
             fi
+            quality_gate_failed="true"
+          fi
+
+          if [[ "${quality_gate_failed}" == "true" ]]; then
+            echo "Run quality gates failed."
             exit 1
           fi
 
@@ -2889,17 +2901,42 @@ jobs:
       - name: Enforce run quality gates
         if: always()
         shell: bash
+        env:
+          RUN_EXPB_OUTCOME: ${{ steps.run-expb.outcome }}
+          EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
+          EXCEPTION_LINES_FILE: ${{ steps.analyze.outputs.exception_lines_file }}
+          INVALID_BLOCK_FOUND: ${{ steps.analyze.outputs.invalid_block_found }}
+          INVALID_BLOCK_LINES_FILE: ${{ steps.analyze.outputs.invalid_block_lines_file }}
+          TAG: ${{ matrix.tag }}
+          RUN: ${{ matrix.run }}
         run: |
           set -euo pipefail
-          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
-            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
-            echo "Continuing multi-image run (fail-fast is disabled)."
+          quality_gate_failed="false"
+
+          if [[ "${RUN_EXPB_OUTCOME}" != "success" ]]; then
+            echo "expb execute-scenarios did not finish successfully for ${TAG} run ${RUN}."
+            quality_gate_failed="true"
           fi
-          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
-            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+
+          if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
+            echo "Exceptions were detected for ${TAG} run ${RUN}."
+            if [[ -f "${EXCEPTION_LINES_FILE}" ]]; then
+              head -n 40 "${EXCEPTION_LINES_FILE}"
+            fi
+            quality_gate_failed="true"
           fi
-          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
-            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+
+          if [[ "${INVALID_BLOCK_FOUND}" == "true" ]]; then
+            echo "Invalid block lines were detected for ${TAG} run ${RUN}."
+            if [[ -f "${INVALID_BLOCK_LINES_FILE}" ]]; then
+              head -n 40 "${INVALID_BLOCK_LINES_FILE}"
+            fi
+            quality_gate_failed="true"
+          fi
+
+          if [[ "${quality_gate_failed}" == "true" ]]; then
+            echo "Run quality gates failed for ${TAG} run ${RUN}."
+            exit 1
           fi
 
       - name: Collect and upload profiling artifacts
