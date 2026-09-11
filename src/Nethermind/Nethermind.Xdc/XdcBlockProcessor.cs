@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Xdc.Spec;
 using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
@@ -34,6 +35,37 @@ internal class XdcBlockProcessor(
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager), IBlockProcessor
 {
+    protected override Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block) =>
+        base.CalculateReceiptsRoot(AsEncodedForTrie(receipts, spec), spec, block);
+
+    /// <summary>
+    /// Returns the receipts as the receipts trie must encode them, which is not always how they are stored.
+    /// </summary>
+    /// <remarks>
+    /// A sign transaction's receipt enters the trie as a legacy receipt whatever the transaction's type,
+    /// because the reference client builds it with <c>types.NewReceipt</c> and never assigns
+    /// <c>receipt.Type</c> — see XinFinOrg/XDPoSChain
+    /// https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_processor.go#L426
+    /// It still reports the real type over RPC, as the reference does by filling it in from the
+    /// transaction when the receipt is read back, so only the encoding fed to the trie is adjusted here.
+    /// </remarks>
+    internal static TxReceipt[] AsEncodedForTrie(TxReceipt[] receipts, IReleaseSpec spec)
+    {
+        if (spec is not IXdcReleaseSpec { BlockSignerContract: not null } xdcSpec) return receipts;
+
+        TxReceipt[]? forTrie = null;
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            TxReceipt receipt = receipts[i];
+            if (receipt.TxType == TxType.Legacy || receipt.Recipient != xdcSpec.BlockSignerContract) continue;
+
+            forTrie ??= (TxReceipt[])receipts.Clone();
+            forTrie[i] = new TxReceipt(receipt) { TxType = TxType.Legacy };
+        }
+
+        return forTrie ?? receipts;
+    }
+
     protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
     {
         base.PostValidation(suggestedBlock, processedBlock, receipts, options);
