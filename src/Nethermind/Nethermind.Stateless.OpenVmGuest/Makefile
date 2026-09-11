@@ -6,12 +6,19 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
-# The multi-VM bflat build; the ZisK image carries no sp1/openvm layout.
-# TODO: pin by digest, as the ZisK guest does, once this image is tagged.
-BFLAT_IMAGE ?= maximmenshikov/bflat-riscv64-multivm:latest
+# One image serves every guest: the multi-VM bflat build carries the zisk, sp1
+# and openvm layouts side by side, so all three guests are compiled by the same
+# toolchain and runtime.
+# TODO: pin by digest once this image is published to a registry.
+BFLAT_IMAGE ?= maximmenshikov/bflat-riscv64-multivm2
 # Both new targets decode rv64im only, and both read the whole .text up front:
 # SP1 panics on the first word it cannot decode, OpenVM turns it into a trap.
 # So even unreachable F/D/C/A instructions are fatal - fail at build time instead.
+# Execution harness. `cargo openvm run` only accepts a transpiled .vmexe, so
+# point this at a host binary built against the openvm SDK (branch
+# develop-v2.1.0, the rv64 line) that transpiles the ELF and executes it. It
+# takes <elf> <openvm.toml> <input> and prints the public values.
+OPENVM_RUNNER ?= openvm-runelf
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back
 # and favouring speed is close to free. Must land together with the TrieNode seqlock
@@ -81,13 +88,21 @@ build: dotnet-build
 # TODO: no published OpenVM runner image yet. `cargo openvm run` is the equivalent
 # of ziskemu here, but it wants a cargo project; the raw ELF path is
 # `openvm run --elf`. Wire it once there is an image to pin.
-run:
-	@echo "OpenVM execution is not wired yet - see the TODO above"; exit 1
+
+# SP1 and OpenVM take the SSZ payload as-is. The shared fixtures are framed for
+# ZisK - an 8-byte little-endian length, the payload, then padding to 8 - so the
+# frame is stripped here rather than in every guest.
+$(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
+	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
+
+run: $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/openvm.toml $(GUEST_DIR)/bin/$(INPUT).raw
 
 build-run: build run
 
 clean:
 	rm -rf \
+		$(GUEST_DIR)/bin/*.raw \
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.o
