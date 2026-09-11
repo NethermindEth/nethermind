@@ -3068,6 +3068,33 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The retry ledger's only cleanup is removal, so an entry created after one has run would never be
+        // reclaimed. Pinning creation to admission is what makes that unreachable, rather than unlikely.
+        [Test]
+        [NonParallelizable]
+        public void EvictTransaction_never_opens_a_retry_record_of_its_own()
+        {
+            long held = Volatile.Read(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = 2 }, new TestSpecProvider(Eip8141Prototype.Instance));
+
+            Transaction frameTx = SelfVerifyFrameTx();
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            long afterAdmission = Volatile.Read(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+            Assert.That(_txPool.RemoveTransaction(frameTx.Hash), Is.True);
+
+            long afterRemoval = Volatile.Read(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+            _txPool.EvictTransaction(frameTx);
+            long afterEviction = Volatile.Read(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterAdmission, Is.EqualTo(held + 1), "admission opens the record, under the same lock removal drops it under");
+                Assert.That(afterRemoval, Is.EqualTo(held), "the removal that cleans the record up has a record to clean up");
+                Assert.That(afterEviction, Is.EqualTo(held), "a transaction the pool no longer holds leaves no record behind");
+            }
+        }
+
         // Both filters are wired into the pool, and the placement filter runs ahead of the one that would
         // otherwise claim the same layout — deleting either line leaves every filter fixture green.
         [Test]

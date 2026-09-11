@@ -74,6 +74,9 @@ namespace Nethermind.TxPool
         private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
         private readonly ConcurrentDictionary<ValueHash256, (long Head, int Heads)> _frameEvictionAttempts = new();
 
+        /// <summary>Stands for a staged retry ledger entry no production failure has spent yet; head generations start at zero.</summary>
+        private const long NoHeadSpent = -1;
+
         // Candidate filter for the shed pass, calibrated on a 12s slot; on a faster chain it simply admits
         // more transactions to the deadline order, which is the order the spec asks for anyway.
         private const ulong ExpiryShedHorizonSeconds = 24;
@@ -241,6 +244,8 @@ namespace Nethermind.TxPool
                     {
                         _pendingPaymasters.Reserve(paymaster);
                     }
+
+                    StageFrameEvictionRetries(restored);
                 }
             }
 
@@ -454,6 +459,22 @@ namespace Nethermind.TxPool
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
             IndexFrameTxDependencies(args.Value);
+            StageFrameEvictionRetries(args.Value);
+        }
+
+        /// <summary>Opens the eviction retry ledger entry <see cref="EvictTransaction"/> spends a pooled frame transaction's budget against (EIP-8141).</summary>
+        /// <remarks>Staged on insert and dropped in <see cref="OnRemovedTx"/>, both under the owning pool's lock,
+        /// so an entry cannot outlive pool membership. Opening one on demand instead would leave an orphan
+        /// whenever a removal's cleanup ran between the membership observation and the entry it was to clean up.
+        /// Nothing is staged at the default budget of one, where no call reads the ledger.</remarks>
+        private void StageFrameEvictionRetries(Transaction tx)
+        {
+            if (_txPoolConfig.FrameTxEvictionRetryBudget <= 1 || !tx.SupportsFrames) return;
+
+            if (_frameEvictionAttempts.TryAdd(tx.Hash!.ValueHash256, (NoHeadSpent, 0)))
+            {
+                Interlocked.Increment(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+            }
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
@@ -470,7 +491,10 @@ namespace Nethermind.TxPool
             if (args.Value.SupportsFrames)
             {
                 _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
-                if (!_frameEvictionAttempts.IsEmpty) _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _);
+                if (!_frameEvictionAttempts.IsEmpty && _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _))
+                {
+                    Interlocked.Decrement(ref Metrics.FrameTxsHoldingAnEvictionRetryBudget);
+                }
             }
         }
 
@@ -2340,18 +2364,7 @@ namespace Nethermind.TxPool
         /// <remarks>The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure turns on chain state that can change.</remarks>
         public bool EvictTransaction(Transaction tx)
         {
-            int budget = _txPoolConfig.FrameTxEvictionRetryBudget;
-            if (budget > 1 && tx.SupportsFrames && _transactions.ContainsKey(tx.Hash!.ValueHash256))
-            {
-                long generation = Volatile.Read(ref _headGeneration);
-                (long Head, int Heads) attempts = _frameEvictionAttempts.AddOrUpdate(
-                    tx.Hash!.ValueHash256,
-                    static (_, gen) => (gen, 1),
-                    static (_, prev, gen) => prev.Head == gen ? prev : (gen, prev.Heads + 1),
-                    generation);
-
-                if (attempts.Heads < budget) return false;
-            }
+            if (tx.SupportsFrames && TrySpendEvictionRetry(tx.Hash!.ValueHash256)) return false;
 
             if (!RemoveTransaction(tx.Hash)) return false;
 
@@ -2359,6 +2372,28 @@ namespace Nethermind.TxPool
             _hashCache.DeleteFromLongTerm(tx.Hash!);
             Metrics.PendingTransactionsEvicted++;
             return true;
+        }
+
+        /// <summary>Spends one chain head's worth of a pooled frame transaction's eviction retry budget (EIP-8141).</summary>
+        /// <remarks>Only ever advances the ledger entry <see cref="StageFrameEvictionRetries"/> opened and never
+        /// opens one, so a transaction a concurrent removal has taken out of the pool can neither be granted a
+        /// retry nor leave behind a record whose only cleanup has already run.</remarks>
+        /// <returns><see langword="true"/> if the transaction keeps its place in the pool.</returns>
+        private bool TrySpendEvictionRetry(in ValueHash256 hash)
+        {
+            int budget = _txPoolConfig.FrameTxEvictionRetryBudget;
+            if (budget <= 1) return false;
+
+            long generation = Volatile.Read(ref _headGeneration);
+            while (_frameEvictionAttempts.TryGetValue(hash, out (long Head, int Heads) spent))
+            {
+                if (spent.Head == generation) return spent.Heads < budget;
+
+                (long Head, int Heads) advanced = (generation, spent.Heads + 1);
+                if (_frameEvictionAttempts.TryUpdate(hash, advanced, spent)) return advanced.Heads < budget;
+            }
+
+            return false;
         }
 
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
