@@ -19,7 +19,8 @@ namespace Nethermind.Benchmarks.State;
 
 /// <summary>The three ways BLOCKHASH can resolve an EIP-2935 ring-buffer entry.</summary>
 /// <remarks>The opcode only needs the bytes, so the <see cref="Hash256"/> the first one builds is
-/// discarded by the next instruction.</remarks>
+/// discarded by the next instruction. The block-tree path is not measured here — every input to it is
+/// loop-invariant, so a micro-loop hoists the lookup out; EvmOpcodesBenchmark covers it end to end.</remarks>
 [MemoryDiagnoser]
 public class BlockhashLookupBenchmark
 {
@@ -29,7 +30,6 @@ public class BlockhashLookupBenchmark
     private BlockhashStore _store = null!;
     private BlockHeader _header = null!;
     private IReleaseSpec _spec = null!;
-    private IReleaseSpec _legacySpec = null!;
     private ulong _number;
 
     [GlobalSetup]
@@ -39,13 +39,6 @@ public class BlockhashLookupBenchmark
         {
             IsEip2935Enabled = true,
             IsEip7709Enabled = true,
-            Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
-        };
-
-        // No named fork enables EIP-7709 yet, so the block-tree path is what BLOCKHASH actually runs today.
-        _legacySpec = new ReleaseSpec
-        {
-            IsEip2935Enabled = true,
             Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
         };
 
@@ -102,22 +95,6 @@ public class BlockhashLookupBenchmark
     {
         int n = 0;
         for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.TryGetBlockhash(_header, _number, _spec, out _) ? 1 : 0;
-        return n;
-    }
-
-    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int LegacyAllocating()
-    {
-        int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.GetBlockhash(_header, _number, _legacySpec) is null ? 0 : 1;
-        return n;
-    }
-
-    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int LegacySpan()
-    {
-        int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.TryGetBlockhash(_header, _number, _legacySpec, out _) ? 1 : 0;
         return n;
     }
 }
