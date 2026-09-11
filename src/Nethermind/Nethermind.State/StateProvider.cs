@@ -880,6 +880,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
         => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
 
+    internal Account? GetPureRead(Address address) => GetState(address);
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;

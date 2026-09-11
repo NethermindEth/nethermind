@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -38,6 +39,7 @@ public class BlockAccessListBasedWorldStateTests
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
         Action<IWorldState>? genesisSetup = null,
+        Func<IWorldState, IWorldState>? decorateParent = null,
         BalReadCoverage? readCoverage = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
@@ -59,8 +61,162 @@ public class BlockAccessListBasedWorldStateTests
         IDisposable scope = inner.BeginScope(baseBlock);
         // The inner world state, scoped against the genesis root, is itself a valid parent reader
         // — reads against it answer pre-block state directly from the trie.
-        bws.SetParentReader(inner);
+        bws.SetParentReader(decorateParent?.Invoke(inner) ?? inner);
         return (bws, scope);
+    }
+
+    [Test]
+    public void DeclaredReads_PreserveOriginalValuesAndSnapshots([Values] bool decorate, [Values(0, 42)] int storedValue)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(cell.Address)
+                .WithStorageReads(cell.Index).TestObject).TestObject;
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(cell.Address, 100);
+                ws.Set(cell, [(byte)storedValue]);
+            },
+            ws =>
+            {
+                parent = ws;
+                return decorate ? new ParentDecorator(ws) : ws;
+            });
+        using (scope)
+        {
+            Snapshot before = parent.TakeSnapshot();
+            Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)100));
+            if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "account read must not journal");
+
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            Assert.That(new UInt256(bws.GetOriginal(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            if (!decorate)
+                Assert.That(parent.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot,
+                    Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot), "storage read must not journal");
+
+            Snapshot snapshot = bws.TakeSnapshot();
+            bws.Set(cell, [99]);
+            bws.Restore(snapshot);
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+
+            bws.ClearParentReader();
+            parent.Set(cell, [77]);
+            parent.AddToBalance(cell.Address, 100, Spec);
+            parent.SetNonce(cell.Address, 3);
+            parent.Commit(Spec);
+            parent.CommitTree(1);
+            bws.SetParentReader(decorate ? new ParentDecorator(parent) : parent);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)77));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)200));
+                Assert.That(bws.GetNonce(cell.Address), Is.EqualTo(3UL));
+            }
+        }
+    }
+
+    private sealed class ParentDecorator(IWorldState state) : WorldStateDecorator(state);
+
+    [TestCase(false, false, 0)]
+    [TestCase(true, false, 0)]
+    [TestCase(false, true, 0)]
+    [TestCase(true, true, 0)]
+    [TestCase(false, true, 1)]
+    [TestCase(true, true, 1)]
+    public void TryGetAccount_PreservesParentExistence(bool decorate, bool createAccount, int balance)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(0, bal,
+            ws =>
+            {
+                if (createAccount) ws.CreateAccount(TestItem.AddressA, (UInt256)balance);
+            }, ws => decorate ? new ParentDecorator(ws) : ws);
+        using (scope)
+        {
+            bool exists = bws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.EqualTo(createAccount && balance != 0));
+                Assert.That(account.Balance, Is.EqualTo(createAccount ? (UInt256)balance : UInt256.Zero));
+                Assert.That(account.IsTotallyEmpty, Is.EqualTo(!createAccount || balance == 0));
+            }
+        }
+    }
+
+    [Test]
+    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader, [Values] bool useCoverage, [Values(0, 192)] int slotShift)
+    {
+        UInt256 firstSlot = UInt256.One << slotShift;
+        UInt256 secondSlot = (UInt256)2 << slotShift;
+        StorageCell[] cells = [new(TestItem.AddressA, firstSlot), new(TestItem.AddressA, secondSlot), new(TestItem.AddressB, firstSlot)];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(firstSlot, secondSlot).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(firstSlot).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage? coverage = useCoverage ? plan.CreateCoverage() : null;
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.CreateAccount(TestItem.AddressB, 100);
+                ws.Set(cells[1], [42]);
+                ws.Set(cells[2], [77]);
+            }, ws => parent = ws, coverage);
+        using (scope)
+        {
+            LocalMetrics metrics = (LocalMetrics)typeof(WorldState)
+                .GetField("_localMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(parent)!;
+            long readsBefore = metrics.StorageTreeReads;
+            Snapshot snapshot = parent.TakeSnapshot();
+            ReadAlternatingSlots(0);
+            bws.Restore(snapshot);
+            bws.SetBlockAccessIndex(2);
+            coverage?.StartSlice();
+            ReadAlternatingSlots(0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
+                Assert.That(parent.TakeSnapshot(), Is.EqualTo(snapshot), "pure reads must not journal");
+            }
+
+            if (replaceReader) bws.ClearParentReader();
+            parent.Set(cells[0], [99]);
+            parent.Commit(Spec);
+            parent.CommitTree(1);
+            if (replaceReader) bws.SetParentReader(parent);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject, coverage);
+            coverage?.StartSlice();
+            readsBefore = metrics.StorageTreeReads;
+            ReadAlternatingSlots(99);
+            Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
+        }
+
+        void ReadAlternatingSlots(uint firstValue)
+        {
+            uint[] expected = [firstValue, 42, 77];
+            for (int repeat = 0; repeat < 4; repeat++)
+            {
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    ReadOnlySpan<byte> value = repeat % 2 == 0 ? bws.Get(cells[i]) : bws.GetOriginal(cells[i]);
+                    Assert.That(new UInt256(value, isBigEndian: true), Is.EqualTo((UInt256)expected[i]));
+                }
+            }
+            if (coverage is not null)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(coverage.ChargeableReadCount, Is.EqualTo((ulong)cells.Length));
+                    Assert.That(plan.TryFindUncovered(out _), Is.False);
+                }
+            }
+        }
     }
 
     [Test]

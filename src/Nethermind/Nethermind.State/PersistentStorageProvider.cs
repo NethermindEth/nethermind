@@ -502,6 +502,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
+    internal byte[] GetPureRead(in StorageCell storageCell) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTreeStorage(storageCell);
+
     /// <summary>
     /// Reads skip the registry/change journal that writes use: repeat reads are served by
     /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
@@ -949,7 +952,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return valueChange.After;
         }
 
-        private byte[] LoadFromTreeStorage(StorageCell storageCell)
+        public byte[] LoadFromTreeStorage(StorageCell storageCell)
         {
             Provider._metrics.IncrementStorageTreeReads();
 
