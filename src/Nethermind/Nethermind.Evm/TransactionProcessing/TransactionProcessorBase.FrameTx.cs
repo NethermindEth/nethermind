@@ -281,7 +281,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // ORIGIN returns the frame's caller throughout all call depths.
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
-                caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
+                caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
+            {
+                SuppressLogs = ShouldSuppressLogs(opts, tracer)
+            });
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
             int frameLogStart = accessTracker.Logs.Count;
@@ -616,7 +619,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 Address caller = Eip8141Constants.EntryPointAddress;
 
                 VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
-                    caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
+                    caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
+                {
+                    SuppressLogs = ShouldSuppressLogs(opts, tracer)
+                });
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
                 // tracer cannot see from opcodes alone.

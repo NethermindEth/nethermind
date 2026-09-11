@@ -78,6 +78,10 @@ namespace Nethermind.Evm.TransactionProcessing
         /// </summary>
         public bool SkipSenderCodeCheck { get; set; }
 
+        /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
+        private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
+            opts.HasFlag(ExecutionOptions.Warmup) && ReferenceEquals(tracer, NullTxTracer.Instance);
+
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
@@ -327,7 +331,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
-                SuppressLogs = opts.HasFlag(ExecutionOptions.Warmup) && ReferenceEquals(tracer, NullTxTracer.Instance)
+                SuppressLogs = ShouldSuppressLogs(opts, tracer)
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();
