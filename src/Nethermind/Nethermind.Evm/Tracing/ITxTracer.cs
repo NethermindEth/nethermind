@@ -31,6 +31,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>
     /// Defaults to receipt tracing for compatibility. Tracers that only consume status, gas or output
     /// can return false. Per-opcode log callbacks are controlled separately by <see cref="IsTracingLogs"/>.
+    /// Returning false permits an incomplete log array in receipt callbacks; it does not guarantee an empty array.
     /// </remarks>
     bool IsTracingReceiptLogs => IsTracingReceipt;
 

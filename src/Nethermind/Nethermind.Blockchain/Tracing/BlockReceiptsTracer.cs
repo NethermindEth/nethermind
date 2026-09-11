@@ -20,6 +20,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
+    public bool IsTracingReceiptLogs => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;

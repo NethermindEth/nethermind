@@ -143,10 +143,10 @@ public class TransactionProcessorWarmupTests
     }
 
     [Test]
-    public void Warmup_preserves_memory_access_for_instruction_tracers()
+    public void Warmup_preserves_memory_access_for_instruction_tracers([Values(0x100800, 0x200000)] int offset)
     {
-        byte[] code = Prepare.EvmCode.Log(32, 0x100800).Op(Instruction.STOP).Done;
-        (Transaction tx, _) = PrepareLogTransaction(code, 5_000_000);
+        byte[] code = Prepare.EvmCode.Log(32, offset).Op(Instruction.STOP).Done;
+        (Transaction tx, _) = PrepareLogTransaction(code, 20_000_000);
         using MemoryWordTracer tracer = new();
 
         _transactionProcessor.Warmup(tx, tracer);
