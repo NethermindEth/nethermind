@@ -22,10 +22,7 @@ namespace Nethermind.JsonRpc;
 /// (<see cref="IJsonRpcConfig.EvmExecutionConcurrency"/>) and turns the excess into fast "Too many requests" answers: a
 /// request that finds no free permit waits asynchronously for at most <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>,
 /// and is rejected up front when <see cref="IJsonRpcConfig.EvmExecutionQueueLimit"/> requests are already waiting. A zero
-/// budget disables queueing: the request is rejected on the calling thread without allocating a waiter. Predicting the wait
-/// from a running estimate of the service time, so as to reject before queueing, was measured and dropped: with a 500 ms
-/// budget it changed neither the successful throughput nor the CPU per success nor the light-call latency at 300, 600 and
-/// 650 rps, because a request the prediction would reject is rejected by the budget a moment later at the same cost.
+/// budget disables queueing: the request is rejected on the calling thread without allocating a waiter.
 /// <para>
 /// Waiters are served lightest first, FIFO within a weight: a freed permit goes to the request expected to finish soonest,
 /// which maximises the requests served per second of execution time and keeps a sub-millisecond <c>eth_call</c> from
@@ -40,9 +37,9 @@ namespace Nethermind.JsonRpc;
 /// One lock guards the permit count and the queues; it is held for a few instructions per admission and nothing under it
 /// calls out. Expiry is driven by one timer per gate, re-armed to the earliest remaining deadline: with a single constant
 /// budget, deadlines are monotonic within a bucket, so expired waiters are always bucket heads. Cancellation is lazy: a
-/// waiter whose caller has gone is skipped when a grant reaches it or dropped by the next expiry sweep, at most one budget
-/// later; until then it occupies one queue slot, but it never receives a permit. The timer is disposed with the gate, which
-/// <see cref="JsonRpcService"/> owns for its lifetime.
+/// waiter whose caller has gone is skipped when a grant reaches it or dropped by the next expiry sweep; until then it occupies
+/// one queue slot, but it never receives a permit. Disposing the gate settles queued admissions with cancellation or
+/// disposal failure and rejects new ones.
 /// </para>
 /// </remarks>
 internal sealed class EvmAdmissionGate : IDisposable
@@ -66,6 +63,7 @@ internal sealed class EvmAdmissionGate : IDisposable
     private readonly ITimer _sweepTimer;
     private int _queued;
     private int _inFlight;
+    private bool _disposed;
 
     /// <summary>Creates a gate sized from <paramref name="config"/>; see <see cref="IJsonRpcConfig.EvmExecutionConcurrency"/> for the permit count rules.</summary>
     internal EvmAdmissionGate(IJsonRpcConfig config, ILogManager logManager, TimeProvider? timeProvider = null)
@@ -96,7 +94,41 @@ internal sealed class EvmAdmissionGate : IDisposable
     internal int Queued => Volatile.Read(ref _queued);
     internal int InFlight => Volatile.Read(ref _inFlight);
 
-    public void Dispose() => _sweepTimer.Dispose();
+    public void Dispose()
+    {
+        Waiter? disposed = null;
+        Waiter? cancelled = null;
+        lock (_lock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _sweepTimer.Dispose();
+            for (int w = MinWeight; w <= MaxWeight; w++)
+            {
+                while (_queues[w].TryDequeue(out Waiter? waiter))
+                {
+                    Metrics.RpcAdmissionQueued = --_queued;
+                    if (waiter.CancellationToken.IsCancellationRequested)
+                    {
+                        Metrics.RpcAdmissionCancellations++;
+                        waiter.NextSettled = cancelled;
+                        cancelled = waiter;
+                    }
+                    else
+                    {
+                        waiter.NextSettled = disposed;
+                        disposed = waiter;
+                    }
+                }
+            }
+        }
+
+        CompleteWaiters(cancelled, disposed, isDisposed: true);
+    }
 
     /// <summary>
     /// Converts the byte length of a request's raw <c>params</c> into its admission weight: one unit per
@@ -134,6 +166,7 @@ internal sealed class EvmAdmissionGate : IDisposable
         bool queueFull;
         lock (_lock)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
             if (_inFlight < Permits)
             {
@@ -145,8 +178,7 @@ internal sealed class EvmAdmissionGate : IDisposable
             if (!queueFull && _budget > TimeSpan.Zero)
             {
                 // Stamped under the lock: with one constant budget every new deadline is then no earlier than any queued one,
-                // so expired waiters are always bucket heads and a timer armed only when the queue was empty is never due
-                // later than the earliest deadline rounded up to a whole millisecond.
+                // so expired waiters are always bucket heads.
                 long now = _timeProvider.GetTimestamp();
                 Waiter waiter = new(now, cancellationToken);
                 bool wasEmpty = _queued == 0;
@@ -170,24 +202,36 @@ internal sealed class EvmAdmissionGate : IDisposable
     {
         Waiter? grantee = null;
         Waiter? cancelled = null;
+        Waiter? expired = null;
         lock (_lock)
         {
             Debug.Assert(_inFlight > 0, "a lease was released twice");
+            long now = _queued > 0 ? _timeProvider.GetTimestamp() : 0;
             for (int w = MinWeight; w <= MaxWeight && grantee is null; w++)
             {
                 while (_queues[w].TryDequeue(out Waiter? head))
                 {
                     Metrics.RpcAdmissionQueued = --_queued;
-                    if (!head.CancellationToken.IsCancellationRequested)
+                    bool isCancelled = head.CancellationToken.IsCancellationRequested;
+                    if (!isCancelled && _timeProvider.GetElapsedTime(head.EnqueuedTimestamp, now) < _budget)
                     {
                         grantee = head;
                         break;
                     }
 
-                    // A caller that has gone never takes the permit.
-                    Metrics.RpcAdmissionCancellations++;
-                    head.NextSettled = cancelled;
-                    cancelled = head;
+                    if (isCancelled)
+                    {
+                        // A caller that has gone never takes the permit.
+                        Metrics.RpcAdmissionCancellations++;
+                        head.NextSettled = cancelled;
+                        cancelled = head;
+                    }
+                    else
+                    {
+                        Metrics.RpcAdmissionWaitTimeoutRejections++;
+                        head.NextSettled = expired;
+                        expired = head;
+                    }
                 }
             }
 
@@ -198,21 +242,22 @@ internal sealed class EvmAdmissionGate : IDisposable
             }
         }
 
-        for (Waiter? waiter = cancelled; waiter is not null; waiter = waiter.NextSettled)
-        {
-            waiter.TrySetCanceled(waiter.CancellationToken);
-        }
-
+        CompleteWaiters(cancelled, expired);
         grantee?.TrySetResult(new Lease(this));
     }
 
-    // Timer callback: every step is under the lock and idempotent, so an overlapping fire is harmless, and nothing here throws.
+    // Timer callback: every step is under the lock and idempotent, so an overlapping fire is harmless.
     private void Sweep()
     {
         Waiter? expired = null;
         Waiter? cancelled = null;
         lock (_lock)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             long now = _timeProvider.GetTimestamp();
             for (int w = MinWeight; w <= MaxWeight; w++)
             {
@@ -246,15 +291,7 @@ internal sealed class EvmAdmissionGate : IDisposable
             ArmSweep(now);
         }
 
-        for (Waiter? waiter = cancelled; waiter is not null; waiter = waiter.NextSettled)
-        {
-            waiter.TrySetCanceled(waiter.CancellationToken);
-        }
-
-        for (Waiter? waiter = expired; waiter is not null; waiter = waiter.NextSettled)
-        {
-            waiter.TrySetException(new LimitExceededException(WaitTimeoutMessage));
-        }
+        CompleteWaiters(cancelled, expired);
     }
 
     // Caller holds _lock.
@@ -277,14 +314,27 @@ internal sealed class EvmAdmissionGate : IDisposable
             return;
         }
 
-        // Change truncates to whole milliseconds: a fractional remainder would fire early, find the head unexpired and
-        // re-fire at once until the clock passes the deadline, so the due time is rounded up. The ceiling is what rules the
-        // re-fire loop out; how late a waiter is then shed is bounded by the timer's own granularity. A negative due time
-        // throws inside the timer callback, and between -2 ms and -1 ms it truncates to Infinite and silently disarms.
+        // Timer due times have millisecond resolution; round up to avoid firing before a deadline. Timer scheduling may
+        // still run the sweep later, so the elapsed-time check above remains authoritative.
         TimeSpan due = _budget - _timeProvider.GetElapsedTime(earliest, now);
         due = due <= TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromMilliseconds(Math.Ceiling(due.TotalMilliseconds));
 
         _sweepTimer.Change(due, Timeout.InfiniteTimeSpan);
+    }
+
+    private static void CompleteWaiters(Waiter? cancelled, Waiter? rejected, bool isDisposed = false)
+    {
+        for (Waiter? waiter = cancelled; waiter is not null; waiter = waiter.NextSettled)
+        {
+            waiter.TrySetCanceled(waiter.CancellationToken);
+        }
+
+        for (Waiter? waiter = rejected; waiter is not null; waiter = waiter.NextSettled)
+        {
+            waiter.TrySetException(isDisposed
+                ? new ObjectDisposedException(nameof(EvmAdmissionGate))
+                : new LimitExceededException(WaitTimeoutMessage));
+        }
     }
 
     /// <summary>Holds one admission permit; disposing releases it.</summary>

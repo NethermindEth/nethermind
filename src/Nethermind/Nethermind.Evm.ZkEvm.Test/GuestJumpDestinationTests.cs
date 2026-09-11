@@ -11,13 +11,13 @@ namespace Nethermind.Evm.ZkEvm.Test;
 
 /// <summary>Differential tests for <see cref="JumpDestinationAnalyzer"/>'s scalar scan.</summary>
 /// <remarks>
-/// The scan is word-at-a-time SWAR, and it is what a guest build runs: everywhere else
-/// <c>CreateJumpDestinationBitmap</c> finds <c>Vector512</c> or <c>Vector128</c> accelerated and takes
-/// one of those instead, so the scalar form is never reached through the real entry point. The bitmap
-/// feeds <see cref="JumpDestinationAnalyzer.ValidateJump"/>, so a wrong bit is wrong execution rather
-/// than a slowdown. It is compared against the obvious byte-at-a-time reference over the shapes where a
-/// word-wise walk could diverge from it: PUSH data truncated by the end of the code, the 64-bit bitmap
-/// segment boundary the flags are flushed on, every opcode value, and random bytecode.
+/// The scalar scan is what a guest build runs: everywhere else <c>CreateJumpDestinationBitmap</c> finds
+/// <c>Vector512</c> or <c>Vector128</c> accelerated and takes one of those instead, so it is never reached
+/// through the real entry point. The bitmap feeds <see cref="JumpDestinationAnalyzer.ValidateJump"/>, so a
+/// wrong bit is wrong execution rather than a slowdown. The guest walks a moving pointer and accumulates
+/// flags per 64-bit segment; it is compared against the obvious indexed reference over the shapes where the
+/// two could diverge: PUSH data truncated by the end of the code, the segment boundary the flags are
+/// flushed on, every opcode value, and random bytecode.
 /// </remarks>
 public class GuestJumpDestinationTests
 {
@@ -42,6 +42,7 @@ public class GuestJumpDestinationTests
         yield return Shape("JUMPDEST inside PUSH data", Code(40, (0, PUSH32), (5, JUMPDEST), (33, JUMPDEST)));
         yield return Shape("JUMPDEST at position 0", Code(8, (0, JUMPDEST)));
         yield return Shape("JUMPDEST at the last byte", Code(8, (7, JUMPDEST)));
+        yield return Shape("leading STOP before JUMPDEST", [(byte)Instruction.STOP, JUMPDEST]);
 
         // 0x5c-0x5f: in range for the bias, but single-byte, which is the arm the bias reshuffled.
         yield return Shape("TLOAD/TSTORE/MCOPY/PUSH0 run",
@@ -55,9 +56,17 @@ public class GuestJumpDestinationTests
     [TestCaseSource(nameof(Shapes))]
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
 
+    [Test]
+    public void Stack_without_code_info_has_no_jump_destinations()
+    {
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, new byte[] { JUMPDEST }, null);
+        Assert.That(stack.IsJumpDestination(0), Is.False);
+    }
+
     /// <remarks>
-    /// The scan classifies a byte by unsigned range checks against <c>[JUMPDEST, PUSH32]</c>, so it is
-    /// only sound across the whole byte range - which this walks. The trailing JUMPDESTs are enough that
+    /// The scan classifies a byte by comparing it <em>signed</em> against <c>[JUMPDEST, PUSH32]</c>, which
+    /// is only equivalent across the whole byte range - which this walks. The trailing JUMPDESTs are enough that
     /// even a PUSH32 immediate stays inside the code, so the bytes an opcode masks are visible rather
     /// than truncated.
     /// </remarks>
@@ -122,6 +131,20 @@ public class GuestJumpDestinationTests
             JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
+        if (code[0] == (byte)Instruction.STOP) expected = JumpDestinationAnalyzer.EmptyBitmap;
+        CodeInfo incremental = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, incremental);
+        for (int i = 0; i < code.Length; i++)
+        {
+            Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack forward {i}");
+            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
+        }
+        for (int i = code.Length - 1; i >= 0; i--)
+        {
+            Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack backward {i}");
+            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
+        }
     }
 
     /// <summary>Walks byte by byte, marking every JUMPDEST and skipping PUSH immediates.</summary>

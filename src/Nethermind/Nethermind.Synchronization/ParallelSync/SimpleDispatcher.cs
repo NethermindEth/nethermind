@@ -41,44 +41,63 @@ public class SimpleDispatcher<T>(
             : syncConfig.MaxProcessingThreads;
         SemaphoreSlim semaphore = new(maxThreads, maxThreads);
 
-        while (!token.IsCancellationRequested)
+        try
         {
-            long prepareTime = Stopwatch.GetTimestamp();
-            T? request = await feed.PrepareRequest(token);
-            Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(
-                Stopwatch.GetElapsedTime(prepareTime).TotalMicroseconds, new StringLabel(_feedName));
-
-            if (request is null)
-                break;
-
-            SyncPeerAllocation allocation = await peerPool.Allocate(
-                strategyFactory.Create(request), contexts, _allocateTimeoutMs, token);
-            PeerInfo? peer = allocation.Current;
-
-            if (peer is null)
+            while (!token.IsCancellationRequested)
             {
-                HandleResponse(request, null);
-                continue;
-            }
+                long prepareTime = Stopwatch.GetTimestamp();
+                T? request = await feed.PrepareRequest(token);
+                Metrics.SyncDispatcherPrepareRequestTimeMicros.Observe(
+                    Stopwatch.GetElapsedTime(prepareTime).TotalMicroseconds, new StringLabel(_feedName));
 
-            await semaphore.WaitAsync(token);
-            _ = Task.Run(async () =>
-            {
+                if (request is null)
+                    break;
+
+                SyncPeerAllocation allocation = await peerPool.Allocate(
+                    strategyFactory.Create(request), contexts, _allocateTimeoutMs, token);
+                PeerInfo? peer = allocation.Current;
+
+                if (peer is null)
+                {
+                    // DoDispatch owns the allocation everywhere else; this path never reaches it.
+                    allocation.Dispose();
+                    HandleResponse(request, null);
+                    continue;
+                }
+
                 try
                 {
-                    await DoDispatch(request, peer, allocation, token);
+                    await semaphore.WaitAsync(token);
                 }
-                finally
+                catch
                 {
-                    semaphore.Release();
+                    // DoDispatch is what frees the allocation, and cancelling here means it never runs.
+                    allocation.Dispose();
+                    throw;
                 }
-            });
-        }
 
-        // Wait for in-flight tasks to complete. Drain with CancellationToken.None so that
-        // peer allocations are always freed in DoDispatch even when the caller cancels.
-        for (int i = 0; i < maxThreads; i++)
-            await semaphore.WaitAsync(CancellationToken.None);
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await DoDispatch(request, peer, allocation, token);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+            }
+        }
+        finally
+        {
+            // The caller tears down the databases right after this returns, so no worker may still be inside
+            // HandleResponse by then. A finally rather than a statement after the loop: PrepareRequest and the
+            // semaphore wait both throw OperationCanceledException on shutdown, and that would carry straight
+            // past a trailing drain. CancellationToken.None so the join itself cannot be cancelled.
+            for (int i = 0; i < maxThreads; i++)
+                await semaphore.WaitAsync(CancellationToken.None);
+        }
     }
 
     private async Task DoDispatch(
@@ -88,30 +107,31 @@ public class SimpleDispatcher<T>(
         CancellationToken token)
     {
         long dispatchTime = Stopwatch.GetTimestamp();
-        try
+        using (allocation)
         {
-            await downloader.Dispatch(peer, request, token);
+            try
+            {
+                await downloader.Dispatch(peer, request, token);
+            }
+            catch (ConcurrencyLimitReachedException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
+            }
+            catch (TimeoutException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
+            }
+            Metrics.SyncDispatcherDispatchTimeMicros.Observe(
+                Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
         }
-        catch (ConcurrencyLimitReachedException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
-        }
-        catch (TimeoutException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
-        }
-        Metrics.SyncDispatcherDispatchTimeMicros.Observe(
-            Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
-
-        peerPool.Free(allocation);
 
         if (token.IsCancellationRequested) return;
 

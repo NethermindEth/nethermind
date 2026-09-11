@@ -20,17 +20,17 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 {
     protected readonly IWorldState State = state;
 
-    public virtual Hash256 StateRoot => State.StateRoot;
-    public virtual bool IsInScope => State.IsInScope;
-    public virtual IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
+    public Hash256 StateRoot => State.StateRoot;
+    public bool IsInScope => State.IsInScope;
+    public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public virtual IDisposable BeginScope(BlockHeader? baseBlock)
+    public IDisposable BeginScope(BlockHeader? baseBlock)
         => State.BeginScope(baseBlock);
 
-    public virtual Task HintBal(ReadOnlyBlockAccessList bal)
+    public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
-    public virtual bool HasStateForBlock(BlockHeader? baseBlock)
+    public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account)
@@ -84,10 +84,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Restore(Snapshot snapshot)
         => State.Restore(snapshot);
 
-    public virtual void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
+    public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         => State.WarmUp(accessList, cancellationToken);
 
-    public virtual void WarmUp(Address address)
+    public void WarmUp(Address address)
         => State.WarmUp(address);
 
     public virtual void ClearStorage(Address address)
@@ -132,7 +132,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public virtual void CommitTree(ulong blockNumber)
+    public void CommitTree(ulong blockNumber)
         => State.CommitTree(blockNumber);
 
     public virtual ArrayPoolList<AddressAsKey>? GetAccountChanges()

@@ -31,6 +31,18 @@ public class RpcModuleProviderTests
     private IRpcModuleProvider _moduleProvider = null!;
     private IFileSystem _fileSystem = null!;
     private JsonRpcContext _context = null!;
+    private IContainer _productionContainer = null!;
+    private RpcModuleProvider _productionProvider = null!;
+
+    [OneTimeSetUp]
+    public void InitializeProductionProvider()
+    {
+        _productionContainer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new TestMergeModule())
+            .Build();
+        _productionProvider = _productionContainer.Resolve<RpcModuleProvider>();
+    }
 
     [SetUp]
     public void Initialize()
@@ -42,6 +54,9 @@ public class RpcModuleProviderTests
 
     [TearDown]
     public void TearDown() => _context?.Dispose();
+
+    [OneTimeTearDown]
+    public void DisposeProductionProvider() => _productionContainer?.Dispose();
 
     private static RpcModuleProvider CreateProvider(IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IReadOnlyList<RpcModuleInfo>? rpcModules = null) =>
         new(fileSystem ?? Substitute.For<IFileSystem>(), config ?? new JsonRpcConfig(), new EthereumJsonSerializer(), rpcModules ?? [], LimboLogs.Instance);
@@ -122,6 +137,38 @@ public class RpcModuleProviderTests
         _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(second));
 
         Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(second));
+    }
+
+    [TestCaseSource(nameof(EvmExecutionClassificationCases))]
+    public void Evm_execution_classification_matches_production_module_metadata(string methodName, bool expected)
+    {
+        RpcModuleProvider.ResolvedMethodInfo? method = _productionProvider.Resolve(methodName);
+
+        Assert.That(method, Is.Not.Null, $"production modules must expose {methodName}");
+        Assert.That(method!.IsEvmExecution, Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TestCaseData> EvmExecutionClassificationCases()
+    {
+        yield return new TestCaseData("eth_call", true);
+        yield return new TestCaseData("eth_estimateGas", true);
+        yield return new TestCaseData("eth_createAccessList", true);
+        yield return new TestCaseData("eth_simulateV1", true);
+        yield return new TestCaseData("eth_fillTransaction", true);
+        yield return new TestCaseData("debug_simulateV1", true);
+        yield return new TestCaseData("eth_blockNumber", false);
+        yield return new TestCaseData("eth_getBalance", false);
+        yield return new TestCaseData("eth_getLogs", false);
+        yield return new TestCaseData("eth_sendRawTransaction", false);
+        yield return new TestCaseData("eth_getProof", false);
+        yield return new TestCaseData("debug_traceCall", false);
+        yield return new TestCaseData("debug_traceTransaction", false);
+        yield return new TestCaseData("trace_call", false);
+        yield return new TestCaseData("trace_replayBlockTransactions", false);
+        yield return new TestCaseData("proof_call", false);
+        yield return new TestCaseData("debug_getRawBlock", false);
+        yield return new TestCaseData("engine_newPayloadV4", false);
+        yield return new TestCaseData("net_version", false);
     }
 
     [TestCase("engine_newPayloadV4", ModuleType.Engine)]

@@ -162,6 +162,11 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    /// <summary>
+    /// Maximum number of EVM-executing JSON-RPC requests that may run concurrently. Defaults to
+    /// <see cref="EthModuleConcurrentInstances"/>, which defaults to the number of logical processors; values are
+    /// clamped to the range from 1 through that limit.
+    /// </summary>
     [ConfigItem(
         Description = """
             The number of EVM-executing JSON-RPC requests (`eth_call`, `eth_estimateGas`, `eth_createAccessList`,
@@ -175,6 +180,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EvmExecutionConcurrency { get; set; }
 
+    /// <summary>Maximum time, in milliseconds, that an EVM-executing request may wait for a slot. Defaults to 500 ms; 0 disables queueing.</summary>
     [ConfigItem(
         Description = """
             The max time, in milliseconds, an EVM-executing JSON-RPC request (see `EvmExecutionConcurrency`) may wait for an
@@ -187,6 +193,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
 
+    /// <summary>Maximum number of EVM-executing requests waiting for a slot. Defaults to 500; 0 removes the queue limit.</summary>
     [ConfigItem(
         Description = """
             The max number of EVM-executing JSON-RPC requests (see `EvmExecutionConcurrency`) waiting for an execution slot

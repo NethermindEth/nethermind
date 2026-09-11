@@ -10,14 +10,18 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -39,6 +43,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Testably.Abstractions;
+using static Nethermind.JsonRpc.EvmAdmissionGate;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -52,8 +57,8 @@ public class JsonRpcServiceTests
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
         _context = new JsonRpcContext(RpcEndpoint.Http);
-        _previousStrictHexFormat = EthereumJsonSerializer.StrictHexFormat;
-        EthereumJsonSerializer.StrictHexFormat = _configurationProvider.GetConfig<IJsonRpcConfig>().StrictHexFormat;
+        // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
+        // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
         _timeProvider = new ManualTimeProvider();
         UseGate(_configurationProvider.GetConfig<IJsonRpcConfig>());
     }
@@ -61,12 +66,10 @@ public class JsonRpcServiceTests
     [TearDown]
     public void TearDown()
     {
-        EthereumJsonSerializer.StrictHexFormat = _previousStrictHexFormat;
         _context?.Dispose();
         _gate.Dispose();
+        _serviceContainer?.Dispose();
     }
-
-    private bool _previousStrictHexFormat;
 
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
@@ -74,6 +77,7 @@ public class JsonRpcServiceTests
     private JsonRpcContext _context = null!;
     private EvmAdmissionGate _gate = null!;
     private ManualTimeProvider _timeProvider = null!;
+    private IContainer? _serviceContainer;
 
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
@@ -104,6 +108,18 @@ public class JsonRpcServiceTests
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Malformed typed argument");
         yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Empty string for non-trailing required argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """[null,false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Null for non-trailing required argument");
+        yield return new TestCaseData(
             nameof(IEthRpcModule.eth_feeHistory),
             """[{},"latest"]""",
             "missing value for required argument 2",
@@ -115,6 +131,18 @@ public class JsonRpcServiceTests
             "Invalid params",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false]""",
+            "missing value for required argument 0",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Required argument marked missing before another");
+        yield return new TestCaseData(
+            nameof(IEthRpcModule.eth_getBlockByNumber),
+            """["",false,"extra"]""",
+            "Invalid params",
+            (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
+            .SetName("Extra argument alongside a missing marker");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
@@ -223,8 +251,12 @@ public class JsonRpcServiceTests
 
     private IJsonRpcService CreateService<T>(IRpcModulePool<T> pool) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
-        moduleProvider.Register(pool);
+        _serviceContainer?.Dispose();
+        _serviceContainer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(_configurationProvider))
+            .AddLast<RpcModuleInfo>(_ => new RpcModuleInfo(typeof(T), pool))
+            .Build();
+        RpcModuleProvider moduleProvider = _serviceContainer.Resolve<RpcModuleProvider>();
         return new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gate);
     }
 
@@ -534,6 +566,22 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Missing_marker_on_an_optional_argument_binds_its_default([Values(false, true)] bool rawUtf8)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        ethRpcModule
+            .eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())
+            .ReturnsForAnyArgs(_ => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true, specProvider)));
+
+        RpcTest.AssertSuccess<BlockForRpc>(rawUtf8
+            ? TestRawRequest(ethRpcModule, "eth_getBlockByNumber", """["0x1b4",""]""")
+            : TestRequest(ethRpcModule, "eth_getBlockByNumber", "0x1b4", ""));
+
+        ethRpcModule.Received().eth_getBlockByNumber(Arg.Any<BlockParameter>(), false);
+    }
+
+    [Test]
     public void Eth_getTransactionReceipt_properly_fails_given_wrong_parameters()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -543,10 +591,72 @@ public class JsonRpcServiceTests
 
     [TestCase("eth_getBlockByNumber", new object?[] { }, "missing value for required argument 0", TestName = "FirstArgOmitted")]
     [TestCase("eth_feeHistory", new object?[] { "0x1", "latest" }, "missing value for required argument 2", TestName = "LaterArgOmitted")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "FirstArgMarkedMissingBeforeAnother")]
+    [TestCase("eth_getProof", new object?[] { "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842", "", "latest" }, "missing value for required argument 1", TestName = "LaterArgMarkedMissingBeforeAnother")]
+    [TestCase("eth_feeHistory", new object?[] { "", "latest" }, "missing value for required argument 0", TestName = "MarkedMissingArgIsNamedAheadOfOmittedTrailingOnes")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false, "" }, "Invalid params", TestName = "ExtraArgumentWinsOverAMarkedMissingOne")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "0x1", false, "" }, "Invalid params", TestName = "ExtraTrailingMarkerIsAnExtraArgument")]
     public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
+    }
+
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "EmptyStringNonTrailing")]
+    [TestCase("eth_getBlockByNumber", new object?[] { null, false }, "missing value for required argument 0", TestName = "NullNonTrailing")]
+    public void MissingRequiredArgument_NonTrailingMarker_ReturnsInvalidParams(string method, object?[] parameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        AssertInvalidParamsWithoutData(TestRequest(ethRpcModule, method, parameters), expectedMessage);
+        ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+    }
+
+    // #13156: a parameter the caller got wrong is answered with -32602; it must not also cost the operator a WARN line
+    // (with a stack trace) per request. The detail stays available at Debug.
+    [Test]
+    public void Invalid_params_are_not_logged_at_warn()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        const string rawParameters = """["0x1234","latest"]""";
+
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        _logManager = new OneLoggerLogManager(new(warnLogger));
+        AssertJsonRpcError(TestRawRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), rawParameters), ErrorCodes.InvalidParams);
+
+        TestLogger debugLogger = new();
+        _logManager = new OneLoggerLogManager(new(debugLogger));
+        AssertJsonRpcError(TestRawRequest(ethRpcModule, nameof(IEthRpcModule.eth_getBalance), rawParameters), ErrorCodes.InvalidParams);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warnLogger.LogList, Is.Empty, $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+            Assert.That(debugLogger.LogList.Where(l => l.Contains("Incorrect JSON RPC parameters when calling eth_getBalance")), Is.Not.Empty);
+            ethRpcModule.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>());
+        }
+    }
+
+    // The counterpart to the test above: the catch around parameter binding is broad, so it also swallows faults
+    // the params cannot cause. Those are a condition of the node and must stay visible - at this site, and at the
+    // processor, which would otherwise demote every -32602 from an unauthenticated caller to Debug.
+    [Test]
+    public void Node_faults_during_binding_stay_visible_and_omit_the_params()
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        const string rawParameters = """[{"secret":"0x1234"}]""";
+
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        _logManager = new OneLoggerLogManager(new(logger));
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRawRequest(module, "test_node_fault", rawParameters),
+            ErrorCodes.InvalidParams);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.OperatorActionable, Is.True, "the processor must not demote a node fault");
+            Assert.That(logger.LogList.Where(static l => l.Contains("Failed to bind JSON RPC parameters for test_node_fault")), Is.Not.Empty);
+            Assert.That(logger.LogList.Where(static l => l.Contains("secret")), Is.Empty, "the params must not be formatted on a fault that may be an exhausted heap");
+            module.DidNotReceive().test_node_fault(Arg.Any<NodeFaultPayload>());
+        }
     }
 
     [TestCaseSource(nameof(InvalidRawUtf8ParamCases))]
@@ -681,6 +791,39 @@ public class JsonRpcServiceTests
         AssertJsonRpcError(TestRequestWithPool(pool, "eth_blockNumber"), ErrorCodes.InternalError);
     }
 
+    // error.data reaches unauthenticated callers, so it must not carry the stack trace: our release builds
+    // render frames with the build machine's absolute source paths and expose the internal call graph.
+    [TestCase(ErrorCodes.InternalError, TestName = "InternalErrorArm")]
+    [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParamsArm")]
+    public void Error_data_does_not_leak_stack_trace_or_build_paths(int expectedCode)
+    {
+        Exception thrown = expectedCode == ErrorCodes.InternalError
+            ? new InvalidOperationException("Stack empty.")
+            : new ArgumentException("bad argument");
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode);
+
+        AssertErrorDataWithoutStackTrace(response, thrown.GetType(), thrown.Message);
+    }
+
+    private static void AssertErrorDataWithoutStackTrace(JsonRpcErrorResponse response, Type? expectedType = null, string? expectedMessage = null)
+    {
+        string data = response.Error!.Data?.ToString() ?? string.Empty;
+        Assert.Multiple(() =>
+        {
+            // Still actionable: the caller learns what went wrong.
+            if (expectedType is not null) Assert.That(data, Does.Contain(expectedType.FullName!), data);
+            if (expectedMessage is not null) Assert.That(data, Does.Contain(expectedMessage), data);
+            // But nothing about where our source lives or how the call got there.
+            Assert.That(data, Does.Not.Contain("   at "), data);
+            Assert.That(data, Does.Not.Contain(".cs:line"), data);
+            Assert.That(data, Does.Not.Contain("Nethermind.JsonRpc.JsonRpcService"), data);
+        });
+    }
+
     private static IEnumerable<TestCaseData> OutOfMemoryPools()
     {
         static IRpcModulePool<IEthRpcModule> Throwing(Exception ex)
@@ -713,6 +856,32 @@ public class JsonRpcServiceTests
 
         TestErrorLogManager.Error logged = logManager.Errors.Single(e => e.Exception is OutOfMemoryException or { InnerException: OutOfMemoryException });
         Assert.That(logged.Text, Does.Contain("eth_getBalance").And.Not.Contain(marker));
+    }
+
+    // #13156 follow-up: -32600 is overloaded. It is returned both for a request the caller got wrong ("Method is
+    // required") and for a namespace this node has disabled, whose message is a remediation instruction for the
+    // operator. Only the first may be demoted out of WARN, so the disabled cases carry OperatorActionable.
+    [TestCase(ModuleResolution.Disabled, true)]
+    [TestCase(ModuleResolution.EndpointDisabled, true)]
+    [TestCase(ModuleResolution.NotAuthenticated, false)]
+    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable)
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = "Debug";
+                callInfo[3] = null;
+                return resolution;
+            });
+
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
+        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
+
+        Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+        Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
+        Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
     }
 
     [Test]
@@ -1047,6 +1216,8 @@ public class JsonRpcServiceTests
 
         [JsonRpcMethod(Description = "Test method used to verify that gated requests are admitted before their parameters are bound.", IsEvmExecution = true)]
         ResultWrapper<string> eth_call(BindingProbe probe);
+        [JsonRpcMethod(Description = "Test method used to verify JSON-RPC parameter binding faults.")]
+        ResultWrapper<string> test_node_fault(NodeFaultPayload value);
     }
 
     [JsonConverter(typeof(BindingProbeConverter))]
@@ -1063,6 +1234,19 @@ public class JsonRpcServiceTests
         }
 
         public override void Write(Utf8JsonWriter writer, BindingProbe value, JsonSerializerOptions options) => throw new NotSupportedException();
+    }
+
+    [JsonConverter(typeof(NodeFaultPayloadConverter))]
+    public sealed class NodeFaultPayload;
+
+    /// <summary>Stands in for a fault the caller's params cannot cause, arriving from inside parameter binding.</summary>
+    private sealed class NodeFaultPayloadConverter : JsonConverter<NodeFaultPayload>
+    {
+        public override NodeFaultPayload Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new ObjectDisposedException(nameof(NodeFaultPayloadConverter));
+
+        public override void Write(Utf8JsonWriter writer, NodeFaultPayload value, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
     }
 
     private sealed class DisposableProbe : IDisposable
@@ -1085,5 +1269,771 @@ public class JsonRpcServiceTests
     public sealed class SealedPayload
     {
         public string? Value { get; init; }
+    }
+}
+
+[Parallelizable(ParallelScope.Self)]
+[TestFixture]
+public class EvmAdmissionGateTests
+{
+    private const int EvmPermits = 2;
+    private const int MaxQueueWaitMs = 5_000;
+    private const int QueueLimit = 3;
+    private static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(MaxQueueWaitMs);
+    private static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(10);
+
+    [ThreadStatic]
+    private static bool _releasingPermit;
+
+    private EvmAdmissionGate _gate = null!;
+    private ManualTimeProvider _timeProvider = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _timeProvider = new ManualTimeProvider();
+        _gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, EthModuleConcurrentInstances = EvmPermits, EvmExecutionMaxQueueWaitMs = MaxQueueWaitMs });
+    }
+
+    [TearDown]
+    public void TearDown() => _gate.Dispose();
+
+    // A null expectation stands for Environment.ProcessorCount, which is not a compile-time constant.
+    [TestCase(null, null, null, TestName = "Processor count")]
+    [TestCase(null, 6, 6, TestName = "Falls back to EthModuleConcurrentInstances")]
+    [TestCase(4, 6, 4, TestName = "Explicit value wins")]
+    [TestCase(0, 6, 1, TestName = "Zero is raised to one")]
+    [TestCase(-3, 6, 1, TestName = "Negative is raised to one")]
+    [TestCase(32, 6, 6, TestName = "Lowered to the env-pool cap")]
+    [TestCase(6, 4, 4, TestName = "Lowered to a smaller env-pool cap")]
+    public void Permits_follow_the_config_chain(int? evmExecutionConcurrency, int? ethModuleConcurrentInstances, int? expected)
+    {
+        using EvmAdmissionGate gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = evmExecutionConcurrency, EthModuleConcurrentInstances = ethModuleConcurrentInstances });
+
+        Assert.That(gate.Permits, Is.EqualTo(expected ?? Environment.ProcessorCount));
+    }
+
+    [TestCase(null, 500, TestName = "Defaults to 500 ms")]
+    [TestCase(-1, 0, TestName = "Negative disables queueing")]
+    public async Task Wait_budget_follows_the_config(int? maxQueueWaitMs, int expectedBudgetMs)
+    {
+        JsonRpcConfig config = new() { EvmExecutionConcurrency = 1, EthModuleConcurrentInstances = 1 };
+        if (maxQueueWaitMs is int configured)
+        {
+            config.EvmExecutionMaxQueueWaitMs = configured;
+        }
+        using EvmAdmissionGate gate = CreateGate(config);
+        using Lease held = await Admit(gate);
+
+        if (expectedBudgetMs == 0)
+        {
+            Assert.Throws<LimitExceededException>(() => Admit(gate), "a zero budget must reject synchronously");
+            return;
+        }
+
+        Task<Lease> waiting = Admit(gate).AsTask();
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(expectedBudgetMs - 1));
+        Assert.That(waiting.IsCompleted, Is.False, "the waiter must survive until the budget");
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(1));
+        Assert.ThrowsAsync<LimitExceededException>(() => waiting);
+    }
+
+    [TestCase(0, 1, TestName = "No params bytes")]
+    [TestCase(BytesPerWeightUnit - 1, 1, TestName = "Just below one unit")]
+    [TestCase(BytesPerWeightUnit, 2, TestName = "One unit")]
+    [TestCase(4 * BytesPerWeightUnit + 17, 5, TestName = "Partial units round down")]
+    [TestCase(7 * BytesPerWeightUnit, 8, TestName = "Upper clamp reached exactly")]
+    [TestCase(int.MaxValue, 8, TestName = "Upper clamp")]
+    public void Weight_grows_with_raw_params_size(int paramsUtf8Length, int expectedWeight) =>
+        Assert.That(Weigh(paramsUtf8Length), Is.EqualTo(expectedWeight));
+
+    [Test]
+    public async Task Permits_are_respected_and_released_on_dispose()
+    {
+        Lease[] held = new Lease[EvmPermits];
+        for (int i = 0; i < EvmPermits; i++)
+        {
+            ValueTask<Lease> admission = Admit();
+            Assert.That(admission.IsCompletedSuccessfully, Is.True, $"permit {i} should be granted synchronously");
+            held[i] = admission.Result;
+        }
+
+        Task<Lease> waiting = Admit().AsTask();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.IsCompleted, Is.False, "one over the permit count must wait");
+            Assert.That(_gate.InFlight, Is.EqualTo(EvmPermits));
+            Assert.That(_gate.Queued, Is.EqualTo(1));
+        }
+
+        held[0].Dispose();
+        using Lease admitted = await waiting.WaitAsync(WaitBudget);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_gate.InFlight, Is.EqualTo(EvmPermits));
+            Assert.That(_gate.Queued, Is.EqualTo(0));
+        }
+
+        held[1].Dispose();
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Cancelled_waiter_is_skipped_at_the_next_grant_and_never_takes_a_permit()
+    {
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using CancellationTokenSource cancellation = new();
+        Lease held = await Admit(gate);
+
+        Task<Lease> waiting = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+        cancellation.Cancel();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.IsCompleted, Is.False, "cancellation is observed lazily, at the next grant or sweep");
+            Assert.That(gate.Queued, Is.EqualTo(1));
+        }
+
+        held.Dispose();
+
+        Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(WaitBudget));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(0), "no live waiter remained, so the permit must have been returned");
+            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
+        }
+
+        ValueTask<Lease> fresh = Admit(gate);
+        Assert.That(fresh.IsCompletedSuccessfully, Is.True, "the cancelled waiter must not have taken the freed permit");
+        fresh.Result.Dispose();
+
+        // A sweep racing the grant must find nothing left to settle.
+        _timeProvider.AdvanceAndFireTimer(Budget);
+        Assert.That(gate.Queued, Is.EqualTo(0));
+    }
+
+    [TestCase(MinWeight, TestName = "Live waiter in the same bucket")]
+    [TestCase(MaxWeight, TestName = "Live waiter in a heavier bucket")]
+    public async Task Grant_skips_a_cancelled_head_and_passes_the_permit_to_the_next_live_waiter(int liveWeight)
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using CancellationTokenSource cancellation = new();
+        Lease held = await Admit(gate);
+        Task<Lease> cancelled = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+        Task<Lease> live = Admit(gate, liveWeight).AsTask();
+        cancellation.Cancel();
+
+        held.Dispose();
+
+        using Lease granted = await live.WaitAsync(WaitBudget);
+        Assert.CatchAsync<OperationCanceledException>(() => cancelled.WaitAsync(WaitBudget));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1), "the permit passed straight on; returning it as well would leave the live lease uncounted");
+        }
+    }
+
+    [TestCase(false, TestName = "Before its deadline")]
+    [TestCase(true, TestName = "At its deadline: a cancellation, not a rejection")]
+    [NonParallelizable]
+    public async Task Cancelled_waiter_is_settled_by_the_sweep(bool atDeadline)
+    {
+        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using CancellationTokenSource cancellation = new();
+        using Lease held = await Admit(gate);
+        Task<Lease> waiting = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+        // Behind the cancelled head in the same bucket, with half its budget left when the head is popped.
+        _timeProvider.Advance(Budget / 2);
+        Task<Lease> live = Admit(gate).AsTask();
+
+        cancellation.Cancel();
+        _timeProvider.AdvanceAndFireTimer(atDeadline ? Budget / 2 : TimeSpan.Zero);
+
+        Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(WaitBudget));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(live.IsCompleted, Is.False, "the live waiter behind the cancelled head keeps waiting");
+            Assert.That(gate.Queued, Is.EqualTo(1));
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore));
+            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
+        }
+    }
+
+    [TestCase(0, TestName = "Zero budget: shed on the calling thread, nothing queued")]
+    [TestCase(100, TestName = "Positive budget: shed by the wait timeout")]
+    public async Task Rejects_when_permits_never_free(int maxQueueWaitMs)
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(maxQueueWaitMs));
+        long rejectionsBefore = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionQueueFullRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
+        Lease held = await Admit(gate);
+
+        if (maxQueueWaitMs == 0)
+        {
+            Assert.Throws<LimitExceededException>(() => Admit(gate), "a zero budget must reject synchronously, without a waiter");
+        }
+        else
+        {
+            Task<Lease> waiting = Admit(gate).AsTask();
+            Assert.That(waiting.IsCompleted, Is.False);
+            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(maxQueueWaitMs));
+            Assert.ThrowsAsync<LimitExceededException>(() => waiting);
+        }
+
+        long rejectionsAfter = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionQueueFullRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejectionsAfter, Is.GreaterThan(rejectionsBefore));
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+        }
+
+        held.Dispose();
+        ValueTask<Lease> fresh = Admit(gate);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fresh.IsCompletedSuccessfully, Is.True, "the freed permit must not have gone to the timed-out waiter");
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+        }
+        fresh.Result.Dispose();
+    }
+
+    [TestCase(QueueLimit, TestName = "EvmExecutionQueueLimit caps the waiters")]
+    [TestCase(0, TestName = "EvmExecutionQueueLimit zero lifts the cap")]
+    public async Task Queued_waiters_are_capped_by_the_queue_limit(int queueLimit)
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
+        long rejectionsBefore = Metrics.RpcAdmissionQueueFullRejections;
+        Lease held = await Admit(gate);
+        List<Task<Lease>> queued = QueueWaiters(gate, queueLimit);
+        Assert.That(gate.Queued, Is.EqualTo(queueLimit == 0 ? QueueLimit + 1 : QueueLimit), "waiters up to the limit must be queued");
+        if (queueLimit != 0)
+        {
+            Assert.That(Metrics.RpcAdmissionQueueFullRejections, Is.GreaterThan(rejectionsBefore));
+        }
+
+        held.Dispose();
+        foreach (Task<Lease> waiter in queued)
+        {
+            (await waiter.WaitAsync(WaitBudget)).Dispose();
+        }
+        Assert.That(gate.InFlight, Is.EqualTo(0));
+    }
+
+    [TestCase(0, TestName = "Uncapped queue")]
+    [TestCase(QueueLimit, TestName = "Capped queue")]
+    public async Task Every_waiter_expires_at_the_budget(int queueLimit)
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
+        using Lease held = await Admit(gate);
+        List<Task<Lease>> queued = QueueWaiters(gate, queueLimit);
+        Assert.That(gate.Queued, Is.EqualTo(queued.Count));
+
+        _timeProvider.AdvanceAndFireTimer(Budget);
+
+        foreach (Task<Lease> waiter in queued)
+        {
+            Assert.ThrowsAsync<LimitExceededException>(() => waiter.WaitAsync(WaitBudget));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Expired_waiters_are_swept_per_bucket()
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using Lease held = await Admit(gate);
+        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
+        _timeProvider.Advance(Budget / 2);
+        Task<Lease> light = Admit(gate, MinWeight).AsTask();
+
+        _timeProvider.AdvanceAndFireTimer(Budget / 2);
+        Assert.ThrowsAsync<LimitExceededException>(() => heavy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(light.IsCompleted, Is.False, "the light waiter has half its budget left");
+            Assert.That(gate.Queued, Is.EqualTo(1));
+        }
+
+        _timeProvider.AdvanceAndFireTimer(Budget / 2);
+        Assert.ThrowsAsync<LimitExceededException>(() => light);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Sweep_rearms_for_the_remaining_deadline_and_never_disarms()
+    {
+        RecordingTimeProvider timeProvider = new();
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
+        Lease held = await Admit(gate);
+
+        Task<Lease> first = Admit(gate).AsTask();
+        Assert.That(timeProvider.DueTimes, Is.EqualTo(new[] { Budget }), "enqueueing into an empty queue arms the sweep for one budget");
+
+        timeProvider.Advance(Budget / 2);
+        Task<Lease> second = Admit(gate).AsTask();
+        Assert.That(timeProvider.DueTimes, Has.Count.EqualTo(1), "enqueueing behind a waiter leaves the timer alone");
+
+        held.Dispose();
+        held = await first.WaitAsync(WaitBudget);
+        Assert.That(timeProvider.DueTimes, Has.Count.EqualTo(1), "a grant leaves the timer alone");
+
+        // A stale fire for the granted waiter: nothing expires, yet the sweep re-arms for the remaining one.
+        timeProvider.Advance(Budget / 2);
+        timeProvider.FireTimer();
+        Assert.That(timeProvider.DueTimes, Is.EqualTo(new[] { Budget, Budget / 2 }));
+
+        Task<Lease> third = Admit(gate).AsTask();
+        timeProvider.Advance(Budget / 2);
+        timeProvider.FireTimer();
+        Assert.ThrowsAsync<LimitExceededException>(() => second);
+        Assert.That(timeProvider.DueTimes, Is.EqualTo(new[] { Budget, Budget / 2, Budget / 2 }), "popping one of two re-arms for the remaining deadline");
+
+        timeProvider.Advance(Budget / 2);
+        timeProvider.FireTimer();
+        Assert.ThrowsAsync<LimitExceededException>(() => third);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(timeProvider.DueTimes, Has.Count.EqualTo(3), "a sweep that leaves nothing queued does not touch the timer");
+            Assert.That(timeProvider.DueTimes, Has.None.EqualTo(Timeout.InfiniteTimeSpan));
+            Assert.That(gate.Queued, Is.EqualTo(0));
+        }
+
+        held.Dispose();
+    }
+
+    // System.Threading.Timer truncates a due time to whole milliseconds; a fractional remainder would fire early and re-fire
+    // at zero until the clock passes the deadline.
+    [Test]
+    public async Task Sweep_rearms_for_a_whole_number_of_milliseconds()
+    {
+        TimeSpan fraction = TimeSpan.FromMicroseconds(300);
+        RecordingTimeProvider timeProvider = new();
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
+        using Lease held = await Admit(gate);
+        Task<Lease> first = Admit(gate).AsTask();
+        timeProvider.Advance(Budget / 2 + fraction);
+        Task<Lease> second = Admit(gate).AsTask();
+
+        timeProvider.Advance(Budget / 2 - fraction);
+        timeProvider.FireTimer();
+
+        Assert.ThrowsAsync<LimitExceededException>(() => first);
+        Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2 + TimeSpan.FromMilliseconds(1)), "the second waiter's remaining budget must be rounded up to the timer's resolution, not truncated by it");
+
+        timeProvider.Advance(timeProvider.DueTimes[^1]);
+        timeProvider.FireTimer();
+        Assert.ThrowsAsync<LimitExceededException>(() => second);
+    }
+
+    [Test]
+    public void Disposing_the_gate_disposes_its_timer()
+    {
+        RecordingTimeProvider timeProvider = new();
+        EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
+
+        gate.Dispose();
+
+        Assert.That(timeProvider.TimerDisposed, Is.True);
+    }
+
+    [TestCase(false, TestName = "Pending admission is disposed")]
+    [TestCase(true, TestName = "Cancelled pending admission stays cancelled")]
+    public async Task Disposing_the_gate_settles_pending_admissions_and_rejects_late_work(bool cancelPending)
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using CancellationTokenSource cancellation = new();
+        Lease held = await Admit(gate);
+        Task<Lease> pending = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+        if (cancelPending)
+        {
+            cancellation.Cancel();
+        }
+
+        gate.Dispose();
+        if (cancelPending)
+        {
+            Assert.CatchAsync<OperationCanceledException>(() => pending.WaitAsync(WaitBudget));
+        }
+        else
+        {
+            Assert.ThrowsAsync<ObjectDisposedException>(() => pending.WaitAsync(WaitBudget));
+        }
+        Assert.Throws<ObjectDisposedException>(() => Admit(gate));
+
+        // The timer callback may already be queued when disposal races it; it must be inert after disposal.
+        _timeProvider.AdvanceAndFireTimer(Budget);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1), "an active lease remains valid after gate disposal");
+        }
+
+        // Existing leases can finish after their owner has disposed the gate, and Dispose is idempotent.
+        held.Dispose();
+        gate.Dispose();
+        Assert.That(gate.InFlight, Is.EqualTo(0));
+    }
+
+    [TestCase(0, TestName = "Release at the exact deadline")]
+    [TestCase(1, TestName = "Release after the deadline")]
+    [NonParallelizable]
+    public async Task Release_rejects_an_expired_waiter_when_the_timer_callback_is_delayed(int delayMilliseconds)
+    {
+        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        Lease held = await Admit(gate);
+        Task<Lease> waiting = Admit(gate).AsTask();
+
+        _timeProvider.Advance(Budget + TimeSpan.FromMilliseconds(delayMilliseconds));
+        held.Dispose();
+
+        Assert.ThrowsAsync<LimitExceededException>(() => waiting);
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(0));
+            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore + 1));
+        }
+    }
+
+    [TestCase(MinWeight, TestName = "Same weight bucket")]
+    [TestCase(MaxWeight, TestName = "Different weight bucket")]
+    [NonParallelizable]
+    public async Task Release_skips_an_expired_light_head_and_grants_a_later_live_waiter(int liveWeight)
+    {
+        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        Lease held = await Admit(gate);
+        Task<Lease> expired = Admit(gate, MinWeight).AsTask();
+
+        _timeProvider.Advance(Budget);
+        Task<Lease> live = Admit(gate, liveWeight).AsTask();
+        held.Dispose();
+
+        using Lease granted = await live.WaitAsync(WaitBudget);
+        Assert.ThrowsAsync<LimitExceededException>(() => expired);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore + 1));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task A_cancelled_waiter_at_the_expiry_precedes_timeout_and_later_live_waiter()
+    {
+        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        using CancellationTokenSource cancellation = new();
+        Lease held = await Admit(gate);
+        Task<Lease> cancelled = Admit(gate, cancellationToken: cancellation.Token).AsTask();
+
+        _timeProvider.Advance(Budget);
+        Task<Lease> live = Admit(gate).AsTask();
+        cancellation.Cancel();
+        held.Dispose();
+
+        using Lease granted = await live.WaitAsync(WaitBudget);
+        Assert.CatchAsync<OperationCanceledException>(() => cancelled);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(1));
+            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore));
+            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Release_of_a_holder_frees_the_permit_when_every_queued_waiter_is_expired()
+    {
+        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        Lease held = await Admit(gate);
+        Task<Lease> light = Admit(gate, MinWeight).AsTask();
+        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
+
+        _timeProvider.Advance(Budget);
+        held.Dispose();
+
+        Assert.ThrowsAsync<LimitExceededException>(() => light);
+        Assert.ThrowsAsync<LimitExceededException>(() => heavy);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(gate.InFlight, Is.EqualTo(0));
+            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore + 2));
+        }
+
+        // The timer callback was never needed to reclaim the permit; a later callback must remain harmless.
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.Zero);
+        ValueTask<Lease> fresh = Admit(gate);
+        Assert.That(fresh.IsCompletedSuccessfully, Is.True);
+        fresh.Result.Dispose();
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Queued_and_in_flight_gauges_follow_the_gate()
+    {
+        Lease[] held = [await Admit(), await Admit()];
+        Task<Lease> waiting = Admit().AsTask();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.RpcAdmissionInFlight, Is.EqualTo(EvmPermits));
+            Assert.That(Metrics.RpcAdmissionQueued, Is.EqualTo(1));
+        }
+
+        held[0].Dispose();
+        held[1].Dispose();
+        (await waiting.WaitAsync(WaitBudget)).Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.RpcAdmissionInFlight, Is.EqualTo(0));
+            Assert.That(Metrics.RpcAdmissionQueued, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public async Task Lighter_waiters_are_served_first_and_fifo_within_a_weight()
+    {
+        Lease[] held = [await Admit(MaxWeight), await Admit(MaxWeight)];
+        Task<Lease> heavyFirst = Admit(MaxWeight).AsTask();
+        Task<Lease> heavySecond = Admit(MaxWeight).AsTask();
+        Task<Lease> lightFirst = Admit(MinWeight).AsTask();
+        Task<Lease> lightSecond = Admit(MinWeight).AsTask();
+        Task<Lease>[] expectedOrder = [lightFirst, lightSecond, heavyFirst, heavySecond];
+        Assert.That(_gate.Queued, Is.EqualTo(expectedOrder.Length));
+
+        Lease releasing = held[0];
+        for (int i = 0; i < expectedOrder.Length; i++)
+        {
+            releasing.Dispose();
+            releasing = await expectedOrder[i].WaitAsync(WaitBudget);
+            for (int later = i + 1; later < expectedOrder.Length; later++)
+            {
+                Assert.That(expectedOrder[later].IsCompleted, Is.False, $"waiter {later} must not be admitted before waiter {i}");
+            }
+        }
+
+        releasing.Dispose();
+        held[1].Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_gate.Queued, Is.EqualTo(0));
+            Assert.That(_gate.InFlight, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public async Task Overtaken_heavy_waiter_is_shed_at_its_wait_budget_while_light_traffic_keeps_flowing()
+    {
+        const int budgetMs = 200;
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(budgetMs));
+        Lease holder = await Admit(gate);
+        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
+
+        try
+        {
+            Assert.That(heavy.IsCompleted, Is.False);
+            int lightServed = 0;
+            while (lightServed < 2)
+            {
+                Task<Lease> light = Admit(gate).AsTask();
+                Assert.That(light.IsCompleted, Is.False);
+                holder.Dispose();
+                holder = await light.WaitAsync(WaitBudget);
+                lightServed++;
+            }
+
+            Assert.That(heavy.IsCompleted, Is.False);
+            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+
+            Assert.ThrowsAsync<LimitExceededException>(() => heavy);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lightServed, Is.EqualTo(2));
+                Assert.That(gate.Queued, Is.EqualTo(0));
+                Assert.That(gate.InFlight, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            holder.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Timeouts_racing_grants_neither_leak_nor_double_release_permits()
+    {
+        const int requests = 2_000;
+        using EvmAdmissionGate gate = CreateGate(new JsonRpcConfig { EvmExecutionConcurrency = EvmPermits, EthModuleConcurrentInstances = EvmPermits, EvmExecutionMaxQueueWaitMs = 1 }, TimeProvider.System);
+        int admitted = 0;
+        Task[] callers = new Task[requests];
+        for (int i = 0; i < requests; i++)
+        {
+            int weight = i % MaxWeight + 1;
+            callers[i] = Task.Run(async () =>
+            {
+                try
+                {
+                    using (await gate.AdmitAsync(ParamsBytes(weight), CancellationToken.None))
+                    {
+                        Interlocked.Increment(ref admitted);
+                        await Task.Yield();
+                    }
+                }
+                catch (LimitExceededException) { }
+            });
+        }
+
+        await Task.WhenAll(callers).WaitAsync(WaitBudget);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Is.GreaterThan(0));
+            // Deliberately not asserting which shed path ran: the default queue limit can reject up front before any
+            // 1 ms budget expires.
+            Assert.That(gate.InFlight, Is.EqualTo(0));
+            Assert.That(gate.Queued, Is.EqualTo(0));
+        }
+
+        Lease[] fresh = new Lease[EvmPermits];
+        try
+        {
+            for (int i = 0; i < EvmPermits; i++)
+            {
+                ValueTask<Lease> admission = Admit(gate);
+                Assert.That(admission.IsCompletedSuccessfully, Is.True, $"permit {i} must be available again");
+                fresh[i] = admission.Result;
+            }
+
+            Assert.That(gate.InFlight, Is.EqualTo(EvmPermits), "all restored permits must be held before any are released");
+        }
+        finally
+        {
+            foreach (Lease lease in fresh)
+            {
+                lease.Dispose();
+            }
+        }
+    }
+
+    [Test]
+    public async Task Releasing_a_permit_never_runs_the_next_waiters_continuation_inline()
+    {
+        Lease[] held = [await Admit(), await Admit()];
+        bool? continuationRanOnReleaser = null;
+        Task<Lease> probe = Admit().AsTask().ContinueWith(admission =>
+        {
+            continuationRanOnReleaser = _releasingPermit;
+            return admission.Result;
+        }, TaskContinuationOptions.ExecuteSynchronously);
+
+        _releasingPermit = true;
+        held[0].Dispose();
+        _releasingPermit = false;
+
+        using (await probe.WaitAsync(WaitBudget))
+        {
+            Assert.That(continuationRanOnReleaser, Is.False);
+        }
+        held[1].Dispose();
+    }
+
+    private EvmAdmissionGate CreateGate(JsonRpcConfig config, TimeProvider? timeProvider = null) =>
+        new(config, LimboLogs.Instance, timeProvider ?? _timeProvider);
+
+    private static JsonRpcConfig SinglePermit(int maxQueueWaitMs = MaxQueueWaitMs, int queueLimit = 500) => new()
+    {
+        EvmExecutionConcurrency = 1,
+        EthModuleConcurrentInstances = 1,
+        EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
+        EvmExecutionQueueLimit = queueLimit,
+    };
+
+    private static List<Task<Lease>> QueueWaiters(EvmAdmissionGate gate, int queueLimit)
+    {
+        List<Task<Lease>> queued = [];
+        for (int i = 0; i < QueueLimit; i++)
+        {
+            queued.Add(Admit(gate).AsTask());
+        }
+
+        if (queueLimit == 0)
+        {
+            queued.Add(Admit(gate).AsTask());
+        }
+        else
+        {
+            Assert.Throws<LimitExceededException>(() => Admit(gate), "the waiter over the queue limit must be shed synchronously");
+        }
+
+        return queued;
+    }
+
+    private ValueTask<Lease> Admit(int weight = MinWeight) => Admit(_gate, weight);
+
+    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int weight = MinWeight, CancellationToken cancellationToken = default) =>
+        gate.AdmitAsync(ParamsBytes(weight), cancellationToken);
+
+    // The smallest params size that weighs the given amount.
+    private static int ParamsBytes(int weight) => (weight - MinWeight) * BytesPerWeightUnit;
+
+    // Records every re-arm so the arming rules the sweep relies on can be asserted; ManualTimeProvider ignores Change.
+    private sealed class RecordingTimeProvider : TimeProvider
+    {
+        private readonly List<TimeSpan> _dueTimes = [];
+        private long _ticks;
+        private TimerCallback? _callback;
+        private object? _state;
+
+        public IReadOnlyList<TimeSpan> DueTimes => _dueTimes;
+        public bool TimerDisposed { get; private set; }
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _ticks;
+
+        public void Advance(TimeSpan elapsed) => _ticks += elapsed.Ticks;
+
+        public void FireTimer() => _callback!(_state);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _callback = callback;
+            _state = state;
+            return new RecordingTimer(this);
+        }
+
+        private sealed class RecordingTimer(RecordingTimeProvider owner) : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                owner._dueTimes.Add(dueTime);
+                return true;
+            }
+
+            public void Dispose() => owner.TimerDisposed = true;
+
+            public ValueTask DisposeAsync() => default;
+        }
     }
 }
