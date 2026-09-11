@@ -30,13 +30,19 @@ public class BlockAccessListJournalTests
         using BalStorageValueCache values = new(3);
         Assert.That(values.TryGet(0, out _), Is.False);
         values.Set(0, empty ? [] : null);
-        Assert.That(values.TryGet(0, out byte[]? zero), Is.True);
-        Assert.That(zero, Is.EqualTo(new byte[] { 0 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values.TryGet(0, out byte[]? zero), Is.True);
+            Assert.That(zero, Is.EqualTo(new byte[] { 0 }));
+        }
         Parallel.For(0, 1000, _ =>
         {
             values.Set(1, [1, 2, 3]);
-            Assert.That(values.TryGet(1, out byte[]? read), Is.True);
-            Assert.That(read, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(values.TryGet(1, out byte[]? read), Is.True);
+                Assert.That(read, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            }
         });
         Assert.That(values.TryGet(2, out _), Is.False);
     }

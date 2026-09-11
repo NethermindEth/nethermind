@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -85,44 +86,62 @@ public class BlockAccessListManagerTests
         Assert.That(drain.Exception, Is.Null);
     }
 
-    [Test]
-    public void WaitForBalWarmup_blocks_until_pending_hint_completes()
-    {
-        Harness h = new();
-        TaskCompletionSource hint = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.IssueHint(hint.Task);
-
-        Task drain = Task.Run(h.Manager.WaitForBalWarmup);
-
-        Assert.That(drain.Wait(TimeSpan.FromMilliseconds(50)), Is.False);
-        hint.SetResult();
-        Assert.That(drain.Wait(DrainTimeout), Is.True);
-    }
+    public enum DrainOperation { Wait, Prepare, Dispose }
 
     [Test]
-    public async Task Prepare_or_dispose_waits_for_pending_hint([Values] bool dispose)
+    public async Task Pending_warmup_is_drained_before_operation_returns([Values] DrainOperation operation)
     {
         Harness h = new();
-        TaskCompletionSource stale = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.IssueHint(stale.Task);
-
-        using ManualResetEventSlim started = new();
-        Task drain = Task.Run(() =>
+        using GatedTaskScheduler scheduler = new();
+        Task hint = Task.Factory.StartNew(static () => { }, CancellationToken.None, TaskCreationOptions.None, scheduler);
+        h.IssueHint(hint);
+        Task drain = Task.Factory.StartNew(() =>
         {
-            started.Set();
-            if (dispose) h.Manager.Dispose();
-            else h.IssueHint(Task.CompletedTask);
-        });
+            switch (operation)
+            {
+                case DrainOperation.Wait: h.Manager.WaitForBalWarmup(); break;
+                case DrainOperation.Prepare: h.IssueHint(Task.CompletedTask); break;
+                case DrainOperation.Dispose: h.Manager.Dispose(); break;
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            Assert.That(started.Wait(DrainTimeout), Is.True);
-            Assert.That(await Task.WhenAny(drain, Task.Delay(50)), Is.Not.SameAs(drain));
+            Task first = await Task.WhenAny(scheduler.WaitEntered.Task, drain).WaitAsync(DrainTimeout);
+            Assert.That(first, Is.SameAs(scheduler.WaitEntered.Task));
+            Assert.That(drain.IsCompleted, Is.False);
         }
         finally
         {
-            stale.TrySetResult();
+            scheduler.Complete();
             await drain.WaitAsync(DrainTimeout);
         }
+        Assert.That(hint.IsCompletedSuccessfully, Is.True);
         h.Manager.WaitForBalWarmup();
+    }
+
+    private sealed class GatedTaskScheduler : TaskScheduler, IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new();
+        private Task? _queued;
+        public TaskCompletionSource WaitEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override void QueueTask(Task task) => _queued = task;
+        protected override IEnumerable<Task>? GetScheduledTasks() => _queued is null ? [] : [_queued];
+
+        protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+        {
+            // GetResult tries to inline a queued task before blocking, proving the production wait was entered.
+            WaitEntered.TrySetResult();
+            _release.Wait();
+            return TryExecuteTask(task);
+        }
+
+        public void Complete()
+        {
+            _release.Set();
+            if (_queued is not null) TryExecuteTask(_queued);
+        }
+
+        public void Dispose() => _release.Dispose();
     }
 }
