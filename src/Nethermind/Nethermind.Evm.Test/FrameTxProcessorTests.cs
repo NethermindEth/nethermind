@@ -658,11 +658,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x0C, DefaultFrameStateGasLimit, TestName = "Execute_TxParam_StateGasLeft")]
     public void Execute_TxParamIntrospection_ExposesTransactionField(byte param, ulong expected)
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(param).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        Transaction tx = TxParamObserverTx(param);
 
         TransactionResult result = Process(tx);
 
@@ -673,11 +669,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_TxParamSender_ExposesSenderAddress()
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x02).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        Transaction tx = TxParamObserverTx(0x02);
 
         TransactionResult result = Process(tx);
 
@@ -688,16 +680,22 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_TxParamSigHash_ExposesCanonicalHash()
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x08).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        Transaction tx = TxParamObserverTx(0x08);
 
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, new UInt256(FrameTxSigHash.ComputeValue(tx).Bytes, isBigEndian: true));
+    }
+
+    /// <summary>Builds the transaction whose body frame stores <c>TXPARAM param</c> into the observer's slot 0.</summary>
+    private Transaction TxParamObserverTx(byte param)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(param).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
     }
 
     [TestCase((byte)0x01, 200_000UL, TestName = "Execute_FrameParam_GasLimit")]
@@ -866,9 +864,13 @@ public class FrameTxProcessorTests
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, TxFrameSignature.SchemeArbitrary);
-        AssertStorage(Observer, 1, UInt256.Zero);
-        AssertStorage(Observer, 2, 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorage(Observer, 0, TxFrameSignature.SchemeArbitrary);
+            AssertStorage(Observer, 1, UInt256.Zero);
+            AssertStorage(Observer, 2, 3);
+        }
     }
 
     [Test]
@@ -941,8 +943,12 @@ public class FrameTxProcessorTests
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, AddressAsWord(Eip8141Constants.EntryPointAddress));
-        AssertStorage(Recipient, 0, AddressAsWord(Sender));
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorage(Observer, 0, AddressAsWord(Eip8141Constants.EntryPointAddress));
+            AssertStorage(Recipient, 0, AddressAsWord(Sender));
+        }
     }
 
     [Test]
@@ -984,13 +990,14 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
+        Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
             Assert.That(tx.Frames![1].IsAtomicBatch, Is.True);
+            AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
+            AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
         }
-        AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
-        AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
     }
 
     [Test]
@@ -3088,8 +3095,12 @@ public class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
 
         Assert.That(Process(tx).TransactionExecuted, Is.False, "no payer approved");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(Eip8250Constants.MaxNonceSeq));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore), "max cost was not collected");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(Eip8250Constants.MaxNonceSeq));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore), "max cost was not collected");
+        }
 
         Transaction keyed = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
         keyed.NonceKeys = [UInt256.Zero];
@@ -4170,10 +4181,12 @@ public class FrameTxProcessorTests
         (_, CallOutputTracer tracer) = CallSimulated(
             FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out _, out EthereumVirtualMachine vm);
 
+        Assert.That(vm.TxExecutionContext.FrameTxContext, Is.Not.Null,
+            "the view is only released, so the context still proves the assertion ran");
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(vm.TxExecutionContext.FrameTxContext, Is.Not.Null, "the view is only released, so the context still proves the assertion ran");
             Assert.That(vm.TxExecutionContext.FrameTxContext!.PostTxDiffView, Is.Null);
         }
     }

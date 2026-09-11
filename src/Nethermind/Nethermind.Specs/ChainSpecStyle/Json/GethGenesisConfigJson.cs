@@ -65,8 +65,10 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     /// <remarks>
-    /// They schedule on their own rather than with Bogota: the expiry-verifier predeploy they install shifts
-    /// every block's EIP-7928 access list, which the Bogota consensus fixtures pin.
+    /// They schedule on their own rather than with Bogota: the expiry-verifier predeploy they install puts a
+    /// code change in the EIP-7928 access list of the first block processed under the fork, which the Bogota
+    /// consensus fixtures pin. Later blocks are unaffected, as the installer skips an install whose code is
+    /// already canonical.
     /// </remarks>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
 

@@ -41,7 +41,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
                 if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
                 {
-                    transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
+                    transaction.Hash = NetworkPayloadFormHash.Calculate(TxType.Blob, transactionSequence);
                 }
             }
             else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
@@ -91,15 +91,6 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
         transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, rlpBehaviors);
-
-    private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
-    {
-        KeccakHash hash = KeccakHash.Create();
-        Span<byte> txType = [(byte)TxType.Blob];
-        hash.Update(txType);
-        hash.Update(transactionSequence);
-        return new Hash256(hash.GenerateValueHash());
-    }
 
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
         bool isEip155Enabled = false, ulong chainId = 0)

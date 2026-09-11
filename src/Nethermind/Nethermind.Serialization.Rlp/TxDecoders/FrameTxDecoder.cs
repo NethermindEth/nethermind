@@ -94,18 +94,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
             if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
+                transaction.Hash = NetworkPayloadFormHash.Calculate(TxType.FrameTx, transactionSequence);
             }
         }
-    }
-
-    private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
-    {
-        KeccakHash hash = KeccakHash.Create();
-        Span<byte> txType = [(byte)TxType.FrameTx];
-        hash.Update(txType);
-        hash.Update(transactionSequence);
-        return new Hash256(hash.GenerateValueHash());
     }
 
     /// <inheritdoc/>
