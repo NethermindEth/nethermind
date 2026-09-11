@@ -84,7 +84,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(storageCell.Address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
         if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
@@ -96,7 +96,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                     .WithoutLeadingZeros();
             }
 
-            return parentReader.Get(storageCell);
+            return _parentReader!.Get(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
@@ -105,7 +105,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(storageCell.Address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
         if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
@@ -116,7 +116,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                     .WithoutLeadingZeros();
             }
 
-            return parentReader.GetOriginal(storageCell);
+            return _parentReader!.GetOriginal(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
@@ -134,44 +134,44 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override ref readonly UInt256 GetBalance(Address address)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange))
         {
             _scratchBalance = balanceChange.Value;
             return ref _scratchBalance;
         }
-        return ref parentReader.GetBalance(address);
+        return ref _parentReader!.GetBalance(address);
     }
 
     public override ulong GetNonce(Address address)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         return accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange)
             ? nonceChange.Value
-            : parentReader.GetNonce(address);
+            : _parentReader!.GetNonce(address);
     }
 
     public override ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
         {
             _scratchCodeHash = codeChange.CodeHash;
             return ref _scratchCodeHash;
         }
-        return ref parentReader.GetCodeHash(address);
+        return ref _parentReader!.GetCodeHash(address);
     }
 
     public override byte[]? GetCode(Address address)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
             ? codeChange.Code
-            : parentReader.GetCode(address);
+            : _parentReader!.GetCode(address);
     }
 
     public override byte[]? GetCode(in ValueHash256 codeHash)
@@ -187,9 +187,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
+        ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
-        bool exists = parentReader.TryGetAccount(address, out account);
+        bool exists = _parentReader!.TryGetAccount(address, out account);
         ulong nonce = exists ? account.Nonce : 0;
         UInt256 balance = exists ? account.Balance : UInt256.Zero;
         ValueHash256 storageRoot = exists ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
@@ -322,15 +322,24 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return accountChanges;
     }
 
-    private (IWorldState ParentReader, ReadOnlyAccountChanges AccountChanges) ResolveContext(Address address)
+    private ReadOnlyAccountChanges ResolveContext(Address address)
+    {
+        // A cached context has passed setup and parent validation. Setup and ClearParentReader invalidate it.
+        if (address.Equals(_contextAccount))
+        {
+            return _contextChanges!;
+        }
+        return ResolveContextMiss(address);
+    }
+
+    private ReadOnlyAccountChanges ResolveContextMiss(Address address)
     {
         CheckInitialized();
-        if (!address.Equals(_contextAccount))
-        {
-            _contextChanges = GetAccountChangesOrThrow(address);
-            _contextAccount = address;
-        }
-        return (GetParentReader(), _contextChanges!);
+        ReadOnlyAccountChanges accountChanges = GetAccountChangesOrThrow(address);
+        GetParentReader();
+        _contextChanges = accountChanges;
+        _contextAccount = address;
+        return accountChanges;
     }
 
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)

@@ -97,6 +97,25 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void AccountContext_DoesNotCacheFailedParentReaderValidation()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 10)).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
+        using (scope)
+        {
+            Assert.That(bws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)10));
+            bws.ClearParentReader();
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(TestItem.AddressA));
+            Assert.Throws<InvalidOperationException>(() => bws.GetBalance(new Address(TestItem.AddressA.Bytes)));
+        }
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
