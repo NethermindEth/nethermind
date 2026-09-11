@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -23,6 +25,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -4372,6 +4375,77 @@ public class FrameTxProcessorTests
         {
             Assert.That(postTxResult.TransactionExecuted, Is.False);
             Assert.That(postTxResult.ErrorDescription, Does.Contain(FrameTxValidation.PostTxNotEnabled));
+        }
+    }
+
+    /// <summary>Every frame runs as its own top-level invocation, so a trace that kept only one root
+    /// reported one frame's call tree and silently dropped the rest.</summary>
+    [TestCase(false, TestName = "Execute_FrameTxTracedWithCallTracer_KeepsEveryExecutedFrame")]
+    [TestCase(true, TestName = "Execute_FrameTxTracedWithCallTracerOnlyTopCall_KeepsEveryExecutedFrame")]
+    public void Execute_FrameTxTracedWithCallTracer_KeepsEveryExecutedFrame(bool onlyTopCall)
+    {
+        Address verifyHelper = TestItem.AddressD;
+        Address senderHelper = Recipient;
+
+        // The VERIFY frame runs statically, so its nested call has to be a STATICCALL.
+        DeploySmartSender(Bytes.Concat(
+            Prepare.EvmCode.StaticCall(verifyHelper, 50_000).Op(Instruction.POP).Done,
+            ApproveCode(TxFrame.ApproveExecutionAndPayment)));
+        DeployContract(verifyHelper, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode
+            .Call(senderHelper, 50_000).Op(Instruction.POP)
+            .PushData(42).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        DeployContract(senderHelper, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer));
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = onlyTopCall ? JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true}""") : null
+        };
+        using NativeCallTracer tracer = new(tx, Spec, options);
+        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        AssertStorage(Observer, 0, 42, "the SENDER frame must have run");
+
+        using JsonDocument document = JsonDocument.Parse(
+            JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+        JsonElement root = document.RootElement;
+        JsonElement frames = root.GetProperty("calls");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.GetProperty("type").GetString(), Is.EqualTo("CALL"));
+            Assert.That(root.GetProperty("from").GetString(), Is.EqualTo(Sender.ToString()));
+            Assert.That(root.GetProperty("to").GetString(), Is.EqualTo(Eip8141Constants.EntryPointAddress.ToString()));
+            Assert.That(Convert.ToUInt64(root.GetProperty("gas").GetString()![2..], 16), Is.EqualTo(tx.GasLimit),
+                "the transaction-wide limit belongs to the synthetic root, not to a frame");
+            Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "both executed frames belong in the trace");
+
+            JsonElement verifyFrame = frames[0];
+            Assert.That(verifyFrame.GetProperty("type").GetString(), Is.EqualTo("STATICCALL"));
+            Assert.That(verifyFrame.GetProperty("to").GetString(), Is.EqualTo(Sender.ToString()));
+
+            JsonElement senderFrame = frames[1];
+            Assert.That(senderFrame.GetProperty("type").GetString(), Is.EqualTo("CALL"));
+            Assert.That(senderFrame.GetProperty("to").GetString(), Is.EqualTo(Observer.ToString()));
+
+            if (onlyTopCall)
+            {
+                Assert.That(verifyFrame.TryGetProperty("calls", out _), Is.False);
+                Assert.That(senderFrame.TryGetProperty("calls", out _), Is.False);
+            }
+            else
+            {
+                Assert.That(verifyFrame.GetProperty("calls")[0].GetProperty("to").GetString(),
+                    Is.EqualTo(verifyHelper.ToString()));
+                Assert.That(senderFrame.GetProperty("calls")[0].GetProperty("to").GetString(),
+                    Is.EqualTo(senderHelper.ToString()));
+            }
         }
     }
 }

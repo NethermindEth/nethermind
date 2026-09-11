@@ -23,6 +23,10 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // TracerConfig options:
 // onlyTopCall (default = false): Only the main (top-level) call will be processed to avoid any extra processing if only the main call info is required.
 // withLog (default = false): Logs emitted during each call will also be collected and included in the result.
+//
+// An EIP-8141 frame transaction runs every frame as its own top-level invocation, so it has no single
+// root call. Its trace is rooted in one synthetic transaction frame whose children are the executed
+// frames in order, which keeps the result a single CallFrame for consumers that walk `calls`.
 public sealed class NativeCallTracer : GethLikeNativeTxTracer
 {
     public const string CallTracer = "callTracer";
@@ -30,6 +34,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
     private readonly bool _isEip8037Enabled;
+    private readonly bool _isFrameTx;
+    private readonly Address? _sender;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = [];
@@ -37,6 +43,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private EvmExceptionType? _error;
     private ulong _remainingGas;
     private bool _resultBuilt = false;
+    private bool _framesCollapsed = false;
 
     public NativeCallTracer(
         Transaction? tx,
@@ -47,6 +54,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
         _isEip8037Enabled = spec.IsEip8037Enabled;
+        _isFrameTx = tx.SupportsFrames;
+        _sender = tx.SenderAddress;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -61,6 +70,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        CollapseFrameRoots();
 
         Debug.Assert(_callStack.Count <= 1, $"Unexpected frames on call stack, expected at most one master frame, found {_callStack.Count} frames.");
 
@@ -104,7 +115,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             Type = callOpcode,
             From = from,
             To = to,
-            Gas = Depth == 0 ? _gasLimit : gas,
+            // A frame transaction's top-level invocations each carry their own limit; the whole
+            // transaction's belongs to the synthetic root CollapseFrameRoots builds.
+            Gas = Depth == 0 && !_isFrameTx ? _gasLimit : gas,
             Value = callOpcode == Instruction.STATICCALL ? null : value,
             Input = input.Span.ToPooledList()
         };
@@ -187,6 +200,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
+        CollapseFrameRoots();
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
@@ -203,6 +217,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
+        CollapseFrameRoots();
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
@@ -226,6 +241,34 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
+    /// <summary>Roots an EIP-8141 frame transaction's trace in one synthetic transaction frame whose
+    /// children are the executed frames, in execution order.</summary>
+    /// <remarks>A frame transaction has no single root call: each frame is its own top-level invocation,
+    /// so without this every frame after the first is dropped from the result. The synthetic root keeps the
+    /// trace a single <c>CallFrame</c>, and is the only frame carrying the transaction-wide gas figures.
+    /// Idempotent, because both the receipt callbacks and <see cref="BuildResult"/> reach it.</remarks>
+    private void CollapseFrameRoots()
+    {
+        if (!_isFrameTx || _framesCollapsed) return;
+        _framesCollapsed = true;
+
+        NativeCallTracerCallFrame txCallFrame = new()
+        {
+            Type = Instruction.CALL,
+            From = _sender,
+            To = Eip8141Constants.EntryPointAddress,
+            Gas = _gasLimit
+        };
+
+        foreach (NativeCallTracerCallFrame frameRoot in _callStack.AsSpan())
+        {
+            txCallFrame.Calls.Add(frameRoot);
+        }
+
+        _callStack.Clear();
+        _callStack.Add(txCallFrame);
+    }
+
     private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
     {
         if (!_isEip8037Enabled) return;
@@ -235,6 +278,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
+        if (Depth == 0)
+        {
+            // Only a frame transaction reaches this with more frames to come; every other transaction's
+            // root is finished by MarkAsSuccess/MarkAsFailed with the transaction-wide figures.
+            if (_isFrameTx && _callStack.Count > 0)
+            {
+                NativeCallTracerCallFrame frameRoot = _callStack[^1];
+                frameRoot.GasUsed = frameRoot.Gas - gas;
+                ProcessOutput(frameRoot, output, error);
+            }
+
+            return;
+        }
+
         if (!_config.OnlyTopCall && Depth > 0)
         {
             NativeCallTracerCallFrame callFrame = _callStack[^1];
