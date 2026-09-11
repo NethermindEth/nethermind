@@ -607,6 +607,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     continue;
                 }
 
+                request.IsBatchItem = true;
                 batchRequestJsonLifetime.TrackUntilBatchEnd(request, ownedRequestDocument);
 
                 JsonRpcResult.Entry response = isStopped

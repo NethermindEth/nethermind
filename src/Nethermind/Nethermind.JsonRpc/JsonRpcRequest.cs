@@ -42,6 +42,11 @@ namespace Nethermind.JsonRpc
         internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
         internal JsonValueKind ParamsKind { get; set; }
 
+        /// <summary>Whether this request arrived as an element of a batch rather than on its own.</summary>
+        /// <remarks>A batch is dispatched sequentially, so making one item wait for an execution slot delays every
+        /// later item in the same batch; batch items are therefore shed rather than queued.</remarks>
+        internal bool IsBatchItem { get; set; }
+
         internal void DisposeParsedParamsDocument()
         {
             _paramsDocument?.Dispose();

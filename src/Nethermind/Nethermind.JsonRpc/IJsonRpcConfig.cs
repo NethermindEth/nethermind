@@ -161,6 +161,25 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    /// <summary>
+    /// Maximum time, in milliseconds, an EVM-executing JSON-RPC request may wait for an execution slot.
+    /// Defaults to 500 ms; 0 sheds immediately instead of waiting.
+    /// </summary>
+    [ConfigItem(
+        Description = """
+            The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
+            `eth_createAccessList`, `eth_simulateV1`, `debug_simulateV1`) may wait for an execution slot before it
+            is answered with a `LimitExceeded` error (HTTP 503). The number of slots is
+            `EthModuleConcurrentInstances`, the number of logical processors by default, which also sizes the
+            environment pools these methods execute in. Waiters are served in arrival order. `0` disables waiting:
+            a request that finds every slot busy is shed at once, before its parameters are read. A longer budget
+            adds latency to the requests it serves without adding throughput. Waiting is skipped for batch items,
+            authenticated requests, and connections that process one request at a time, where it would only delay
+            later calls on the same connection.
+            """,
+        DefaultValue = "500")]
+    int EvmExecutionMaxQueueWaitMs { get; set; }
+
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }
 

@@ -36,6 +36,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+    private readonly EvmExecutionGate _evmGate = new(jsonRpcConfig);
+    private readonly bool _webSocketsQueueingEnabled = jsonRpcConfig.WebSocketsProcessingConcurrency > 1;
+    private readonly bool _ipcQueueingEnabled = jsonRpcConfig.IpcProcessingConcurrency > 1;
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -54,7 +57,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+                ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
+                : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -76,6 +81,35 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             }
         }
     }
+
+    /// <summary>Runs an EVM-executing method under one execution permit, shedding the request if none is available.</summary>
+    /// <remarks>
+    /// Admission happens before the parameters are bound, so a shed request never pays to deserialize a large state
+    /// override. The permit is held until the invocation - including any task it returned - has completed.
+    /// </remarks>
+    private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    {
+        using EvmExecutionGate.Lease lease = await _evmGate.AcquireAsync(CanQueue(request, context));
+        return await ExecuteAsync(request, methodName, method, context);
+    }
+
+    /// <summary>Whether a saturated gate may make this request wait rather than shedding it immediately.</summary>
+    /// <remarks>
+    /// Waiting only pays off where the connection can serve something else meanwhile. On a lane that processes one
+    /// request at a time - a batch, or a socket with a single processing slot - the wait is pure added latency for
+    /// every later request behind it. Authenticated callers are the consensus client, which needs a prompt answer
+    /// rather than a queued one.
+    /// </remarks>
+    private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
+        !request.IsBatchItem &&
+        !context.IsAuthenticated &&
+        context.RpcEndpoint switch
+        {
+            RpcEndpoint.Http => true,
+            RpcEndpoint.Ws => _webSocketsQueueingEnabled,
+            RpcEndpoint.IPC => _ipcQueueingEnabled,
+            _ => false,
+        };
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {

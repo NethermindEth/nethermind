@@ -68,6 +68,11 @@ namespace Nethermind.JsonRpc
         [Description("Number of JSON RPC bytes received through IPC.")]
         public static long JsonRpcBytesReceivedIpc;
 
+        /// <summary>Number of EVM-executing JSON-RPC requests currently waiting for an execution slot.</summary>
+        [GaugeMetric]
+        [Description("Number of EVM-executing JSON RPC requests waiting for an execution slot. Sustained nonzero means the node is at its EVM-execution plateau; pair with JsonRpcOverloadRejections, which counts the requests actually shed.")]
+        public static long EvmExecutionQueueLength;
+
         [HistogramMetric(
             LabelNames = ["method", "status"],
             Buckets = [10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000])]
