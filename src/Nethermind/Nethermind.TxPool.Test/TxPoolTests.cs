@@ -3068,6 +3068,50 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void EvictTransaction_ignores_the_budget_for_a_non_frame_transaction()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxEvictionRetryBudget = 3 });
+            EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Assert.That(_txPool.EvictTransaction(tx), Is.True,
+                "a non-frame transaction is not subject to the retry budget and evicts on the first call");
+        }
+
+        [Test]
+        public async Task EvictTransaction_gives_a_resubmitted_transaction_a_fresh_budget()
+        {
+            const int budget = 2;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction frameTx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "spends the first of two units, retained");
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            Assert.That(_txPool.EvictTransaction(frameTx), Is.True, "spends the second unit and evicts");
+
+            // EvictTransaction's own eviction path clears the long-term hash cache (unlike a plain
+            // RemoveTransaction), so this is the one removal path that lets the same hash be resubmitted.
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                "resubmitted after full eviction");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.EvictTransaction(frameTx), Is.False,
+                    "a fresh budget: if the prior eviction had not cleared its attempt counter, this would already be its second (evicting) head");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+        }
+
         // Both filters are wired into the pool, and the placement filter runs ahead of the one that would
         // otherwise claim the same layout — deleting either line leaves every filter fixture green.
         [Test]

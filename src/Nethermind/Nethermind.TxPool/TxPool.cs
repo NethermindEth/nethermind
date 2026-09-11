@@ -72,7 +72,7 @@ namespace Nethermind.TxPool
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
-        private readonly ConcurrentDictionary<ValueHash256, (long Head, int Heads)> _frameEvictionAttempts = new();
+        private readonly ConcurrentDictionary<ValueHash256, (long LastGeneration, int DistinctHeads)> _frameEvictionAttempts = new();
 
         // Candidate filter for the shed pass, calibrated on a 12s slot; on a faster chain it simply admits
         // more transactions to the deadline order, which is the order the spec asks for anyway.
@@ -2337,20 +2337,38 @@ namespace Nethermind.TxPool
         }
 
         /// <inheritdoc/>
-        /// <remarks>The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure turns on chain state that can change.</remarks>
+        /// <remarks>
+        /// The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure
+        /// turns on chain state that can change.
+        /// <para>
+        /// <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> bounds distinct heads failed on, not total
+        /// re-execution: same-head rebuilds re-charge the validation prefix without spending a unit, and a
+        /// transaction that briefly built successfully still accumulates a later failure the same as a consecutive
+        /// one.
+        /// </para>
+        /// </remarks>
         public bool EvictTransaction(Transaction tx)
         {
             int budget = _txPoolConfig.FrameTxEvictionRetryBudget;
             if (budget > 1 && tx.SupportsFrames && _transactions.ContainsKey(tx.Hash!.ValueHash256))
             {
                 long generation = Volatile.Read(ref _headGeneration);
-                (long Head, int Heads) attempts = _frameEvictionAttempts.AddOrUpdate(
+                (long LastGeneration, int DistinctHeads) attempts = _frameEvictionAttempts.AddOrUpdate(
                     tx.Hash!.ValueHash256,
                     static (_, gen) => (gen, 1),
-                    static (_, prev, gen) => prev.Head == gen ? prev : (gen, prev.Heads + 1),
+                    static (_, prev, gen) => prev.LastGeneration == gen ? prev : (gen, prev.DistinctHeads + 1),
                     generation);
 
-                if (attempts.Heads < budget) return false;
+                // A removal racing the check above leaves an entry nothing else will clean up. Removed
+                // conditionally, so a resubmission that already created a fresh entry isn't clobbered.
+                if (!_transactions.ContainsKey(tx.Hash!.ValueHash256))
+                {
+                    ((ICollection<KeyValuePair<ValueHash256, (long LastGeneration, int DistinctHeads)>>)_frameEvictionAttempts)
+                        .Remove(new(tx.Hash!.ValueHash256, attempts));
+                    return false;
+                }
+
+                if (attempts.DistinctHeads < budget) return false;
             }
 
             if (!RemoveTransaction(tx.Hash)) return false;
