@@ -38,5 +38,8 @@ namespace Nethermind.Merge.Plugin
 
         public bool SimulateBlockProduction { get; set; } = false;
         public int? PostBlockGcDelayMs { get; set; } = null;
+
+        public double InclusionListOldestSenderShare { get; set; } = 0;
+        public int InclusionListOldestSenderCount { get; set; } = 200;
     }
 }

@@ -32,7 +32,7 @@ public class GetInclusionListTransactionsHandlerTests
         specProvider.GetSpec(Arg.Any<ForkActivation>())
             .Returns(ci => focilScheduled && ci.ArgAt<ForkActivation>(0).Timestamp >= BogotaTimestamp ? bogota : preBogota);
 
-        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider);
+        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider, new MergeConfig());
     }
 
     // The list is built before its block exists and a missed slot moves the timestamp, so only whether

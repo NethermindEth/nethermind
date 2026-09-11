@@ -75,4 +75,14 @@ public interface IMergeConfig : IConfig
 
     [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`.", DefaultValue = null, HiddenFromDocs = true)]
     int? PostBlockGcDelayMs { get; set; }
+
+    [ConfigItem(Description = """
+            [EXPERIMENTAL] The share, from `0` to `1`, of an EIP-7805 inclusion list drawn from the longest-pending senders. `0` draws the whole list uniformly over the transaction pool.
+
+            A non-zero share raises the odds that a transaction a builder keeps passing over reaches a list, but it also weakens the list against a flooded pool, since pending age costs an attacker nothing but time. Measure before enabling it on a live network.
+            """, DefaultValue = "0", HiddenFromDocs = true)]
+    double InclusionListOldestSenderShare { get; set; }
+
+    [ConfigItem(Description = "[EXPERIMENTAL] How many of the longest-pending senders `InclusionListOldestSenderShare` samples from. Ignored when that share is `0`, and pools no larger than this are drawn uniformly. Keep it well above the share's part of the 256 senders a list draws, or every committee member samples the same fixed set of senders.", DefaultValue = "200", HiddenFromDocs = true)]
+    int InclusionListOldestSenderCount { get; set; }
 }
