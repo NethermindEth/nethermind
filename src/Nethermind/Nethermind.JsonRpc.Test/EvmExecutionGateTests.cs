@@ -322,7 +322,10 @@ public class EvmExecutionGateTests
         first.Dispose();
         second.Dispose();
 
-        Assert.That(gate.QueuedCount, Is.Zero,
+        // Polled, not sampled: Settle completes the waiter before it decrements, and the continuation resumes
+        // asynchronously, so a worker can finish while the settling thread is still a statement short. A bare
+        // assertion here would flake as the very accounting bug it exists to detect.
+        Assert.That(() => gate.QueuedCount, Is.Zero.After(2000, 50),
             "a lost decrement never recovers, and the first one disables the free-permit fast path for good");
 
         // The fast path is the thing the drift destroys, so check it still works rather than only the counter.

@@ -127,19 +127,6 @@ internal sealed class EvmExecutionGate
                 // After the enqueue: an enqueue that threw would otherwise leave a count nothing can ever settle,
                 // permanently shrinking the usable depth.
                 Interlocked.Increment(ref _liveWaiters);
-
-                // A permit can be free here even though the queue was not empty - the head may have expired
-                // between its own release and this arrival. Hand it over now rather than leaving the queue parked
-                // behind an idle permit with no lease outstanding to release it.
-                GrantToWaiter();
-            }
-            else if (TryTakeFreePermit())
-            {
-                // The timer thread can settle the head between the reap above and this point, both while this
-                // lock is held, since it does not take the lock. A caller that will not queue - a batch item, an
-                // authenticated or IPC caller, or anything past the depth cap - would otherwise be shed with a
-                // 503 while a permit sat idle and nothing was left to claim it.
-                return ValueTask.FromResult(new Lease(this));
             }
         }
 
@@ -212,25 +199,16 @@ internal sealed class EvmExecutionGate
     {
         ReapSettledHead(mayRebuild: false);
 
+        // Release only returns a permit after draining the heap empty, and this is the only other place one is
+        // taken, so a free permit implies an empty queue. The gate relies on that: without it a permit could sit
+        // idle behind a queue with no lease outstanding to release it.
+        Debug.Assert(_freePermits == 0 || _waiters.Count == 0,
+            "a permit is free only while the queue is empty");
+
         if (_waiters.Count > 0 || _freePermits == 0) return false;
 
         _freePermits--;
         return true;
-    }
-
-    /// <summary>Hands one free permit to the longest-deserving live waiter, if there is both.</summary>
-    private void GrantToWaiter()
-    {
-        if (_freePermits == 0) return;
-
-        while (_waiters.TryDequeue(out Waiter? waiter, out _))
-        {
-            if (waiter.TryGrant())
-            {
-                _freePermits--;
-                return;
-            }
-        }
     }
 
     /// <remarks>

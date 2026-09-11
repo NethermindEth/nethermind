@@ -25,6 +25,9 @@ namespace Nethermind.JsonRpc.Test;
 [NonParallelizable]
 public class EvmExecutionGateServiceTests
 {
+    /// <summary>eth_call, eth_estimateGas, eth_createAccessList, eth_simulateV1, debug_simulateV1.</summary>
+    private const int GatedMethodCount = 5;
+
     private const string GatedMethod = "gated_execute";
     private const string UngatedMethod = "ungated_read";
 
@@ -168,20 +171,23 @@ public class EvmExecutionGateServiceTests
             .SelectMany(static a => a.GetTypes())
             .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IStreamableResult).IsAssignableFrom(t))];
 
-        // Anti-vacuity: both halves must actually be populated, or the guard passes by finding nothing.
         Assert.That(streamingTypes, Is.Not.Empty, "no IStreamableResult implementations were found to check against");
-        Assert.That(AllRpcModuleInterfaces(scanned).Any(static t => t.Name == nameof(IEthRpcModule)), Is.True,
+        Assert.That(AllRpcModuleInterfaces(scanned), Does.Contain(typeof(IEthRpcModule)),
             "the eth module was not in the scanned set, so gated methods would not be seen");
 
         List<string> offenders = [];
+        int gatedMethods = 0;
+        int payloadsCompared = 0;
         foreach (Type moduleType in AllRpcModuleInterfaces(scanned))
         {
             foreach (MethodInfo method in moduleType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (method.GetCustomAttribute<JsonRpcMethodAttribute>() is not { IsEvmExecution: true }) continue;
 
+                gatedMethods++;
                 foreach (Type payload in PayloadTypes(method))
                 {
+                    payloadsCompared++;
                     foreach (Type streaming in streamingTypes)
                     {
                         if (payload.IsAssignableFrom(streaming))
@@ -192,6 +198,13 @@ public class EvmExecutionGateServiceTests
                 }
             }
         }
+
+        // The real vacuity risk is here, not in the two sets above: if PayloadTypes stops unwrapping a return
+        // shape it silently yields nothing and the guard passes having compared nothing at all.
+        Assert.That(gatedMethods, Is.GreaterThanOrEqualTo(GatedMethodCount),
+            "fewer gated methods were found than are flagged IsEvmExecution, so some were not examined");
+        Assert.That(payloadsCompared, Is.GreaterThanOrEqualTo(gatedMethods),
+            "at least one payload type per gated method must have been extracted and compared");
 
         Assert.That(offenders, Is.Empty,
             "a method flagged IsEvmExecution must not be able to return an IStreamableResult; see JsonRpcMethodAttribute.IsEvmExecution");
