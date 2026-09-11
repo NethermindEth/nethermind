@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Blockchain;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -67,6 +68,57 @@ public class PbtWorldStateScopeTests
         {
             Assert.That(canonical.RootHash, Is.EqualTo(canonicalRoot));
             Assert.That(canonical.Get(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)1));
+        }
+    }
+
+    [TestCase(null)]
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Header_root_substitution_requires_explicit_opt_in(bool? fakeMatchingStateRoot)
+    {
+        PbtConfig config = new() { Enabled = true };
+        if (fakeMatchingStateRoot is bool enabled) config.FakeMatchingStateRoot = enabled;
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddModule(new PbtModule(config))
+            .Build();
+        PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        Hash256 genesisRoot;
+        using (IWorldStateScopeProvider.IScope genesisScope = manager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
+        {
+            Write(genesisScope, 1);
+            genesisScope.Commit(0);
+            genesisRoot = genesisScope.RootHash;
+        }
+        Block genesis = Build.A.Block.Genesis.WithStateRoot(genesisRoot).TestObject;
+        blockTree.SuggestBlock(genesis);
+        Block child = Build.A.Block.WithParent(genesis).WithStateRoot(TestItem.KeccakA).TestObject;
+        blockTree.SuggestBlock(child);
+
+        Hash256 computedRoot;
+        using (IOverridableWorldScope overrides = manager.CreateOverridableWorldScope())
+        using (IWorldStateScopeProvider.IScope overrideScope = overrides.WorldState.BeginScope(genesis.Header, new LocalMetrics()))
+        {
+            Write(overrideScope, 2);
+            overrideScope.UpdateRootHash();
+            computedRoot = overrideScope.RootHash;
+        }
+
+        using IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(genesis.Header, new LocalMetrics());
+        Write(scope, 2);
+        scope.Commit(1);
+        using PbtSnapshotBundle bundle = container.Resolve<IPbtDbManager>().GatherBundle(
+            new StateId(1, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.FakeMatchingStateRoot, Is.EqualTo(fakeMatchingStateRoot == true));
+            Assert.That(container.Resolve<IPbtChildHeaderSource>(), Is.TypeOf(
+                fakeMatchingStateRoot == true ? typeof(PbtBlockTreeChildHeaderSource) : typeof(NullPbtChildHeaderSource)));
+            Assert.That(computedRoot, Is.Not.EqualTo(child.StateRoot));
+            Assert.That(scope.RootHash, Is.EqualTo(fakeMatchingStateRoot == true ? child.StateRoot : computedRoot));
+            Assert.That(bundle.TreeRoot, Is.EqualTo(computedRoot.ValueHash256));
+            Assert.That(bundle.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)2));
         }
     }
 

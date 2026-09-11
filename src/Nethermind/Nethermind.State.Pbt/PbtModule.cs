@@ -46,7 +46,6 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<PbtCompactionSchedule>()
             .AddSingleton<PbtPersistenceCoordinator>()
             .AddSingleton<IPbtDbManager, PbtDbManager>()
-            .AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>()
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
@@ -57,6 +56,11 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<IFullStateFinder, PbtFullStateFinder>()
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>();
+
+        if (config.FakeMatchingStateRoot)
+            builder.AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>();
+        else
+            builder.AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance);
 
         // PBT does not load the flat database module.
         if (config.ImportFromPreimageFlat)

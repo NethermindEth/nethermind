@@ -11,6 +11,10 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Whether to use the experimental EIP-8297 partitioned binary tree state backend. The state root will not match networks using the hexary Patricia trie.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
+    /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
+    [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]
+    bool FakeMatchingStateRoot { get; set; }
+
     /// <summary>Maximum estimated retained account trie-cache memory in bytes; zero disables this partition.</summary>
     [ConfigItem(Description = "Memory budget for cached account PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "134217728")]
     ulong AccountTrieNodeCacheSizeBudget { get; set; }

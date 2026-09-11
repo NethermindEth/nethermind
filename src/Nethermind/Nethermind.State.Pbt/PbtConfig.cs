@@ -9,6 +9,7 @@ namespace Nethermind.State.Pbt;
 public class PbtConfig : IPbtConfig
 {
     public bool Enabled { get; set; }
+    public bool FakeMatchingStateRoot { get; set; }
     public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
     public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;
     public ulong StorageTrieNodeCacheSizeBudget { get; set; } = 224UL.MiB;
