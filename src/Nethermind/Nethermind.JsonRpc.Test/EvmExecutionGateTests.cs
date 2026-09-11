@@ -11,7 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
-[Parallelizable(ParallelScope.Self)]
+// The queue-length assertions read a process-global metric that EvmExecutionGateServiceTests also moves.
+[NonParallelizable]
 public class EvmExecutionGateTests
 {
     /// <summary>A tick source the test advances by hand, so the aging window does not depend on wall-clock timing.</summary>
@@ -180,10 +181,10 @@ public class EvmExecutionGateTests
     }
 
     [Test]
-    public async Task A_heavy_waiter_is_served_under_sustained_light_arrivals()
+    public async Task A_heavy_waiter_is_served_after_the_light_callers_that_legitimately_overtook_it()
     {
-        // End-to-end guard on the same property: a heavy caller must be served while light traffic keeps arriving,
-        // not shed every time for as long as the load lasts.
+        // End-to-end guard on the same property. Every waiter is queued on the test thread before anything is
+        // released, so the overtaking actually happens rather than depending on a background task winning a race.
         const int budgetMs = 30_000;
         TestClock clock = new();
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
@@ -192,23 +193,92 @@ public class EvmExecutionGateTests
         ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
         Assert.That(heavy.IsCompleted, Is.False);
 
-        Task lightArrivals = Task.Run(async () =>
+        // Inside the heavy caller's slack window, so these are entitled to overtake it.
+        const int overtakerCount = 3;
+        ValueTask<EvmExecutionGate.Lease>[] overtakers = new ValueTask<EvmExecutionGate.Lease>[overtakerCount];
+        for (int i = 0; i < overtakerCount; i++)
         {
-            for (int i = 0; i < 50; i++)
-            {
-                clock.Advance(Quantum(budgetMs));
-                using EvmExecutionGate.Lease lease = await gate.AcquireAsync(1, allowQueue: true);
-            }
-        });
+            overtakers[i] = gate.AcquireAsync(1, allowQueue: true);
+        }
+
+        // Past the window: these must not overtake, however many of them arrive.
+        clock.Advance(Quantum(budgetMs) * EvmExecutionGate.MaxWeight);
+        ValueTask<EvmExecutionGate.Lease>[] lateArrivals = new ValueTask<EvmExecutionGate.Lease>[overtakerCount];
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            lateArrivals[i] = gate.AcquireAsync(1, allowQueue: true);
+        }
 
         held.Dispose();
 
-        // Released before draining the arrivals: with one permit, holding it here would deadlock the very traffic
-        // whose pressure the test is applying.
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            (await overtakers[i]).Dispose();
+        }
+
+        // The heavy caller goes before every late arrival, so sustained light load cannot keep pushing it back.
+        Assert.That(lateArrivals[0].IsCompleted, Is.False, "the aged-in heavy caller must precede later arrivals");
         (await heavy).Dispose();
 
-        await lightArrivals;
-        Assert.Pass();
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            (await lateArrivals[i]).Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Arrivals_beyond_the_queue_depth_cap_are_shed_rather_than_queued()
+    {
+        // What turns the bound on overtaker count into a bound on the wait: with the queue capped, the work that
+        // can be admitted ahead of a waiter is capped too, so a queued request is served rather than timed out.
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
+        using EvmExecutionGate.Lease held = await Acquire(gate);
+
+        ValueTask<EvmExecutionGate.Lease>[] queued =
+            new ValueTask<EvmExecutionGate.Lease>[EvmExecutionGate.MaxQueueDepthPerPermit];
+        for (int i = 0; i < queued.Length; i++)
+        {
+            queued[i] = gate.AcquireAsync(1, allowQueue: true);
+            Assert.That(queued[i].IsCompleted, Is.False);
+        }
+
+        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
+    }
+
+    [Test]
+    public async Task Equal_deadlines_keep_arrival_order()
+    {
+        // PriorityQueue is not a stable heap, so equal deadlines need the sequence tiebreaker. A frozen clock makes
+        // every deadline identical, which is the case a real clock only hits when two arrivals share a tick.
+        TestClock clock = new();
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        const int waiterCount = 8;
+        ValueTask<EvmExecutionGate.Lease>[] waiters = new ValueTask<EvmExecutionGate.Lease>[waiterCount];
+        for (int i = 0; i < waiterCount; i++)
+        {
+            waiters[i] = gate.AcquireAsync(1, allowQueue: true);
+        }
+
+        // Admission resumes asynchronously by design (see Waiter), so order is observed rather than polled.
+        List<int> admissionOrder = [];
+        Task[] observers = new Task[waiterCount];
+        for (int i = 0; i < waiterCount; i++)
+        {
+            int index = i;
+            ValueTask<EvmExecutionGate.Lease> waiter = waiters[i];
+            observers[i] = Task.Run(async () =>
+            {
+                using EvmExecutionGate.Lease lease = await waiter;
+                lock (admissionOrder) admissionOrder.Add(index);
+            });
+        }
+
+        held.Dispose();
+        await Task.WhenAll(observers);
+
+        Assert.That(admissionOrder, Is.EqualTo(new[] { 0, 1, 2, 3, 4, 5, 6, 7 }));
     }
 
     [Test]

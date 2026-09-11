@@ -5,6 +5,9 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Reflection;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -17,7 +20,8 @@ namespace Nethermind.JsonRpc.Test;
 /// End-to-end checks that <see cref="JsonRpcService"/> admits methods flagged
 /// <see cref="JsonRpcMethodAttribute.IsEvmExecution"/> through the gate, and leaves every other method alone.
 /// </summary>
-[Parallelizable(ParallelScope.Self)]
+// Shares the process-global queue-length metric with EvmExecutionGateTests.
+[NonParallelizable]
 public class EvmExecutionGateServiceTests
 {
     private const string GatedMethod = "gated_execute";
@@ -141,6 +145,42 @@ public class EvmExecutionGateServiceTests
 
         JsonRpcResponse served = await queued;
         Assert.That(served, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+    }
+
+    [Test]
+    public void No_gated_method_returns_a_streamable_result()
+    {
+        // The permit is released when the invocation returns, so a gated method whose result re-executes while the
+        // response is written would run the EVM outside the gate. Nothing enforces that at runtime by design - a
+        // per-request check would sit on the hot path - so it is pinned here instead.
+        List<string> offenders = [];
+
+        foreach (Type moduleType in typeof(IEthRpcModule).Assembly.GetExportedTypes())
+        {
+            if (!typeof(IRpcModule).IsAssignableFrom(moduleType) || !moduleType.IsInterface) continue;
+
+            foreach (MethodInfo method in moduleType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (method.GetCustomAttribute<JsonRpcMethodAttribute>() is not { IsEvmExecution: true }) continue;
+
+                Type returnType = method.ReturnType;
+                if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+                {
+                    returnType = returnType.GenericTypeArguments[0];
+                }
+
+                foreach (Type payload in returnType.GenericTypeArguments)
+                {
+                    if (typeof(IStreamableResult).IsAssignableFrom(payload))
+                    {
+                        offenders.Add($"{moduleType.Name}.{method.Name} -> {payload.Name}");
+                    }
+                }
+            }
+        }
+
+        Assert.That(offenders, Is.Empty,
+            "a method flagged IsEvmExecution must not return an IStreamableResult; see JsonRpcMethodAttribute.IsEvmExecution");
     }
 
     [RpcModule("Gated")]

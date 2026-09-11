@@ -36,9 +36,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-    private readonly EvmExecutionGate _evmGate = new(jsonRpcConfig);
+    private readonly EvmExecutionGate? _evmGate = jsonRpcConfig.EvmExecutionGateEnabled ? new(jsonRpcConfig) : null;
     private readonly bool _webSocketsQueueingEnabled = jsonRpcConfig.WebSocketsProcessingConcurrency > 1;
-    private readonly bool _ipcQueueingEnabled = jsonRpcConfig.IpcProcessingConcurrency > 1;
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -57,7 +56,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution && _evmGate is not null
                 ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
                 : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
@@ -91,7 +90,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         // Weighed before the parameters are bound: the raw length is only readable while the backing buffer lives.
         int weight = EvmExecutionGate.Weigh(request.ParamsUtf8Length);
-        using EvmExecutionGate.Lease lease = await _evmGate.AcquireAsync(weight, CanQueue(request, context));
+        using EvmExecutionGate.Lease lease = await _evmGate!.AcquireAsync(weight, CanQueue(request, context));
         return await ExecuteAsync(request, methodName, method, context);
     }
 
@@ -100,7 +99,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     /// Waiting only pays off where the connection can serve something else meanwhile. On a lane that processes one
     /// request at a time - a batch, or a socket with a single processing slot - the wait is pure added latency for
     /// every later request behind it. Authenticated callers are the consensus client, which needs a prompt answer
-    /// rather than a queued one.
+    /// rather than a queued one; note <see cref="JsonRpcContext"/> counts every IPC request as authenticated, so
+    /// local IPC callers are shed rather than queued too.
     /// </remarks>
     private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
         !request.IsBatchItem &&
@@ -109,7 +109,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             RpcEndpoint.Http => true,
             RpcEndpoint.Ws => _webSocketsQueueingEnabled,
-            RpcEndpoint.IPC => _ipcQueueingEnabled,
             _ => false,
         };
 
