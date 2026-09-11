@@ -95,7 +95,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-            int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(txIndex);
+            // The traced receipts carry their executed position in Index (BlockReceiptsTracer assigns it sequentially),
+            // so the logs counted and the threshold counted against are both block-derived, as they are in the proofs.
+            int logIndexStart = receipts.GetBlockLogFirstIndex(txIndex);
 
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
@@ -105,7 +107,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 logIndexStart);
             // ReceiptForRpc (and each LogEntryForRpc) copies the stored Index; the proofs below attest to the block-derived position.
             receiptWithProof.Receipt.TransactionIndex = txIndex;
-            foreach (LogEntryForRpc log in receiptWithProof.Receipt.Logs ?? [])
+            foreach (LogEntryForRpc log in receiptWithProof.Receipt.Logs)
             {
                 log.TransactionIndex = txIndex;
             }
