@@ -148,6 +148,13 @@ public class ShippedBftChainSpecTests
             Assert.That(schedule.GetFork(9_434_167, 0).BlockReward, Is.EqualTo(UInt256.Parse("3000000000000000000")));
             Assert.That(schedule.GetFork(9_434_168, 0).BlockReward, Is.EqualTo(UInt256.Parse("750000000000000000")), "first halving");
             Assert.That(schedule.GetFork(137_280_000, 0).BlockReward, Is.EqualTo(UInt256.Zero), "the last transition ends the emission");
+
+            // A live node following the published genesis diverged on the state root of empty block
+            // 51,192,000, which can only be the block reward. The published transitions schedule no
+            // change anywhere near it, so the reward is flat across the divergence point and the
+            // chain must be running a genesis this file does not describe.
+            Assert.That(schedule.GetFork(51_191_999, 0).BlockReward, Is.EqualTo(UInt256.Parse("1464843750000000")));
+            Assert.That(schedule.GetFork(51_192_000, 0).BlockReward, Is.EqualTo(UInt256.Parse("1464843750000000")));
         }
     }
 
