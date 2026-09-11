@@ -39,7 +39,8 @@ public class BlockAccessListBasedWorldStateTests
         uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
         Action<IWorldState>? genesisSetup = null,
-        Func<IWorldState, IWorldState>? decorateParent = null)
+        Func<IWorldState, IWorldState>? decorateParent = null,
+        BalReadCoverage? readCoverage = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -56,7 +57,7 @@ public class BlockAccessListBasedWorldStateTests
         BlockAccessListBasedWorldState bws = new(inner, Logger);
         bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
-        bws.Setup(block);
+        bws.Setup(block, readCoverage);
         IDisposable scope = inner.BeginScope(baseBlock);
         // The inner world state, scoped against the genesis root, is itself a valid parent reader
         // — reads against it answer pre-block state directly from the trie.
@@ -140,13 +141,15 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader)
+    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader, [Values] bool useCoverage)
     {
         StorageCell[] cells = [new(TestItem.AddressA, 1), new(TestItem.AddressA, 2), new(TestItem.AddressB, 1)];
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
                 Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(1).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage? coverage = useCoverage ? plan.CreateCoverage() : null;
         IWorldState parent = null!;
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
             ws =>
@@ -155,7 +158,7 @@ public class BlockAccessListBasedWorldStateTests
                 ws.CreateAccount(TestItem.AddressB, 100);
                 ws.Set(cells[1], [42]);
                 ws.Set(cells[2], [77]);
-            }, ws => parent = ws);
+            }, ws => parent = ws, coverage);
         using (scope)
         {
             LocalMetrics metrics = (LocalMetrics)typeof(WorldState)
@@ -165,6 +168,7 @@ public class BlockAccessListBasedWorldStateTests
             ReadAlternatingSlots(0);
             bws.Restore(snapshot);
             bws.SetBlockAccessIndex(2);
+            coverage?.StartSlice();
             ReadAlternatingSlots(0);
             using (Assert.EnterMultipleScope())
             {
@@ -177,7 +181,8 @@ public class BlockAccessListBasedWorldStateTests
             parent.Commit(Spec);
             parent.CommitTree(1);
             if (replaceReader) bws.SetParentReader(parent);
-            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+            bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject, coverage);
+            coverage?.StartSlice();
             readsBefore = metrics.StorageTreeReads;
             ReadAlternatingSlots(99);
             Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
@@ -192,6 +197,14 @@ public class BlockAccessListBasedWorldStateTests
                 {
                     ReadOnlySpan<byte> value = repeat % 2 == 0 ? bws.Get(cells[i]) : bws.GetOriginal(cells[i]);
                     Assert.That(new UInt256(value, isBigEndian: true), Is.EqualTo((UInt256)expected[i]));
+                }
+            }
+            if (coverage is not null)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(coverage.ChargeableReadCount, Is.EqualTo((ulong)cells.Length));
+                    Assert.That(plan.TryFindUncovered(out _), Is.False);
                 }
             }
         }
@@ -515,15 +528,17 @@ public class BlockAccessListBasedWorldStateTests
     /// BAL pass validation.
     /// </summary>
     [Test]
-    public void GetStorage_MissingSlotDeclaration_ThrowsBeforeParentFallback()
+    public void GetStorage_MissingDeclaration_ThrowsBeforeParentFallback(
+        [Values] bool missingAccount, [Values] bool original, [Values] bool useCoverage)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
+                .WithAddress(missingAccount ? TestItem.AddressB : TestItem.AddressA)
+                .WithStorageReads((UInt256)2)
                 .TestObject)
             .TestObject;
-
+        using BalReadStoragePlan plan = new(bal);
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 0,
             suggestedBal: bal,
@@ -531,12 +546,17 @@ public class BlockAccessListBasedWorldStateTests
             {
                 ws.CreateAccount(TestItem.AddressA, 0);
                 ws.Set(cell, [0x2A]);
-            });
+            },
+            readCoverage: useCoverage ? plan.CreateCoverage() : null);
 
         using (scope)
         {
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
-                () => bws.Get(cell));
+                () =>
+                {
+                    if (original) bws.GetOriginal(cell);
+                    else bws.Get(cell);
+                });
         }
     }
 
