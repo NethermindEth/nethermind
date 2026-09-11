@@ -14,9 +14,6 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
     public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
-        // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
-
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -56,15 +53,8 @@ namespace Nethermind.Serialization.Rlp
             rlp.ReadSequenceLength(ref position, out int logsLength);
             int lastCheck = position + logsLength;
 
-            int numberOfReceipts = rlp.CountItems(position, lastCheck, LogsRlpLimit.Limit + 1);
-            Rlp.GuardLimit(numberOfReceipts, rlp.Data.Length - position, LogsRlpLimit);
-            LogEntry[] entries = new LogEntry[numberOfReceipts];
             ctx.Position = position;
-            for (int i = 0; i < numberOfReceipts; i++)
-            {
-                entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-            }
-            txReceipt.Logs = entries;
+            txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
             // Handle any remaining extra bytes
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
