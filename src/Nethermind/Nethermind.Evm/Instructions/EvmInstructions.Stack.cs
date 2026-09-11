@@ -1152,6 +1152,9 @@ public static partial class EvmInstructions
 
         if (vm.TxExecutionContext.SuppressLogs)
         {
+            // Instruction tracers can inspect the expanded memory even when they do not collect logs.
+            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory
+                && !vmState.Memory.TryLoad(in position, length, out _)) goto OutOfGas;
             for (int i = 0; i < TOpCount.Count; i++)
                 if (!stack.PopLimbo()) goto StackUnderflow;
             return EvmExceptionType.None;
