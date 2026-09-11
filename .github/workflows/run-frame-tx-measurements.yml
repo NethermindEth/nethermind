@@ -11,12 +11,31 @@ on:
           - both
           - verify
           - mempool
+          - flood
+          - producer-retry
+          - prefix-retry
         default: both
+      groth16_artifacts:
+        description: >-
+          Absolute path on the runner to the Groth16 sweep artifacts. Unset, the privacy-workload cases
+          self-ignore. A relative path is not equivalent: this workflow resolves one against src/Nethermind
+          while the harness resolves it against the test assembly's output directory.
+        required: false
+        type: string
+        default: ''
+      raise_verify_gas_const:
+        description: >-
+          Patch Eip8141Constants.MaxVerifyGas to this value before building, so the 500k sweep points can run.
+          Empty means a stock build, on which they self-ignore. Use 500000 for the complete sweep. The patch
+          and its diff are recorded in PROVENANCE.txt beside the results.
+        required: false
+        type: string
+        default: ''
 
-# Deliberately deviates from the repo default: the group carries no `github.ref`
-# and in-progress runs are not cancelled, so dispatches queue instead of
-# contending for the single shared measurement runner. Do not "fix" this back to
-# the PR-workflow default -- two concurrent runs would distort each other's numbers.
+# Deliberate deviation from the repo default: the group carries no `github.ref`, so all
+# dispatches share one slot on the shared runner. With cancel-in-progress false, only one
+# stays queued -- a third dispatch replaces the second, not GitHub's usual deep queueing.
+# Do not "fix" this to match the default; concurrent runs would distort each other's numbers.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -30,12 +49,14 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 120
     steps:
-      # One source of truth for the output path: the `runner` context is not
-      # available in a job-level `env`, so it is exported here instead. It runs
-      # before the checkout, and the `if: always()` steps below still guard on it
-      # being set, because an unset value would make them address the runner's root.
+      # `runner` isn't available in a job-level `env`, so OUTPUT_DIR is exported here. The wipe lives here
+      # too, not in the measurement step: it must run before checkout, or a checkout/setup failure would
+      # skip it while OUTPUT_DIR stays set, and the always()-run steps below would republish stale files.
       - name: Resolve the output directory
-        run: echo "OUTPUT_DIR=${RUNNER_TEMP}/frame-tx-measurements" >> "${GITHUB_ENV}"
+        run: |
+          echo "OUTPUT_DIR=${RUNNER_TEMP}/frame-tx-measurements" >> "${GITHUB_ENV}"
+          rm -rf "${RUNNER_TEMP}/frame-tx-measurements"
+          mkdir -p "${RUNNER_TEMP}/frame-tx-measurements"
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -44,56 +65,242 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Run measurement harnesses
+        id: measure
         working-directory: src/Nethermind
         env:
           HARNESS: ${{ inputs.harness }}
+          FRAME_GROTH16_ARTIFACTS: ${{ inputs.groth16_artifacts }}
+          RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
         run: |
           set -uo pipefail
-          rm -rf "${OUTPUT_DIR}"
-          mkdir -p "${OUTPUT_DIR}"
 
+          # This runner is self-hosted and persistent: an operator-set or leftover value from a prior run
+          # would let FrameTxFloodMeasurement's single-core gate return early and measure an unpinned,
+          # uncontended node while the taskset check below still reports green.
+          unset FRAME_FLOOD_ALLOW_MULTICORE
+
+          # `dotnet test` would build in-job, leaving MSBuild/VBCSCompiler resident through the measurement.
+          projects=()
+          case "${HARNESS}" in
+            # FrameTxVerifyDosMeasurement (the `verify` leg) drives the block-production path directly and
+            # never caps a frame at MaxVerifyGas -- it measures a different layer than the campaign's ceiling
+            # sweep, so `both` no longer builds or runs it; dispatch `verify` on its own for that measurement.
+            both)           projects=(Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
+            verify)         projects=(Nethermind.Evm.Test) ;;
+            mempool)        projects=(Nethermind.TxPool.Test) ;;
+            flood|producer-retry) projects=(Nethermind.Blockchain.Test) ;;
+            prefix-retry)   projects=(Nethermind.TxPool.Test) ;;
+            *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
+          esac
+
+          # Checked here, not per-leg: fatal and knowable before any build, and -d covers unset, blank, and
+          # wrong-path in one test (the harness only fails on File.Exists per case). `flood` needs this too --
+          # it sweeps the same Groth16 points as `mempool`, and would otherwise still report green.
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" || "${HARNESS}" == "flood" ]] && [[ ! -d "${FRAME_GROTH16_ARTIFACTS}" ]]; then
+            if [[ -z "${FRAME_GROTH16_ARTIFACTS//[[:space:]]/}" ]]; then
+              echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
+            else
+              echo "::error::groth16_artifacts '${FRAME_GROTH16_ARTIFACTS}' is not a directory on this runner, so the privacy cases would self-ignore and the run would report only the adversarial shapes."
+            fi
+            exit 1
+          fi
+          # Checked here, not in run_harness: fatal and knowable up front, so a `both` dispatch doesn't run
+          # the whole mempool leg first. In-process ProcessorAffinity reports success without confining
+          # threads, so pinning must come from outside -- unpinned, a flood measures as a false negative.
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]] && ! command -v taskset >/dev/null; then
+            echo "::error::taskset is not available, so FrameTxFloodMeasurement cannot be confined to one CPU and its figures would describe an uncontended node."
+            exit 1
+          fi
+          # The 500k points self-ignore on a stock build: MaxVerifyGas is a compile-time `const`, unmoved by
+          # TxPool.FrameTxMaxVerifyGas. Safe to patch because that cap only gates the mempool's prefix
+          # simulator, never block validity. Patched here, not on a branch, so no ref carries a modified
+          # consensus-namespace constant separable from the numbers it produced.
+          CONST_FILE=Nethermind.Core/Eip8141Constants.cs
+          STOCK_LITERAL='MaxVerifyGas = 300_000'
+          {
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "sha=${GITHUB_SHA}"
+          } > "${OUTPUT_DIR}/PROVENANCE.txt"
+          RAISE_VERIFY_GAS="${RAISE_VERIFY_GAS//[[:space:]]/}"
+          if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
+            if [[ ! "${RAISE_VERIFY_GAS}" =~ ^[1-9][0-9]{5,8}$ ]]; then
+              echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
+              exit 1
+            fi
+            # Ceilings above the constant self-ignore, so 322800 (soispoke's declared budget, the smallest
+            # real point above stock 300000) is the least raise that unlocks anything; 500000 unlocks that
+            # plus the 500k points. Refused here, not after both legs run and report an unplaceable row.
+            if (( RAISE_VERIFY_GAS < 322800 )); then
+              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above it is 322800. Use 322800 for that point alone, or 500000 for the complete sweep."
+              exit 1
+            fi
+            # This workflow lives on master but dispatches against an EIP-8141 ref, so absence here means a wrong ref.
+            if [[ ! -f "${CONST_FILE}" ]]; then
+              echo "::error::${CONST_FILE} is not present on ${GITHUB_REF_NAME}, so there is no constant to raise. Dispatch against a ref that carries EIP-8141."
+              exit 1
+            fi
+            # Refuse to patch blind: a moved or duplicated literal would make sed miss or rewrite the wrong
+            # thing, reporting a stock build's numbers under a raised label.
+            hits=$(grep -c -- "${STOCK_LITERAL}" "${CONST_FILE}" || true)
+            if [[ "${hits}" != "1" ]]; then
+              echo "::error::expected exactly one '${STOCK_LITERAL}' in ${CONST_FILE}, found ${hits}. Refusing to patch."
+              exit 1
+            fi
+            sed -i "s/${STOCK_LITERAL}/MaxVerifyGas = ${RAISE_VERIFY_GAS}/" "${CONST_FILE}" || exit 1
+            {
+              echo "eip8141_max_verify_gas_patched_from=300000 to=${RAISE_VERIFY_GAS}"
+              echo "# Every RESULT row in this artifact came from a build carrying the diff below."
+              git --no-pager diff -- "${CONST_FILE}"
+            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+            echo "::warning::Eip8141Constants.MaxVerifyGas patched 300000 -> ${RAISE_VERIFY_GAS} for this run. These figures are not from a stock build; see PROVENANCE.txt in the artifact."
+          else
+            {
+              echo "eip8141_max_verify_gas=300000 (stock, unpatched)"
+              echo "# The 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=500000 to measure them."
+            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+          fi
+
+          for project in "${projects[@]}"; do
+            dotnet build "${project}/${project}.csproj" -c release || exit 1
+          done
+
+          ran=0
           run_harness() {
             local project=$1 fixture=$2 rc=0
+            shift 2
+            local -a required=("$@")
+            ran=$((ran + 1))
             if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
               echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
               return 1
             fi
             echo "::group::${fixture}"
-            if ! dotnet build "${project}/${project}.csproj" -c release; then
-              echo "::endgroup::"
-              return 1
-            fi
+
+            # Microsoft.Testing.Platform swallows console writers, so harnesses report to a file; unset, the
+            # path defaults outside OUTPUT_DIR and is never uploaded.
+            local results="${OUTPUT_DIR}/${fixture}-results.txt"
+            export FRAME_MEMPOOL_DOS_OUT="${results}"
+            export FRAME_RETRY_OUT="${results}"
+            export FRAME_FLOOD_OUT="${results}"
+
+            # Per leg, not up-front: `dotnet test --no-build` still runs an MSBuild evaluation, so without
+            # this each leg after the first measures with whatever the prior one left resident.
             dotnet build-server shutdown || true
-            dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore -- \
-              --no-ansi --output Detailed --filter "FullyQualifiedName~${fixture}" \
-              2>&1 | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
+
+            local -a cmd=(
+              dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore
+              --no-ansi --output Detailed -- --filter "FullyQualifiedName~${fixture}"
+            )
+            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]]; then
+              cmd=(taskset -c 0 "${cmd[@]}")
+            fi
+
+            "${cmd[@]}" 2>&1 | tee "${OUTPUT_DIR}/${fixture}.log" || rc=$?
+
+            # Self-ignored cases leave no RESULT lines, which would otherwise pass as a green run.
+            if ! grep -q '^RESULT ' "${results}" 2>/dev/null; then
+              echo "::error::${fixture} produced no RESULT lines. Check that its inputs are present on the runner."
+              rc=1
+            fi
+
+            # Non-empty isn't proof the input-dependent case ran -- it can self-ignore while the rest still reports.
+            local marker
+            for marker in ${required[@]+"${required[@]}"}; do
+              if ! grep -qF -- "${marker}" "${results}" 2>/dev/null; then
+                echo "::error::${fixture} reported no '${marker}' rows, though this run was configured to produce them. Check that its inputs are present on the runner."
+                rc=1
+              fi
+            done
+
             echo "::endgroup::"
             return "${rc}"
           }
 
-          # Each harness is attempted even when an earlier one fails, so a run never
-          # reports a partial set of figures as if it were the whole set.
+          # Markers name what this run must produce, so a self-ignored case fails loudly instead of quietly
+          # shrinking the sweep. groth16-soispoke gets its own marker because the generic one is satisfied by
+          # any of the four points -- soispoke, the plan's actual named workload, could go silently missing
+          # otherwise. The signature shape needs neither artifacts nor a raised constant, so its absence means
+          # a broken run, not a narrower one.
+          mempool_markers=('shape=groth16-' 'shape=groth16-soispoke' 'case=signature_reject')
+          # `case=flood_delay` alone isn't enough: `Admission_flood_actually_reaches_the_simulator` emits
+          # case=workload_block regardless of core affinity, satisfying the RESULT check even if
+          # ObservedCpuSet can't read it and the four measurement cases self-ignore. taskset's presence is
+          # checked above; this checks its effect. The Groth16/signature markers close the same gap for the
+          # flood leg's own sweep of those workloads.
+          flood_markers=('case=flood_delay' 'shape=groth16-' 'shape=groth16-soispoke' 'shape=signature-stuffed')
+          if (( RAISE_VERIFY_GAS >= 322800 )); then
+            # No Groth16 shape reaches 322800 (soispoke stays pinned at 300000, or it'd exceed MaxVerifyGas
+            # and skip) -- keccak-wide is the shape that does. Not a bare ceiling=322800: signature-stuffed
+            # is exempt from the reachability guard and reports it on a stock build too, masking a failed patch.
+            mempool_markers+=('verify_gas=322800')
+            flood_markers+=('shape=keccak-wide ceiling=322800')
+          fi
+          if (( RAISE_VERIFY_GAS >= 500000 )); then
+            # The 500k cases declare exactly 500000, unlocked once the raise clears it. Same exemption as
+            # above applies, so the marker is shape=groth16-500k, not a bare ceiling=500000.
+            mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
+            flood_markers+=('shape=groth16-500k')
+          fi
+
+          # Each harness runs even if an earlier one failed, so a run never reports a partial set as the whole set.
           status=0
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "verify" ]]; then
+          if [[ "${HARNESS}" == "verify" ]]; then
             run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement || status=1
+            # Only the sweep points whose declared ceiling clears the build's MaxVerifyGas can run, so the
+            # marker requires some privacy row rather than all of them.
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "${mempool_markers[@]}" || status=1
+          fi
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
+            run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement "${flood_markers[@]}" || status=1
+          fi
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
+            # Without this, the k_retry_sweep/two_axis rows could be entirely absent from a green run,
+            # satisfied by this fixture's unrelated control/never-approves rows alone.
+            producer_retry_markers=('case=k_retry_sweep' 'case=k_retry_two_axis')
+            run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "${producer_retry_markers[@]}" || status=1
+          fi
+          # Not in `both`: it wires no simulator, so it measures pool retention rather than a campaign metric.
+          if [[ "${HARNESS}" == "prefix-retry" ]]; then
+            run_harness Nethermind.TxPool.Test FrameTxPrefixRetryMeasurement || status=1
+          fi
+
+          # Catches a harness option added to the build mapping but forgotten in the dispatch blocks (or the
+          # reverse), which would otherwise exit 0 with an empty OUTPUT_DIR.
+          if [[ "${ran}" -eq 0 ]]; then
+            echo "::error::harness '${HARNESS}' ran no fixture. It has a build mapping but no dispatch block."
+            status=1
           fi
 
           exit "${status}"
 
       - name: Publish the reported figures to the run summary
         if: always() && env.OUTPUT_DIR != ''
+        env:
+          MEASURE_OUTCOME: ${{ steps.measure.outcome }}
         run: |
           set -uo pipefail
-          for report in "${OUTPUT_DIR}"/*.txt; do
+          # A failed run's tables otherwise look identical to a complete one to anyone who screenshots the summary.
+          if [[ "${MEASURE_OUTCOME}" != "success" ]]; then
+            echo '> **This run failed. The rows below are partial; see the job log.**' >> "${GITHUB_STEP_SUMMARY}"
+            echo >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          # Beside the rows, not only in the artifact: a patched run's tables would otherwise look stock too.
+          if [[ -f "${OUTPUT_DIR}/PROVENANCE.txt" ]]; then
+            {
+              echo '## Provenance'
+              echo '```'
+              cat "${OUTPUT_DIR}/PROVENANCE.txt"
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          for report in "${OUTPUT_DIR}"/*-results.txt; do
             [[ -f "${report}" ]] || continue
             {
-              echo "## $(basename "${report}" .txt)"
+              echo "## $(basename "${report}" -results.txt)"
               echo '```'
-              # Only the reported figures, so the summary stays well inside its 1 MiB
-              # cap and no stray backtick from test output breaks the fence.
+              # Only the reported figures, keeping the summary under its 1 MiB cap and clear of stray backticks.
               grep 'RESULT' "${report}" || echo 'no RESULT lines; see the uploaded artifact'
               echo '```'
             } >> "${GITHUB_STEP_SUMMARY}"
