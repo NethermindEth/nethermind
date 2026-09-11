@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -111,6 +112,33 @@ public class BlockAccessListBasedWorldStateTests
 
     private sealed class ParentDecorator(IWorldState state) : WorldStateDecorator(state);
 
+    [TestCase(false, false, 0)]
+    [TestCase(true, false, 0)]
+    [TestCase(false, true, 0)]
+    [TestCase(true, true, 0)]
+    [TestCase(false, true, 1)]
+    [TestCase(true, true, 1)]
+    public void TryGetAccount_PreservesParentExistence(bool decorate, bool createAccount, int balance)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(0, bal,
+            ws =>
+            {
+                if (createAccount) ws.CreateAccount(TestItem.AddressA, (UInt256)balance);
+            }, ws => decorate ? new ParentDecorator(ws) : ws);
+        using (scope)
+        {
+            bool exists = bws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.EqualTo(createAccount && balance != 0));
+                Assert.That(account.Balance, Is.EqualTo(createAccount ? (UInt256)balance : UInt256.Zero));
+                Assert.That(account.IsTotallyEmpty, Is.EqualTo(!createAccount || balance == 0));
+            }
+        }
+    }
+
     [Test]
     public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader)
     {
@@ -119,7 +147,7 @@ public class BlockAccessListBasedWorldStateTests
             .WithAccountChanges(
                 Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
                 Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(1).TestObject).TestObject;
-        CountingParentReader parent = null!;
+        IWorldState parent = null!;
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
             ws =>
             {
@@ -127,9 +155,12 @@ public class BlockAccessListBasedWorldStateTests
                 ws.CreateAccount(TestItem.AddressB, 100);
                 ws.Set(cells[1], [42]);
                 ws.Set(cells[2], [77]);
-            }, ws => parent = new CountingParentReader(ws));
+            }, ws => parent = ws);
         using (scope)
         {
+            LocalMetrics metrics = (LocalMetrics)typeof(WorldState)
+                .GetField("_localMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(parent)!;
+            long readsBefore = metrics.StorageTreeReads;
             Snapshot snapshot = parent.TakeSnapshot();
             ReadAlternatingSlots(0);
             bws.Restore(snapshot);
@@ -137,7 +168,7 @@ public class BlockAccessListBasedWorldStateTests
             ReadAlternatingSlots(0);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(parent.StorageReads, Is.EqualTo(cells.Length));
+                Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
                 Assert.That(parent.TakeSnapshot(), Is.EqualTo(snapshot), "pure reads must not journal");
             }
 
@@ -147,8 +178,9 @@ public class BlockAccessListBasedWorldStateTests
             parent.CommitTree(1);
             if (replaceReader) bws.SetParentReader(parent);
             bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
+            readsBefore = metrics.StorageTreeReads;
             ReadAlternatingSlots(99);
-            Assert.That(parent.StorageReads, Is.EqualTo(2 * cells.Length));
+            Assert.That(metrics.StorageTreeReads - readsBefore, Is.EqualTo(cells.Length));
         }
 
         void ReadAlternatingSlots(uint firstValue)
@@ -162,17 +194,6 @@ public class BlockAccessListBasedWorldStateTests
                     Assert.That(new UInt256(value, isBigEndian: true), Is.EqualTo((UInt256)expected[i]));
                 }
             }
-        }
-    }
-
-    private sealed class CountingParentReader(IWorldState state) : WorldStateDecorator(state), IWorldState
-    {
-        public int StorageReads { get; private set; }
-
-        bool IWorldState.TryGetPureReadStorage(in StorageCell cell, out byte[]? value)
-        {
-            StorageReads++;
-            return State.TryGetPureReadStorage(cell, out value);
         }
     }
 
