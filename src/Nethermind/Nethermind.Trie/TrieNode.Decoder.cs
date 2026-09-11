@@ -26,11 +26,38 @@ namespace Nethermind.Trie
     {
         // Used to create the nibble key from bytes, and threshold before using ArrayPool for the key
         private const int StackallocByteThreshold = 384;
+        private const int FullBranchRlpLength = 532;
 
         private class TrieNodeDecoder
         {
-            private const int FullBranchRlpLength = 532;
             private const int HashPairSize = 2;
+
+            /// <summary>The children of a node already known to be a branch.</summary>
+            /// <remarks>
+            /// Walking the inline array keeps the encode passes below off <see cref="INodeData"/>'s
+            /// indexer, which is an interface call per child. The type test is once per pass, and is a
+            /// test rather than an unchecked cast because reading a smaller node's data as sixteen
+            /// references would corrupt the heap instead of throwing.
+            /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static ReadOnlySpan<object?> BranchChildren(TrieNode item) => Branch(item).Branches;
+
+            /// <inheritdoc cref="BranchChildren"/>
+            /// <remarks>
+            /// <inheritdoc cref="BranchChildren" path="/remarks"/>
+            /// A walk that also needs the child index takes the first element by reference and advances
+            /// it, rather than indexing: measured on the guest, indexing the span costs the scale per
+            /// child, +995,495 ziskemu steps a block across the four passes that do so.
+            /// </remarks>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static ref object? FirstBranchChild(TrieNode item) => ref Branch(item)[0];
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static BranchData Branch(TrieNode item) => item._nodeData as BranchData ?? ThrowNotABranch();
+
+            [DoesNotReturn, StackTraceHidden]
+            private static BranchData ThrowNotABranch() =>
+                throw new TrieException("A node encoded as a branch does not hold branch data.");
 
             [SkipLocalsInit]
             public static CappedArray<byte> EncodeExtension(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool, bool canBeParallel)
@@ -214,9 +241,8 @@ namespace Nethermind.Trie
 
                     const int MinChildrenForParallel = 4;
                     int nonNullChildren = 0;
-                    for (int i = 0; i < BranchesCount; i++)
+                    foreach (object? data in BranchChildren(item))
                     {
-                        object? data = item._nodeData![i];
                         if (data is not null && !ReferenceEquals(data, _nullNode) && ++nonNullChildren >= MinChildrenForParallel)
                         {
                             return true;
@@ -235,11 +261,9 @@ namespace Nethermind.Trie
             {
                 const int MinChildrenForBatchedHashing = 2;
                 int candidates = 0;
-                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                foreach (object? data in BranchChildren(item))
                 {
-                    if (branchData[i] is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
+                    if (data is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
                     {
                         return true;
                     }
@@ -322,7 +346,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
@@ -358,9 +382,10 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 ushort candidateMask = 0;
-                for (int i = 0; i < BranchesCount; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = item._nodeData![i];
+                    object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         totalLength++;
@@ -407,16 +432,16 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        RlpReader rlpReader = state.item.RlpReader;
-                        state.item.SeekChild(ref rlpReader, i);
-                        object? data = state.item._nodeData![i];
+                        object? data = BranchChildren(state.item)[i];
                         if (data is null)
                         {
-                            state.local += rlpReader.PeekNextRlpLength();
+                            LiteRlpReader nodeRlp = new(state.item.FullRlp);
+                            int cursor = state.item.SeekChildPosition(nodeRlp, i);
+                            state.local += nodeRlp.PeekNextRlpLength(cursor);
                         }
                         else if (ReferenceEquals(data, _nullNode))
                         {
@@ -450,18 +475,17 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 ushort candidateMask = 0;
-                RlpReader rlpReader = item.RlpReader;
-                item.SeekChild(ref rlpReader, 0);
-                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                LiteRlpReader nodeRlp = new(item.FullRlp);
+                int cursor = item.SeekChildPosition(nodeRlp, 0);
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = branchData[i];
+                    object? data = child;
                     if (data is null)
                     {
-                        int length = rlpReader.PeekNextRlpLength();
+                        int length = nodeRlp.PeekNextRlpLength(cursor);
                         totalLength += length;
-                        rlpReader.SkipBytes(length);
+                        cursor += length;
                     }
                     else
                     {
@@ -500,7 +524,7 @@ namespace Nethermind.Trie
                             path.TruncateOne();
                         }
 
-                        rlpReader.SkipItem();
+                        nodeRlp.SkipItem(ref cursor);
                     }
                 }
 
@@ -525,9 +549,10 @@ namespace Nethermind.Trie
             private static int WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int position = 0;
-                for (int i = 0; i < BranchesCount; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = item._nodeData![i];
+                    object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         destination[position++] = 128;
@@ -564,31 +589,36 @@ namespace Nethermind.Trie
             /// <inheritdoc cref="WriteChildrenRlpBranch" />
             private static int WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                RlpReader rlpReader = item.RlpReader;
-                item.SeekChild(ref rlpReader, 0);
+                LiteRlpReader nodeRlp = new(item.FullRlp);
+                ReadOnlySpan<byte> nodeRlpData = nodeRlp.Data;
+                if (nodeRlpData.Length == FullBranchRlpLength && destination.Length >= BranchesCount * Rlp.LengthOfKeccakRlp
+                    && TryPatchFullBranch(tree, ref path, item, nodeRlpData, destination, bufferPool, canBeParallel))
+                {
+                    return BranchesCount * Rlp.LengthOfKeccakRlp;
+                }
+                int cursor = item.SeekChildPosition(nodeRlp, 0);
                 int position = 0;
                 // Unchanged children are consecutive bytes of the old RLP, so a run of them is one
                 // copy rather than one per child. Most branches change a single child, so this turns
                 // sixteen short copies into two.
                 int runStart = -1;
                 int runLength = 0;
-                Debug.Assert(item._nodeData is BranchData, "Data is not BranchData");
-                BranchData branchData = Unsafe.As<BranchData>(item._nodeData!);
-                for (int i = 0; i < BranchesCount; i++)
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
-                    object? data = branchData[i];
+                    object? data = child;
                     if (data is null)
                     {
-                        int length = rlpReader.PeekNextRlpLength();
-                        if (runStart < 0) runStart = rlpReader.Position;
+                        int length = nodeRlp.PeekNextRlpLength(cursor);
+                        if (runStart < 0) runStart = cursor;
                         runLength += length;
-                        rlpReader.SkipBytes(length);
+                        cursor += length;
                     }
                     else
                     {
                         if (runStart >= 0)
                         {
-                            rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                            nodeRlp.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                             position += runLength;
                             runStart = -1;
                             runLength = 0;
@@ -623,17 +653,44 @@ namespace Nethermind.Trie
                             }
                         }
 
-                        rlpReader.SkipItem();
+                        nodeRlp.SkipItem(ref cursor);
                     }
                 }
 
                 if (runStart >= 0)
                 {
-                    rlpReader.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                    nodeRlp.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                     position += runLength;
                 }
 
                 return position;
+            }
+
+            private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
+                ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
+            {
+                // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
+                Debug.Assert(nodeRlp[^1] == 128);
+                nodeRlp.Slice(3, BranchesCount * Rlp.LengthOfKeccakRlp).CopyTo(destination);
+                ref object? child = ref FirstBranchChild(item);
+                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
+                {
+                    object? data = child;
+                    if (data is null) continue;
+                    if (ReferenceEquals(data, _nullNode)) return false;
+                    Hash256? hash = data as Hash256;
+                    if (hash is null)
+                    {
+                        TrieNode childNode = (TrieNode)data;
+                        path.AppendMut(i);
+                        childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        path.TruncateOne();
+                        hash = childNode.Keccak;
+                        if (hash is null) return false;
+                    }
+                    Rlp.Encode(destination, i * Rlp.LengthOfKeccakRlp, hash);
+                }
+                return true;
             }
         }
     }
