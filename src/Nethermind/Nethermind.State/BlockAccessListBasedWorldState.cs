@@ -238,18 +238,31 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool AccountExists(Address address)
         // EIP-161 non-emptiness of the effective state at this index: reading only the parent would miss
         // same-block deletions and wrongly refund EIP-8037 create-state gas on a later CREATE2 over the address.
-        => !GetBalance(address).IsZero
-           || GetNonce(address) != 0
-           || IsContract(address);
+        => GetType() == typeof(BlockAccessListBasedWorldState)
+            ? HasAccountState(address)
+            : !GetBalance(address).IsZero || GetNonce(address) != 0 || IsContract(address);
 
     public override bool IsContract(Address address)
         => GetCodeHash(address) != Keccak.OfAnEmptyString;
 
     public override bool IsDeadAccount(Address address)
-        => !AccountExists(address) ||
+        => GetType() == typeof(BlockAccessListBasedWorldState)
+            ? !HasAccountState(address)
+            : !AccountExists(address) ||
                 (GetBalance(address) == 0 &&
                 GetNonce(address) == 0 &&
                 GetCodeHash(address) == Keccak.OfAnEmptyString);
+
+    private bool HasAccountState(Address address)
+    {
+        ReadOnlyAccountChanges changes = ResolveContext(address);
+        return (changes.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balance)
+                ? !balance.Value.IsZero : !_parentReader!.GetBalance(address).IsZero)
+            || (changes.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonce)
+                ? nonce.Value != 0 : _parentReader!.GetNonce(address) != 0)
+            || (changes.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange code)
+                ? code.CodeHash != Keccak.OfAnEmptyString : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString);
+    }
 
     public override void ClearStorage(Address address) { }
 

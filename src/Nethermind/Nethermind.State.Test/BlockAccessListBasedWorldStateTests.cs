@@ -143,6 +143,61 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void CompositeReads_UseEffectiveState(
+        [Values("balance", "nonce", "code", "empty")] string kind,
+        [Values(0u, 1u, 2u)] uint index)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(1, kind == "balance" ? 10u : 0u))
+                .WithNonceChanges(new NonceChange(1, kind == "nonce" ? 10u : 0u))
+                .WithCodeChanges(new CodeChange(1, kind == "code" ? [0x00] : []))
+                .TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(index, bal,
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, kind is "code" or "empty" ? 20u : 0u,
+                    kind is "balance" or "empty" ? 30UL : 0UL);
+                if (kind is "nonce" or "empty")
+                    ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute([0x00]), new byte[] { 0x00 }, Spec);
+            });
+        using (scope)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(index < 2 || kind != "empty"));
+                Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.EqualTo(index == 2 && kind == "empty"));
+                Assert.That(bws.IsContract(TestItem.AddressA), Is.EqualTo(index < 2 ? kind is "nonce" or "empty" : kind == "code"));
+            }
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.AccountExists(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsDeadAccount(TestItem.AddressB));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.IsContract(TestItem.AddressB));
+        }
+    }
+
+    [Test]
+    public void CompositeReads_PreserveVirtualOverrides([Values("balance", "nonce", "code")] string kind)
+    {
+        OverriddenAccountState bws = new(TestWorldStateFactory.CreateForTest(), kind);
+        Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.False);
+        bws.ReportMissing = true;
+        Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.True);
+    }
+
+    private sealed class OverriddenAccountState(IWorldState state, string kind) : BlockAccessListBasedWorldState(state, Logger)
+    {
+        private readonly UInt256 _balance = kind == "balance" ? 1u : 0u;
+        private readonly ulong _nonce = kind == "nonce" ? 1UL : 0UL;
+        private readonly ValueHash256 _codeHash = kind == "code" ? ValueKeccak.Compute([0x00]) : Keccak.OfAnEmptyString.ValueHash256;
+        public bool ReportMissing { get; set; }
+        public override ref readonly UInt256 GetBalance(Address address) => ref _balance;
+        public override ulong GetNonce(Address address) => _nonce;
+        public override ref readonly ValueHash256 GetCodeHash(Address address) => ref _codeHash;
+        public override bool AccountExists(Address address) => !ReportMissing && base.AccountExists(address);
+    }
+
+    [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
