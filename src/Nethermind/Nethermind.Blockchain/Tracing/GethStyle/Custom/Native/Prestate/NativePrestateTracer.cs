@@ -46,8 +46,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         : base(options)
     {
         IsTracingActions = true;
-        // Seeded on, not left to the first StartOperation, because a wrapping CompositeTxTracer
-        // latches these flags in its own constructor and would otherwise never ask for stack or memory.
         IsTracingMemory = true;
         IsTracingStack = true;
         IsTracingOpLevelStorage = false;

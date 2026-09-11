@@ -108,7 +108,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [Test]
     public void SetOperationStack_WhenAnOperationHasErrored_CapturesNothingMore([Values] bool errored)
     {
-        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
             Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
@@ -121,7 +121,6 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             tracer.StartOperation(1, Instruction.ADD, 100, environment);
         }
 
-        // A wrapping tracer latches the capture flags, so the stack keeps arriving either way
         tracer.SetOperationStack(new TraceStack(new byte[EvmStack.WordSize]));
 
         NativePrestateTracerAccount account =
