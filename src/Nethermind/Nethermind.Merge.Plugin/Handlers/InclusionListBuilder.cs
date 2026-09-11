@@ -30,7 +30,9 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's gapless run from its next nonce, since nothing else could be
-    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
+    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
+    /// Deliberately not gated on pool revalidation: the target timestamp is not derivable here, so a fork
+    /// boundary can draw entries the new spec rejects, which appendability excuses at the cost of list bytes.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
