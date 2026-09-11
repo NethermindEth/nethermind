@@ -32,6 +32,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private uint _blockAccessIndex = 0;
     private Address? _contextAccount;
     private ReadOnlyAccountChanges? _contextChanges;
+    private readonly Dictionary<StorageCell, byte[]> _pureReadValues = [];
+    private StorageCell _lastPureRead;
+    private byte[]? _lastPureReadValue;
+    private bool _hasPureRead;
+    private Address? _lastPureAccountAddress;
+    private Account? _lastPureAccount;
     private BalReadCoverage? _readCoverage;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
@@ -55,6 +61,11 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = _suggestedBlockAccessList?.GetCodeChangesByHash();
+        _pureReadValues.ClearAndTrim();
+        _hasPureRead = false;
+        _lastPureReadValue = null;
+        _lastPureAccountAddress = null;
+        _lastPureAccount = null;
         _transientStorageProvider.Reset();
     }
 
@@ -77,6 +88,11 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _codeChangesByHash = null;
         _contextAccount = null;
         _contextChanges = null;
+        _pureReadValues.ClearAndTrim();
+        _hasPureRead = false;
+        _lastPureReadValue = null;
+        _lastPureAccountAddress = null;
+        _lastPureAccount = null;
     }
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
@@ -104,7 +120,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                     .WithoutLeadingZeros();
             }
 
-            return _parentReader!.Get(storageCell);
+            return slotChanges is null && TryReadDeclaredStorage(_parentReader!, storageCell, out byte[]? value)
+                ? value
+                : _parentReader!.Get(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
@@ -124,7 +142,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                     .WithoutLeadingZeros();
             }
 
-            return _parentReader!.GetOriginal(storageCell);
+            return slotChanges is null && TryReadDeclaredStorage(_parentReader!, storageCell, out byte[]? value)
+                ? value
+                : _parentReader!.GetOriginal(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
@@ -132,6 +152,40 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryReadDeclaredStorage(IWorldState parentReader, in StorageCell cell, out byte[]? value)
+    {
+        if (_hasPureRead && _lastPureRead.Index == cell.Index && _lastPureRead.Address == cell.Address)
+        {
+            value = _lastPureReadValue;
+            return true;
+        }
+        return ReadDeclaredStorageSlow(parentReader, cell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool ReadDeclaredStorageSlow(IWorldState parentReader, in StorageCell cell, out byte[]? value)
+    {
+        value = null;
+        if (parentReader is not WorldState worldState) return false;
+        ref byte[]? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_pureReadValues, cell, out _);
+        value = cached ??= worldState.GetPureReadStorage(cell);
+        _lastPureRead = cell;
+        _lastPureReadValue = value;
+        _hasPureRead = true;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Account? ReadParentAccount(WorldState parent, Address address)
+    {
+        if (ReferenceEquals(address, _lastPureAccountAddress)) return _lastPureAccount;
+        Account? account = parent.GetPureReadAccount(address);
+        _lastPureAccountAddress = address;
+        _lastPureAccount = account;
+        return account;
+    }
 
     public override void SetNonce(Address address, in ulong nonce) { }
 
@@ -149,6 +203,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             _scratchBalance = balanceChange.Value;
             return ref _scratchBalance;
         }
+        if (_parentReader is WorldState worldState)
+        {
+            Account? account = ReadParentAccount(worldState, address);
+            _scratchBalance = account?.Balance ?? UInt256.Zero;
+            return ref _scratchBalance;
+        }
         return ref _parentReader!.GetBalance(address);
     }
 
@@ -158,7 +218,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         return accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange)
             ? nonceChange.Value
-            : _parentReader!.GetNonce(address);
+            : _parentReader is WorldState worldState
+                ? ReadParentAccount(worldState, address)?.Nonce ?? 0
+                : _parentReader!.GetNonce(address);
     }
 
     public override ref readonly ValueHash256 GetCodeHash(Address address)
@@ -170,6 +232,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             _scratchCodeHash = codeChange.CodeHash;
             return ref _scratchCodeHash;
         }
+        if (_parentReader is WorldState worldState)
+        {
+            Account? account = ReadParentAccount(worldState, address);
+            _scratchCodeHash = account?.CodeHash.ValueHash256 ?? Keccak.OfAnEmptyString.ValueHash256;
+            return ref _scratchCodeHash;
+        }
         return ref _parentReader!.GetCodeHash(address);
     }
 
@@ -179,7 +247,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
             ? codeChange.Code
-            : _parentReader!.GetCode(address);
+            : _parentReader is WorldState worldState
+                ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : []
+                : _parentReader!.GetCode(address);
     }
 
     public override byte[]? GetCode(in ValueHash256 codeHash)
@@ -197,7 +267,16 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
-        bool exists = _parentReader!.TryGetAccount(address, out account);
+        bool exists;
+        if (_parentReader is WorldState worldState)
+        {
+            account = (ReadParentAccount(worldState, address) ?? Account.TotallyEmpty).ToStruct();
+            exists = !account.IsTotallyEmpty;
+        }
+        else
+        {
+            exists = _parentReader!.TryGetAccount(address, out account);
+        }
         ulong nonce = exists ? account.Nonce : 0;
         UInt256 balance = exists ? account.Balance : UInt256.Zero;
         ValueHash256 storageRoot = exists ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
@@ -266,14 +345,18 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         ReadOnlyAccountChanges changes = ResolveContext(address);
         BalanceChange[] balances = changes.BalanceChanges;
         int balanceIndex = FindLastChange(balances, _blockAccessIndex);
-        if (balanceIndex >= 0 ? !balances[balanceIndex].Value.IsZero : !_parentReader!.GetBalance(address).IsZero)
+        if (balanceIndex >= 0 ? !balances[balanceIndex].Value.IsZero : _parentReader is WorldState balanceParent
+            ? !(ReadParentAccount(balanceParent, address)?.Balance ?? UInt256.Zero).IsZero
+            : !_parentReader!.GetBalance(address).IsZero)
         {
             return true;
         }
 
         NonceChange[] nonces = changes.NonceChanges;
         int nonceIndex = FindLastChange(nonces, _blockAccessIndex);
-        if (nonceIndex >= 0 ? nonces[nonceIndex].Value != 0 : _parentReader!.GetNonce(address) != 0)
+        if (nonceIndex >= 0 ? nonces[nonceIndex].Value != 0 : _parentReader is WorldState nonceParent
+            ? (ReadParentAccount(nonceParent, address)?.Nonce ?? 0) != 0
+            : _parentReader!.GetNonce(address) != 0)
         {
             return true;
         }
@@ -282,7 +365,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         int codeIndex = FindLastChange(codes, _blockAccessIndex);
         return codeIndex >= 0
             ? codes[codeIndex].CodeHash != Keccak.OfAnEmptyString
-            : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString;
+            : _parentReader is WorldState codeParent
+                ? (ReadParentAccount(codeParent, address)?.CodeHash.ValueHash256 ?? Keccak.OfAnEmptyString.ValueHash256) != Keccak.OfAnEmptyString
+                : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString;
     }
 
     private static int FindLastChange<T>(T[] changes, uint index) where T : struct, IIndexedChange
