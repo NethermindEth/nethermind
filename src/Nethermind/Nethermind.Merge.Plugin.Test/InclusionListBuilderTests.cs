@@ -237,6 +237,11 @@ public class InclusionListBuilderTests
     [TestCase(0.0, TierCohortSize, 0ul, 1ul, 0.20)]
     [TestCase(0.25, TierCohortSize, 0ul, 1ul, 0.25)]
     [TestCase(0.5, TierCohortSize, 0ul, 1ul, 0.50)]
+    // A share under the cohort's own 0.20 of the pool is a floor that does not bind, not a ceiling that demotes
+    // it: reserving a sliver of the draw for the oldest senders must never list fewer of them than drawing
+    // uniformly would have. Reserving by share alone inverts here, worst at the smallest non-zero shares.
+    [TestCase(0.02, TierCohortSize, 0ul, 1ul, 0.20)]
+    [TestCase(0.05, TierCohortSize, 0ul, 1ul, 0.20)]
     // The cohort is the pool's oldest by rank, not by an index threshold, so the same share holds wherever the
     // pool's sequence happens to start — which is what survives it restarting with the process.
     [TestCase(0.5, TierCohortSize, ulong.MaxValue - 10_000ul, 1ul, 0.50)]
@@ -244,7 +249,7 @@ public class InclusionListBuilderTests
     [TestCase(0.5, TierCohortSize, 0ul, 0ul, 0.20)]
     // So does a cohort as wide as the pool: there is nothing left to reserve the draw against.
     [TestCase(0.5, TierPoolSenders, 0ul, 1ul, 0.20)]
-    public void Reserved_share_of_the_draw_is_what_the_oldest_cohort_gets(double oldestShare, int oldestCount, ulong firstPoolIndex, ulong step, double expected) =>
+    public void Reserved_share_is_a_floor_under_what_the_oldest_cohort_gets(double oldestShare, int oldestCount, ulong firstPoolIndex, ulong step, double expected) =>
         Assert.That(ListedOldestShare(oldestShare, oldestCount, firstPoolIndex, step), Is.EqualTo(expected).Within(0.04));
 
     /// <summary>Entries one draw fits in the byte cap, asserting no sender reached the list twice.</summary>

@@ -71,11 +71,13 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// <summary>Draws up to <see cref="SenderSampleCapacity"/> of the pending senders, in random order.</summary>
     /// <remarks>
     /// Uniform over the pool unless <see cref="IMergeConfig.InclusionListOldestSenderShare"/> reserves part of
-    /// the draw for a uniform sample of the longest-pending senders. Since the byte cap keeps only a random
-    /// prefix of the draw, that share is also the share of the list the cohort gets, which is what lifts the
-    /// odds of a transaction a builder keeps passing over. EIP-7805 leaves the strategy to the implementer and
-    /// names pending time as one; it is off by default because age is cheap to manufacture, so the tier costs
-    /// the honest sender its share of the draw exactly when the pool is being flooded.
+    /// the draw for a uniform sample of the longest-pending senders. The reservation is a floor, not a quota:
+    /// the cohort takes the larger of that share and the share a uniform draw would have given it, so raising
+    /// the share can never leave it worse represented than leaving the tier off. Since the byte cap keeps only
+    /// a random prefix of the draw, the cohort's share of the draw is its share of the list, which is what
+    /// lifts the odds of a transaction a builder keeps passing over. EIP-7805 leaves the strategy to the
+    /// implementer and names pending time as one; it is off by default because age is cheap to manufacture, so
+    /// the tier costs the honest sender its share of the draw exactly when the pool is being flooded.
     /// </remarks>
     private ArrayPoolListRef<Transaction[]> DrawSenders(IDictionary<AddressAsKey, Transaction[]> pending)
     {
@@ -102,7 +104,10 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             Random.Shared.Shuffle(rest.AsSpan());
 
             ArrayPoolListRef<Transaction[]> senders = new(SenderSampleCapacity);
-            int reserved = int.Min(_oldestSenderDraw, oldest.Count);
+            // Floored at the slots a uniform draw would have given the cohort, so a share below its weight in
+            // the pool leaves it where the tier off would: reserving cannot demote what it is meant to promote.
+            int uniformDraw = (int)((long)SenderSampleCapacity * oldestSeen / pending.Count);
+            int reserved = int.Min(int.Max(_oldestSenderDraw, uniformDraw), oldest.Count);
             Take(ref senders, oldest.AsSpan()[..reserved]);
             Take(ref senders, rest.AsSpan());
             // Either tier spends what the other leaves rather than shrinking the draw.
