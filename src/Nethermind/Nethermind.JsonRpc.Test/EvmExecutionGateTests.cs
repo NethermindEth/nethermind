@@ -90,8 +90,8 @@ public class EvmExecutionGateTests
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
-        // Would block for a minute if allowQueue were ignored.
-        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: false), Throws.InstanceOf<LimitExceededException>());
+        // Refused at the call, not after the minute-long budget - see ShedsOnArrival.
+        Assert.That(ShedsOnArrival(gate, allowQueue: false), Is.True);
     }
 
     [Test]
@@ -232,7 +232,7 @@ public class EvmExecutionGateTests
         // What turns the bound on overtaker count into a bound on the wait: with the queue capped, the work that
         // can be admitted ahead of a waiter is capped too, so a queued request is served rather than timed out.
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
-        using EvmExecutionGate.Lease held = await Acquire(gate);
+        EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease>[] queued =
             new ValueTask<EvmExecutionGate.Lease>[EvmExecutionGate.MaxQueueDepthPerPermit];
@@ -242,7 +242,35 @@ public class EvmExecutionGateTests
             Assert.That(queued[i].IsCompleted, Is.False);
         }
 
-        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
+        // Asserted on the synchronous throw, not by awaiting: a caller that queues instead raises the *same*
+        // exception once the budget expires, so awaiting cannot tell "refused on arrival" from "waited 30s".
+        Assert.That(ShedsOnArrival(gate), Is.True, "over the cap the gate must refuse on arrival");
+        Assert.That(gate.QueuedCount, Is.EqualTo(queued.Length), "the shed caller must not have been queued");
+
+        // Drained rather than abandoned: an un-awaited waiter faults a whole budget later and moves the shared
+        // queue-length gauge in the middle of some other test.
+        held.Dispose();
+        for (int i = 0; i < queued.Length; i++)
+        {
+            (await queued[i]).Dispose();
+        }
+    }
+
+    /// <summary>Whether the gate refuses without queueing, i.e. <see cref="EvmExecutionGate.AcquireAsync"/> throws
+    /// at the call itself rather than from the returned task after the wait budget.</summary>
+    private static bool ShedsOnArrival(EvmExecutionGate gate, bool allowQueue = true)
+    {
+        try
+        {
+            ValueTask<EvmExecutionGate.Lease> pending = gate.AcquireAsync(1, allowQueue);
+            // Queued rather than shed. Observe the task so a later timeout is not an unobserved fault.
+            _ = pending.AsTask().ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+            return false;
+        }
+        catch (LimitExceededException)
+        {
+            return true;
+        }
     }
 
     [Test]

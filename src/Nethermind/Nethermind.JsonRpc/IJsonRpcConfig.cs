@@ -174,7 +174,8 @@ public interface IJsonRpcConfig : IConfig
             cost estimate taken from the raw `params` length, aged by arrival time so that a large request cannot
             be overtaken indefinitely by smaller ones. `0` disables waiting: a request that finds every slot busy
             is shed at once, before its parameters are read - to turn the gate off entirely, use
-            `EvmExecutionGateEnabled`. A longer budget adds latency to the requests it serves without adding
+            `EvmExecutionGateEnabled`. A request is also shed at once, regardless of this budget, when more than
+            eight requests per slot are already waiting. A longer budget adds latency to the requests it serves without adding
             throughput. Waiting is skipped for batch items, authenticated requests (which includes IPC), and
             connections that process one request at a time, where it would only delay later calls on the same
             connection.

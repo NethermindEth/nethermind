@@ -6,7 +6,9 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -148,39 +150,65 @@ public class EvmExecutionGateServiceTests
     }
 
     [Test]
-    public void No_gated_method_returns_a_streamable_result()
+    public void No_gated_method_can_return_a_streamable_result()
     {
         // The permit is released when the invocation returns, so a gated method whose result re-executes while the
         // response is written would run the EVM outside the gate. Nothing enforces that at runtime by design - a
-        // per-request check would sit on the hot path - so it is pinned here instead.
+        // per-request check would sit on the hot path - so it is pinned here.
+        //
+        // Checked against the concrete streaming types rather than the declared payload: every streaming result is
+        // substituted at runtime under a base (GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace), so a test
+        // that looked for a declared IStreamableResult would never match and would pass vacuously.
+        // The streaming results all live alongside IStreamableResult in Nethermind.JsonRpc.
+        Type[] streamingTypes = [.. typeof(IStreamableResult).Assembly.GetTypes()
+            .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IStreamableResult).IsAssignableFrom(t))];
+
+        Assert.That(streamingTypes, Is.Not.Empty, "the guard is only meaningful if streaming types were found");
+
         List<string> offenders = [];
-
-        foreach (Type moduleType in typeof(IEthRpcModule).Assembly.GetExportedTypes())
+        foreach (Type moduleType in AllRpcModuleInterfaces())
         {
-            if (!typeof(IRpcModule).IsAssignableFrom(moduleType) || !moduleType.IsInterface) continue;
-
             foreach (MethodInfo method in moduleType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (method.GetCustomAttribute<JsonRpcMethodAttribute>() is not { IsEvmExecution: true }) continue;
 
-                Type returnType = method.ReturnType;
-                if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+                foreach (Type payload in PayloadTypes(method))
                 {
-                    returnType = returnType.GenericTypeArguments[0];
-                }
-
-                foreach (Type payload in returnType.GenericTypeArguments)
-                {
-                    if (typeof(IStreamableResult).IsAssignableFrom(payload))
+                    foreach (Type streaming in streamingTypes)
                     {
-                        offenders.Add($"{moduleType.Name}.{method.Name} -> {payload.Name}");
+                        if (payload.IsAssignableFrom(streaming))
+                        {
+                            offenders.Add($"{moduleType.Name}.{method.Name} -> {payload.Name} accepts {streaming.Name}");
+                        }
                     }
                 }
             }
         }
 
         Assert.That(offenders, Is.Empty,
-            "a method flagged IsEvmExecution must not return an IStreamableResult; see JsonRpcMethodAttribute.IsEvmExecution");
+            "a method flagged IsEvmExecution must not be able to return an IStreamableResult; see JsonRpcMethodAttribute.IsEvmExecution");
+    }
+
+    private static IEnumerable<Type> AllRpcModuleInterfaces() =>
+        new[] { typeof(IEthRpcModule).Assembly, typeof(IDebugRpcModule).Assembly }
+            .Distinct()
+            .SelectMany(static a => a.GetExportedTypes())
+            .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t));
+
+    /// <summary>Payload types a JSON-RPC method can resolve to, unwrapping Task/ValueTask and the result wrapper.</summary>
+    private static IEnumerable<Type> PayloadTypes(MethodInfo method)
+    {
+        Type returnType = method.ReturnType;
+        if (returnType.IsGenericType)
+        {
+            Type definition = returnType.GetGenericTypeDefinition();
+            if (definition == typeof(Task<>) || definition == typeof(ValueTask<>))
+            {
+                returnType = returnType.GenericTypeArguments[0];
+            }
+        }
+
+        return returnType.IsGenericType ? returnType.GenericTypeArguments : [];
     }
 
     [RpcModule("Gated")]
