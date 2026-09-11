@@ -49,6 +49,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
         base.Load(builder);
 
         builder
+            .AddSingleton(new HistoricalTracePrewarmSettings(jsonRpcConfig.TraceBlockPrewarmConcurrency))
+            .AddSingleton<HistoricalTracePrewarmer>()
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
