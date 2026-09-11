@@ -67,6 +67,10 @@ namespace Nethermind.Evm
             in ReadOnlyMemory<byte> inputData)
         {
             ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new();
+#if DEBUG
+            env._isRented = true;
+            env._rentStackTrace = new System.Diagnostics.StackTrace();
+#endif
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
             env.Caller = caller;
@@ -82,6 +86,9 @@ namespace Nethermind.Evm
         /// </summary>
         public void Dispose()
         {
+#if DEBUG
+            _isRented = false;
+#endif
             if (ExecutingAccount is not null)
             {
                 CodeInfo = null!;
@@ -93,19 +100,22 @@ namespace Nethermind.Evm
                 InputData = default;
                 _pool.Enqueue(this);
             }
-#if DEBUG
-            GC.SuppressFinalize(this);
-#endif
         }
 
 #if DEBUG
-        private readonly System.Diagnostics.StackTrace _creationStackTrace = new();
+        private bool _isRented;
+        private System.Diagnostics.StackTrace? _rentStackTrace;
 
+        /// <remarks>
+        /// A leak is an instance still rented when collected; a disposed one the pool drops (dead thread tier,
+        /// shared overflow) stays silent. <see cref="GC.SuppressFinalize"/> must not be used in <see cref="Dispose"/>:
+        /// it is permanent per object, so it would blind this for every pooled instance after its first reuse.
+        /// </remarks>
         ~ExecutionEnvironment()
         {
-            if (ExecutingAccount is null)
+            if (_isRented)
             {
-                Console.Error.WriteLine($"Warning: {nameof(ExecutionEnvironment)} was not disposed. Created at: {_creationStackTrace}");
+                Console.Error.WriteLine($"Warning: {nameof(ExecutionEnvironment)} was not disposed. Rented at: {_rentStackTrace}");
             }
         }
 #endif
