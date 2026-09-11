@@ -39,7 +39,7 @@ The current Fusaka payload corpus starts at block `25489990`, while the ARM runn
 -f expb_env='EXPB_SKIP_OVERRIDE=10,EXPB_WARMUP_OVERRIDE=1,EXPB_NETHERMIND_PRIORITY_MODE=observe'
 ```
 
-Use `EXPB_NETHERMIND_PRIORITY_MODE=nice` for the nice arm. Confirm the corpus start and snapshot head before reusing these values with another dataset; old ARM payload datasets require the snapshot corresponding to their own starting range.
+Use `EXPB_NETHERMIND_PRIORITY_MODE=nice` for the nice arm. Confirm the corpus start and snapshot head before reusing these values with another dataset. Older ARM payload datasets require their matching legacy snapshot at `/data/nethermind/nethermind-flat-snapshot`; do not point them at the Fusaka snapshot `/data/nethermind/nethermind-flat-25490000`.
 
 ## Verify the raw logs
 
