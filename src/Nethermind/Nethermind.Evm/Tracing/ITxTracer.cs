@@ -381,6 +381,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
 
+    /// <summary>
+    /// Reports the gas left in the current call frame at the point it stops executing.
+    /// </summary>
+    /// <param name="gas">Gas remaining in the frame.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. Always raised before <see cref="ReportActionError"/>
+    /// for the same frame, which carries no gas of its own; tracers that need the gas of a failed frame
+    /// must implement this, as the default implementation drops it.
+    /// </remarks>
     void ReportActionRemainingGas(ulong gas) { }
 
     /// <summary>
