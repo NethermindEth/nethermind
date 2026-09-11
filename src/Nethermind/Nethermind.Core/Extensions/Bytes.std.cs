@@ -58,4 +58,9 @@ public static unsafe partial class Bytes
     /// <summary>Number of leading zero bytes in a 64-bit value; <c>8</c> when it is zero.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int LeadingZeroBytes(ulong value) => BitOperations.LeadingZeroCount(value) >> 3;
+
+    /// <summary>Number of leading zero bits in a 64-bit value; <c>64</c> when it is zero.</summary>
+    /// <remarks>Exists as a std/zkevm pair: one instruction here, a software fallback on the guest.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LeadingZeroBits(ulong value) => BitOperations.LeadingZeroCount(value);
 }

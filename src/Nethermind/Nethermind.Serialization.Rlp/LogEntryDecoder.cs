@@ -13,7 +13,42 @@ namespace Nethermind.Serialization.Rlp
     public sealed class LogEntryDecoder() : RlpDecoder<LogEntry?>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
+
+        /// <summary>Smallest RLP encoding of a non-null log entry.</summary>
+        /// <remarks>
+        /// <c>[address, [], ""]</c> - a 21-byte address, an empty topics list and empty data under a
+        /// one-byte sequence prefix. Only a valid divisor for readers that reject nulls, because the
+        /// decoder accepts a one-byte <c>0xC0</c> as a null - hence <see cref="DecodeLogs"/> owning it.
+        /// </remarks>
+        internal const int MinNonNullEncodedLength = 24;
+
         public static LogEntryDecoder Instance { get; } = new();
+
+        /// <summary>Decodes a receipt's log sequence, rejecting a count the sequence's own bytes cannot back.</summary>
+        /// <remarks>
+        /// Nulls are rejected here rather than by the caller, which is what makes
+        /// <see cref="MinNonNullEncodedLength"/> a sound bound on the count before the array is
+        /// allocated. Counting stops at the tighter of the two bounds so a message that will be
+        /// rejected is not scanned to its end.
+        /// </remarks>
+        /// <param name="ctx">Reader positioned at the first item of the log sequence.</param>
+        /// <param name="logsEnd">Position one past the last byte of the log sequence.</param>
+        /// <exception cref="RlpLimitException">The declared count exceeds what the bytes or the gas ceiling allow.</exception>
+        public static LogEntry[] DecodeLogs(ref RlpReader ctx, int logsEnd)
+        {
+            RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
+            int maxLogs = Math.Min(logsRlpLimit.Limit, (logsEnd - ctx.Position) / MinNonNullEncodedLength);
+            int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd, maxLogs + 1);
+            Rlp.GuardLimit(logCount, maxLogs, logsRlpLimit);
+
+            LogEntry[] logs = new LogEntry[logCount];
+            for (int i = 0; i < logCount; i++)
+            {
+                logs[i] = Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
+            }
+
+            return logs;
+        }
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

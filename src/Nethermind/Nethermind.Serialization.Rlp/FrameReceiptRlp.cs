@@ -20,11 +20,11 @@ namespace Nethermind.Serialization.Rlp;
 /// encode paths, so a change to the frame layout cannot reach one of them alone.</remarks>
 public static class FrameReceiptRlp
 {
-    /// <summary>The most logs a receipt may carry: a 100M gas ceiling still allows roughly 266k LOG0
-    /// emissions after intrinsic gas.</summary>
-    public const int MaxReceiptLogs = 270_000;
+    /// <summary>The most logs a receipt may carry - the same ceiling every other receipt kind reads under.</summary>
+    /// <remarks>Read per use rather than captured in a field: the value follows the configured block gas,
+    /// which is set after this type's initializer may have run.</remarks>
+    private static RlpLimit LogsRlpLimit => RlpLimit.ReceiptLogs;
 
-    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(MaxReceiptLogs, nameof(TxReceipt.Logs));
     private static readonly RlpLimit FrameReceiptsRlpLimit = RlpLimit.For<TxReceipt>(Eip8141Constants.MaxFrames, nameof(TxReceipt.FrameReceipts));
 
     /// <summary>The content length of the frames list, its own header excluded.</summary>
@@ -119,9 +119,10 @@ public static class FrameReceiptRlp
             totalLogs += frameReceipts[i].Logs.Length;
         }
 
-        if (totalLogs > MaxReceiptLogs)
+        int logsLimit = LogsRlpLimit.Limit;
+        if (totalLogs > logsLimit)
         {
-            ThrowTooManyFrameLogs(totalLogs);
+            ThrowTooManyFrameLogs(totalLogs, logsLimit);
         }
 
         return frameReceipts;
@@ -181,6 +182,7 @@ public static class FrameReceiptRlp
         }
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frameCount];
+        RlpLimit logsRlpLimit = LogsRlpLimit;
         int totalLogs = 0;
         for (int i = 0; i < frameCount; i++)
         {
@@ -196,14 +198,14 @@ public static class FrameReceiptRlp
             reader.Check(gasUsedEnd);
 
             int logsEnd = reader.ReadSequenceLength() + reader.Position;
-            int logCount = reader.PeekNumberOfItemsRemaining(logsEnd, LogsRlpLimit.Limit + 1);
-            reader.GuardLimit(logCount, LogsRlpLimit);
+            int logCount = reader.PeekNumberOfItemsRemaining(logsEnd, logsRlpLimit.Limit + 1);
+            reader.GuardLimit(logCount, logsRlpLimit);
             // The limit is derived from a whole transaction's gas, so it budgets the receipt rather than
             // each frame; spending it per frame would admit MaxFrames times the emissions it stands for.
             totalLogs += logCount;
-            if (totalLogs > LogsRlpLimit.Limit)
+            if (totalLogs > logsRlpLimit.Limit)
             {
-                ThrowTooManyFrameLogs(totalLogs);
+                ThrowTooManyFrameLogs(totalLogs, logsRlpLimit.Limit);
             }
 
             LogEntry[] logs = new LogEntry[logCount];
@@ -253,8 +255,8 @@ public static class FrameReceiptRlp
         => throw new RlpException($"Frame transaction receipt carries {frameCount} frame receipts, over the {Eip8141Constants.MaxFrames} a transaction may hold");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowTooManyFrameLogs(int totalLogs)
-        => throw new RlpException($"Frame transaction receipt carries {totalLogs} logs, over the {MaxReceiptLogs} a receipt may hold");
+    private static void ThrowTooManyFrameLogs(int totalLogs, int logsLimit)
+        => throw new RlpException($"Frame transaction receipt carries {totalLogs} logs, over the {logsLimit} a receipt may hold");
 
     /// <summary>
     /// Decodes a stored frame receipt's <c>gas_used</c>, tolerating both the current

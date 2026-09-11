@@ -13,8 +13,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpDecoder<TxReceipt>
 {
-    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(FrameReceiptRlp.MaxReceiptLogs, nameof(TxReceipt.Logs));
-
     protected override TxReceipt? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemEmptyList())
@@ -54,16 +52,11 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, LogsRlpLimit.Limit + 1);
-        ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
-        LogEntry[] entries = new LogEntry[numberOfReceipts];
-        for (int i = 0; i < numberOfReceipts; i++)
-        {
-            entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-        }
+        txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
+        // The item count only requires a log to start before the declared end, so an under-declared
+        // logs header is only caught here; the logs are last, so the receipt end lands on it.
         ctx.Check(lastCheck);
-        txReceipt.Logs = entries;
 
         // Handle any remaining extra bytes
         bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;

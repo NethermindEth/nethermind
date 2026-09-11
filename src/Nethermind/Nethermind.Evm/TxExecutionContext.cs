@@ -21,5 +21,7 @@ namespace Nethermind.Evm
 
         /// <summary>Non-null only while processing an EIP-8141 frame transaction.</summary>
         public readonly FrameTxContext? FrameTxContext = frameTxContext;
+
+        internal bool SuppressLogs { get; init; }
     }
 }

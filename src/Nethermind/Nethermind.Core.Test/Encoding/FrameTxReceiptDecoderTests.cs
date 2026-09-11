@@ -14,9 +14,25 @@ namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>Round-trips of the EIP-8141 receipt payload (no top-level status or bloom on the wire): the decoder
 /// derives StatusCode from the frame statuses and unions the frame logs into Logs.</summary>
+/// <remarks>Non-parallelizable because the log-budget tests move <see cref="RlpLimit.InitMaxBlockGas"/>,
+/// which is process-global.</remarks>
 [TestFixture]
+[NonParallelizable]
 public class FrameTxReceiptDecoderTests
 {
+    // Low enough that the log-budget tests reach the ceiling with a handful of entries; the limit
+    // derives as gas / GasCostOf.Log + 1.
+    private const ulong EightLogBlockGas = GasCostOf.Log * 8;
+    private const int EightLogBlockGasLimit = 9;
+
+    private ulong _maxBlockGas;
+
+    [SetUp]
+    public void RecordBlockGas() => _maxBlockGas = RlpLimit.MaxBlockGas;
+
+    [TearDown]
+    public void RestoreBlockGas() => RlpLimit.InitMaxBlockGas(_maxBlockGas);
+
     [TestCaseSource(nameof(RoundtripCases))]
     public void Roundtrip_FrameTxReceipt_PreservesPayloadFields(TxReceipt receipt, byte expectedStatus)
     {
@@ -405,8 +421,10 @@ public class FrameTxReceiptDecoderTests
         [Values(Format.NonCompactStorage, Format.CompactStorage, Format.Message)] Format format,
         [Values(false, true)] bool over)
     {
+        RlpLimit.InitMaxBlockGas(EightLogBlockGas);
+
         // One shared entry repeated: the guard counts logs and never reaches their contents.
-        LogEntry[] half = new LogEntry[over ? FrameReceiptRlp.MaxReceiptLogs / 2 + 1 : 1];
+        LogEntry[] half = new LogEntry[over ? RlpLimit.ReceiptLogs.Limit / 2 + 1 : 1];
         Array.Fill(half, Log(0x01));
         TxReceipt receipt = CreateStorageFrameReceipt([],
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, half),
@@ -714,8 +732,11 @@ public class FrameTxReceiptDecoderTests
     [TestCase(1, true, TestName = "MessageDecode_FrameLogsOverTheReceiptBudget_Throws")]
     public void MessageDecode_FrameLogBudgetIsSpentPerReceiptNotPerFrame(int excess, bool rejected)
     {
-        const int firstFrameLogs = FrameReceiptRlp.MaxReceiptLogs / 2;
-        int secondFrameLogs = FrameReceiptRlp.MaxReceiptLogs - firstFrameLogs + excess;
+        RlpLimit.InitMaxBlockGas(EightLogBlockGas);
+
+        int maxReceiptLogs = RlpLimit.ReceiptLogs.Limit;
+        int firstFrameLogs = maxReceiptLogs / 2;
+        int secondFrameLogs = maxReceiptLogs - firstFrameLogs + excess;
         // Each frame stays under the ceiling on its own, so only their sum can trip the guard.
         TxReceipt receipt = CreateReceipt(
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(firstFrameLogs)),
@@ -727,16 +748,33 @@ public class FrameTxReceiptDecoderTests
         }
         else
         {
-            Assert.That(DecodeMessage(receipt).Logs, Has.Length.EqualTo(FrameReceiptRlp.MaxReceiptLogs));
+            Assert.That(DecodeMessage(receipt).Logs, Has.Length.EqualTo(maxReceiptLogs));
         }
     }
 
-    private static TxReceipt DecodeMessage(TxReceipt receipt)
+    /// <summary>Frame receipts return from the message decoders before <see cref="LogEntryDecoder.DecodeLogs"/>,
+    /// so only this pins them to the same gas-derived ceiling every other receipt kind reads under.</summary>
+    [Test]
+    public void MessageDecode_FrameLogCount_IsBoundedByTheConfiguredBlockGas()
     {
-        ReceiptMessageDecoder decoder = new();
-        byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
+        int overTheLimit = EightLogBlockGasLimit + 1;
+        byte[] encoded = EncodeMessage(CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(overTheLimit))));
+        Assert.That(DecodeMessage(encoded).Logs, Has.Length.EqualTo(overTheLimit));
+
+        RlpLimit.InitMaxBlockGas(EightLogBlockGas);
+
+        Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
+    }
+
+    private static TxReceipt DecodeMessage(TxReceipt receipt) => DecodeMessage(EncodeMessage(receipt));
+
+    private static byte[] EncodeMessage(TxReceipt receipt) => new ReceiptMessageDecoder().EncodeNew(receipt, RlpBehaviors.None);
+
+    private static TxReceipt DecodeMessage(byte[] encoded)
+    {
         RlpReader reader = new(encoded);
-        return decoder.Decode(ref reader)!;
+        return new ReceiptMessageDecoder().Decode(ref reader)!;
     }
 
     // One shared instance: only the count matters here, and encoding never mutates a log entry.
