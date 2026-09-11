@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -38,6 +39,25 @@ public sealed class EipReferenceTree
     {
         KeyValuePair<byte[], byte[]>[] entries = [.. _entries];
         return entries.Length == 0 ? new byte[32] : Fold(entries, 0, entries.Length, 0);
+    }
+
+    /// <summary>Returns the logical subtree hash anchored at a group boundary, or zero for an empty subtree.</summary>
+    public byte[] Merkelize<TPath>(TPath groupBoundary) where TPath : struct, IPbtNodePath<TPath>
+    {
+        List<KeyValuePair<byte[], byte[]>> matching = [];
+        foreach (KeyValuePair<byte[], byte[]> entry in _entries)
+        {
+            if (entry.Key.Length * 8 < groupBoundary.BitDepth) continue;
+            bool matches = true;
+            for (int bit = 0; bit < groupBoundary.BitDepth; bit++)
+            {
+                if (Bit(entry.Key, bit) == groupBoundary.GetBit(bit)) continue;
+                matches = false;
+                break;
+            }
+            if (matches) matching.Add(entry);
+        }
+        return matching.Count == 0 ? new byte[32] : Fold([.. matching], 0, matching.Count, groupBoundary.BitDepth);
     }
 
     private static byte[] Fold(KeyValuePair<byte[], byte[]>[] entries, int start, int end, int depth)

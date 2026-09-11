@@ -133,7 +133,7 @@ public class PbtRebuilderTests
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and windowed rebuild must have the same root");
             Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys(), reader.GetNodeGroup),
-                Is.EqualTo(CanonicalGroups(incrementalStore.EnumerateNodeGroupKeys(), incrementalStore.GetNodeGroup)),
+                Is.EqualTo(CanonicalGroups(incrementalStore.EnumerateNodeGroupKeys(), incrementalStore.GetPhysicalNodeGroup)),
                 "incremental replay and windowed rebuild must have the exact same group keys and payloads");
             Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
             Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
@@ -281,7 +281,7 @@ public class PbtRebuilderTests
                     Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
                     Assert.That(target.IsValid, Is.False);
                     Assert.That(CanonicalGroups(reader.EnumerateNodeGroupKeys(), reader.GetNodeGroup),
-                        Is.EqualTo(CanonicalGroups(expectedStore.EnumerateNodeGroupKeys(), expectedStore.GetNodeGroup)));
+                        Is.EqualTo(CanonicalGroups(expectedStore.EnumerateNodeGroupKeys(), expectedStore.GetPhysicalNodeGroup)));
                     Assert.Throws<ObjectDisposedException>(() => chunk.AsSpan());
                 }
             }

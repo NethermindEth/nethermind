@@ -266,6 +266,108 @@ public class ParallelUpdateRootTests
         }
     }
 
+    [Test]
+    public void Group_hashes_match_independent_boundary_subtrees_across_mutations(
+        [Values] bool parallel, [Values] bool compressed)
+    {
+        using HashRecordingStore store = new();
+        EipReferenceTree oracle = new();
+        ValueHash256 root = default;
+        (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed);
+        int nonRootReads = 0;
+        int nonRootWrites = 0;
+        int nullWrites = 0;
+        int survivingNullWrites = 0;
+        ApplyAndCheck(entries);
+        ApplyAndCheck(Changes(entries));
+        List<(byte[] Key, byte[]? Value)> promotions = [];
+        List<(byte[] Key, byte[]? Value)> deletions = [];
+        for (int index = 0; index < entries.Length; index++)
+        {
+            // Retain one leaf per zone so deeper groups disappear through promotion.
+            if (index % 64 != 1) promotions.Add((entries[index].Key, null));
+            deletions.Add((entries[index].Key, null));
+        }
+        ApplyAndCheck([.. promotions]);
+        ApplyAndCheck(entries);
+        ApplyAndCheck([.. deletions]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(default(ValueHash256)));
+            Assert.That(nonRootReads, Is.GreaterThan(0));
+            Assert.That(nonRootWrites, Is.GreaterThan(0));
+            Assert.That(nullWrites, Is.GreaterThan(0));
+            Assert.That(survivingNullWrites, Is.GreaterThan(0), "physical group removal can retain a logical subtree");
+        }
+
+        void ApplyAndCheck((byte[] Key, byte[]? Value)[] changes)
+        {
+            store.Reads.Clear();
+            store.Writes.Clear();
+            if (parallel)
+            {
+                using PbtPartitionBatches partitions = PreparePartitions(changes);
+                root = TrieUpdater.UpdateRoot(store, root, partitions);
+            }
+            else
+            {
+                using PbtWriteBatchBuilder<PbtStorageFullKey> builder = new(0);
+                foreach ((byte[] key, byte[]? value) in changes)
+                {
+                    if (value is null) builder.Delete(new PbtStorageFullKey(key));
+                    else builder.Set(new PbtStorageFullKey(key), new ValueHash256(value));
+                }
+                root = TrieUpdater.UpdateRoot(store, root, builder.Build());
+            }
+
+            foreach ((PbtStorageNodePath path, ValueHash256 hash) in store.Reads)
+            {
+                Assert.That(hash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize(path)), $"old subtree read at {path}");
+                if (path.BitDepth != 0) nonRootReads++;
+            }
+            foreach ((byte[] key, byte[]? value) in changes)
+            {
+                if (value is null) oracle.Delete(key);
+                else oracle.Insert(key, value);
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+                foreach ((PbtStorageNodePath path, ValueHash256 hash, bool isNull) in store.Writes)
+                {
+                    Assert.That(hash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize(path)), $"new subtree write at {path}, null payload: {isNull}");
+                    if (path.BitDepth != 0) nonRootWrites++;
+                    if (isNull)
+                    {
+                        nullWrites++;
+                        if (hash != default) survivingNullWrites++;
+                    }
+                }
+            }
+        }
+    }
+
+    private sealed class HashRecordingStore : IPbtStore, IDisposable
+    {
+        private readonly PbtNodeGroupStore _store = new();
+        internal List<(PbtStorageNodePath Path, ValueHash256 Hash)> Reads { get; } = [];
+        internal List<(PbtStorageNodePath Path, ValueHash256 Hash, bool IsNull)> Writes { get; } = [];
+
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash) where TPath : struct, IPbtNodePath<TPath>
+        {
+            lock (Reads) Reads.Add((groupKey.ToPath<PbtStorageNodePath>(), hash));
+            return _store.GetNodeGroup(groupKey, hash);
+        }
+
+        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        {
+            lock (Writes) Writes.Add((groupKey.ToPath<PbtStorageNodePath>(), hash, payload is null));
+            _store.SetNodeGroup(groupKey, hash, payload);
+        }
+
+        public void Dispose() => _store.Dispose();
+    }
+
     private static PbtPartitionBatches PreparePartitions((byte[] Key, byte[]? Value)[] changes) =>
         PbtStoreTestExtensions.PreparePartitions(changes);
 
@@ -311,7 +413,7 @@ public class ParallelUpdateRootTests
         internal int ActiveReads => _activeReads;
         internal bool DuplicateWrites { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash) where TPath : struct, IPbtNodePath<TPath>
         {
             Interlocked.Increment(ref _activeReads);
             try
@@ -324,7 +426,7 @@ public class ParallelUpdateRootTests
                 }
                 if (FailWorker && groupKey.BitDepth > 12 && groupKey.GetByte(0) == 0x01 && groupKey.GetByte(1) >= 0x10)
                     throw new InvalidDataException("Injected worker failure after folding the first nibble.");
-                return Inner.GetNodeGroup(groupKey);
+                return Inner.GetNodeGroup(groupKey, hash);
             }
             finally
             {
@@ -332,14 +434,14 @@ public class ParallelUpdateRootTests
             }
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             lock (_writtenGroups)
             {
                 if (Writes == 0) _writtenGroups.Clear();
                 DuplicateWrites |= !_writtenGroups.Add(groupKey.ToPath<PbtStorageNodePath>());
                 Writes++;
-                Inner.SetNodeGroup(groupKey, payload);
+                Inner.SetNodeGroup(groupKey, hash, payload);
             }
         }
 

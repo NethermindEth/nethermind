@@ -9,7 +9,7 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>Retains immutable node groups by canonical path and the PBT root of their read-only view.</summary>
+/// <summary>Retains immutable node groups by canonical path and their logical subtree hash.</summary>
 /// <remarks>Each shard owns its payload references; a hit acquires a separate caller-owned reference under the shard lock.</remarks>
 public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
 {
@@ -49,14 +49,14 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         : 0;
     private static int BucketIndex<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => path.GetHashCode() & (BucketCount - 1);
 
-    internal bool TryGet<TPath>(in ValueHash256 root, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
         Partition partition = GetPartition(path);
         Shard shard = partition.Shards[ShardIndex(path)];
         lock (shard.Sync)
         {
             Entry? entry = shard.Entries?[BucketIndex(path)];
-            if (!Volatile.Read(ref _disposed) && entry is not null && entry.Root == root
+            if (!Volatile.Read(ref _disposed) && entry is not null && entry.GroupHash == groupHash
                 && entry.Path.Equals(path))
             {
                 entry.Payload.AcquireLease();
@@ -70,7 +70,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         return false;
     }
 
-    internal void Add<TPath>(in ValueHash256 root, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
+    internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
         Partition partition = GetPartition(path);
         long size = payload.GetSpan().Length + EntryOverhead;
@@ -81,7 +81,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             if (Volatile.Read(ref _disposed)) return;
             int bucket = BucketIndex(path);
             Entry? previous = shard.Entries?[bucket];
-            if (previous is not null && previous.Root == root && previous.Path.Equals(path)) return;
+            if (previous is not null && previous.GroupHash == groupHash && previous.Path.Equals(path)) return;
             if ((ulong)(shard.MemorySize + size) > partition.ShardBudget)
             {
                 ClearShard(partition, shard);
@@ -94,7 +94,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             }
             // Copy only on admission: a shrunk pooled payload may retain far more memory than its visible length.
             RefCountingMemory cachedPayload = RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
-            shard.Entries[bucket] = new Entry(root, path.ToPath<PbtStorageNodePath>(), cachedPayload, size);
+            shard.Entries[bucket] = new Entry(groupHash, path.ToPath<PbtStorageNodePath>(), cachedPayload, size);
             ChangeSize(partition, shard, size);
             if (previous is not null)
             {
@@ -148,5 +148,5 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         internal long MemorySize;
     }
 
-    private sealed record Entry(ValueHash256 Root, PbtStorageNodePath Path, RefCountingMemory Payload, long Size);
+    private sealed record Entry(ValueHash256 GroupHash, PbtStorageNodePath Path, RefCountingMemory Payload, long Size);
 }

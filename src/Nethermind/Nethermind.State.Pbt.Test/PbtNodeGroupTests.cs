@@ -516,16 +516,16 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new();
         using RefCountingMemory publishedPayload = PooledRefCountingMemoryProvider.Instance.Rent(payload.Length);
         payload.CopyTo(publishedPayload.GetSpan());
-        store.SetNodeGroup(smallPath, publishedPayload);
-        using (RefCountingMemory lease = store.GetNodeGroup(storagePath)!)
+        store.SetNodeGroup(smallPath, PbtNodeCodec.Hash(new PbtNodeReader(encoding)), publishedPayload);
+        using (RefCountingMemory lease = store.GetPhysicalNodeGroup(storagePath)!)
             Assert.That(lease.GetSpan().ToArray(), Is.EqualTo(payload));
-        store.SetNodeGroup(storagePath, null);
-        Assert.That(store.GetNodeGroup(smallPath), Is.Null);
-        store.SetNodeGroup(storagePath, publishedPayload);
-        using (RefCountingMemory lease = store.GetNodeGroup(smallPath)!)
+        store.SetNodeGroup(storagePath, default, null);
+        Assert.That(store.GetPhysicalNodeGroup(smallPath), Is.Null);
+        store.SetNodeGroup(storagePath, PbtNodeCodec.Hash(new PbtNodeReader(encoding)), publishedPayload);
+        using (RefCountingMemory lease = store.GetPhysicalNodeGroup(smallPath)!)
             Assert.That(lease.GetSpan().ToArray(), Is.EqualTo(payload));
-        store.SetNodeGroup(smallPath, null);
-        Assert.That(store.GetNodeGroup(storagePath), Is.Null);
+        store.SetNodeGroup(smallPath, default, null);
+        Assert.That(store.GetPhysicalNodeGroup(storagePath), Is.Null);
     }
 
     [TestCase(34, 272)]
@@ -703,7 +703,7 @@ public class PbtNodeGroupTests
         if (present) store.SetNode(rootPath, encoding, memory);
         WarmReadStore persistence = new(store);
         TrieUpdaterMetrics metrics = new();
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, rootPath, metrics);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, rootPath, store.GetGroupHash(rootPath), metrics);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, memory);
         using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
@@ -752,7 +752,7 @@ public class PbtNodeGroupTests
             ? PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(key), Value(1))
             : PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
         store.SetNode(path, encoding);
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, new ValueHash256(Value(1)), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, PooledRefCountingMemoryProvider.Instance);
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree node = default;
         using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
@@ -783,7 +783,7 @@ public class PbtNodeGroupTests
         stored.SetNode(groupKey, encoding);
         using PoisoningStore store = new(stored);
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree materialized;
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, PbtNodeCodec.Hash(new PbtNodeReader(encoding)), null);
         using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree borrowed = reader.Acquire(PbtFourLevelGroupGeometry.RootPosition);
@@ -804,7 +804,7 @@ public class PbtNodeGroupTests
         RefCountingMemory payload = memory.Rent(1);
         payload.GetSpan()[0] = 0xff;
         WarmReadStore persistence = new(store) { Payload = payload };
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, new([], 0), null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(persistence, new([], 0), new ValueHash256(Value(1)), null);
         using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
             if (access) Assert.Throws<InvalidDataException>(() => reader.GetEncoding(PbtFourLevelGroupGeometry.RootPosition));
@@ -862,7 +862,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new(provider);
         PbtStorageNodePath rootPath = new([], 0);
         if (scenario != 3) store.SetNode(rootPath, LeafEncoding(0x00, 1), provider);
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, provider);
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree original = default;
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree result = default;
@@ -924,7 +924,7 @@ public class PbtNodeGroupTests
         tree.ApplyBatch(entries);
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads(tree.PhysicalPayloads);
         PbtStorageNodePath rootPath = new([], 0);
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, new TrackingMemoryProvider());
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[16];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree root = default;
@@ -1001,7 +1001,7 @@ public class PbtNodeGroupTests
         byte[] key = Bytes.FromHexString($"{slot << 4:X2}00");
         using PbtNodeGroupStore store = new();
         PbtStorageNodePath rootPath = new([], 0);
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, rootPath, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath, new TrackingMemoryProvider());
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[] frontier = new TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.DecompositionEntry[16];
         TrieUpdater<PbtStorageFullKey, PbtStorageNodePath>.Subtree subtree = default;
@@ -1121,7 +1121,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads(tree.PhysicalPayloads);
         PbtNodePath boundary = new(Bytes.FromHexString("00"), 4);
         store.SetNode(boundary, null);
-        using RefCountingMemory? descendantGroup = store.GetNodeGroup(boundary);
+        using RefCountingMemory? descendantGroup = store.GetPhysicalNodeGroup(boundary);
         Assert.That(descendantGroup, Is.Not.Null);
         Assert.That(store.GetNode(boundary), Is.Null);
         using PbtWriteBatchBuilder<PbtFullKey> changes = new(0);
@@ -1204,10 +1204,10 @@ public class PbtNodeGroupTests
 
         using PbtNodeGroupStore store = new(provider);
         store.SetNode(rootPath, firstEncoding, provider);
-        RefCountingMemory firstLease = store.GetNodeGroup(rootPath)!;
+        RefCountingMemory firstLease = store.GetPhysicalNodeGroup(rootPath)!;
 
         store.SetNode(rootPath, secondEncoding, provider);
-        RefCountingMemory secondLease = store.GetNodeGroup(rootPath)!;
+        RefCountingMemory secondLease = store.GetPhysicalNodeGroup(rootPath)!;
         Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath.ToPath<PbtStorageNodePath>(), firstEncoding)])));
 
         store.SetNode(rootPath, null, provider);
@@ -1215,7 +1215,7 @@ public class PbtNodeGroupTests
         Assert.That(secondLease.GetSpan().ToArray(), Is.EqualTo(EncodeGroup(rootPath, [new PbtNodeRecord(rootPath.ToPath<PbtStorageNodePath>(), secondEncoding)])));
 
         store.SetNode(rootPath, thirdEncoding, provider);
-        RefCountingMemory thirdLease = store.GetNodeGroup(rootPath)!;
+        RefCountingMemory thirdLease = store.GetPhysicalNodeGroup(rootPath)!;
         store.Dispose();
 
         using (Assert.EnterMultipleScope())
@@ -1243,16 +1243,16 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new();
         RefCountingMemory payload = provider.Rent(expected.Length);
         expected.CopyTo(payload.GetSpan());
-        store.SetNodeGroup(rootPath, payload);
+        store.SetNodeGroup(rootPath, PbtNodeCodec.Hash(new PbtNodeReader(LeafEncoding(0x00, 1))), payload);
         ((IDisposable)payload).Dispose();
 
-        using (RefCountingMemory lease = store.GetNodeGroup(rootPath)!)
+        using (RefCountingMemory lease = store.GetPhysicalNodeGroup(rootPath)!)
         {
-            if (selfReplacement) store.SetNodeGroup(rootPath, lease);
+            if (selfReplacement) store.SetNodeGroup(rootPath, store.GetGroupHash(rootPath), lease);
             Assert.That(lease.GetSpan().ToArray(), Is.EqualTo(expected));
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1));
-        using (RefCountingMemory lease = store.GetNodeGroup(rootPath)!)
+        using (RefCountingMemory lease = store.GetPhysicalNodeGroup(rootPath)!)
         {
             store.Dispose();
             Assert.That(lease.GetSpan().ToArray(), Is.EqualTo(expected));
@@ -1277,7 +1277,7 @@ public class PbtNodeGroupTests
         RefCountingMemory rejectedPayload = provider.Rent(rejectedBytes.Length);
         rejectedBytes.CopyTo(rejectedPayload.GetSpan());
 
-        Assert.That(() => store.SetNodeGroup(groupKey, rejectedPayload), Throws.TypeOf(exceptionType));
+        Assert.That(() => store.SetNodeGroup(groupKey, PbtNodeCodec.Hash(new PbtNodeReader(encoding)), rejectedPayload), Throws.TypeOf(exceptionType));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.GetNode(rootPath), Is.EqualTo(encoding));
@@ -1310,11 +1310,11 @@ public class PbtNodeGroupTests
         root = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
         Assert.That(store.Publishes, Is.EqualTo(2));
         PbtNodePath rootPath = new([], 0);
-        using RefCountingMemory priorPayload = store.Inner.GetNodeGroup(rootPath)!;
+        using RefCountingMemory priorPayload = store.Inner.GetPhysicalNodeGroup(rootPath)!;
         byte[] expectedPayload = priorPayload.GetSpan().ToArray();
 
         ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, changedBatch.Build());
-        using RefCountingMemory unchangedPayload = store.Inner.GetNodeGroup(rootPath)!;
+        using RefCountingMemory unchangedPayload = store.Inner.GetPhysicalNodeGroup(rootPath)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unchangedPayload.GetSpan().ToArray(), Is.EqualTo(expectedPayload));
@@ -1437,9 +1437,9 @@ public class PbtNodeGroupTests
         internal List<int> ReleasedGroupDepths { get; } = [];
         internal int ReadCount { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
         {
-            using RefCountingMemory? payload = Inner.GetNodeGroup(groupKey);
+            using RefCountingMemory? payload = Inner.GetNodeGroup(groupKey, groupHash);
             if (payload is null) return null;
             int length = payload.GetSpan().Length;
             ReadCount++;
@@ -1449,7 +1449,7 @@ public class PbtNodeGroupTests
                 () => ReleasedGroupDepths.Add(groupKey.BitDepth)));
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => Inner.SetNodeGroup(groupKey, payload);
+        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => Inner.SetNodeGroup(groupKey, groupHash, payload);
         public void Dispose() => Inner.Dispose();
     }
 
@@ -1472,11 +1472,11 @@ public class PbtNodeGroupTests
         internal PbtNodeGroupStore Inner { get; } = new();
         internal int Publishes { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => Inner.GetNodeGroup(groupKey);
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath> => Inner.GetNodeGroup(groupKey, groupHash);
+        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             Publishes++;
-            Inner.SetNodeGroup(groupKey, payload);
+            Inner.SetNodeGroup(groupKey, groupHash, payload);
         }
         public void Dispose() => Inner.Dispose();
     }
@@ -1664,7 +1664,7 @@ public class PbtNodeGroupTests
         }
         byte[] sourcePayload = EncodeGroup(groupKey, records);
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads([new(groupKey.ToEncodedArray(), sourcePayload)]);
-        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, null);
+        GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> reader = new(store, groupKey, new ValueHash256(Value(1)), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey, new TrackingMemoryProvider());
         using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref reader))
         {
@@ -1991,16 +1991,21 @@ public class PbtNodeGroupTests
                 if (matches) expectedGroups.Add(groupKey);
             }
         }
+        EipReferenceTree oracle = new();
+        oracle.Insert(first.Bytes, Value(1));
+        oracle.Insert(second.Bytes, Value(2));
         WarmReadStore reader = new(store);
-        PbtTrieWarmer.WarmUpPath(reader, query);
+        PbtTrieWarmer.WarmUpPath(reader, root, query);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Reads, Is.EquivalentTo(expectedGroups));
             Assert.That(reader.Reads.Count, Is.EqualTo(expectedGroups.Count), "each group is fetched once");
+            foreach ((PbtStorageNodePath groupKey, ValueHash256 groupHash) in reader.Hashes)
+                Assert.That(groupHash, Is.EqualTo(new ValueHash256(oracle.Merkelize(groupKey))), $"warm group {groupKey.BitDepth}");
             Assert.That(store.ExportPhysicalPayloads().Count, Is.EqualTo(before.Count));
             foreach (PbtPhysicalPayload physical in before)
             {
-                using RefCountingMemory payload = store.GetNodeGroup(PbtStorageNodePath.Decode(physical.Key.Span))!;
+                using RefCountingMemory payload = store.GetPhysicalNodeGroup(PbtStorageNodePath.Decode(physical.Key.Span))!;
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(physical.Payload.ToArray()));
             }
             using PbtWriteBatchBuilder<TKey> unchanged = new(0);
@@ -2021,7 +2026,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new();
         WarmReadStore reader = new(store);
         TKey key = TKey.Create(Bytes.FromHexString("00"));
-        PbtTrieWarmer.WarmUpPath(reader, key);
+        PbtTrieWarmer.WarmUpPath(reader, default, key);
         Assert.That(reader.Reads.Count, Is.EqualTo(1), "empty tree");
 
         PbtNodePath root = new([], 0);
@@ -2031,8 +2036,8 @@ public class PbtNodeGroupTests
         RefCountingMemory payload = memory.Rent(bytes.Length);
         bytes.CopyTo(payload.GetSpan());
         reader.Payload = payload;
-        if (invalidPayload) Assert.Throws<InvalidDataException>(() => PbtTrieWarmer.WarmUpPath(reader, key));
-        else PbtTrieWarmer.WarmUpPath(reader, key);
+        if (invalidPayload) Assert.Throws<InvalidDataException>(() => PbtTrieWarmer.WarmUpPath(reader, default, key));
+        else PbtTrieWarmer.WarmUpPath(reader, default, key);
         ((IDisposable)payload).Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
@@ -2040,17 +2045,19 @@ public class PbtNodeGroupTests
     private sealed class WarmReadStore(IPbtStore store) : IPbtStore
     {
         internal List<PbtStorageNodePath> Reads { get; } = [];
+        internal List<(PbtStorageNodePath Path, ValueHash256 Hash)> Hashes { get; } = [];
         internal RefCountingMemory? Payload { get; set; }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
         {
             Reads.Add(groupKey.ToPath<PbtStorageNodePath>());
-            if (Payload is not { } payload) return store.GetNodeGroup(groupKey);
+            Hashes.Add((groupKey.ToPath<PbtStorageNodePath>(), groupHash));
+            if (Payload is not { } payload) return store.GetNodeGroup(groupKey, groupHash);
             payload.AcquireLease();
             return payload;
         }
 
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
+        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
             throw new AssertionException("Path warming must never write.");
     }
 

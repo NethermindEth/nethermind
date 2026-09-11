@@ -94,7 +94,7 @@ internal sealed class PbtTrieWarmupSession(
         if (!TryEnterOperation(jobSequenceId)) return false;
         try
         {
-            PbtTrieWarmer.WarmUpPath(this, key);
+            PbtTrieWarmer.WarmUpPath(this, TreeRoot, key);
             return true;
         }
         finally
@@ -114,18 +114,17 @@ internal sealed class PbtTrieWarmupSession(
     private void ExitOperation() => RefCountingLease.ReleaseOnce(ref _operations);
 
     // Only frozen, independently leased layers participate; live write buffers and growing snapshot lists never do.
-    RefCountingMemory? IPbtStore.GetNodeGroup<TPath>(TPath groupKey) where TPath : struct
+    RefCountingMemory? IPbtStore.GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct
     {
         for (int index = initialSnapshots.Count - 1; index >= 0; index--)
             if (initialSnapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
-        ValueHash256 root = readOnlyBundle.TreeRoot;
-        if (trieNodeCache?.TryGet(root, groupKey, out RefCountingMemory? cached) == true) return cached;
+        if (trieNodeCache?.TryGet(groupHash, groupKey, out RefCountingMemory? cached) == true) return cached;
         RefCountingMemory? result = readOnlyBundle.GetNodeGroup(groupKey);
-        if (result is not null) trieNodeCache?.Add(root, groupKey, result);
+        if (result is not null) trieNodeCache?.Add(groupHash, groupKey, result);
         return result;
     }
 
-    void IPbtStore.SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct => throw new NotSupportedException();
+    void IPbtStore.SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct => throw new NotSupportedException();
 
     public void Dispose()
     {

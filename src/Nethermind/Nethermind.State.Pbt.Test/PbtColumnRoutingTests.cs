@@ -32,7 +32,7 @@ public class PbtColumnRoutingTests
 
         using PbtNodeGroupStore store = new();
         store.SetNode(node, nodeEncoding);
-        using RefCountingMemory? group = store.GetNodeGroup(node);
+        using RefCountingMemory? group = store.GetPhysicalNodeGroup(node);
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
         {

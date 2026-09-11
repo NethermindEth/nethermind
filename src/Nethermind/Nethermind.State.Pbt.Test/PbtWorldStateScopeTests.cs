@@ -52,7 +52,7 @@ public class PbtWorldStateScopeTests
         using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
         {
             PbtNodePath rootPath = new([], 0);
-            using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath);
+            using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath, canonicalRoot.ValueHash256);
             Assert.That(group, Is.Not.Null);
             using RefCountingMemory? cached = cache.TryGet(canonicalRoot.ValueHash256, rootPath, out RefCountingMemory? payload) ? payload : null;
             Assert.That(cached, Is.Not.Null, "the override bundle must populate the injected singleton cache");
@@ -570,29 +570,29 @@ public class PbtWorldStateScopeTests
         scope.Commit(0);
         ValueHash256 committedRoot = scope.Bundle.TreeRoot;
         PbtStorageNodePath rootPath = new([], 0);
-        byte[] committedGroup = ReadGroup(new PbtSnapshotStore(scope.Bundle), rootPath);
+        byte[] committedGroup = ReadGroup(new PbtSnapshotStore(scope.Bundle), rootPath, committedRoot);
         Write(scope, 2);
         scope.UpdateRootHash();
         using IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
         PbtTrieWarmupSession session = (PbtTrieWarmupSession)borrow;
         Assert.That(session.TreeRoot, Is.EqualTo(committedRoot), "capture excludes already-folded uncommitted writes");
-        byte[] frozen = ReadGroup((IPbtStore)session, rootPath);
+        byte[] frozen = ReadGroup((IPbtStore)session, rootPath, session.TreeRoot);
         Assert.That(frozen, Is.EqualTo(committedGroup));
         ValueHash256 frozenRoot = session.TreeRoot;
         for (byte balance = 2; balance < 5; balance++)
         {
             Write(scope, balance);
-            Assert.That(ReadGroup((IPbtStore)session, rootPath), Is.EqualTo(frozen));
+            Assert.That(ReadGroup((IPbtStore)session, rootPath, session.TreeRoot), Is.EqualTo(frozen));
             scope.UpdateRootHash();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(ReadGroup((IPbtStore)session, rootPath), Is.EqualTo(frozen));
+                Assert.That(ReadGroup((IPbtStore)session, rootPath, session.TreeRoot), Is.EqualTo(frozen));
                 Assert.That(session.TreeRoot, Is.EqualTo(frozenRoot));
                 Assert.That(scope.RootHash.ValueHash256, Is.Not.EqualTo(frozenRoot));
             }
         }
         scope.Dispose();
-        Assert.That(ReadGroup((IPbtStore)session, rootPath), Is.EqualTo(frozen), "the outstanding borrow still owns the frozen layer");
+        Assert.That(ReadGroup((IPbtStore)session, rootPath, session.TreeRoot), Is.EqualTo(frozen), "the outstanding borrow still owns the frozen layer");
     }
 
     [Test]
@@ -846,9 +846,9 @@ public class PbtWorldStateScopeTests
         ? warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence)
         : warmer.StorageWarmer!.WarmUpStorageTrie((UInt256)(uint)slot, warmer.SlotSequence);
 
-    private static byte[] ReadGroup<TPath>(IPbtStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    private static byte[] ReadGroup<TPath>(IPbtStore store, TPath path, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
     {
-        using RefCountingMemory? payload = store.GetNodeGroup(path);
+        using RefCountingMemory? payload = store.GetNodeGroup(path, groupHash);
         Assert.That(payload, Is.Not.Null);
         return payload!.GetSpan().ToArray();
     }
@@ -882,7 +882,7 @@ public class PbtWorldStateScopeTests
         {
             BeforeRead?.Invoke();
             GroupReads++;
-            return _store.GetNodeGroup(groupKey);
+            return _store.GetPhysicalNodeGroup(groupKey);
         }
         public void Dispose()
         {

@@ -64,6 +64,55 @@ internal sealed class PbtTreeHarness : IDisposable
 
 internal static class PbtStoreTestExtensions
 {
+    internal static RefCountingMemory? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
+        where TPath : struct, IPbtNodePath<TPath>
+        => store.GetNodeGroup(groupKey, store.GetGroupHash(groupKey));
+
+    internal static ValueHash256 GetGroupHash<TPath>(this PbtNodeGroupStore store, TPath groupKey)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        IReadOnlyList<PbtPhysicalPayload> groups = store.ExportPhysicalPayloads();
+        PbtStorageNodePath path = new([], 0);
+        while (true)
+        {
+            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
+            byte[]? encoding = null;
+            foreach (PbtPhysicalPayload physical in groups)
+                if (PbtStorageNodePath.Decode(physical.Key.Span).Equals(location.GroupKey))
+                    encoding = ResolveNode(new PbtNodeGroupReader<PbtStorageNodePath>(location.GroupKey, physical.Payload.Span), location.Position);
+            if (encoding is null) return default;
+            PbtNodeReader node = new(encoding);
+            if (node.IsLeaf)
+            {
+                if (node.Key.Length * 8 < groupKey.BitDepth) return default;
+                for (int bit = 0; bit < groupKey.BitDepth; bit++)
+                    if (TrieUpdater.GetBit(node.Key, bit) != groupKey.GetBit(bit)) return default;
+                return PbtNodeCodec.Hash(node);
+            }
+            int branchDepth = path.BitDepth + node.Prefix.BitCount;
+            for (int bit = path.BitDepth; bit < Math.Min(branchDepth, groupKey.BitDepth); bit++)
+                if (TrieUpdater.GetBit(node.Prefix.Bytes, bit - path.BitDepth) != groupKey.GetBit(bit)) return default;
+            if (branchDepth >= groupKey.BitDepth)
+            {
+                int prefixBits = branchDepth - groupKey.BitDepth;
+                byte[] prefix = new byte[(prefixBits + 7) / 8];
+                for (int bit = 0; bit < prefixBits; bit++)
+                    prefix[bit / 8] |= (byte)(TrieUpdater.GetBit(node.Prefix.Bytes, groupKey.BitDepth - path.BitDepth + bit) << (7 - bit % 8));
+                return PbtNodeCodec.Hash(new PbtNodeReader(PbtNodeCodec.EncodeBranch(prefix, prefixBits, node.LeftHash, node.RightHash)));
+            }
+            path = path.Append(node.Prefix, groupKey.GetBit(branchDepth));
+        }
+    }
+
+    internal static byte[]? GetNode<TPath>(this IPbtStore store, TPath path, in ValueHash256 root)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
+        using RefCountingMemory? payload = store.GetNodeGroup(path, root);
+        if (payload is null) return null;
+        return ResolveNode(new PbtNodeGroupReader<TPath>(path, payload.GetSpan()), PbtFourLevelGroupGeometry.RootPosition);
+    }
+
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         Span<byte> encoding = stackalloc byte[path.EncodedLength];
@@ -107,7 +156,7 @@ internal static class PbtStoreTestExtensions
         else builder.Set(key, new ValueHash256(value));
     }
 
-    internal static byte[]? GetNode<TPath>(this IPbtStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    internal static byte[]? GetNode<TPath>(this PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         PbtStorageNodePath currentPath = new([], 0);
         while (currentPath.BitDepth <= path.BitDepth)
@@ -125,10 +174,10 @@ internal static class PbtStoreTestExtensions
         return null;
     }
 
-    private static byte[]? GetLogicalNode<TPath>(IPbtStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    private static byte[]? GetLogicalNode<TPath>(PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
-        using RefCountingMemory? payload = store.GetNodeGroup(location.GroupKey);
+        using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
         PbtNodeGroupReader<TPath> reader = new(location.GroupKey, payload.GetSpan());
         return ResolveNode(reader, location.Position);
@@ -147,11 +196,11 @@ internal static class PbtStoreTestExtensions
             PbtNodeCodec.Hash(new PbtNodeReader(left)), PbtNodeCodec.Hash(new PbtNodeReader(right)));
     }
 
-    internal static void SetNode<TPath>(this IPbtStore store, TPath path, byte[]? encoding,
+    internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding,
         IRefCountingMemoryProvider? memoryProvider = null) where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
-        using RefCountingMemory? priorPayload = store.GetNodeGroup(location.GroupKey);
+        using RefCountingMemory? priorPayload = store.GetPhysicalNodeGroup(location.GroupKey);
         List<PbtNodeRecord> records = [];
         if (priorPayload is not null)
         {
@@ -166,7 +215,7 @@ internal static class PbtStoreTestExtensions
         if (encoding is not null) records.Add(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), encoding));
         if (records.Count == 0)
         {
-            store.SetNodeGroup(location.GroupKey, null);
+            store.SetNodeGroup(location.GroupKey, default, null);
             return;
         }
 
@@ -175,7 +224,7 @@ internal static class PbtStoreTestExtensions
         {
             PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records);
             using RefCountingMemory payload = writer.Detach()!;
-            store.SetNodeGroup(location.GroupKey, payload);
+            store.SetNodeGroup(location.GroupKey, encoding is null ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
         }
         finally
         {

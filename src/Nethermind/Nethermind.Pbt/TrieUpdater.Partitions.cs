@@ -72,7 +72,7 @@ public static partial class TrieUpdater
                 AddWorker<PbtStorageFullKey, PbtStorageNodePath>(changes.Storage, Eip8297KeyDerivation.StorageZone);
                 if (workers.Count == 0) return currentRoot;
 
-                GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> rootReader = new(store, RootPath, metrics);
+                GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> rootReader = new(store, RootPath, currentRoot, metrics);
                 using (new GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>.Scope(ref rootReader))
                 {
                     using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(RootPath, memoryProvider);
@@ -90,11 +90,11 @@ public static partial class TrieUpdater
                         ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         if (sharedWriters[slot] is not { } sharedWriter)
                         {
-                            sharedReader = new(store, new PbtStorageNodePath([(byte)(slot << 4)], 4), metrics);
+                            Subtree boundary = TakeBoundary(ref rootReader, rootWriter, rootBoundaries.AsSpan(), ref rootFrontierMask, slot);
+                            sharedReader = new(store, new PbtStorageNodePath([(byte)(slot << 4)], 4), boundary.Hash(4), metrics);
                             sharedWriter = new(sharedReader.GroupKey, memoryProvider);
                             sharedWriters[slot] = sharedWriter;
                             zoneBoundaries[slot] = new(PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots);
-                            Subtree boundary = TakeBoundary(ref rootReader, rootWriter, rootBoundaries.AsSpan(), ref rootFrontierMask, slot);
                             Decompose(ref sharedReader, sharedWriter, ref boundary, 4, zoneBoundaries[slot]!.AsSpan(), ref zoneFrontierMasks[slot], touchedZoneMasks[slot]);
                         }
                         worker.Current = TakeBoundary(ref sharedReader, sharedWriter, zoneBoundaries[slot]!.AsSpan(), ref zoneFrontierMasks[slot], worker.Zone & 15);
@@ -112,14 +112,15 @@ public static partial class TrieUpdater
                         if (sharedWriters[slot] is not { } sharedWriter) continue;
                         ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         Subtree composed = Compose(ref sharedReader, sharedWriter, metrics, zoneBoundaries[slot]!.AsSpan(), zoneFrontierMasks[slot]);
+                        ValueHash256 groupHash = composed.Hash(4);
                         SetBoundary(rootBoundaries.AsSpan(), ref rootFrontierMask, slot, ref composed);
                         using RefCountingMemory? payload = sharedWriter.Detach();
-                        store.SetNodeGroup(sharedReader.GroupKey, payload);
+                        store.SetNodeGroup(sharedReader.GroupKey, groupHash, payload);
                     }
                     Subtree result = Compose(ref rootReader, rootWriter, metrics, rootBoundaries.AsSpan(), rootFrontierMask);
                     ValueHash256 hash = rootWriter.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
                     using (RefCountingMemory? payload = rootWriter.Detach())
-                        store.SetNodeGroup(RootPath, payload);
+                        store.SetNodeGroup(RootPath, hash, payload);
                     return hash;
                 }
             }
@@ -171,7 +172,7 @@ public static partial class TrieUpdater
     {
         internal override void Fold()
         {
-            GroupFrameReader<TKey, TPath> reader = new(store, TPath.Create([Zone], 8), Metrics);
+            GroupFrameReader<TKey, TPath> reader = new(store, TPath.Create([Zone], 8), Current.Hash(8), Metrics);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
                 using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
@@ -181,7 +182,7 @@ public static partial class TrieUpdater
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, ref current,
                     operations.AsSpan(), 8, new(table.AsSpan(), 8, false));
                 using (RefCountingMemory? payload = writer.Detach())
-                    store.SetNodeGroup(reader.GroupKey, payload);
+                    store.SetNodeGroup(reader.GroupKey, result.Hash(8), payload);
                 result = result.Materialize();
                 Result = Subtree.TakeFrom<TKey, TPath>(ref result);
             }

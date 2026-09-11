@@ -81,7 +81,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         if (operations.IsEmpty) return currentRoot;
         memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
-        GroupFrameReader<TKey, TPath> reader = new(store, RootPath, metrics);
+        GroupFrameReader<TKey, TPath> reader = new(store, RootPath, currentRoot, metrics);
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(RootPath, memoryProvider);
@@ -89,7 +89,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             Subtree result = FoldMutations(store, metrics, ref reader, writer, memoryProvider, ref root, operations, 0, plan);
             ValueHash256 hash = writer.Write(PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
             using (RefCountingMemory? payload = writer.Detach())
-                store.SetNodeGroup(reader.GroupKey, payload);
+                store.SetNodeGroup(reader.GroupKey, hash, payload);
             return hash;
         }
     }
@@ -209,13 +209,13 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
         // is left for the caller to place, allowing composition to promote it through a compressed path.
-        GroupFrameReader<TKey, TPath> reader = new(store, PbtNodePathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), metrics);
+        GroupFrameReader<TKey, TPath> reader = new(store, PbtNodePathOperations.FromKey<TPath>(operations[0].Key.Bytes, bitDepth), current.Hash(bitDepth), metrics);
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(reader.GroupKey, memoryProvider);
             Subtree result = FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, ref current, operations, bitDepth, partition);
             using (RefCountingMemory? payload = writer.Detach())
-                store.SetNodeGroup(reader.GroupKey, payload);
+                store.SetNodeGroup(reader.GroupKey, result.Hash(bitDepth), payload);
             return result.Materialize();
         }
     }
@@ -516,6 +516,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int EncodedLength(int depth) => IsLeaf
             ? (_kind == NodeKind.Leaf ? 3 + _key.Length + 32 : _encoding.Length)
             : 3 + PbtBitPrefix.ByteCount(Path!.Value.BitDepth + Prefix.BitCount - depth) + 64;
+
+        internal readonly ValueHash256 Hash(int depth)
+        {
+            if (IsEmpty) return default;
+            if (_kind == NodeKind.Original && (IsLeaf || depth == Path!.Value.BitDepth))
+                return PbtNodeCodec.Hash(Reader);
+            Span<byte> encoding = stackalloc byte[EncodedLength(depth)];
+            return Encode(encoding, depth);
+        }
 
         internal readonly ValueHash256 Encode(Span<byte> encoding, int depth)
         {

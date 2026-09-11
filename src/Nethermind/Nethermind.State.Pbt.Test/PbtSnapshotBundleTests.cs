@@ -361,7 +361,7 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(flatValue.Bytes)));
             Assert.That(bundle.EnumeratePendingLeafMutationsForTest(), Is.EquivalentTo(new[] { new KeyValuePair<PbtStorageFullKey, ValueHash256?>(key, flatValue) }));
             Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.Hash(new PbtNodeReader(expectedLeaf))));
-            Assert.That(store.GetNode(new PbtNodePath([], 0)), Is.EqualTo(delete ? null : expectedLeaf));
+            Assert.That(store.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : expectedLeaf));
         }
     }
 
@@ -405,7 +405,7 @@ public class PbtSnapshotBundleTests
     [TestCase(0UL, 2)]
     [TestCase(1UL, 2)]
     [TestCase(1048576UL, 1)]
-    public void Trie_cache_reuses_only_matching_immutable_views(ulong budget, int expectedReads)
+    public void Trie_cache_reuses_only_matching_subtree_hashes(ulong budget, int expectedReads)
     {
         long initialHits = Metrics.PbtTrieCacheHits["account"];
         long initialMisses = Metrics.PbtTrieCacheMisses["account"];
@@ -420,7 +420,7 @@ public class PbtSnapshotBundleTests
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         for (int read = 0; read < 2; read++)
         {
-            using RefCountingMemory? payload = bundle.GetNodeGroup(path);
+            using RefCountingMemory? payload = bundle.GetNodeGroup(path, reader.CurrentRoot);
             Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
         }
         using (Assert.EnterMultipleScope())
@@ -438,7 +438,7 @@ public class PbtSnapshotBundleTests
         Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeDirectRead + 2), "direct read-only reads bypass the populated trie cache");
         Reader forkReader = new(default, null) { GroupPayload = encoding, CurrentRoot = new ValueHash256(Value(2)) };
         using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
-        using RefCountingMemory? forkPayload = fork.GetNodeGroup(path);
+        using RefCountingMemory? forkPayload = fork.GetNodeGroup(path, forkReader.CurrentRoot);
         Assert.That(forkReader.GroupReadCount, Is.EqualTo(1));
         Assert.That(cache.TryGet(default, new PbtNodePath([0], 4), out _), Is.False);
         Assert.That(cache.TryGet(default, new PbtStorageNodePath([], 0), out _), Is.False);
@@ -447,16 +447,89 @@ public class PbtSnapshotBundleTests
             Assert.That(Metrics.PbtTrieCacheHits["account"] - initialHits, Is.EqualTo(2 - expectedReads));
             Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(expectedReads + 3));
         }
-        using (RefCountingMemory? payload = bundle.GetNodeGroup(path))
+        using (RefCountingMemory? payload = bundle.GetNodeGroup(path, reader.CurrentRoot))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(encoding));
         int readsBeforeWarming = reader.GroupReadCount;
         using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
-        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(path);
+        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(path, reader.CurrentRoot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmed!.Memory.ToArray(), Is.EqualTo(encoding));
-            Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeWarming + expectedReads - 1), "warming must use the immutable base root, not its local view root");
+            Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeWarming + expectedReads - 1), "warming must use the supplied subtree hash, not its local view root");
         }
+    }
+
+    [Test]
+    public void Trie_cache_reuses_unchanged_descendants_across_roots([Values] bool warmFirst)
+    {
+        PbtNodePath path = new(Bytes.FromHexString("00"), 4);
+        byte[] originalNode = BranchEncoding(1);
+        byte[] changedNode = BranchEncoding(2);
+        ValueHash256 originalHash = PbtNodeCodec.Hash(new PbtNodeReader(originalNode));
+        ValueHash256 changedHash = PbtNodeCodec.Hash(new PbtNodeReader(changedNode));
+        PbtStorageNodePath childPath = PbtFourLevelGroupGeometry.PathOf(path, 0).ToPath<PbtStorageNodePath>();
+        byte[] original = EncodeGroup(path, [new PbtNodeRecord(childPath, originalNode)]);
+        byte[] changed = EncodeGroup(path, [new PbtNodeRecord(childPath, changedNode)]);
+        using PbtTrieNodeCache cache = new(new PbtConfig());
+        PbtResourcePool pool = new(new PbtConfig());
+        Reader reader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakA.ValueHash256 };
+        using PbtSnapshotBundle bundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
+        using (RefCountingMemory? payload = warmFirst
+            ? ((IPbtStore)session).GetNodeGroup(path, originalHash)
+            : bundle.GetNodeGroup(path, originalHash))
+            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
+        Assert.That(reader.GroupReadCount, Is.EqualTo(1));
+
+        Reader forkReader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakB.ValueHash256 };
+        using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtTrieWarmupSession forkSession = fork.CreateTrieWarmupSession(new NoopTrieWarmer(), 2);
+        using (RefCountingMemory? payload = warmFirst
+            ? fork.GetNodeGroup(path, originalHash)
+            : ((IPbtStore)forkSession).GetNodeGroup(path, originalHash))
+            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
+        Assert.That(forkReader.GroupReadCount, Is.Zero, "an unrelated tree-root change must not invalidate this subtree");
+
+        Reader changedReader = new(default, null) { GroupKey = path, GroupPayload = changed, CurrentRoot = TestItem.KeccakB.ValueHash256 };
+        using PbtSnapshotBundle changedBundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), changedReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using (RefCountingMemory? payload = changedBundle.GetNodeGroup(path, changedHash))
+            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(changed));
+        Assert.That(changedReader.GroupReadCount, Is.EqualTo(1), "different subtree hashes must miss even with the same whole-tree root");
+        using (RefCountingMemory? payload = bundle.GetNodeGroup(path, originalHash))
+            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
+        Assert.That(reader.GroupReadCount, Is.EqualTo(2), "replacement must not make the old view return the new subtree");
+    }
+
+    [Test]
+    public void Trie_cache_rejects_distinct_paths_in_the_same_bucket()
+    {
+        Dictionary<int, PbtNodePath> buckets = [];
+        PbtNodePath first = default;
+        PbtNodePath second = default;
+        bool found = false;
+        for (int suffix = 0; suffix <= 256; suffix++)
+        {
+            PbtNodePath candidate = new(new byte[] { Eip8297KeyDerivation.AccountZone, 0, (byte)(suffix >> 8), (byte)suffix }, 32);
+            int bucket = candidate.GetHashCode() & 255;
+            if (buckets.TryGetValue(bucket, out first))
+            {
+                second = candidate;
+                found = true;
+                break;
+            }
+            buckets.Add(bucket, candidate);
+        }
+        Assert.That(found, Is.True);
+        using PbtTrieNodeCache cache = new(new PbtConfig());
+        using RefCountingMemory original = Memory(Bytes.FromHexString("010203"));
+        using RefCountingMemory replacement = Memory(Bytes.FromHexString("040506"));
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+        cache.Add(hash, first, original);
+        Assert.That(cache.TryGet(hash, second, out _), Is.False);
+        cache.Add(hash, second, replacement);
+        Assert.That(cache.TryGet(hash, first, out _), Is.False);
+        Assert.That(cache.TryGet(hash, second, out RefCountingMemory? payload), Is.True);
+        using (payload) Assert.That(payload!.Memory.ToArray(), Is.EqualTo(replacement.Memory.ToArray()));
     }
 
     [Test]
@@ -749,16 +822,16 @@ public class PbtSnapshotBundleTests
         if (newestTier >= 2)
         {
             using RefCountingMemory cached = Memory(shared);
-            cache.Add(default, groupKey, cached);
+            cache.Add(TestItem.KeccakA.ValueHash256, groupKey, cached);
         }
         using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         if (newestTier == 3)
         {
             using RefCountingMemory? payload = tombstone ? null : Memory(write);
-            bundle.SetNodeGroup(wideGroupKey, payload);
+            bundle.SetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256, payload);
         }
 
-        using RefCountingMemory? actual = bundle.GetNodeGroup(wideGroupKey);
+        using RefCountingMemory? actual = bundle.GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
         byte[]? expected = tombstone ? null : newestTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
         using (Assert.EnterMultipleScope())
         {
@@ -766,7 +839,7 @@ public class PbtSnapshotBundleTests
             Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
         }
         using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
-        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey);
+        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmed?.Memory.ToArray(), Is.EqualTo(newestTier == 3 ? local : expected), "warming uses frozen layers, not live writes or stale cached base groups");
@@ -793,7 +866,7 @@ public class PbtSnapshotBundleTests
         byte[] originalGroup = EncodeGroup(originalGroupKey, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalGroupKey, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
         using RefCountingMemory originalPayload = Memory(originalGroup);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(Value(2)));
-        bundle.SetNodeGroup(originalGroupKey, originalPayload);
+        bundle.SetNodeGroup(originalGroupKey, TestItem.KeccakA.ValueHash256, originalPayload);
         using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
         changes.Set(new PbtStorageFullKey([3]), new ValueHash256(Value(4)));
 
@@ -814,9 +887,9 @@ public class PbtSnapshotBundleTests
         using RefCountingMemory originalPayload = Memory(original);
         using RefCountingMemory malformed = Memory(Bytes.FromHexString("7f"));
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(Value(2)));
-        bundle.SetNodeGroup(groupKey, originalPayload);
+        bundle.SetNodeGroup(groupKey, TestItem.KeccakA.ValueHash256, originalPayload);
 
-        Assert.Throws<InvalidDataException>(() => bundle.SetNodeGroup(groupKey, malformed));
+        Assert.Throws<InvalidDataException>(() => bundle.SetNodeGroup(groupKey, TestItem.KeccakB.ValueHash256, malformed));
         AssertSnapshotUnchanged(bundle, leafKey, groupKey, original);
         Assert.That(reader.GroupReadCount, Is.Zero);
     }
@@ -833,7 +906,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(originalLeafValue.Bytes));
         using RefCountingMemory originalPayload = Memory(originalNode);
-        bundle.SetNodeGroup(originalNodePath, originalPayload);
+        bundle.SetNodeGroup(originalNodePath, TestItem.KeccakA.ValueHash256, originalPayload);
         using PbtWriteBatchBuilder<PbtStorageFullKey> changes = new(0);
         changes.Set(new PbtStorageFullKey([3]), new ValueHash256(Value(4)));
 
@@ -1278,13 +1351,13 @@ public class PbtSnapshotBundleTests
     {
         public int ApplyCount { get; private set; }
         public int? FailedZone { get; init; }
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => bundle.GetNodeGroup(groupKey);
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath> => bundle.GetNodeGroup(groupKey, groupHash);
+        public void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             if (groupKey.BitDepth == 8 && groupKey.GetByte(0) == FailedZone)
                 throw new InvalidDataException("Configured partition write failure.");
             ApplyCount++;
-            bundle.SetNodeGroup(groupKey, payload);
+            bundle.SetNodeGroup(groupKey, groupHash, payload);
         }
     }
 }

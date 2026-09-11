@@ -95,19 +95,18 @@ public sealed class PbtSnapshotBundle(
         _storageBatch.CompleteDrain();
     }
 
-    internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => WriteBuffer.SetNodeGroup(groupKey, payload);
+    internal void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => WriteBuffer.SetNodeGroup(groupKey, payload);
 
-    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
-        ValueHash256 root = readOnlyBundle.TreeRoot;
-        if (trieNodeCache?.TryGet(root, groupKey, out payload) == true) return payload;
+        if (trieNodeCache?.TryGet(groupHash, groupKey, out payload) == true) return payload;
         payload = readOnlyBundle.GetNodeGroup(groupKey);
-        if (payload is not null) trieNodeCache?.Add(root, groupKey, payload);
+        if (payload is not null) trieNodeCache?.Add(groupHash, groupKey, payload);
         return payload;
     }
 

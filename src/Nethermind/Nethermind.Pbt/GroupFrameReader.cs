@@ -13,6 +13,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly IPbtStore _store;
+    private readonly ValueHash256 _groupHash;
     private readonly TrieUpdaterMetrics? _metrics;
     private RefCountingMemory? _lease;
     private bool _loaded;
@@ -22,9 +23,10 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private uint _hashed;
     internal uint Taken;
 
-    internal GroupFrameReader(IPbtStore store, TPath groupKey, TrieUpdaterMetrics? metrics)
+    internal GroupFrameReader(IPbtStore store, TPath groupKey, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
     {
         GroupKey = groupKey;
+        _groupHash = groupHash;
         _store = store;
         _metrics = metrics;
         metrics?.IncrementGroupFrameResolutions();
@@ -34,7 +36,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         if (_loaded) return;
         _metrics?.IncrementPhysicalGroupFetches();
-        _lease = _store.GetNodeGroup(GroupKey);
+        _lease = _store.GetNodeGroup(GroupKey, _groupHash);
         _loaded = true;
         if (_lease is null) return;
         try
