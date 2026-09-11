@@ -90,6 +90,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _metrics.IncrementStorageWrites();
         // Pair with HasStorageToClear: cached writes can bypass LoadFromTree, so register before journaling.
         PerContractState state = GetOrCreateStorage(storageCell.Address);
+        state.MarkJournalled();
         base.Set(in storageCell, newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
@@ -106,8 +107,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes : LoadFromTree(storageCell);
+    /// <remarks>
+    /// The journal only ever holds cells this contract has written, so for one that has written nothing
+    /// the probe cannot hit and is pure cost — and it is the more expensive of the two lookups, hashing
+    /// the whole <see cref="StorageCell"/> rather than just the index. Resolving the contract up front is
+    /// free: the read needs it anyway, and <see cref="GetOrCreateStorage"/> answers a repeated address
+    /// from a reference compare.
+    /// </remarks>
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        PerContractState state = GetOrCreateStorage(storageCell.Address);
+
+        return state.HasJournalledWrites && TryGetCachedValue(storageCell, out byte[]? bytes)
+            ? bytes
+            : state.LoadFromTree(storageCell);
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -787,6 +801,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
+        private bool _hasJournalledWrites = false;
         // Whether the contract held storage before the block and whether the block cleared it: together they say if a
         // cache of pre-block slots must drop them. Captured at the first tree creation, before any flush moves the root.
         private bool _hadStorageBeforeBlock;
@@ -898,6 +913,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
+            _hasJournalledWrites = false;
             _hadStorageBeforeBlock = false;
             _storageRootSeen = false;
             _wasCleared = false;
@@ -906,6 +922,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             BlockEndFate = AccountFate.Present;
             Pool.Return(this);
         }
+
+        /// <summary>Whether the write journal may hold a cell belonging to this contract.</summary>
+        /// <remarks>
+        /// Distinct from <c>_wasWritten</c>, which is set when a change is applied at commit time and so is
+        /// still false while the block executes. This one is set on the <see cref="PersistentStorageProvider.Set"/>
+        /// path before the cell is journaled, which is the only way a cell enters the journal.
+        /// It is never cleared while the journal could still hold an entry: a revert leaves it set, costing
+        /// only a probe that misses, and contracts are dropped only once the journal is empty.
+        /// </remarks>
+        public bool HasJournalledWrites => _hasJournalledWrites;
+
+        public void MarkJournalled() => _hasJournalledWrites = true;
 
         public void SaveChange(StorageCell storageCell, byte[] value)
         {

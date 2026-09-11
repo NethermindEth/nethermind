@@ -24,6 +24,7 @@ public class WarmStorageReadBenchmark
 
     private IWorldState _cleanJournal = null!;
     private IWorldState _dirtyJournal = null!;
+    private IWorldState _otherWritten = null!;
     private StorageCell _unwritten;
     private StorageCell _written;
 
@@ -58,13 +59,18 @@ public class WarmStorageReadBenchmark
 
         _cleanJournal = Create(address, value);
         _dirtyJournal = Create(address, value);
+        _otherWritten = Create(address, value);
 
-        // One unrelated write is enough to make every later read probe the journal and miss.
+        // Same contract: the read cannot skip the journal, because this contract really has entries there.
         _dirtyJournal.Set(_written, value);
+
+        // Another contract entirely: the journal is non-empty, but not for the contract being read.
+        _otherWritten.Set(new StorageCell(TestItem.AddressB, (UInt256)1), value);
 
         _cleanJournal.Get(_unwritten);
         _dirtyJournal.Get(_unwritten);
         _dirtyJournal.Get(_written);
+        _otherWritten.Get(_unwritten);
     }
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
@@ -80,6 +86,15 @@ public class WarmStorageReadBenchmark
     {
         int n = 0;
         for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.Get(_unwritten).Length;
+        return n;
+    }
+
+    /// <summary>A read-only contract in a block where a different contract has written.</summary>
+    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
+    public int Unwritten_OtherContractWritten()
+    {
+        int n = 0;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _otherWritten.Get(_unwritten).Length;
         return n;
     }
 
