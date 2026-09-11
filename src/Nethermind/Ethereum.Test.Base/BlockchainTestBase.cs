@@ -511,7 +511,9 @@ public abstract class BlockchainTestBase
                     if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                     {
                         string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                        JsonRpcResponse fcuResponse = await SendFcu(rpcService, rpcContext, fcuVersion, blockHash);
+                        AssertRpcSuccess(fcuResponse);
+                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
                     }
                 }
             }
@@ -607,6 +609,26 @@ public abstract class BlockchainTestBase
 
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
+    }
+
+    /// <summary>
+    /// Asserts the inclusion-list compliance reported by the fork-choice update that follows a payload,
+    /// when the fixture states an expectation for it (EIP-7805).
+    /// </summary>
+    /// <remarks>
+    /// A response that is not of the V5 shape reads as an absent field rather than an error: answering a
+    /// fixture that expects a value with an older fork-choice version is itself the failure.
+    /// </remarks>
+    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
+    {
+        if (!JsonToEthereumTest.TryParseForkchoiceInclusionListSatisfied(enginePayload, out bool? expected)) return;
+
+        bool? actual = (response as IResultWrapper)?.Data is ForkchoiceUpdatedV2Result result
+            ? result.PayloadStatus.InclusionListSatisfied
+            : null;
+
+        Assert.That(actual, Is.EqualTo(expected),
+            $"engine_forkchoiceUpdatedV{fcuVersion} reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected?.ToString() ?? "null"}");
     }
 
     private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
