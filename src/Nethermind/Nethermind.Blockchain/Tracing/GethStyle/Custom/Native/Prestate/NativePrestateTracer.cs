@@ -41,10 +41,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         Address? beneficiary = null)
         : base(options)
     {
-        IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _worldState = worldState;
         _txHash = txHash;
@@ -102,6 +103,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
+
+        IsTracingMemory = _op == Instruction.CREATE2;
+        IsTracingStack = _op is Instruction.SLOAD or Instruction.SSTORE
+            or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
+            or Instruction.BALANCE or Instruction.SELFDESTRUCT
+            or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
+            or Instruction.CREATE or Instruction.CREATE2;
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
