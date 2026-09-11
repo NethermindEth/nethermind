@@ -60,13 +60,33 @@ internal class XdcReceiptsTrieTests
         });
     }
 
+    // The caller keeps using these receipts after the root is taken — they are what gets stored and
+    // served over RPC — so the trie encoding must not reach back into the array or the receipts in it.
     [Test]
-    public void StoredReceiptKeepsItsType()
+    public void OriginalReceipts_AreNotTouched()
     {
-        TxReceipt typed = Receipt(BlockSigner, TxType.EIP1559);
+        TxReceipt signReceipt = Receipt(BlockSigner, TxType.EIP1559);
+        TxReceipt[] receipts = [signReceipt, Receipt(TestItem.AddressD, TxType.EIP1559)];
+        TxReceipt[] before = (TxReceipt[])receipts.Clone();
 
-        XdcBlockProcessor.AsEncodedForTrie([typed], Spec);
+        TxReceipt[] forTrie = XdcBlockProcessor.AsEncodedForTrie(receipts, Spec);
 
-        Assert.That(typed.TxType, Is.EqualTo(TxType.EIP1559));
+        Assert.Multiple(() =>
+        {
+            Assert.That(forTrie, Is.Not.SameAs(receipts));
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                Assert.That(receipts[i], Is.SameAs(before[i]));
+                Assert.That(receipts[i].TxType, Is.EqualTo(TxType.EIP1559));
+            }
+        });
+    }
+
+    [Test]
+    public void NothingToAdjust_ReturnsTheSameArray()
+    {
+        TxReceipt[] receipts = [Receipt(TestItem.AddressD, TxType.EIP1559), Receipt(BlockSigner, TxType.Legacy)];
+
+        Assert.That(XdcBlockProcessor.AsEncodedForTrie(receipts, Spec), Is.SameAs(receipts));
     }
 }
