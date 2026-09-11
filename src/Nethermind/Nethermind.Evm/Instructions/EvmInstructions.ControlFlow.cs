@@ -372,8 +372,7 @@ public static partial class EvmInstructions
     /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
-        (uint)jumpDestination < (uint)stack.CodeLength
-            && stack.IsJumpDestination(jumpDestination)
+        stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
 

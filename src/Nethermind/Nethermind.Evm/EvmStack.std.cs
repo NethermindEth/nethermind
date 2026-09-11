@@ -20,8 +20,14 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsJumpDestination(int destination)
     {
-        Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
-        long[] bitmap = _jumpDestinations ??= _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+        long[]? bitmap = _jumpDestinations;
+        if (bitmap is null)
+        {
+            if ((uint)destination >= (uint)CodeLength) return false;
+            Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
+            _jumpDestinations = bitmap = _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+        }
+
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
     }
 }
