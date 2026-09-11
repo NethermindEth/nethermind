@@ -18,8 +18,11 @@ public class FrameSignatureForRpc
     /// a request, when the signer is the transaction sender. Always absent for the arbitrary scheme.</summary>
     public Address? Signer { get; set; }
 
-    /// <summary>The 32-byte digest signed, or empty when the entry signs the transaction's canonical
+    /// <summary>The digest a protocol-verified entry signs, or empty when it signs the transaction's canonical
     /// signature hash.</summary>
+    /// <remarks>Accepted only as empty or exactly 32 non-zero bytes — an all-zero 32-byte value is rejected
+    /// rather than read as a synonym for empty. The arbitrary scheme is held to that same rule although
+    /// nothing verifies the value.</remarks>
     public byte[] Msg { get; set; } = [];
 
     /// <summary>The raw signature bytes, whose layout and required length are fixed by <see cref="Scheme"/>.</summary>

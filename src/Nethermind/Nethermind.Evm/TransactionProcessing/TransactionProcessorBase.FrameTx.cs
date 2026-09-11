@@ -961,21 +961,3 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private static TransactionSubstate DefaultCodeSuccess() =>
         new(ReadOnlyMemory<byte>.Empty, refund: 0, destroyList: null, logs: null, shouldRevert: false);
 }
-
-public abstract partial class TransactionProcessorBase
-{
-    /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
-    /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
-    /// keeps cumulative validation work under the budget.</remarks>
-    /// <param name="frame">The validation-prefix frame about to run.</param>
-    /// <param name="remainingVerifyGas">What is left of <c>MAX_VERIFY_GAS</c>, in gas.</param>
-    /// <param name="capped">Whether the frame's declared execution gas exceeded that remainder.</param>
-    /// <returns><paramref name="frame"/> itself when it fits, otherwise a copy bounded to the remainder.</returns>
-    private protected static TxFrame CapFrameGas(TxFrame frame, ulong remainingVerifyGas, out bool capped)
-    {
-        capped = frame.ExecutionGasLimit > remainingVerifyGas;
-        return capped
-            ? new TxFrame(frame.Mode, frame.Flags, frame.Target, remainingVerifyGas, frame.StateGasLimit, frame.Value, frame.Data)
-            : frame;
-    }
-}

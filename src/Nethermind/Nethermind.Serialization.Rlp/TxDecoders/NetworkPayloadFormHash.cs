@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>Hashes the inner payload of a transaction that travels the network inside a wrapper.</summary>
-/// <remarks>Non-generic so the decoders' closed generic types share one JIT instantiation of it.</remarks>
+/// <remarks>Shared by the blob and frame decoders, which each held a byte-identical private copy.</remarks>
 internal static class NetworkPayloadFormHash
 {
     /// <summary>Computes <c>keccak(txType || transactionSequence)</c>, the canonical hash of the wrapped

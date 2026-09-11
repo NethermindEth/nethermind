@@ -863,9 +863,10 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
+        Assert.That(result.TransactionExecuted, Is.True);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.TransactionExecuted, Is.True);
             AssertStorage(Observer, 0, TxFrameSignature.SchemeArbitrary);
             AssertStorage(Observer, 1, UInt256.Zero);
             AssertStorage(Observer, 2, 3);
@@ -941,9 +942,10 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
+        Assert.That(result.TransactionExecuted, Is.True);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.TransactionExecuted, Is.True);
             AssertStorage(Observer, 0, AddressAsWord(Eip8141Constants.EntryPointAddress));
             AssertStorage(Recipient, 0, AddressAsWord(Sender));
         }
@@ -966,11 +968,8 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.True);
-            AssertStorage(Observer, 0, UInt256.Zero);
-        }
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, UInt256.Zero);
     }
 
     [Test]
@@ -991,13 +990,14 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
+        Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
             Assert.That(tx.Frames![1].IsAtomicBatch, Is.True);
+            AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
+            AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
         }
-        AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
-        AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
     }
 
     [Test]
