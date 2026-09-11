@@ -32,6 +32,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private uint _blockAccessIndex = 0;
     private Address? _contextAccount;
     private ReadOnlyAccountChanges? _contextChanges;
+    private BalReadCoverage? _readCoverage;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -43,9 +44,14 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public void SetBlockAccessIndex(uint index) => _blockAccessIndex = index;
 
     public void Setup(Block suggestedBlock)
+        => Setup(suggestedBlock, null);
+
+    /// <summary>Sets up a BAL-backed execution slice with optional worker-owned storage-read coverage.</summary>
+    public void Setup(Block suggestedBlock, BalReadCoverage? readCoverage)
     {
         _contextAccount = null;
         _contextChanges = null;
+        _readCoverage = readCoverage;
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
@@ -64,6 +70,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public void ClearParentReader()
     {
+        _readCoverage = null;
         _parentReader = null;
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
@@ -88,6 +95,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
+            if (slotChanges is null) _readCoverage?.TryMark(storageCell);
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
                 // Copy the BE bytes into per-instance scratch; span valid until the next Get on this instance.

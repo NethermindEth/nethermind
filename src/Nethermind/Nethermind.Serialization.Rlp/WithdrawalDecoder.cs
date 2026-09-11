@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using System.Diagnostics.CodeAnalysis;
 
@@ -12,15 +11,15 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-        position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+        rlp.ReadSequenceLength(ref position, out int sequenceLength);
         int checkPosition = position + sequenceLength;
 
-        position = RlpHelpers.DecodeULong(rlp, position, out ulong index);
-        position = RlpHelpers.DecodeULong(rlp, position, out ulong validatorIndex);
-        position = RlpHelpers.DecodeAddress(rlp, position, out Address address);
-        position = RlpHelpers.DecodeULong(rlp, position, out ulong amountInGwei);
+        rlp.DecodeULong(ref position, out ulong index);
+        rlp.DecodeULong(ref position, out ulong validatorIndex);
+        rlp.DecodeAddress(ref position, out Address address);
+        rlp.DecodeULong(ref position, out ulong amountInGwei);
         decoderContext.Position = position;
 
         Withdrawal withdrawal = new()
