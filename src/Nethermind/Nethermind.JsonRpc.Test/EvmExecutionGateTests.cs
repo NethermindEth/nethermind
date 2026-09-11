@@ -95,11 +95,16 @@ public class EvmExecutionGateTests
     }
 
     [Test]
-    public async Task Waiters_of_equal_weight_are_admitted_in_arrival_order()
+    public async Task Waiters_of_equal_weight_are_admitted_in_arrival_order([Values] bool frozenClock)
     {
         // Weight decides the ordering only between different cost classes; within one class the deadline reduces
         // to arrival time, so equal-weight callers keep strict FIFO and none can be overtaken.
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
+        //
+        // The frozen-clock case is the one that needs the sequence tiebreaker: with every deadline identical,
+        // PriorityQueue - which is not a stable heap - has no order of its own to fall back on. A real clock only
+        // reaches that state when two arrivals land on the same tick.
+        TestClock? clock = frozenClock ? new TestClock() : null;
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         const int waiterCount = 8;
@@ -111,6 +116,7 @@ public class EvmExecutionGateTests
             Assert.That(waiters[i].IsCompleted, Is.False);
         }
 
+        // Admission resumes asynchronously by design (see Waiter), so order is observed rather than polled.
         List<int> admissionOrder = [];
         Task[] observers = new Task[waiterCount];
         for (int i = 0; i < waiterCount; i++)
@@ -326,47 +332,11 @@ public class EvmExecutionGateTests
         // asynchronously, so a worker can finish while the settling thread is still a statement short. A bare
         // assertion here would flake as the very accounting bug it exists to detect.
         Assert.That(() => gate.QueuedCount, Is.Zero.After(2000, 50),
-            "a lost decrement never recovers, and the first one disables the free-permit fast path for good");
+            "a lost decrement never recovers, so the queue-depth accounting drifts one way and the cap eventually refuses every arrival");
 
         // The fast path is the thing the drift destroys, so check it still works rather than only the counter.
         using EvmExecutionGate.Lease afterwards = await Acquire(gate);
         Assert.Pass();
-    }
-
-    [Test]
-    public async Task Equal_deadlines_keep_arrival_order()
-    {
-        // PriorityQueue is not a stable heap, so equal deadlines need the sequence tiebreaker. A frozen clock makes
-        // every deadline identical, which is the case a real clock only hits when two arrivals share a tick.
-        TestClock clock = new();
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
-        EvmExecutionGate.Lease held = await Acquire(gate);
-
-        const int waiterCount = 8;
-        ValueTask<EvmExecutionGate.Lease>[] waiters = new ValueTask<EvmExecutionGate.Lease>[waiterCount];
-        for (int i = 0; i < waiterCount; i++)
-        {
-            waiters[i] = gate.AcquireAsync(1, allowQueue: true);
-        }
-
-        // Admission resumes asynchronously by design (see Waiter), so order is observed rather than polled.
-        List<int> admissionOrder = [];
-        Task[] observers = new Task[waiterCount];
-        for (int i = 0; i < waiterCount; i++)
-        {
-            int index = i;
-            ValueTask<EvmExecutionGate.Lease> waiter = waiters[i];
-            observers[i] = Task.Run(async () =>
-            {
-                using EvmExecutionGate.Lease lease = await waiter;
-                lock (admissionOrder) admissionOrder.Add(index);
-            });
-        }
-
-        held.Dispose();
-        await Task.WhenAll(observers);
-
-        Assert.That(admissionOrder, Is.EqualTo(new[] { 0, 1, 2, 3, 4, 5, 6, 7 }));
     }
 
     [Test]
@@ -399,8 +369,8 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Releasing_a_lease_twice_throws_rather_than_inflating_the_permit_count()
     {
-        // A leaked extra permit would silently widen EVM concurrency for the rest of the process, so the maxCount
-        // constructor is load-bearing: the bug must surface loudly instead.
+        // A leaked extra permit would silently widen EVM concurrency for the rest of the process, so Release
+        // checks _freePermits against _maxPermits and throws: the bug must surface loudly instead.
         EvmExecutionGate gate = Gate(permits: 1);
         EvmExecutionGate.Lease lease = await Acquire(gate);
         lease.Dispose();

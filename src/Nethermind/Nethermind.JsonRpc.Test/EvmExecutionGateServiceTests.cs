@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
+using System.IO.Pipelines;
+using System.Buffers;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
@@ -31,12 +34,19 @@ public class EvmExecutionGateServiceTests
     private const string GatedMethod = "gated_execute";
     private const string UngatedMethod = "ungated_read";
 
-    private static JsonRpcService CreateService(int permits, int maxQueueWaitMs, IGatedRpcModule module)
+    private static JsonRpcService CreateService(
+        int permits,
+        int maxQueueWaitMs,
+        IGatedRpcModule module,
+        bool gateEnabled = true,
+        int webSocketsConcurrency = 1)
     {
         JsonRpcConfig config = new()
         {
             EthModuleConcurrentInstances = permits,
             EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
+            EvmExecutionGateEnabled = gateEnabled,
+            WebSocketsProcessingConcurrency = webSocketsConcurrency,
             Enabled = true,
             EnabledModules = ["Gated"],
         };
@@ -44,6 +54,28 @@ public class EvmExecutionGateServiceTests
         RpcModuleProvider moduleProvider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IGatedRpcModule>(new SingletonFactory<IGatedRpcModule>(module), true));
         return new JsonRpcService(moduleProvider, LimboLogs.Instance, config);
+    }
+
+    /// <summary>A reader over the body, either as one buffer or split per byte so the batch source is resumed.</summary>
+    private static PipeReader CreateReader(string body, bool segmented)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(body);
+        if (!segmented) return PipeReader.Create(new ReadOnlySequence<byte>(bytes));
+
+        Pipe pipe = new();
+        _ = Task.Run(async () =>
+        {
+            foreach (byte b in bytes)
+            {
+                pipe.Writer.GetSpan(1)[0] = b;
+                pipe.Writer.Advance(1);
+                await pipe.Writer.FlushAsync();
+            }
+
+            await pipe.Writer.CompleteAsync();
+        });
+
+        return pipe.Reader;
     }
 
     private static JsonRpcRequest Request(string method, int id = 1) =>
@@ -58,7 +90,7 @@ public class EvmExecutionGateServiceTests
     [Test]
     public async Task Gated_method_is_shed_while_every_permit_is_held()
     {
-        BlockingGatedModule module = new();
+        using BlockingGatedModule module = new();
         JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
@@ -74,7 +106,7 @@ public class EvmExecutionGateServiceTests
     [Test]
     public async Task Ungated_method_is_served_while_the_gate_is_saturated()
     {
-        BlockingGatedModule module = new();
+        using BlockingGatedModule module = new();
         JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
@@ -109,7 +141,7 @@ public class EvmExecutionGateServiceTests
     {
         // A batch is dispatched sequentially, so waiting would delay every later item on the same connection.
         // With a one-minute budget this test would hang if batch items were allowed to queue.
-        BlockingGatedModule module = new();
+        using BlockingGatedModule module = new();
         JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
@@ -130,7 +162,7 @@ public class EvmExecutionGateServiceTests
     [Test]
     public async Task Http_request_waits_for_a_slot_and_is_then_served()
     {
-        BlockingGatedModule module = new();
+        using BlockingGatedModule module = new();
         JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 30_000, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
@@ -149,6 +181,114 @@ public class EvmExecutionGateServiceTests
 
         JsonRpcResponse served = await queued;
         Assert.That(served, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+    }
+
+    [Test]
+    public async Task Batch_items_are_shed_when_fed_through_the_processor([Values] bool segmentedInput)
+    {
+        // Driven through JsonRpcProcessor rather than by setting IsBatchItem here, so deleting the processor's
+        // assignment fails this test. A batch is dispatched sequentially, so a gated item must shed promptly and
+        // the ungated item behind it must still be served rather than waiting out the 60s budget.
+        using BlockingGatedModule module = new();
+        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+
+        ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
+        await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance, null);
+        string batch = $$"""[{"jsonrpc":"2.0","method":"{{GatedMethod}}","id":1},{"jsonrpc":"2.0","method":"{{UngatedMethod}}","id":2}]""";
+        CollectingSink sink = new();
+
+        Task drain = processor
+            .ProcessAsync(CreateReader(batch, segmentedInput), context, sink, new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument))
+            .AsTask();
+
+        Assert.That(await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(20))), Is.SameAs(drain),
+            "a batch item must not wait for a slot, or the whole batch stalls behind it");
+        await drain;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.Responses, Has.Count.EqualTo(2));
+            Assert.That(((JsonRpcErrorResponse)sink.Responses[0]).Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(sink.Responses[1], Is.Not.InstanceOf<JsonRpcErrorResponse>());
+        }
+
+        module.Release();
+        await inFlight;
+    }
+
+    [Test]
+    public async Task A_disabled_gate_admits_every_caller()
+    {
+        // EvmExecutionGateEnabled = false must restore the previous behaviour exactly: no permit, no shedding.
+        using BlockingGatedModule module = new();
+        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module, gateEnabled: false);
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+
+        ValueTask<JsonRpcResponse> first = service.SendRequestAsync(Request(GatedMethod), context);
+        await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // With one permit this would shed; disabled, it must enter the module too.
+        ValueTask<JsonRpcResponse> second = service.SendRequestAsync(Request(GatedMethod, 2), context);
+        await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        module.Release();
+        module.Release();
+        JsonRpcResponse firstResponse = await first;
+        JsonRpcResponse secondResponse = await second;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResponse, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+            Assert.That(secondResponse, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+        }
+    }
+
+    [TestCase(1, false, TestName = "A single-lane WebSocket connection sheds rather than queues")]
+    [TestCase(2, true, TestName = "A multi-lane WebSocket connection may queue")]
+    public async Task WebSocket_queueing_follows_the_processing_concurrency(int wsConcurrency, bool expectQueueing)
+    {
+        // On a lane that processes one request at a time, waiting only delays the calls behind it.
+        using BlockingGatedModule module = new();
+        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module, webSocketsConcurrency: wsConcurrency);
+        using JsonRpcContext context = new(RpcEndpoint.Ws);
+
+        ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
+        await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Task<JsonRpcResponse> second = service.SendRequestAsync(Request(GatedMethod, 2), context).AsTask();
+        Task finished = await Task.WhenAny(second, Task.Delay(TimeSpan.FromSeconds(5)));
+
+        if (expectQueueing)
+        {
+            Assert.That(finished, Is.Not.SameAs(second), "a multi-lane connection should wait for a slot");
+            module.Release();
+            await inFlight;
+            await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+            module.Release();
+            Assert.That(await second, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+            return;
+        }
+
+        Assert.That(finished, Is.SameAs(second), "a single-lane connection must not wait for a slot");
+        AssertShed(await second);
+        module.Release();
+        await inFlight;
+    }
+
+    [Test]
+    public void Methods_that_reach_the_evm_without_crossing_the_service_are_gated()
+    {
+        // eth_fillTransaction estimates gas by calling eth_estimateGas on the module directly when the caller
+        // omits it (EthRpcModule.eth_fillTransaction), so that execution never passes through JsonRpcService and
+        // the gate only sees it if eth_fillTransaction is itself flagged. It is shareable, so without the flag it
+        // reaches EstimateGasShareable outside the aggregate cap.
+        MethodInfo fillTransaction = typeof(IEthRpcModule).GetMethod(nameof(IEthRpcModule.eth_fillTransaction))!;
+
+        Assert.That(fillTransaction.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution, Is.True,
+            "eth_fillTransaction estimates gas in-process and would otherwise escape the gate");
     }
 
     [Test]
@@ -171,9 +311,12 @@ public class EvmExecutionGateServiceTests
             .SelectMany(static a => a.GetTypes())
             .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IStreamableResult).IsAssignableFrom(t))];
 
-        Assert.That(streamingTypes, Is.Not.Empty, "no IStreamableResult implementations were found to check against");
-        Assert.That(AllRpcModuleInterfaces(scanned), Does.Contain(typeof(IEthRpcModule)),
-            "the eth module was not in the scanned set, so gated methods would not be seen");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamingTypes, Is.Not.Empty, "no IStreamableResult implementations were found to check against");
+            Assert.That(AllRpcModuleInterfaces(scanned), Does.Contain(typeof(IEthRpcModule)),
+                "the eth module was not in the scanned set, so gated methods would not be seen");
+        }
 
         List<string> offenders = [];
         int gatedMethods = 0;
@@ -248,11 +391,42 @@ public class EvmExecutionGateServiceTests
         ResultWrapper<int> ungated_read();
     }
 
-    private sealed class BlockingGatedModule : IGatedRpcModule
+    /// <summary>Collects what the processor writes, so a batch can be driven end to end without a transport.</summary>
+    private sealed class CollectingSink : IJsonRpcResponseSink
+    {
+        internal List<JsonRpcResponse> Responses { get; } = [];
+
+        public long BytesWritten => 0;
+        public bool StopRequested => false;
+
+        public ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            Responses.Add(response);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask BeginBatchAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
+        {
+            Responses.Add(response);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask EndBatchAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class BlockingGatedModule : IGatedRpcModule, IDisposable
     {
         private readonly SemaphoreSlim _release = new(0);
 
         internal SemaphoreSlim Entered { get; } = new(0);
+
+        public void Dispose()
+        {
+            _release.Dispose();
+            Entered.Dispose();
+        }
 
         public async Task<ResultWrapper<int>> gated_execute()
         {

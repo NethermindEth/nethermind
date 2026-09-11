@@ -375,12 +375,24 @@ namespace Nethermind.JsonRpc.Modules
 
             public ResolvedMethodInfo() => ExpectedParameters = [];
 
+            /// <remarks>Kept as its own overload rather than defaulting the fifth argument: an optional parameter
+            /// drops this signature from the assembly, and an already-compiled plugin calling it would fail with
+            /// <see cref="MissingMethodException"/> at runtime.</remarks>
+            public ResolvedMethodInfo(
+                string moduleType,
+                MethodInfo methodInfo,
+                bool readOnly,
+                RpcEndpoint availability)
+                : this(moduleType, methodInfo, readOnly, availability, isEvmExecution: false)
+            {
+            }
+
             public ResolvedMethodInfo(
                 string moduleType,
                 MethodInfo methodInfo,
                 bool readOnly,
                 RpcEndpoint availability,
-                bool isEvmExecution = false)
+                bool isEvmExecution)
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;

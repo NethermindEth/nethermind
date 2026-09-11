@@ -179,6 +179,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Fills in the missing fields of a transaction (nonce, gas, fees and chain id) and returns the unsigned transaction, ready to be signed and submitted.",
             IsSharable = true,
+            // Estimates gas by calling eth_estimateGas on the module directly when the caller omits it, which does
+            // not pass through JsonRpcService - so without this flag that execution escapes the aggregate cap.
+            IsEvmExecution = true,
             ExampleResponse = "{\"tx\":{\"type\":\"0x2\",\"nonce\":\"0x0\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"gas\":\"0x5208\",\"value\":\"0x9184e72a\",\"input\":\"0x\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x77359400\",\"chainId\":\"0x1\"}}")]
         Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(
             [JsonRpcParameter(ExampleValue = "[{\"from\":\"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"value\":\"0x9184e72a\"}]")] SignableTransactionForRpc rpcTx);
