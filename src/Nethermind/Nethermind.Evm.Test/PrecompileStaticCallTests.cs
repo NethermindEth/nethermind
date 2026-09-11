@@ -108,12 +108,28 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     [Test]
     public void Identity_calls_crossing_the_retained_scratch_limit_each_return_their_own_input()
     {
-        // The second call fills the retained buffer exactly and the fourth exceeds it, so it is served by a
-        // buffer of its own; the short calls around them must still see only their own bytes.
+        // The second call fills the VM's own buffer exactly and the fourth exceeds it, so it is served from the
+        // pool — where the array is longer than asked for; the short calls around them must still see only their
+        // own bytes.
         const int limit = VirtualMachineStatics.MaxRetainedPrecompileScratch;
         byte[] code = BuildIdentityChain([32, limit, 32, limit + 32, 32], out byte[] expected);
 
         AssertOutput(code, expected, gasLimit: DefaultBlockGasLimit);
+    }
+
+    [Test]
+    public void Identity_call_gives_its_pooled_buffer_back_when_the_transaction_ends()
+    {
+        const int pooled = VirtualMachineStatics.MaxRetainedPrecompileScratch + 32;
+
+        byte[] first = BuildIdentityChain([pooled], out byte[] firstExpected);
+        AssertOutput(first, firstExpected, gasLimit: DefaultBlockGasLimit);
+        Assert.That(Machine.HoldsPooledPrecompileScratch, Is.False, "the borrowed buffer outlived its transaction");
+
+        // Renting again must not read through the array this VM no longer owns.
+        byte[] second = BuildIdentityChain([pooled, 64], out byte[] secondExpected);
+        AssertOutput(second, secondExpected, gasLimit: DefaultBlockGasLimit);
+        Assert.That(Machine.HoldsPooledPrecompileScratch, Is.False);
     }
 
     [Test]

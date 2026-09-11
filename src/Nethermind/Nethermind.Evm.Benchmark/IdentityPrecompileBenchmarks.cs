@@ -23,9 +23,9 @@ namespace Nethermind.Evm.Benchmark;
 /// <remarks>
 /// Results are normalized per ID call. The chains in <see cref="OpcodeChainBenchmarks"/> call ID with no input,
 /// which measures the call machinery alone; here the output is what is being copied and reported.
-/// <see cref="InputSize"/> at or below the VM's retained-scratch limit reaches steady state after the first call,
-/// so the allocation column reads per-call reuse. The size above the limit is served by a fresh buffer on every
-/// call and so belongs to a row of its own rather than to that trend.
+/// Every size reaches steady state after the first call, so the allocation column reads per-call reuse — sizes
+/// past the retained-scratch limit reuse a pooled buffer rented for the transaction rather than the VM's own.
+/// Each invocation is one transaction, so it also pays one pool rent and return.
 /// </remarks>
 [MemoryDiagnoser]
 public class IdentityPrecompileBenchmarks
@@ -41,10 +41,9 @@ public class IdentityPrecompileBenchmarks
     private IVirtualMachine _vm = null!;
     private CodeInfo _code = null!;
 
-    /// <summary>The last size is one word past the VM's retained-scratch limit; the rest are at or below it.</summary>
-    [Params(32, 1024, 64 * 1024, 96 * 1024,
-        VirtualMachineStatics.MaxRetainedPrecompileScratch,
-        VirtualMachineStatics.MaxRetainedPrecompileScratch + 32)]
+    /// <summary>Sizes past the VM's retained-scratch limit are served from the pool; the rest from its own buffer.</summary>
+    [Params(32, 1024, VirtualMachineStatics.MaxRetainedPrecompileScratch,
+        96 * 1024, 1024 * 1024)]
     public int InputSize { get; set; }
 
     [GlobalSetup]
