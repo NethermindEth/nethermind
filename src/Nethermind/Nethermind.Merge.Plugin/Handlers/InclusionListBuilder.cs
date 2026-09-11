@@ -29,17 +29,18 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     }
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
-    /// <remarks>Restricted to each sender's gapless run from its next nonce, since nothing else could be
+    /// <remarks>Restricted to each sender's appendable run from its next nonce, since nothing else could be
     /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
         Random rnd = Random.Shared;
+        UInt256 baseFee = NextBlockBaseFee(parent);
 
         using ArrayPoolListRef<Transaction[]> senders = new(capacity);
         int seen = 0;
         // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee(parent)).Values)
+        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee).Values)
         {
             if (senders.Count < capacity)
             {
@@ -60,26 +61,43 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             (senders[i], senders[j]) = (senders[j], senders[i]);
         }
 
+        using ArrayPoolListRef<int> runLengths = new(capacity);
+        foreach (Transaction[] bySender in senders) runLengths.Add(AppendableRunLength(bySender, in baseFee));
+
         // Take one nonce per sender per round rather than draining each run in turn, so a single account
         // with a long ready run cannot spend the byte cap before the other drawn senders are represented.
         ArrayPoolListRef<Transaction> sample = new(capacity);
         for (int round = 0; ; round++)
         {
             bool advanced = false;
-            foreach (Transaction[] bySender in senders)
+            for (int i = 0; i < senders.Count; i++)
             {
-                if (round >= bySender.Length) continue;
-                Transaction tx = bySender[round];
-                // Buckets are nonce-ordered, so once a gap breaks this offset it can never realign: the
-                // run ends there, because nothing behind a gap can be appended either.
-                if (tx.Nonce != bySender[0].Nonce + (ulong)round) continue;
+                if (round >= runLengths[i]) continue;
 
-                sample.Add(tx);
+                sample.Add(senders[i][round]);
                 advanced = true;
                 if (sample.Count == capacity) return sample;
             }
             if (!advanced) return sample;
         }
+    }
+
+    /// <summary>How many leading transactions of <paramref name="bySender"/> the next block could append.</summary>
+    /// <remarks>Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a nonce gap is
+    /// appendable, and nothing behind an entry the next block would price out is worth the byte cap either.
+    /// The pool vouches for the first entry alone, so both are re-checked from there.</remarks>
+    private static int AppendableRunLength(Transaction[] bySender, in UInt256 baseFee)
+    {
+        ulong anchor = bySender[0].Nonce;
+        int length = 0;
+        while (length < bySender.Length
+            && bySender[length].Nonce == anchor + (ulong)length
+            && bySender[length].CanPayBaseFee(baseFee))
+        {
+            length++;
+        }
+
+        return length;
     }
 
     /// <summary>The base fee the next block will charge.</summary>
