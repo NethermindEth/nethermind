@@ -8,7 +8,7 @@ on:
           Which self-hosted benchmark runner to use, and with it every path that differs between the
           boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda); arm64 =
           `reproducible-benchmarks-arm` (Axion, snapshots under /data, flat layout only). Timings from
-          the two boxes are NOT comparable â€” never mix them in one A/B.
+          the two boxes are NOT comparable — never mix them in one A/B.
         required: false
         type: choice
         options:
@@ -451,7 +451,7 @@ jobs:
           should_wait_for_publish_docker="false"
           if [[ "${branch}" == "master" || "${branch}" == "paprika" || "${branch}" == "performance" || "${branch}" == release/* ]]; then
             should_trigger_publish_docker="false"
-            # On push, publish-docker.yml runs in parallel â€” wait for it instead of triggering
+            # On push, publish-docker.yml runs in parallel — wait for it instead of triggering
             if [[ "${EVENT_NAME}" == "push" ]]; then
               should_wait_for_publish_docker="true"
             fi
@@ -650,7 +650,7 @@ jobs:
               exit 1
             fi
 
-            echo "Run ${run_id} status: ${status} â€” waiting ${poll_interval}s... (${elapsed}/${max_completion_seconds}s)"
+            echo "Run ${run_id} status: ${status} — waiting ${poll_interval}s... (${elapsed}/${max_completion_seconds}s)"
             sleep "${poll_interval}"
           done
 
@@ -1216,7 +1216,7 @@ jobs:
             printf '\n'
           fi
 
-          # Marker for profiling artifact collection â€” only files newer than this
+          # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
           fifo="${RUNNER_TEMP}/expb-pipe"
@@ -1839,7 +1839,7 @@ jobs:
             }
 
   # ---------------------------------------------------------------------------
-  # Single-image summary: aggregates all runs Ă— payload_sets into GITHUB_STEP_SUMMARY
+  # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
   # ---------------------------------------------------------------------------
 
   single-summary:
@@ -1986,7 +1986,7 @@ jobs:
                 } >> "${summary_file}"
               fi
             else
-              # Single run â€” simple table
+              # Single run — simple table
               mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
               if [[ ! -f "${mf}" ]]; then
                 echo "No metrics were produced." >> "${summary_file}"
@@ -2685,7 +2685,7 @@ jobs:
             printf '\n'
           fi
 
-          # Marker for profiling artifact collection â€” only files newer than this
+          # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
           fifo="${RUNNER_TEMP}/expb-pipe"
@@ -3106,7 +3106,7 @@ jobs:
             }'
           }
 
-          # Build header â€” add Run column if run_count > 1
+          # Build header — add Run column if run_count > 1
           if [[ "${run_count}" -gt 1 ]]; then
             header="| # | Image Tag | Run | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
             separator="|---|-----------|-----|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"

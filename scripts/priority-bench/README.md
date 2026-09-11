@@ -9,19 +9,19 @@ The two modes receive the same Docker `SYS_NICE` capability. The normal path is 
 
 ## A/B dispatch
 
-Before starting, publish the Nethermind `perf/linux-block-priority-prototype` branch (which contains the workflow and verifier), the EXPB `perf/linux-priority-prototype` branch, and a Nethermind prototype image containing the runtime change with both amd64 and arm64 manifests. Use a unique commit-based image tag for every arm and check that its registry digest is unchanged before and after the runs; the current workflow renderer requires tag references in `docker_images` and reconstructs the image from the tag. The workflow's `docker_images` input selects explicit images and `rebuild_docker=false` prevents a build. Keep `state_layout`, `payload_set`, `amount`, `delay_seconds`, `additional_extra_flags`, `flat_write_buffer_floor`, `run_count`, and profiling inputs identical.
+Before starting, publish the Nethermind `perf/linux-block-priority-review` branch (which contains the workflow and verifier), the EXPB `perf/linux-priority-review` branch, and a Nethermind prototype image containing the runtime change with both amd64 and arm64 manifests. Use a unique commit-based image tag for every arm and check that its registry digest is unchanged before and after the runs; the current workflow renderer requires tag references in `docker_images` and reconstructs the image from the tag. The workflow's `docker_images` input selects explicit images and `rebuild_docker=false` prevents a build. Keep `state_layout`, `payload_set`, `amount`, `delay_seconds`, `additional_extra_flags`, `flat_write_buffer_floor`, `run_count`, and profiling inputs identical.
 
 Run an ABBA sequence independently on each architecture: observe (A), nice (B), nice (B), observe (A). Wait for each dispatch to finish before starting the next one because the benchmark runner is shared. Use fresh workflow dispatches, keeping the image and all other inputs unchanged. For example, replace `IMAGE` with the same prebuilt image reference in all four commands:
 
 ```bash
-gh workflow run run-expb-reproducible-benchmarks.yml --ref perf/linux-block-priority-prototype \
-  -f arch=amd64 -f expb_branch=perf/linux-priority-prototype \
+gh workflow run run-expb-reproducible-benchmarks.yml --ref perf/linux-block-priority-review \
+  -f arch=amd64 -f expb_branch=perf/linux-priority-review \
   -f state_layout=flat -f payload_set=realblocks -f amount=1000 \
   -f docker_images=IMAGE -f rebuild_docker=false \
   -f expb_env='EXPB_NETHERMIND_PRIORITY_MODE=observe'
 
-gh workflow run run-expb-reproducible-benchmarks.yml --ref perf/linux-block-priority-prototype \
-  -f arch=amd64 -f expb_branch=perf/linux-priority-prototype \
+gh workflow run run-expb-reproducible-benchmarks.yml --ref perf/linux-block-priority-review \
+  -f arch=amd64 -f expb_branch=perf/linux-priority-review \
   -f state_layout=flat -f payload_set=realblocks -f amount=1000 \
   -f docker_images=IMAGE -f rebuild_docker=false \
   -f expb_env='EXPB_NETHERMIND_PRIORITY_MODE=nice'
