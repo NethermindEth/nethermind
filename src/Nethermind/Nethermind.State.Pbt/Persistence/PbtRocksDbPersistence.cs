@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
@@ -154,48 +155,78 @@ public class PbtRocksDbPersistence(
         return destination[..groupKey.EncodedLength];
     }
 
-    private static byte[] PrefixUpperBound(ReadOnlySpan<byte> prefix)
+    private static ReadOnlySpan<byte> PrefixUpperBound(ReadOnlySpan<byte> prefix, Span<byte> destination)
     {
-        byte[] upper = prefix.ToArray();
+        Span<byte> upper = destination[..prefix.Length];
+        prefix.CopyTo(upper);
         for (int i = upper.Length - 1; i >= 0; i--)
         {
             if (++upper[i] != 0) return upper[..(i + 1)];
         }
-        byte[] maximum = new byte[PbtStorageFullKey.MaxLength + 1];
-        Array.Fill(maximum, byte.MaxValue);
+        Span<byte> maximum = destination[..(PbtStorageFullKey.MaxLength + 1)];
+        maximum.Fill(byte.MaxValue);
         return maximum;
     }
 
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot) : IPbtPersistence.IReader
     {
         private readonly (StateId State, ValueHash256 Root) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
+        private readonly IReadOnlyKeyValueStore _metadata = snapshot.GetColumn(PbtColumns.Metadata);
+        private readonly IReadOnlyKeyValueStore _accounts = snapshot.GetColumn(PbtColumns.Accounts);
+        private readonly IReadOnlyKeyValueStore _storages = snapshot.GetColumn(PbtColumns.Storages);
+        private readonly IReadOnlyKeyValueStore _codes = snapshot.GetColumn(PbtColumns.Codes);
+        private readonly IReadOnlyKeyValueStore _codeReferences = snapshot.GetColumn(PbtColumns.CodeReferences);
+        private readonly IReadOnlyKeyValueStore _accountNodeGroups = snapshot.GetColumn(PbtColumns.AccountNodeGroups);
+        private readonly IReadOnlyKeyValueStore _codeNodeGroups = snapshot.GetColumn(PbtColumns.CodeNodeGroups);
+        private readonly IReadOnlyKeyValueStore _storageNodeGroups = snapshot.GetColumn(PbtColumns.StorageNodeGroups);
 
         public StateId CurrentState => _current.State;
         public ValueHash256 CurrentRoot => _current.Root;
 
         public Account? GetAccount(in ValueHash256 addressHash)
         {
-            byte[]? value = snapshot.GetColumn(PbtColumns.Accounts).Get(addressHash.Bytes);
-            return value is null ? null : DecodeAccount(value);
+            ReadOnlySpan<byte> value = _accounts.GetSpan(addressHash.Bytes);
+            try
+            {
+                return value.IsNull() ? null : DecodeAccount(value);
+            }
+            finally
+            {
+                _accounts.DangerousReleaseMemory(value);
+            }
         }
 
         public EvmWord GetSlot(PbtStorageFullKey key)
         {
-            byte[]? value = snapshot.GetColumn(PbtColumns.Storages).Get(key.Bytes);
-            return value is null ? default : DecodeSlot(value);
+            ReadOnlySpan<byte> value = _storages.GetSpan(key.Bytes);
+            try
+            {
+                return value.IsNull() ? default : DecodeSlot(value);
+            }
+            finally
+            {
+                _storages.DangerousReleaseMemory(value);
+            }
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash)
         {
-            byte[]? value = snapshot.GetColumn(PbtColumns.Codes).Get(codeHash.Bytes);
-            return value is null ? null : new CodeInfo(value) { CodeHash = codeHash };
+            ReadOnlySpan<byte> value = _codes.GetSpan(codeHash.Bytes);
+            try
+            {
+                return value.IsNull() ? null : new CodeInfo(value.ToArray()) { CodeHash = codeHash };
+            }
+            finally
+            {
+                _codes.DangerousReleaseMemory(value);
+            }
         }
 
         public IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
         {
-            ISortedKeyValueStore accounts = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Accounts);
-            byte[] upper = new byte[ValueHash256.MemorySize + 1];
-            Array.Fill(upper, byte.MaxValue);
+            ISortedKeyValueStore accounts = (ISortedKeyValueStore)_accounts;
+            Span<byte> upper = stackalloc byte[ValueHash256.MemorySize + 1];
+            upper.Fill(byte.MaxValue);
             using ISortedView view = accounts.GetViewBetween([], upper);
             while (view.MoveNext())
                 yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
@@ -203,9 +234,10 @@ public class PbtRocksDbPersistence(
 
         public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null)
         {
-            ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.Storages);
+            ISortedKeyValueStore storage = (ISortedKeyValueStore)_storages;
+            Span<byte> upper = stackalloc byte[PbtStorageFullKey.MaxLength + 1];
             using ISortedView view = storage.GetViewBetween(prefix is null ? [] : prefix.Value.Bytes,
-                PrefixUpperBound(prefix is null ? [] : prefix.Value.Bytes));
+                PrefixUpperBound(prefix is null ? [] : prefix.Value.Bytes, upper));
             while (view.MoveNext())
                 yield return new(new PbtStorageFullKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
         }
@@ -228,13 +260,13 @@ public class PbtRocksDbPersistence(
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
 
             Span<byte> key = stackalloc byte[groupKey.EncodedLength];
-            MemoryManager<byte>? owned = snapshot.GetColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey, key));
+            MemoryManager<byte>? owned = GetNodeGroupColumn(NodeGroupColumn(groupKey)).GetOwnedMemory(NodeGroupStorageKey(groupKey, key));
             return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
         }
 
         public IEnumerable<PbtStorageNodePath> EnumerateNodeGroupKeys()
         {
-            if (snapshot.GetColumn(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null)
+            if (_metadata.Get(RootNodeGroupKey) is not null)
                 yield return PbtStorageNodePath.Create([], 0);
 
             using ISortedView accounts = OpenGroups(PbtColumns.AccountNodeGroups);
@@ -255,9 +287,18 @@ public class PbtRocksDbPersistence(
             }
         }
 
+        private IReadOnlyKeyValueStore GetNodeGroupColumn(PbtColumns column) => column switch
+        {
+            PbtColumns.Metadata => _metadata,
+            PbtColumns.AccountNodeGroups => _accountNodeGroups,
+            PbtColumns.CodeNodeGroups => _codeNodeGroups,
+            PbtColumns.StorageNodeGroups => _storageNodeGroups,
+            _ => throw new ArgumentOutOfRangeException(nameof(column))
+        };
+
         private ISortedView OpenGroups(PbtColumns column)
         {
-            ISortedKeyValueStore groups = (ISortedKeyValueStore)snapshot.GetColumn(column);
+            ISortedKeyValueStore groups = (ISortedKeyValueStore)GetNodeGroupColumn(column);
             return groups.GetViewBetween([], [0xFF, 0xFF]);
         }
 
@@ -271,7 +312,7 @@ public class PbtRocksDbPersistence(
 
         public ulong GetCodeReference(in ValueHash256 codeHash)
         {
-            byte[]? value = snapshot.GetColumn(PbtColumns.CodeReferences).Get(codeHash.Bytes);
+            byte[]? value = _codeReferences.Get(codeHash.Bytes);
             if (value is null) return 0;
             if (value.Length != sizeof(ulong)) throw new InvalidDataException("Invalid persisted PBT code-reference value length.");
             return BinaryPrimitives.ReadUInt64BigEndian(value);
@@ -323,11 +364,12 @@ public class PbtRocksDbPersistence(
             ISortedKeyValueStore persisted = (ISortedKeyValueStore)db.GetColumnDb(PbtColumns.Storages);
             Span<byte> prefix = stackalloc byte[1 + ValueHash256.MemorySize];
             addressHash.Bytes.CopyTo(prefix[1..]);
+            Span<byte> upper = stackalloc byte[PbtStorageFullKey.MaxLength + 1];
             ReadOnlySpan<byte> zones = [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone];
             foreach (byte zone in zones)
             {
                 prefix[0] = zone;
-                using ISortedView view = persisted.GetViewBetween(prefix, PrefixUpperBound(prefix));
+                using ISortedView view = persisted.GetViewBetween(prefix, PrefixUpperBound(prefix, upper));
                 while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
             }
             // The database view does not include earlier writes in this batch.
