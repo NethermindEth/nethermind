@@ -98,7 +98,6 @@ public class MergePluginModule : Module
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
             .AddDecorator<ISealValidator, MergeSealValidator>()
             .AddDecorator<ISealer, MergeSealer>()
-            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
             .AddSingleton<ManualTimestamper>()
             .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager, IInclusionListTxSource>(

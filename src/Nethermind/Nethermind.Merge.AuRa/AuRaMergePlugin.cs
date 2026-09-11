@@ -75,7 +75,6 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
-                .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
                 .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 

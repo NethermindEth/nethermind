@@ -58,7 +58,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .Map<IEnode, EnodeProvider>(provider => provider.Enode)
 
             .AddSingleton<IForkInfo, ForkInfo>()
-            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
 
             // Rlpxhost
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
