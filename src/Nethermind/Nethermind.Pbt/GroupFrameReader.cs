@@ -90,9 +90,9 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
             if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
             ValueHash256 left = GetHash(path, position - width);
             ValueHash256 right = GetHash(path, position - 1);
-            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.PathOf<TPath>(path, position), left, right);
+            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right);
         }
-        TPath? nodePath = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? null : PbtFourLevelGroupGeometry.PathOf<TPath>(path, position);
+        NodeGroupPath nodePath = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? default : PbtFourLevelGroupGeometry.LocalPathOf(position);
         return new(encoding, nodePath);
     }
 

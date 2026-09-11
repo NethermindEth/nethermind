@@ -74,12 +74,11 @@ public static class PbtFourLevelGroupGeometry
         return groupKey.AppendBits(nibble, relativeDepth);
     }
 
-    internal static TPath PathOf<TPath>(scoped in PbtTraversalPath path, int position) where TPath : struct, IPbtNodePath<TPath>
+    internal static NodeGroupPath LocalPathOf(int position)
     {
-        if (!IsGroupDepth(path.BitDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(path));
-        if ((uint)position >= PositionCount || (position == RootPosition && path.BitDepth != 0))
-            throw new ArgumentOutOfRangeException(nameof(position));
-        return PbtNodePathOperations.AppendBits<TPath>(path.Bytes, path.BitDepth, PositionNibbles[position], PositionDepths[position]);
+        if ((uint)position >= PositionCount) throw new ArgumentOutOfRangeException(nameof(position));
+        int length = PositionDepths[position];
+        return new(PositionNibbles[position] << (4 - length), length);
     }
 
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>

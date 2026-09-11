@@ -81,14 +81,14 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Emits the resolved subtree root at its final position and clears the borrowed value.</summary>
-    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
+    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node)
         where TKey : struct, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
         Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
         ValueHash256 hash = node.Encode(encoding, depth);
         Commit(path);
-        node = default;
+        node.Node = default;
         return hash;
     }
 
