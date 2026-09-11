@@ -21,7 +21,8 @@ internal static class PbtTrieWarmer
         while (true)
         {
             PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
-            PbtTraversalPath groupPath = PbtTraversalPath.FromPath(groupPathBuffer, location.GroupKey);
+            PbtStorageNodePath groupKey = location.GroupKey;
+            PbtTraversalPath groupPath = PbtTraversalPath.FromPath(groupPathBuffer, groupKey);
             using RefCountingMemory? payload = store.GetNodeGroup(groupPath, groupHash);
             if (payload is null) return;
 
@@ -38,12 +39,12 @@ internal static class PbtTrieWarmer
                 int direction = key.GetBit(branchDepth);
                 PbtStorageNodePath childPath = path.Append(node.Prefix, direction);
                 location = PbtFourLevelGroupGeometry.Locate(childPath);
-                if (!location.GroupKey.Equals(group.GroupKey))
+                if (!location.GroupKey.Equals(groupKey))
                 {
                     groupHash = HashAtBoundary(node, location.GroupKey.BitDepth - path.BitDepth);
                 }
                 path = childPath;
-            } while (location.GroupKey.Equals(group.GroupKey));
+            } while (location.GroupKey.Equals(groupKey));
         }
     }
 

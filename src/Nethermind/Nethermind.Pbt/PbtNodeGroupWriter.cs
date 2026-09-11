@@ -14,7 +14,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
     private const int MaxEntriesLength = ushort.MaxValue;
-    private readonly TPath _groupKey;
+    private readonly int _bitDepth;
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
@@ -25,11 +25,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private int _pendingLength;
     private bool _disposed;
 
-    internal PbtNodeGroupWriter(TPath groupKey, IRefCountingMemoryProvider memoryProvider)
+    internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(memoryProvider);
-        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth), "A group key depth must be a four-level boundary.");
-        _groupKey = groupKey;
+        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
+        _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
     }
 
@@ -42,7 +42,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if ((uint)position >= PbtNodeGroupCodec.PositionCount
-            || (position == PbtFourLevelGroupGeometry.RootPosition && _groupKey.BitDepth != 0))
+            || (position == PbtFourLevelGroupGeometry.RootPosition && _bitDepth != 0))
             throw new ArgumentOutOfRangeException(nameof(position));
         ValidatePositionOrder(position);
         if (encodingLength <= 0 || encodingLength > MaxEntriesLength - _written)
@@ -55,12 +55,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Commits the node in the last reserved span.</summary>
-    internal void Commit()
+    internal void Commit(scoped in PbtTraversalPath path)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        Debug.Assert(path.BitDepth == _bitDepth);
         ValidateReservedNode();
         ReadOnlySpan<byte> encoding = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, _pendingLength);
-        ValidateEncoding(encoding);
+        ValidateEncoding(path, encoding);
         if (!PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding))
         {
             _offsets[_pendingPosition] = (ushort)_written;
@@ -73,20 +74,20 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Copies and commits an existing canonical encoding.</summary>
-    internal void Write(int position, ReadOnlySpan<byte> encoding)
+    internal void Write(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
     {
         encoding.CopyTo(GetSpan(position, encoding.Length));
-        Commit();
+        Commit(path);
     }
 
     /// <summary>Emits the resolved subtree root at its final position and clears the borrowed value.</summary>
-    internal ValueHash256 Write<TKey>(int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
+    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.Subtree node)
         where TKey : struct, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
         Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
         ValueHash256 hash = node.Encode(encoding, depth);
-        Commit();
+        Commit(path);
         node = default;
         return hash;
     }
@@ -165,10 +166,10 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     [Conditional("DEBUG")]
-    private void ValidateEncoding(ReadOnlySpan<byte> encoding)
+    private void ValidateEncoding(scoped in PbtTraversalPath path, ReadOnlySpan<byte> encoding)
     {
         PbtNodeCodec.ValidateExact(encoding);
-        PbtNodeGroupReader.ValidateLeafPath(_groupKey, _pendingPosition, encoding);
+        PbtNodeGroupReader.ValidateLeafPath(path, _pendingPosition, encoding);
     }
 
     private void EnsureCapacity(int required)
