@@ -51,7 +51,7 @@ namespace Nethermind.TxPool
         private readonly HashCache _hashCache = new();
         private readonly TxBroadcaster _broadcaster;
 
-        private readonly TxDistinctSortedPool _transactions;
+        internal readonly TxDistinctSortedPool _transactions;
         private readonly BlobTxDistinctSortedPool _blobTransactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
@@ -340,6 +340,38 @@ namespace Nethermind.TxPool
             _transactions.GetBucketSnapshot(filterToReadyTx ?
                 (data => HasReadyTransaction(data.bucket, data.key, baseFee)) :
                 null);
+
+        /// <inheritdoc/>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee) =>
+            _transactions.GetBucketSnapshot(data => HasReadyNonFrameTransaction(data.bucket, data.key, baseFee));
+
+        /// <summary>Whether a sender's bucket holds a non-frame transaction includable in the next block.</summary>
+        /// <remarks>The account-nonce half of <see cref="HasReadyTransaction"/>. Every EIP-8250 keyed transaction is
+        /// an EIP-8141 frame transaction, so skipping frames also skips every NONCE_MANAGER read the full scan
+        /// would make — the whole cost of that scan, and a caller that discards frame transactions buys nothing
+        /// with it.</remarks>
+        private bool HasReadyNonFrameTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
+        {
+            ulong accountNonce = 0;
+            bool accountNonceRead = false;
+            foreach (Transaction tx in bucket)
+            {
+                if (tx.SupportsFrames) continue;
+                // Deferred, so a frame-only bucket — what this filter exists to make cheap — pays no account read.
+                if (!accountNonceRead)
+                {
+                    accountNonce = _accounts.GetNonce(sender);
+                    accountNonceRead = true;
+                }
+
+                // An entry under the account nonce is stale rather than blocking: it awaits a head change the
+                // pool has not processed yet, and the next entry may sit exactly at the nonce.
+                if (tx.Nonce < accountNonce) continue;
+                return tx.Nonce == accountNonce && tx.CanPayBaseFee(baseFee);
+            }
+
+            return false;
+        }
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
         /// <remarks>An EIP-8250 keyed set does not use the account nonce, so readiness is per-key currency instead.</remarks>
