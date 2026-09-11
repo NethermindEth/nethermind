@@ -31,7 +31,7 @@ public class SstIngestionTests
 
     private string _dbPath = null!;
     private ColumnsDb<FlatDbColumns> _db = null!;
-    private RocksDbPersistence _persistence = null!;
+    private ObservablePersistence _persistence = null!;
 
     [SetUp]
     public void SetUp()
@@ -45,7 +45,7 @@ public class SstIngestionTests
             new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<FlatDbColumns>());
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        _persistence = new ObservablePersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
     }
 
     [TearDown]
@@ -53,6 +53,142 @@ public class SstIngestionTests
     {
         _db.Dispose();
         try { Directory.Delete(_dbPath, true); } catch { }
+    }
+
+    [Test]
+    public void Unrepairable_torn_base_is_fatal_and_keeps_the_marker_for_roll_forward()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
+        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot2, Slot(0x22));
+        }, Throws.InstanceOf<IOException>());
+
+        storageColumn._testIngestFailureHook = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The account column went live at s2 while the pointer stayed at s1: releasing the gate would publish
+            // that torn base to every later reader snapshot, so the commit must stop the node instead.
+            Assert.That(_persistence.FatalShutdownCount, Is.EqualTo(1));
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata))?.To, Is.EqualTo(s2));
+            Assert.That(StagedSstFiles(), Is.Not.Empty);
+        }
+    }
+
+    [Test]
+    public void Pending_marker_is_not_overwritten_by_the_next_persist()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        StateId s3 = State(3, 3);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
+        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot2, Slot(0x22));
+        }, Throws.InstanceOf<IOException>());
+
+        storageColumn._testIngestFailureHook = null;
+
+        (StateId To, string[] Files)? pending = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
+        Assert.That(pending, Is.Not.Null);
+        string[] pendingFiles = StagedSstFiles();
+
+        // The marker is a single slot. Taking it here would orphan the files above and strand the account column
+        // ahead of the pointer with nothing left to roll it forward.
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s3, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(300));
+        }, Throws.InstanceOf<InvalidOperationException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata))?.To, Is.EqualTo(pending!.Value.To));
+            Assert.That(StagedSstFiles(), Is.SupersetOf(pendingFiles));
+        }
+
+        Reopen();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            // Roll forward completes the interrupted commit, not the one that was refused.
+            Assert.That(reader.CurrentState, Is.EqualTo(s2));
+            Assert.That(reader.GetAccount(Addr)!.Balance, Is.EqualTo((UInt256)200));
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Empty_pointer_bump_does_not_clobber_a_pending_marker()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        StateId s3 = State(3, 3);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
+        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot2, Slot(0x22));
+        }, Throws.InstanceOf<IOException>());
+
+        storageColumn._testIngestFailureHook = null;
+
+        // The shape Importer and FlatTreeSyncStore use: a write-free batch purely to advance the pointer. Without
+        // the pending-marker check it would clear the marker and advance having written nothing, stranding the
+        // already-live account column at s2 forever.
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s3, WriteFlags.None);
+        }, Throws.InstanceOf<InvalidOperationException>());
+
+        Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata))?.To, Is.EqualTo(s2));
+
+        Reopen();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        Assert.That(reader.CurrentState, Is.EqualTo(s2));
+    }
+
+    /// <summary>Observes the fatal-exit decision instead of taking it, which a test process cannot survive.</summary>
+    private sealed class ObservablePersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig config)
+        : RocksDbPersistence(db, logManager, config)
+    {
+        public int FatalShutdownCount { get; private set; }
+
+        protected override void FatalShutdown() => FatalShutdownCount++;
     }
 
     private static SlotValue Slot(byte v) => SlotValue.FromSpanWithoutLeadingZero(new byte[] { v });
@@ -68,7 +204,7 @@ public class SstIngestionTests
             new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<FlatDbColumns>());
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = persistViaSstIngestion });
+        _persistence = new ObservablePersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = persistViaSstIngestion });
     }
 
     private string[] StagedSstFiles()
@@ -278,6 +414,8 @@ public class SstIngestionTests
         Assert.That(marker, Is.Not.Null);
         Assert.That(marker!.Value.To, Is.EqualTo(s2));
         Assert.That(StagedSstFiles(), Is.Not.Empty);
+        Assert.That(_persistence.FatalShutdownCount, Is.EqualTo(1),
+            "an unrepairable torn base must stop the node rather than serve it to readers");
 
         Reopen();
 
@@ -614,7 +752,7 @@ public class SstIngestionTests
             LimboLogs.Instance,
             Enum.GetValues<FlatDbColumns>());
         _db = observable;
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        _persistence = new ObservablePersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
 
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
