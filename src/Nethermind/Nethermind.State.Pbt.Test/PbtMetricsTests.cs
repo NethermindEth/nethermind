@@ -98,12 +98,14 @@ public class PbtMetricsTests
     [Test]
     public void PointReads_ReportOnlyTheAnsweringTier(
         [Values("snapshot", "tombstone", "selfdestruct", "persistence", "missing")] string scenario,
-        [Values] bool detailedMetrics)
+        [Values] bool detailedMetrics,
+        [Values("", "0", "00", "01", "f", "ff")] string groupPath)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
         PbtStorageFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
-        PbtNodePath groupKey = new([], 0);
+        PbtNodePath groupKey = new(Bytes.FromHexString(groupPath.PadRight((groupPath.Length + 1) / 2 * 2, '0')), groupPath.Length * 4);
+        string partition = groupPath switch { "01" => "code", "f" or "ff" => "storage", _ => "account" };
         Account account = new(1, 100);
         EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
         CodeInfo code = new(Bytes.FromHexString("6001"));
@@ -155,7 +157,7 @@ public class PbtMetricsTests
             Assert.That(actualReference, Is.EqualTo(empty ? 0UL : 1UL));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_{tier}", $"node_group_{tier}", $"code_reference_{tier}", $"code_{codeTier}" }
+                ? new[] { $"account_{tier}", $"storage_{tier}", $"node_group_{partition}_{tier}", $"code_reference_{tier}", $"code_{codeTier}" }
                 : []));
             Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 5 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));

@@ -26,9 +26,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
     private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
     private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
-    private static readonly StringLabel _readNodeGroupSnapshotLabel = new("node_group_snapshot");
-    private static readonly StringLabel _readNodeGroupPersistenceLabel = new("node_group_persistence");
-    private static readonly StringLabel _readNodeGroupPersistenceNullLabel = new("node_group_persistence_null");
+    private static readonly StringLabel[] _readNodeGroupSnapshotLabels = [new("node_group_account_snapshot"), new("node_group_code_snapshot"), new("node_group_storage_snapshot")];
+    private static readonly StringLabel[] _readNodeGroupPersistenceLabels = [new("node_group_account_persistence"), new("node_group_code_persistence"), new("node_group_storage_persistence")];
+    private static readonly StringLabel[] _readNodeGroupPersistenceNullLabels = [new("node_group_account_persistence_null"), new("node_group_code_persistence_null"), new("node_group_storage_persistence_null")];
     private static readonly StringLabel _readCodeSnapshotLabel = new("code_snapshot");
     private static readonly StringLabel _readCodePersistenceLabel = new("code_persistence");
     private static readonly StringLabel _readCodePersistenceNullLabel = new("code_persistence_null");
@@ -57,14 +57,23 @@ public sealed class PbtReadOnlySnapshotBundle(
         {
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload))
             {
-                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readNodeGroupSnapshotLabel);
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readNodeGroupSnapshotLabels[GetNodeGroupPartition(groupKey)]);
                 return payload;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         RefCountingMemory? result = reader.GetNodeGroup(groupKey);
-        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readNodeGroupPersistenceNullLabel : _readNodeGroupPersistenceLabel);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (result is null ? _readNodeGroupPersistenceNullLabels : _readNodeGroupPersistenceLabels)[GetNodeGroupPartition(groupKey)]);
         return result;
+    }
+
+    private static int GetNodeGroupPartition<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        if (path.BitDepth == 0) return 0;
+        if (path.BitDepth == 4 && path.GetByte(0) == 0xF0
+            || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone)
+            return 2;
+        return path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? 1 : 0;
     }
 
     internal ulong GetCodeReference(in ValueHash256 codeHash)

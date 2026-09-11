@@ -82,7 +82,7 @@ public static class Metrics
     /// unsuccessful snapshot walk and distinguish missing values (null, zero storage, or zero references).
     /// </remarks>
     [DetailedMetric]
-    [Description("Time of a read through the pbt read-only snapshot bundle, by read type, tier and result (Stopwatch ticks)")]
+    [Description("Time of a read through the pbt read-only snapshot bundle, by read type, node-group partition, tier and result (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
