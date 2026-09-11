@@ -103,11 +103,18 @@ public class BlockAccessListBasedWorldStateTests
 
             bws.ClearParentReader();
             parent.Set(cell, [77]);
+            parent.AddToBalance(cell.Address, 100, Spec);
+            parent.SetNonce(cell.Address, 3);
             parent.Commit(Spec);
             parent.CommitTree(1);
             bws.SetParentReader(decorate ? new ParentDecorator(parent) : parent);
             bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
             Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)77));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)200));
+                Assert.That(bws.GetNonce(cell.Address), Is.EqualTo(3UL));
+            }
         }
     }
 
@@ -141,13 +148,15 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader, [Values] bool useCoverage)
+    public void DeclaredReads_CacheAlternatingSlotsUntilParentContextChanges([Values] bool replaceReader, [Values] bool useCoverage, [Values(0, 192)] int slotShift)
     {
-        StorageCell[] cells = [new(TestItem.AddressA, 1), new(TestItem.AddressA, 2), new(TestItem.AddressB, 1)];
+        UInt256 firstSlot = UInt256.One << slotShift;
+        UInt256 secondSlot = (UInt256)2 << slotShift;
+        StorageCell[] cells = [new(TestItem.AddressA, firstSlot), new(TestItem.AddressA, secondSlot), new(TestItem.AddressB, firstSlot)];
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
-                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1, 2).TestObject,
-                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(1).TestObject).TestObject;
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(firstSlot, secondSlot).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(firstSlot).TestObject).TestObject;
         using BalReadStoragePlan plan = new(bal);
         BalReadCoverage? coverage = useCoverage ? plan.CreateCoverage() : null;
         IWorldState parent = null!;
