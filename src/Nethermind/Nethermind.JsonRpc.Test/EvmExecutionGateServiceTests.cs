@@ -5,9 +5,6 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -149,10 +146,17 @@ public class EvmExecutionGateServiceTests
     [RpcModule("Gated")]
     public interface IGatedRpcModule : IRpcModule
     {
-        [JsonRpcMethod(IsImplemented = true, IsSharable = true, IsEvmExecution = true)]
+        [JsonRpcMethod(
+            Description = "Test method used to verify admission through the EVM execution gate.",
+            IsImplemented = true,
+            IsSharable = true,
+            IsEvmExecution = true)]
         Task<ResultWrapper<int>> gated_execute();
 
-        [JsonRpcMethod(IsImplemented = true, IsSharable = true)]
+        [JsonRpcMethod(
+            Description = "Test method used to verify that ungated methods bypass the EVM execution gate.",
+            IsImplemented = true,
+            IsSharable = true)]
         ResultWrapper<int> ungated_read();
     }
 
