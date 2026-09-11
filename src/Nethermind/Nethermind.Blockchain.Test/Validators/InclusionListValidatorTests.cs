@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
@@ -48,10 +50,13 @@ public class InclusionListValidatorTests
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // The blob carve-out applies to building an IL, not to judging one.
-            yield return Case("Blob tx", [BuildBlobTx()], false);
-            // Blob gas is paid up front, so a blob fee beyond the balance makes the tx unappendable.
-            yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
+            // No proposer can append a blob entry, so one must never count as appendable — otherwise a single
+            // non-conforming committee member makes every block in the slot unsatisfied.
+            yield return Case("Blob IL entry is never appendable", [BuildBlobTx()], true);
+            // The carve-out is categorical: affordability of the blob fee must not decide the outcome.
+            yield return Case("Blob IL entry with unaffordable blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
+            // Only the blob entry is skipped; a genuinely appendable entry alongside it still fails the block.
+            yield return Case("Blob IL entry does not mask an appendable tx", [BuildBlobTx(), _validTx], false);
             // A tx normal execution rejects must not be reported appendable.
             yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
             // A tx whose GasLimit is below the intrinsic cost cannot execute.
@@ -80,6 +85,20 @@ public class InclusionListValidatorTests
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+    }
+
+    // The carve-out is only load-bearing while normal well-formedness accepts a blob entry. An entry is
+    // decoded sidecar-free, which the mempool blob checks skip rather than reject, so nothing else stops one.
+    [Test]
+    public void Blob_il_entry_passes_normal_well_formedness()
+    {
+        Transaction entry = TxsDecoder.DecodeTxs(InclusionListDecoder.Encode([BuildBlobTx()]), skipErrors: false).Transactions[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.NetworkWrapper, Is.Null, "inclusion list entries carry no blob sidecar");
+            Assert.That(_txValidator.IsWellFormed(entry, _specProvider.GetSpec((ForkActivation)0), 30_000_000).AsBool(), Is.True);
+        }
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance

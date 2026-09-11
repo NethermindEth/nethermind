@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -74,6 +73,9 @@ public static class InclusionListValidator
 
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
+        // engine_getInclusionListV1 forbids emitting a blob entry, and an entry carries no blob sidecar for
+        // getPayload, so no proposer can append one; judging it appendable would grief the whole slot.
+        if (tx.SupportsBlobs) return false;
         if (tx.SenderAddress is null) return false;
         // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
         // way GasLimit - tx.GasLimit would for an oversized tx.
@@ -93,12 +95,6 @@ public static class InclusionListValidator
         // Overflow-checked like TransactionProcessor.BuyGas: an adversarial MaxFeePerGas must not wrap the cost.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
-            return false;
-
-        // A blob tx must also cover maxFeePerBlobGas × blob gas up front, or it could never have executed.
-        if (tx.SupportsBlobs
-            && (!BlobGasCalculator.TryCalculateBlobMaxFee(tx.BlobVersionedHashes?.Length ?? 0, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
-                || UInt256.AddOverflow(txCost, blobFee, out txCost)))
             return false;
 
         return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
