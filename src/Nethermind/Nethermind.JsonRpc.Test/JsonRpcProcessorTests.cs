@@ -13,10 +13,17 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Threading;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -357,6 +364,76 @@ public class JsonRpcProcessorTests
         await ProcessAsync(processor, request, context, cancellationToken: cancellation.Token);
 
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), cancellation.Token);
+    }
+
+    [Test]
+    public async Task Saturated_batch_sheds_each_evm_item_and_processes_cheap_successor(
+        [Values] bool isAuthenticated,
+        [Values] RequestTransport transport)
+    {
+        JsonRpcConfig config = new()
+        {
+            EnabledModules = [ModuleType.Eth],
+            EvmExecutionConcurrency = 1,
+            EthModuleConcurrentInstances = 1,
+            EvmExecutionMaxQueueWaitMs = 60_000,
+            EvmExecutionQueueLimit = 16,
+        };
+        ManualTimeProvider timeProvider = new();
+        using EvmAdmissionGate gate = new(config, LimboLogs.Instance, timeProvider);
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>())
+            .ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(new HexBytes(Array.Empty<byte>())));
+        ethRpcModule.eth_blockNumber()
+            .Returns(Task.FromResult(ResultWrapper<ulong?>.Success(7)));
+
+        SingletonModulePool<IEthRpcModule> ethModulePool = new(ethRpcModule);
+        using IContainer serviceContainer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddLast<RpcModuleInfo>(_ => new RpcModuleInfo(typeof(IEthRpcModule), ethModulePool))
+            .Build();
+        RpcModuleProvider moduleProvider = serviceContainer.Resolve<RpcModuleProvider>();
+        using JsonRpcService service = new(moduleProvider, LimboLogs.Instance, config, gate);
+        JsonRpcProcessor processor = CreateProcessor(service, config);
+        RpcEndpoint endpoint = transport == RequestTransport.WsPipe ? RpcEndpoint.Ws : RpcEndpoint.Http;
+        using JsonRpcContext context = isAuthenticated
+            ? new(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]))
+            : new(endpoint);
+
+        using EvmAdmissionGate.Lease held = await gate.AdmitAsync(0, CancellationToken.None);
+        byte[] request = Encoding.UTF8.GetBytes(CreateBatchRequest(
+            CreateRequest("1", "eth_call"),
+            CreateRequest("2", "eth_call"),
+            CreateRequest("3", "eth_blockNumber")));
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport, context: context)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        CollectedJsonRpcResult batch = AssertOnlyResult(result);
+        Assert.That(batch.Response, Is.Null);
+        Assert.That(batch.BatchItems, Has.Count.EqualTo(3));
+        IReadOnlyList<JsonRpcResponse> items = batch.BatchItems!;
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                Assert.That(items[i], Is.TypeOf<JsonRpcErrorResponse>(), $"item {i} should be shed");
+                JsonRpcErrorResponse error = (JsonRpcErrorResponse)items[i];
+                Assert.That(error.Id, Is.EqualTo(new JsonRpcId(i + 1)));
+                Assert.That(error.Error?.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+            }
+
+            Assert.That(items[2], Is.TypeOf<ResultWrapper<ulong?>>());
+            ResultWrapper<ulong?> blockNumber = (ResultWrapper<ulong?>)items[2];
+            Assert.That(blockNumber.Id, Is.EqualTo(new JsonRpcId(3)));
+            Assert.That(blockNumber.Data, Is.EqualTo(7UL));
+            Assert.That(gate.Queued, Is.Zero);
+            Assert.That(timeProvider.GetTimestamp(), Is.Zero, "the batch must fail fast without advancing the fake clock");
+        }
+
+        ethRpcModule.DidNotReceive().eth_call(Arg.Any<SignableTransactionForRpc>());
     }
 
     [Test]

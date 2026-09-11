@@ -188,17 +188,19 @@ public interface IJsonRpcConfig : IConfig
             weighted by their `params` size (one unit per 128 KiB, at most 8), FIFO within a weight, so under sustained
             overload the largest requests are the ones shed. `0` disables queueing: a request that finds every slot busy is
             rejected at once, before its parameters are read. A longer budget adds latency to the requests it serves without
-            adding throughput.
+            adding throughput. Queueing is bypassed for batch items, authenticated requests (including IPC), and WebSocket
+            connections configured with at most one processing worker, to avoid delaying later calls.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
 
-    /// <summary>Maximum number of EVM-executing requests waiting for a slot. Defaults to 500; 0 removes the queue limit.</summary>
+    /// <summary>Maximum number of EVM-executing requests waiting for a slot. Defaults to 500; 0 removes the queue limit and a negative value disables queueing.</summary>
     [ConfigItem(
         Description = """
             The max number of EVM-executing JSON-RPC requests (see `EvmExecutionConcurrency`) waiting for an execution slot
             at once; further requests are answered with `LimitExceeded` (HTTP 503) immediately, before their parameters are
-            read. `0` to lift the limit, leaving `EvmExecutionMaxQueueWaitMs` as the only bound on the queue.
+            read. `0` to lift the limit, leaving `EvmExecutionMaxQueueWaitMs` as the only bound on the queue. A negative
+            value disables queueing.
             """,
         DefaultValue = "500")]
     int EvmExecutionQueueLimit { get; set; }

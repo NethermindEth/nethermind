@@ -248,7 +248,7 @@ public class JsonRpcServiceTests
         return response;
     }
 
-    private IJsonRpcService CreateService<T>(IRpcModulePool<T> pool) where T : IRpcModule
+    private IJsonRpcService CreateService<T>(IRpcModulePool<T> pool, IJsonRpcConfig? config = null) where T : IRpcModule
     {
         _serviceContainer?.Dispose();
         _serviceContainer = new ContainerBuilder()
@@ -256,11 +256,14 @@ public class JsonRpcServiceTests
             .AddLast<RpcModuleInfo>(_ => new RpcModuleInfo(typeof(T), pool))
             .Build();
         RpcModuleProvider moduleProvider = _serviceContainer.Resolve<RpcModuleProvider>();
-        return new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gate);
+        return new JsonRpcService(moduleProvider, _logManager, config ?? _configurationProvider.GetConfig<IJsonRpcConfig>(), _gate);
     }
 
     private IJsonRpcService CreateService<T>(T module) where T : IRpcModule =>
         CreateService(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
+
+    private IJsonRpcService CreateService<T>(T module, IJsonRpcConfig config) where T : IRpcModule =>
+        CreateService(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), config);
 
     private void UseGate(IJsonRpcConfig config)
     {
@@ -983,6 +986,131 @@ public class JsonRpcServiceTests
         }
     }
 
+    [TestCase(RpcEndpoint.Http, 1, 1, false, false, true, TestName = "HTTP requests may queue")]
+    [TestCase(RpcEndpoint.Ws, 1, 1, false, false, false, TestName = "Single-lane WebSocket requests fail fast")]
+    [TestCase(RpcEndpoint.Ws, 2, 1, false, false, true, TestName = "Multi-lane WebSocket requests may queue")]
+    [TestCase(RpcEndpoint.IPC, 1, 2, false, false, false, TestName = "Authenticated IPC requests fail fast")]
+    [TestCase(RpcEndpoint.Http, 1, 1, true, false, false, TestName = "Authenticated HTTP requests fail fast")]
+    [TestCase(RpcEndpoint.Http, 1, 1, false, true, false, TestName = "Batch items fail fast")]
+    public async Task Evm_queueing_policy_depends_on_transport_authentication_and_batch_membership(
+        RpcEndpoint endpoint,
+        int webSocketsProcessingConcurrency,
+        int ipcProcessingConcurrency,
+        bool authenticated,
+        bool batchItem,
+        bool expectedToQueue)
+    {
+        JsonRpcConfig config = new()
+        {
+            EvmExecutionConcurrency = 1,
+            EthModuleConcurrentInstances = 1,
+            EvmExecutionMaxQueueWaitMs = 10_000,
+            EvmExecutionQueueLimit = 1,
+            WebSocketsProcessingConcurrency = webSocketsProcessingConcurrency,
+            IpcProcessingConcurrency = ipcProcessingConcurrency,
+        };
+        UseGate(config);
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        IJsonRpcService service = CreateService(ethRpcModule, config);
+        using JsonRpcContext context = authenticated
+            ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]))
+            : new JsonRpcContext(endpoint);
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc());
+        request.IsBatchItem = batchItem;
+        Task<JsonRpcResponse> response;
+        using (Lease held = await HoldPermitAsync())
+        {
+            response = service.SendRequestAsync(request, context).AsTask();
+            if (expectedToQueue)
+            {
+                await WaitUntil(() => _gate.Queued == 1);
+            }
+            else
+            {
+                Assert.That(_gate.Queued, Is.EqualTo(0));
+            }
+        }
+
+        if (expectedToQueue)
+        {
+            using JsonRpcResponse granted = await response.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(granted);
+        }
+        else
+        {
+            using JsonRpcErrorResponse rejected = AssertJsonRpcError(await response.WaitAsync(TestTimeout), ErrorCodes.LimitExceeded, "Too many requests");
+        }
+    }
+
+    [Test]
+    public async Task Production_resolved_service_disposes_admission_gate_and_settles_pending_requests()
+    {
+        JsonRpcConfig config = new()
+        {
+            EnabledModules = [ModuleType.Eth],
+            EvmExecutionConcurrency = 1,
+            EthModuleConcurrentInstances = 1,
+            EvmExecutionMaxQueueWaitMs = 10_000,
+            EvmExecutionQueueLimit = 1,
+        };
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        using ManualResetEventSlim release = new();
+        using ManualResetEventSlim invocationStarted = new();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
+        {
+            invocationStarted.Set();
+            release.Wait(TestTimeout);
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+
+        IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddLast<RpcModuleInfo>(_ => new RpcModuleInfo(typeof(IEthRpcModule), new SingletonModulePool<IEthRpcModule>(ethRpcModule, true)))
+            .Build();
+        bool containerDisposed = false;
+        Task<JsonRpcResponse>? first = null;
+        try
+        {
+            IJsonRpcService service = container.Resolve<IJsonRpcService>();
+            using JsonRpcContext context = new(RpcEndpoint.Http);
+            first = Task.Run(async () => await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), context));
+            await WaitUntil(() => invocationStarted.IsSet);
+
+            Task<JsonRpcResponse> second = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), context).AsTask();
+            Assert.That(second.IsCompleted, Is.False, "the second real eth_call must wait for the occupied permit");
+
+            using JsonRpcErrorResponse third = AssertJsonRpcError(
+                await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), context).AsTask().WaitAsync(TestTimeout),
+                ErrorCodes.LimitExceeded,
+                "Too many requests");
+
+            container.Dispose();
+            containerDisposed = true;
+
+            // Disposal faults the queued admission before the holder releases, while still completing the queued task.
+            using JsonRpcErrorResponse settled = AssertJsonRpcError(await second.WaitAsync(TestTimeout), ErrorCodes.InternalError);
+
+            release.Set();
+            using JsonRpcResponse completed = await first.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+        finally
+        {
+            release.Set();
+            if (first is not null)
+            {
+                await first.WaitAsync(TestTimeout);
+            }
+
+            if (!containerDisposed)
+            {
+                container.Dispose();
+            }
+        }
+    }
+
     [Test]
     public async Task Ungated_methods_never_touch_the_gate()
     {
@@ -1022,6 +1150,50 @@ public class JsonRpcServiceTests
         {
             Assert.That(_gate.Queued, Is.EqualTo(0));
             Assert.That(_gate.InFlight, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Cancellation_after_admission_grant_is_observed_before_invocation()
+    {
+        JsonRpcConfig config = SinglePermitConfig(maxQueueWaitMs: 10_000);
+        UseGate(config);
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        IJsonRpcService service = CreateService(ethRpcModule, config);
+        using CancellationTokenSource cancellation = new();
+        CapturingSynchronizationContext synchronizationContext = new();
+        Task<JsonRpcResponse> waiting;
+        using (Lease held = await HoldPermitAsync())
+        {
+            SynchronizationContext? previousContext = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(synchronizationContext);
+                waiting = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()),
+                    _context,
+                    cancellation.Token).AsTask();
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previousContext);
+            }
+
+            Assert.That(_gate.Queued, Is.EqualTo(1));
+        }
+
+        await WaitUntil(() => synchronizationContext.PendingCount > 0);
+
+        cancellation.Cancel();
+        synchronizationContext.Drain();
+
+        Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(TestTimeout));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_gate.InFlight, Is.EqualTo(0), "the granted lease must be released when cancellation wins before invocation");
+            Assert.That(_gate.Queued, Is.EqualTo(0));
+            ethRpcModule.DidNotReceive().eth_call(Arg.Any<SignableTransactionForRpc>());
         }
     }
 
@@ -1233,6 +1405,58 @@ public class JsonRpcServiceTests
         }
 
         public override void Write(Utf8JsonWriter writer, BindingProbe value, JsonSerializerOptions options) => throw new NotSupportedException();
+    }
+
+    private sealed class CapturingSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> _callbacks = [];
+
+        public int PendingCount
+        {
+            get
+            {
+                lock (_callbacks)
+                {
+                    return _callbacks.Count;
+                }
+            }
+        }
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            lock (_callbacks)
+            {
+                _callbacks.Enqueue((callback, state));
+            }
+        }
+
+        public void Drain()
+        {
+            SynchronizationContext? previousContext = Current;
+            SynchronizationContext.SetSynchronizationContext(this);
+            try
+            {
+                while (true)
+                {
+                    (SendOrPostCallback Callback, object? State) callback;
+                    lock (_callbacks)
+                    {
+                        if (_callbacks.Count == 0)
+                        {
+                            return;
+                        }
+
+                        callback = _callbacks.Dequeue();
+                    }
+
+                    callback.Callback(callback.State);
+                }
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previousContext);
+            }
+        }
     }
 
     [JsonConverter(typeof(NodeFaultPayloadConverter))]
@@ -1501,6 +1725,50 @@ public class EvmAdmissionGateTests
         fresh.Result.Dispose();
     }
 
+    [TestCase(-1, false, TestName = "Negative queue limit disables queueing")]
+    [TestCase(0, true, TestName = "Zero queue limit leaves queueing unbounded")]
+    public async Task Queue_limit_zero_and_negative_have_distinct_behaviour(int queueLimit, bool queues)
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
+        Task<Lease>? waiting = null;
+        using (Lease held = await Admit(gate))
+        {
+            if (queues)
+            {
+                Task<Lease> queued = Admit(gate).AsTask();
+                waiting = queued;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(queued.IsCompleted, Is.False);
+                    Assert.That(gate.Queued, Is.EqualTo(1));
+                }
+            }
+            else
+            {
+                Assert.Throws<LimitExceededException>(() => Admit(gate));
+                Assert.That(gate.Queued, Is.EqualTo(0));
+            }
+        }
+
+        if (waiting is not null)
+        {
+            using Lease granted = await waiting.WaitAsync(WaitBudget);
+        }
+    }
+
+    [Test]
+    public async Task Saturated_gate_rejects_when_queueing_is_disallowed_but_grants_free_permits()
+    {
+        using EvmAdmissionGate gate = CreateGate(SinglePermit());
+        ValueTask<Lease> freeAdmission = gate.AdmitAsync(0, CancellationToken.None, allowQueue: false);
+        Assert.That(freeAdmission.IsCompletedSuccessfully, Is.True);
+        freeAdmission.Result.Dispose();
+
+        using Lease held = await Admit(gate);
+        Assert.Throws<LimitExceededException>(() => gate.AdmitAsync(0, CancellationToken.None, allowQueue: false));
+        Assert.That(gate.Queued, Is.EqualTo(0));
+    }
+
     [TestCase(QueueLimit, TestName = "EvmExecutionQueueLimit caps the waiters")]
     [TestCase(0, TestName = "EvmExecutionQueueLimit zero lifts the cap")]
     public async Task Queued_waiters_are_capped_by_the_queue_limit(int queueLimit)
@@ -1569,6 +1837,39 @@ public class EvmAdmissionGateTests
             Assert.That(gate.Queued, Is.EqualTo(0));
             Assert.That(gate.InFlight, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task Sweep_arms_to_the_oldest_waiter_across_weight_buckets()
+    {
+        RecordingTimeProvider timeProvider = new();
+        using EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
+        Task<Lease> older;
+        Task<Lease> younger;
+        using (Lease held = await Admit(gate))
+        {
+            older = Admit(gate, MaxWeight).AsTask();
+
+            timeProvider.Advance(Budget / 2);
+            younger = Admit(gate, MinWeight).AsTask();
+
+            // Both buckets are still live. The next sweep must be due at the older request's deadline.
+            timeProvider.FireTimer();
+            Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2));
+
+            timeProvider.Advance(Budget / 2);
+            timeProvider.FireTimer();
+            Assert.ThrowsAsync<LimitExceededException>(() => older);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(younger.IsCompleted, Is.False);
+                Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2));
+                Assert.That(gate.Queued, Is.EqualTo(1));
+                Assert.That(gate.InFlight, Is.EqualTo(1));
+            }
+        }
+
+        using Lease granted = await younger.WaitAsync(WaitBudget);
     }
 
     [Test]

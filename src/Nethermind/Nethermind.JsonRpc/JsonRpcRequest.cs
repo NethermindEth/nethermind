@@ -43,6 +43,8 @@ namespace Nethermind.JsonRpc
         internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
         internal JsonValueKind ParamsKind { get; set; }
 
+        internal bool IsBatchItem { get; set; }
+
         /// <summary>Byte length of the raw <c>params</c> element, or zero when the request carries none.</summary>
         /// <remarks>
         /// Known without materializing the parameters on either input path: the body slice when the request was read

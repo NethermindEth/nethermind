@@ -22,7 +22,8 @@ namespace Nethermind.JsonRpc;
 /// (<see cref="IJsonRpcConfig.EvmExecutionConcurrency"/>) and turns the excess into fast "Too many requests" answers: a
 /// request that finds no free permit waits asynchronously for at most <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>,
 /// and is rejected up front when <see cref="IJsonRpcConfig.EvmExecutionQueueLimit"/> requests are already waiting. A zero
-/// budget disables queueing: the request is rejected on the calling thread without allocating a waiter.
+/// budget disables queueing: the request is rejected on the calling thread without allocating a waiter. A negative queue
+/// limit also disables queueing; zero explicitly removes the queue limit.
 /// <para>
 /// Waiters are served lightest first, FIFO within a weight: a freed permit goes to the request expected to finish soonest,
 /// which maximises the requests served per second of execution time and keeps a sub-millisecond <c>eth_call</c> from
@@ -78,7 +79,9 @@ internal sealed class EvmAdmissionGate : IDisposable
             _logger.Warn($"JsonRpc.EvmExecutionConcurrency={outOfRange} is outside [1, {envCap}]; using {Permits}. Set JsonRpc.EvmExecutionMaxQueueWaitMs=0 to disable queueing instead.");
         }
 
-        _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
+        _budget = config.EvmExecutionQueueLimit < 0
+            ? TimeSpan.Zero
+            : TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
         _maxQueued = Math.Max(0, config.EvmExecutionQueueLimit);
         for (int w = MinWeight; w <= MaxWeight; w++)
         {
@@ -154,12 +157,13 @@ internal sealed class EvmAdmissionGate : IDisposable
     /// </summary>
     /// <param name="paramsUtf8Length">Byte length of the raw <c>params</c>, weighed with <see cref="Weigh"/>; heavier requests wait behind lighter ones.</param>
     /// <param name="cancellationToken">The request's token; a waiter whose token is cancelled never receives a permit.</param>
+    /// <param name="allowQueue">Whether a saturated gate may add this request to its wait queue.</param>
     /// <returns>A lease that must be disposed exactly once, after the invocation, including any task it returned, has completed.</returns>
     /// <exception cref="LimitExceededException">
     /// Queueing is disabled or the queue is full, or no permit was granted within the budget.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a permit was granted.</exception>
-    internal ValueTask<Lease> AdmitAsync(int paramsUtf8Length, CancellationToken cancellationToken)
+    internal ValueTask<Lease> AdmitAsync(int paramsUtf8Length, CancellationToken cancellationToken, bool allowQueue = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
         int weight = Weigh(paramsUtf8Length);
@@ -175,7 +179,7 @@ internal sealed class EvmAdmissionGate : IDisposable
             }
 
             queueFull = _maxQueued > 0 && _queued >= _maxQueued;
-            if (!queueFull && _budget > TimeSpan.Zero)
+            if (allowQueue && !queueFull && _budget > TimeSpan.Zero)
             {
                 // Stamped under the lock: with one constant budget every new deadline is then no earlier than any queued one,
                 // so expired waiters are always bucket heads.
