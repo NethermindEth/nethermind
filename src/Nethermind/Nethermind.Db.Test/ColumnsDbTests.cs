@@ -98,13 +98,37 @@ public class ColumnsDbTests
         IWriteBatch colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
         IWriteBatch colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
 
-        colA.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
-        colB.Set(TestItem.KeccakA.Bytes, TestItem.KeccakB.BytesToArray());
+        colA.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakA.Bytes);
+        colB.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes);
 
         batch.Dispose();
 
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+    }
+
+    [Test]
+    public void WriteBatch_PutSpan_DoesNotCopyValueToManagedArray()
+    {
+        const int valueLength = 128 * 1024;
+        byte[] value = GC.AllocateUninitializedArray<byte>(valueLength);
+        long allocated;
+        using (IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch())
+        {
+            IWriteBatch column = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+            column.PutSpan(TestItem.KeccakA.Bytes, [1]);
+
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            column.PutSpan(TestItem.KeccakB.Bytes, value);
+            allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.LessThan(valueLength));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakB), Is.EqualTo(value));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakB), Is.Null);
+        }
     }
 
     [Test]
@@ -144,5 +168,28 @@ public class ColumnsDbTests
         snapshot.Dispose();
 
         Assert.That(() => snapshot.GetColumn(ReceiptsColumns.Blocks), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    [Test]
+    public void Flush_MaterializesNamedColumnFamilies_SurvivingReopen()
+    {
+        // Regression: a DisableWAL write to a NAMED column has no WAL entry, so it is only durable if
+        // Flush() materializes that column family's memtable into SST. Before the fix, ColumnsDb.Flush()
+        // flushed only the WAL and the default column family, so this write was lost after a reopen.
+        byte[] value = TestItem.KeccakA.BytesToArray();
+        _db.GetColumnDb(ReceiptsColumns.Blocks).Set(TestItem.KeccakA.Bytes, value, WriteFlags.DisableWAL);
+
+        _db.Flush();
+        _db.Dispose();
+
+        // Reopen the same on-disk DB (no DeleteOnStart) — the value must survive.
+        _db = new ColumnsDb<ReceiptsColumns>(DbPath,
+            new("Blocks", DbPath),
+            new DbConfig(),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            LimboLogs.Instance,
+            Enum.GetValues<ReceiptsColumns>());
+
+        Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(value));
     }
 }

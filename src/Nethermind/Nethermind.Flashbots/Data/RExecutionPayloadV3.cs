@@ -16,9 +16,9 @@ public class RExecutionPayloadV3
     public Hash256 receipts_root { get; set; }
     public Bloom logs_bloom { get; set; }
     public Hash256 prev_randao { get; set; }
-    public long block_number { get; set; }
-    public long gas_limit { get; set; }
-    public long gas_used { get; set; }
+    public ulong block_number { get; set; }
+    public ulong gas_limit { get; set; }
+    public ulong gas_used { get; set; }
     public ulong timestamp { get; set; }
     public byte[] extra_data { get; set; }
     public UInt256 base_fee_per_gas { get; set; }
@@ -78,9 +78,9 @@ public class RExecutionPayloadV3
         Hash256 receipts_root,
         Bloom logs_bloom,
         Hash256 prev_randao,
-        long block_number,
-        long gas_limit,
-        long gas_used,
+        ulong block_number,
+        ulong gas_limit,
+        ulong gas_used,
         ulong timestamp,
         byte[] extra_data,
         UInt256 base_fee_per_gas,

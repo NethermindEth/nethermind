@@ -26,10 +26,10 @@ namespace Nethermind.State
             : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool) => TrieType = TrieType.State;
 
         [DebuggerStepThrough]
-        public StateTree(IScopedTrieStore? store, ILogManager? logManager)
+        public StateTree(IScopedTrieStore store, ILogManager logManager)
             : base(store, Keccak.EmptyTreeHash, true, logManager) => TrieType = TrieType.State;
 
-        public StateTree(ITrieStore? store, ILogManager? logManager)
+        public StateTree(ITrieStore store, ILogManager logManager)
             : base(store.GetTrieStore(null), logManager)
         {
         }
@@ -43,7 +43,7 @@ namespace Nethermind.State
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpReader context = new(bytes);
             return _decoder.Decode(ref context);
         }
 
@@ -51,14 +51,13 @@ namespace Nethermind.State
         public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
             if (bytes.IsEmpty)
             {
                 account = AccountStruct.TotallyEmpty;
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(ref valueDecoderContext, out account);
+            return _decoder.TryDecodeStruct(bytes, out account);
         }
 
         [DebuggerStepThrough]
@@ -70,7 +69,7 @@ namespace Nethermind.State
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpReader context = new(bytes);
             return _decoder.Decode(ref context);
         }
 
@@ -90,9 +89,13 @@ namespace Nethermind.State
             {
                 KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
 
-                Rlp accountRlp = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : _decoder.Encode(account);
+                // EncodeAsBytes skips the throwaway Rlp wrapper that _decoder.Encode(account) would
+                // allocate for every changed account on each block commit.
+                byte[]? accountBytes = account is null ? null
+                    : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
+                    : _decoder.EncodeAsBytes(account);
 
-                _bulkWrite.Add(new BulkSetEntry(keccak, accountRlp?.Bytes));
+                _bulkWrite.Add(new BulkSetEntry(keccak, accountBytes));
             }
 
             public void Dispose()
@@ -105,7 +108,7 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
+            Rlp? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
@@ -113,7 +116,7 @@ namespace Nethermind.State
 
         public Rlp? Set(in ValueHash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
+            Rlp? rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;

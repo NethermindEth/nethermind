@@ -220,6 +220,26 @@ public class SszGeneratorDiagnosticTest
     }
 
     [Test]
+    public void Bitlist_with_limit_beyond_int_range_reports_diagnostic()
+    {
+        const string source = """
+            using System.Collections;
+            using Nethermind.Serialization.Ssz;
+
+            [SszContainer]
+            public partial struct HugeBitlistContainer
+            {
+                [SszList(1_099_511_627_776)]
+                public BitArray? Bits { get; set; }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        Diagnostic diagnostic = GetSsz003Diagnostic(source, parseOptions, nameof(Bitlist_with_limit_beyond_int_range_reports_diagnostic));
+        Assert.That(diagnostic.GetMessage(), Does.Contain("BitArray cannot exceed int.MaxValue bits"));
+    }
+
+    [Test]
     public void Converter_backed_primitive_collections_emit_converter_calls()
     {
         const string source = """

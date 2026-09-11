@@ -9,8 +9,8 @@ namespace Nethermind.Core;
 public static class GasCapExtensions
 {
     /// <summary>Whether <paramref name="gasCap"/> applies a finite RPC gas limit.</summary>
-    public static bool IsGasCapped(this long? gasCap) => gasCap is not null and not 0;
+    public static bool IsGasCapped(this ulong? gasCap) => gasCap is not null and not 0;
 
-    /// <summary>Returns <paramref name="gasCap"/> when capped, otherwise <see cref="long.MaxValue"/>.</summary>
-    public static long EffectiveGasCap(this long? gasCap) => gasCap.IsGasCapped() ? gasCap!.Value : long.MaxValue;
+    /// <summary>Returns <paramref name="gasCap"/> when capped, otherwise <see cref="ulong.MaxValue"/>.</summary>
+    public static ulong EffectiveGasCap(this ulong? gasCap) => gasCap.IsGasCapped() ? gasCap!.Value : ulong.MaxValue;
 }

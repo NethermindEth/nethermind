@@ -94,7 +94,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             ProcessDiffState();
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         base.StartOperation(pc, opcode, gas, env);
 
@@ -174,7 +174,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 }
                 break;
             case Instruction.CREATE:
-                UInt256 nonce = _worldState!.GetNonce(_executingAccount!);
+                ulong nonce = _worldState!.GetNonce(_executingAccount!);
                 address = ContractAddress.From(_executingAccount, nonce);
                 LookupAccount(address!);
                 if (_diffMode)

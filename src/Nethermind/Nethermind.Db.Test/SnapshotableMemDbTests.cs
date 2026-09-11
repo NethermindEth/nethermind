@@ -191,20 +191,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            SnapshotableMemDb memDb = new();
-            memDb.Dispose();
-        }
-
-        [Test]
-        public void Flush_does_not_cause_trouble()
-        {
-            SnapshotableMemDb memDb = new();
-            memDb.Flush();
-        }
-
-        [Test]
         public void Can_clear()
         {
             SnapshotableMemDb memDb = new();
@@ -350,7 +336,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Set(TestItem.KeccakD, _sampleValue);
 
-            IEnumerable<KeyValuePair<byte[], byte[]?>> orderedItems = memDb.GetAll(true);
+            IEnumerable<KeyValuePair<byte[], byte[]>> orderedItems = memDb.GetAll(true);
 
             Assert.That(System.Linq.Enumerable.Count(orderedItems), Is.EqualTo(5));
 

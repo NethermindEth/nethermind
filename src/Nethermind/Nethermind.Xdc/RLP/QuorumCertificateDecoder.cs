@@ -12,7 +12,7 @@ namespace Nethermind.Xdc.RLP;
 internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
 {
     private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
-    protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override QuorumCertificate DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
         if (sequenceLength == 0)
@@ -45,41 +45,42 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
 
-        return new Rlp(rlpStream.Data.ToArray());
+        return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        _blockInfoDecoder.Encode(stream, item.ProposedBlockInfo, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        _blockInfoDecoder.Encode(ref writer, item.ProposedBlockInfo, rlpBehaviors);
 
         // When encoding for sealing, we do not include the signatures
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             if (item.Signatures is null)
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
             else
             {
                 int signatureContentLength = SignaturesLength(item);
-                stream.StartSequence(signatureContentLength);
+                writer.StartSequence(signatureContentLength);
                 Span<byte> sigBuffer = stackalloc byte[Signature.Size];
                 foreach (Signature sig in item.Signatures)
                 {
                     sig.WriteBytesWithRecoveryTo(sigBuffer);
-                    stream.Encode(sigBuffer);
+                    writer.Encode(sigBuffer);
                 }
             }
         }
 
-        stream.Encode(item.GapNumber);
+        writer.Encode(item.GapNumber);
     }
 
     public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

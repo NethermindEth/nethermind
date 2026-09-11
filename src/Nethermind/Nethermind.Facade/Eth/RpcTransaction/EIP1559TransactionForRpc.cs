@@ -37,7 +37,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             : transaction.MaxFeePerGas;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         if (validateUserInput)
         {
@@ -65,6 +65,13 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
 
     public override bool ShouldSetBaseFee() =>
         base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
+
+    public override Result FillDefaults(in TxFillContext context)
+    {
+        MaxPriorityFeePerGas ??= context.MaxPriorityFeePerGas;
+        MaxFeePerGas ??= context.BaseFee * 2 + MaxPriorityFeePerGas.Value;
+        return Result.Success;
+    }
 
     public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);

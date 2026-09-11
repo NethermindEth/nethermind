@@ -162,7 +162,7 @@ public partial class BlockProducerBaseTests
 
         BuildBlocksWhenRequested trigger = new();
         StandardBlockProducerRunner runner = new(trigger, testRpc.BlockTree, blockProducer);
-        long currentHead = testRpc.BlockTree.Head?.Number ?? 0;
+        ulong currentHead = testRpc.BlockTree.Head?.Number ?? 0ul;
 
         _ = new NonProcessingProducedBlockSuggester(testRpc.BlockTree, runner);
 
@@ -170,7 +170,7 @@ public partial class BlockProducerBaseTests
 
         await trigger.BuildBlock(testRpc.BlockTree.Head?.Header);
 
-        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1));
+        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1ul));
     }
 
     private async Task<TestRpcBlockchain> CreateTestRpc()

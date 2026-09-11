@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -13,8 +12,6 @@ namespace Nethermind.Consensus.Processing
 {
     public sealed class OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor) : IBlockchainProcessor
     {
-        public ITracerBag Tracers => _processor.Tracers;
-
         private readonly IBlockchainProcessor _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         private readonly IWorldState _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
 

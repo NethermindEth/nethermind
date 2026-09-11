@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -11,7 +12,9 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -27,7 +30,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
+        IReadOnlyList<IBlockPreprocessorStep> blockPreprocessorSteps,
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
         ILogManager logManager)
@@ -50,11 +53,12 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats>((branchProcessor, processingStats) =>
+                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>, ISpecProvider>((branchProcessor, processingStats, blockTracers, specProvider) =>
                     new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
-                        compositeBlockPreprocessorStep,
+                        specProvider,
+                        blockPreprocessorSteps,
                         worldStateManager.GlobalStateReader,
                         logManager,
                         new BlockchainProcessor.Options
@@ -62,7 +66,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                             StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                             DumpOptions = initConfig.AutoDump
                         },
-                        processingStats)
+                        processingStats,
+                        blockTracers)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
                     })

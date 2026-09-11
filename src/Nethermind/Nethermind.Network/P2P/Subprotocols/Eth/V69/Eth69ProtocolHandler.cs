@@ -100,7 +100,7 @@ public class Eth69ProtocolHandler(
 
         SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
         {
-            NetworkId = (ulong)status.NetworkId,
+            NetworkId = status.NetworkId,
             BestHash = status.LatestBlockHash,
             GenesisHash = status.GenesisHash,
             Protocol = status.Protocol,
@@ -108,7 +108,7 @@ public class Eth69ProtocolHandler(
             ForkId = status.ForkId
         };
 
-        Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+        Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
         HeadNumber = status.LatestBlock;
         HeadHash = status.LatestBlockHash;
         NotifyProtocolInitialized(eventArgs);

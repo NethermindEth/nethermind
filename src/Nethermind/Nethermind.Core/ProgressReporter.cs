@@ -25,7 +25,7 @@ public sealed class ProgressReporter : IDisposable
     private readonly Timer _timer;
     private int _disposed;
 
-    public ProgressReporter(string prefix, ILogManager logManager, long total, TimeSpan? interval = null)
+    public ProgressReporter(string prefix, ILogManager logManager, ulong total, TimeSpan? interval = null)
     {
         _progressLogger = new ProgressLogger(prefix, logManager);
         _progressLogger.Reset(0, total);
@@ -36,7 +36,7 @@ public sealed class ProgressReporter : IDisposable
 
     public ProgressLogger Logger => _progressLogger;
 
-    public void Update(long value)
+    public void Update(ulong value)
     {
         lock (_progressLogger) _progressLogger.Update(value);
     }

@@ -7,15 +7,15 @@ using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Grpc;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -61,7 +61,7 @@ public class NethermindRunnerModule(
             .Bind<IApiWithStores, INethermindApi>()
             .Bind<IBasicApi, INethermindApi>()
 
-            .AddModule(new StartRpcStepsModule(configProvider.GetConfig<IGrpcConfig>()))
+            .AddStep(typeof(StartRpc))
             .AddModule(new NethermindInvariantChecks())
 
             .AddSingleton<EthereumRunner>()
@@ -73,7 +73,6 @@ public class NethermindRunnerModule(
             .AddSingleton<NethermindApi.Dependencies>()
             .Bind<INethermindApi, NethermindApi>()
 
-            .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
             .AddSingleton(jsonSerializer)
             .AddSingleton<IJsonSerializer>(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)

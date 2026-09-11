@@ -98,7 +98,7 @@ public interface IJsonRpcConfig : IConfig
     string[] AdditionalRpcUrls { get; set; }
 
     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
-    long? GasCap { get; set; }
+    ulong? GasCap { get; set; }
 
     [ConfigItem(
         Description = "The interval, in seconds, between the JSON-RPC stats report log.",

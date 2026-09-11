@@ -7,54 +7,27 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public readonly struct StorageCell : IEquatable<StorageCell>, IHash64bit<StorageCell>
+    public readonly struct StorageCell(Address address, in UInt256 index) : IEquatable<StorageCell>, IHash64bit<StorageCell>
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
-        private readonly AddressAsKey _address;
-        private readonly UInt256 _index;
-        private readonly bool _isHash;
+        private readonly AddressAsKey _address = address;
+        private readonly UInt256 _index = index;
 
         public Address Address => _address.Value;
-        public bool IsHash => _isHash;
         public UInt256 Index => _index;
-
-        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
-
-        private ValueHash256 GetHash()
-        {
-            Span<byte> key = stackalloc byte[32];
-            Index.ToBigEndian(key);
-            return KeccakCache.Compute(key);
-        }
-
-        public StorageCell(Address address, in UInt256 index)
-        {
-            _address = address;
-            _index = index;
-        }
-
-        public StorageCell(Address address, ValueHash256 hash)
-        {
-            _address = address;
-            _index = Unsafe.As<ValueHash256, UInt256>(ref hash);
-            _isHash = true;
-        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in StorageCell other)
         {
-            if (_isHash != other._isHash)
-                return false;
-
-            if (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) !=
-                Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)))
+            if (!Extensions.Bytes.AreEqual32(
+                    ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index)),
+                    ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in other._index))))
                 return false;
 
             // Inline 20-byte Address comparison: avoids the Address.Equals call
@@ -67,14 +40,16 @@ namespace Nethermind.Core
 
             ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
             ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
-            return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
+            return Unsafe.As<byte, Vector128<ulong>>(ref ab) == Unsafe.As<byte, Vector128<ulong>>(ref bb)
                 && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, 16));
         }
 
         public bool Equals(StorageCell other) => Equals(in other);
 
-        public long GetHashCode64()
-            => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index))) ^ _address.Value.GetHashCode64();
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long GetHashCode64() => SpanExtensions.FastHash64ForAddressAndSlot(
+            ref MemoryMarshal.GetReference(_address.Value.Bytes),
+            ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index)));
 
         public override bool Equals(object? obj)
         {
@@ -86,10 +61,11 @@ namespace Nethermind.Core
             return obj is StorageCell address && Equals(address);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
         {
-            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
-            return hash ^ _address.Value.GetHashCode();
+            ulong hash = (ulong)GetHashCode64();
+            return (int)(hash ^ (hash >> 32));
         }
 
         public override string ToString() => $"{_address.Value}.{Index}";

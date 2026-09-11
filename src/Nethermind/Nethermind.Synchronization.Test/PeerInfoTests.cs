@@ -93,6 +93,47 @@ namespace Nethermind.Synchronization.Test
             Assert.That(peer.IsAsleep(AllocationContexts.Receipts), Is.False);
         }
 
+        [Test]
+        public void WakeUp_clears_the_composite_Blocks_weakness_nibble()
+        {
+            // Regression: waking must reset the Blocks composite weakness nibble, not just its member bits,
+            // so re-sleeping still takes SleepThreshold reports rather than one.
+            DateTime t0 = DateTime.UtcNow;
+            PeerInfo peer = NewPeer();
+
+            RaiseWeaknessUntilSleeping(peer, AllocationContexts.Blocks);
+            peer.PutToSleep(AllocationContexts.Blocks, t0);
+
+            peer.TryToWakeUp(t0 + TimeSpan.FromHours(1), TimeSpan.Zero);
+            Assert.That(peer.IsAsleep(AllocationContexts.Blocks), Is.False);
+
+            // With the nibble reset, a single fresh weak report must not immediately re-sleep.
+            Assert.That(peer.IncreaseWeakness(AllocationContexts.Blocks), Is.EqualTo(AllocationContexts.None));
+        }
+
+        [Test]
+        public void Context_slot_mapping_round_trips_for_every_tracked_context()
+        {
+            (AllocationContexts Context, int Index)[] expected =
+            [
+                (AllocationContexts.Headers, 0),
+                (AllocationContexts.Bodies, 1),
+                (AllocationContexts.Receipts, 2),
+                (AllocationContexts.State, 3),
+                (AllocationContexts.Snap, 4),
+                (AllocationContexts.ForwardHeader, 5),
+                (AllocationContexts.BlockAccessLists, 6),
+                (AllocationContexts.Blocks, 7),
+            ];
+
+            Assert.That(expected, Has.Length.EqualTo(WeaknessTracking.TrackedContextCount));
+            foreach ((AllocationContexts context, int index) in expected)
+            {
+                Assert.That(WeaknessTracking.IndexOf(context), Is.EqualTo(index));
+                Assert.That(WeaknessTracking.ContextAt(index), Is.EqualTo(context));
+            }
+        }
+
         [TestCaseSource(nameof(ContextCases))]
         public void TryAllocate_then_Free_round_trip(AllocationContexts contexts)
         {
@@ -200,6 +241,65 @@ namespace Nethermind.Synchronization.Test
 
             Assert.That(peer.AvailableAllocationSlots.Bodies, Is.EqualTo(0));
             Assert.That(peer.AvailableAllocationSlots.Receipts, Is.EqualTo(1), "rollback must restore the partially-claimed slot");
+        }
+
+        [Test]
+        public void Concurrent_resleep_and_wake_never_leave_peer_permanently_asleep()
+        {
+            PeerInfo peer = NewPeer();
+            DateTime sleptAt = DateTime.UtcNow;
+            DateTime wakeAt = sleptAt + TimeSpan.FromSeconds(10);
+
+            const int iterations = 25_000;
+            using Barrier barrier = new(3);
+            using CancellationTokenSource cts = new();
+
+            void RunRounds(Action action)
+            {
+                try
+                {
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        barrier.SignalAndWait(cts.Token);
+                        action();
+                        barrier.SignalAndWait(cts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            Thread sleeper = new(() => RunRounds(() => peer.PutToSleep(AllocationContexts.Receipts, sleptAt)));
+            Thread waker = new(() => RunRounds(() => peer.TryToWakeUp(wakeAt, TimeSpan.Zero)));
+            sleeper.Start();
+            waker.Start();
+
+            int stuckAt = -1;
+            try
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    peer.PutToSleep(AllocationContexts.Receipts, sleptAt);
+                    barrier.SignalAndWait(cts.Token);
+                    barrier.SignalAndWait(cts.Token);
+
+                    peer.TryToWakeUp(wakeAt, TimeSpan.Zero);
+                    if (peer.IsAsleep(AllocationContexts.Receipts))
+                    {
+                        stuckAt = i;
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                cts.Cancel();
+                sleeper.Join();
+                waker.Join();
+            }
+
+            Assert.That(stuckAt, Is.EqualTo(-1), $"Peer left permanently asleep for Receipts at iteration {stuckAt}.");
         }
 
         [Test]

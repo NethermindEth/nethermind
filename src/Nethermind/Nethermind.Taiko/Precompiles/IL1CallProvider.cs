@@ -9,9 +9,9 @@ namespace Nethermind.Taiko.Precompiles;
 /// <summary>
 /// Result of an L1 call via debug_traceCall, carrying return data and actual gas consumed.
 /// </summary>
-public readonly record struct L1CallResult(byte[]? ReturnData, long GasUsed, bool Failed)
+public readonly record struct L1CallResult(byte[]? ReturnData, ulong GasUsed, bool Failed)
 {
-    public static L1CallResult Failure() => new(null, 0L, true);
+    public static L1CallResult Failure() => new(null, 0UL, true);
 }
 
 /// <summary>
@@ -19,5 +19,5 @@ public readonly record struct L1CallResult(byte[]? ReturnData, long GasUsed, boo
 /// </summary>
 public interface IL1CallProvider
 {
-    L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit);
+    L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, ulong gasLimit);
 }

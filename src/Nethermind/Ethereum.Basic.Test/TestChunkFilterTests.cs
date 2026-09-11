@@ -42,6 +42,22 @@ public class TestChunkFilterTests
         Assert.That(enumeratedCount, Is.EqualTo(9));
     }
 
+    [TestCase("1of3", new[] { 0, 3, 6 })]
+    [TestCase("2of3", new[] { 1, 4, 7 })]
+    [TestCase("3of3", new[] { 2, 5, 8 })]
+    [TestCase(null, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 })]
+    [TestCase("", new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8 })]
+    public void FilterByChunk_WithExplicitChunk_IgnoresEnvironment(string chunk, int[] expected)
+    {
+        Environment.SetEnvironmentVariable("TEST_CHUNK", "1of9");
+
+        Assert.That(TestChunkFilter.FilterByChunk(Enumerable.Range(0, 9), chunk), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void FilterByChunk_WithInvalidExplicitChunk_Throws([Values("8of3", "0of3", "garbage")] string chunk) =>
+        Assert.Throws<ArgumentException>(() => TestChunkFilter.FilterByChunk(Enumerable.Range(0, 9), chunk));
+
     [Test]
     public void ShouldRunInChunk_WithoutTestChunkSet_ReturnsTrueForEverything()
     {
@@ -91,15 +107,8 @@ public class TestChunkFilterTests
         }
     }
 
-    [TestCase("0of4")]
-    [TestCase("5of4")]
-    [TestCase("-1of4")]
-    [TestCase("1of0")]
-    [TestCase("1of-1")]
-    [TestCase("badformat")]
-    [TestCase("1of")]
-    [TestCase("of4")]
-    public void TryGetChunkConfig_RejectsInvalidFormat(string invalid)
+    [Test]
+    public void TryGetChunkConfig_RejectsInvalidFormat([Values("0of4", "5of4", "-1of4", "1of0", "1of-1", "badformat", "1of", "of4")] string invalid)
     {
         Environment.SetEnvironmentVariable("TEST_CHUNK", invalid);
 

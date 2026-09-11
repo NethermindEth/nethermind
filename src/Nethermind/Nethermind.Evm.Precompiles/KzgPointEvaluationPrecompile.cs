@@ -21,11 +21,11 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
 
     public static Address Address { get; } = Address.FromNumber(0x0a);
 
-    public static string Name => "KZG_POINT_EVALUATION";
+    public string Name => "KZG_POINT_EVALUATION";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 50_000L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 50_000UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

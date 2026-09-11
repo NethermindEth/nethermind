@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -48,43 +47,43 @@ public class NonceManagerTests
     [Test]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
     {
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(nonce, Is.EqualTo(0UL));
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)1));
+            Assert.That(nonce, Is.EqualTo(1UL));
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)1));
+            Assert.That(nonce, Is.EqualTo(1UL));
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(nonce, Is.EqualTo(0UL));
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)1));
+            Assert.That(nonce, Is.EqualTo(1UL));
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)2));
+            Assert.That(nonce, Is.EqualTo(2UL));
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)2));
+            Assert.That(nonce, Is.EqualTo(2UL));
             locker.Accept();
         }
     }
@@ -95,38 +94,38 @@ public class NonceManagerTests
     {
         const int reservationsCount = 1000;
 
-        ConcurrentQueue<UInt256> nonces = new();
+        ConcurrentQueue<ulong> nonces = new();
 
         ParallelLoopResult result = Parallel.For(0, reservationsCount, i =>
         {
-            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce);
             locker.Accept();
             nonces.Enqueue(nonce);
         });
 
         Assert.That(result.IsCompleted, Is.True);
-        using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
+        using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce);
         nonces.Enqueue(nonce);
-        Assert.That(nonce, Is.EqualTo(new UInt256(reservationsCount)));
-        Assert.That(nonces.OrderBy(n => n), Is.EqualTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i))));
+        Assert.That(nonce, Is.EqualTo((ulong)reservationsCount));
+        Assert.That(nonces.OrderBy(n => n), Is.EqualTo(Enumerable.Range(0, reservationsCount + 1).Select(i => (ulong)i)));
     }
 
     [Test]
     public void should_pick_account_nonce_as_initial_value()
     {
         IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        accountStateProvider.GetNonce(TestItem.AddressA).Returns(UInt256.Zero);
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
         _nonceManager = new NonceManager(accountStateProvider);
 
-        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(nonce, Is.EqualTo(0UL));
         }
 
-        accountStateProvider.GetNonce(TestItem.AddressA).Returns((UInt256)10);
-        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(10UL);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)10));
+            Assert.That(nonce, Is.EqualTo(10UL));
         }
     }
 
@@ -138,15 +137,15 @@ public class NonceManagerTests
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(nonce, Is.EqualTo(0UL));
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)1));
+            Assert.That(nonce, Is.EqualTo(1UL));
             locker.Accept();
         }
 
@@ -155,15 +154,15 @@ public class NonceManagerTests
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)3));
+            Assert.That(nonce, Is.EqualTo(3UL));
             locker.Accept();
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)5));
+            Assert.That(nonce, Is.EqualTo(5UL));
             locker.Accept();
         }
     }
@@ -171,22 +170,22 @@ public class NonceManagerTests
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
-        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(nonce, Is.EqualTo(0UL));
         }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+            Assert.That(nonce, Is.EqualTo(0UL));
             locker.Accept();
         }
 
         using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo((UInt256)1));
+            Assert.That(nonce, Is.EqualTo(1UL));
             locker.Accept();
         }
     }
@@ -195,11 +194,11 @@ public class NonceManagerTests
     [Repeat(2)]
     public void should_lock_on_same_account()
     {
-        using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
-        Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+        using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce);
+        Assert.That(nonce, Is.EqualTo(0UL));
         Task task = Task.Run(() =>
         {
-            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 _);
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong _);
         });
         task.Wait(TimeSpan.FromMilliseconds(1_000));
         Assert.That(task.IsCompleted, Is.EqualTo(false));
@@ -209,12 +208,12 @@ public class NonceManagerTests
     [Repeat(3)]
     public void should_not_lock_on_different_accounts()
     {
-        using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
-        Assert.That(nonce, Is.EqualTo(UInt256.Zero));
+        using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce);
+        Assert.That(nonce, Is.EqualTo(0UL));
         Task task = Task.Run(() =>
         {
-            using NonceLocker locker2 = _nonceManager.ReserveNonce(TestItem.AddressB, out UInt256 nonce2);
-            Assert.That(nonce2, Is.EqualTo(UInt256.Zero));
+            using NonceLocker locker2 = _nonceManager.ReserveNonce(TestItem.AddressB, out ulong nonce2);
+            Assert.That(nonce2, Is.EqualTo(0UL));
         });
         task.Wait(TimeSpan.FromMilliseconds(10_000));
         Assert.That(task.IsCompleted, Is.EqualTo(true));

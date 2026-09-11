@@ -42,7 +42,7 @@ namespace Nethermind.AuRa.Test.Reward
             {
                 BlockRewardContractAddress = _address10,
                 BlockRewardContractTransition = 10,
-                BlockReward = new SortedDictionary<long, UInt256>() { { 0, 200 } },
+                BlockReward = new SortedDictionary<ulong, UInt256>() { { 0, 200 } },
             };
 
             _abiEncoder = Substitute.For<IAbiEncoder>();
@@ -79,7 +79,7 @@ namespace Nethermind.AuRa.Test.Reward
         [Test]
         public void constructor_throws_ArgumentException_on_BlockRewardContractTransition_higher_than_BlockRewardContractTransitions()
         {
-            _auraParameters.BlockRewardContractTransitions = new Dictionary<long, Address>()
+            _auraParameters.BlockRewardContractTransitions = new Dictionary<ulong, Address>()
             {
                 {2, Address.FromNumber(2)}
             };
@@ -88,10 +88,10 @@ namespace Nethermind.AuRa.Test.Reward
             Assert.That(action, Throws.TypeOf<ArgumentException>());
         }
 
-        [TestCase(1, 200ul)]
-        [TestCase(5, 200ul)]
-        [TestCase(9, 200ul)]
-        public void calculates_rewards_correctly_before_contract_transition(long blockNumber, ulong expectedReward)
+        [TestCase(1ul, 200ul)]
+        [TestCase(5ul, 200ul)]
+        [TestCase(9ul, 200ul)]
+        public void calculates_rewards_correctly_before_contract_transition(ulong blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
@@ -108,9 +108,9 @@ namespace Nethermind.AuRa.Test.Reward
             Assert.That(result, Is.Empty);
         }
 
-        [TestCase(10, 100ul)]
-        [TestCase(15, 150ul)]
-        public void calculates_rewards_correctly_after_contract_transition(long blockNumber, ulong expectedReward)
+        [TestCase(10ul, 100ul)]
+        [TestCase(15ul, 150ul)]
+        public void calculates_rewards_correctly_after_contract_transition(ulong blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
@@ -124,16 +124,16 @@ namespace Nethermind.AuRa.Test.Reward
         {
             get
             {
-                yield return new TestCaseData(10, 100ul, TestItem.AddressA);
-                yield return new TestCaseData(50, 150ul, TestItem.AddressB);
-                yield return new TestCaseData(150, 200ul, TestItem.AddressC);
+                yield return new TestCaseData(10UL, 100ul, TestItem.AddressA);
+                yield return new TestCaseData(50UL, 150ul, TestItem.AddressB);
+                yield return new TestCaseData(150UL, 200ul, TestItem.AddressC);
             }
         }
 
         [TestCaseSource(nameof(SubsequentTransitionsTestCases))]
-        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, ulong expectedReward, Address address)
+        public void calculates_rewards_correctly_after_subsequent_contract_transitions(ulong blockNumber, ulong expectedReward, Address address)
         {
-            _auraParameters.BlockRewardContractTransitions = new Dictionary<long, Address>()
+            _auraParameters.BlockRewardContractTransitions = new Dictionary<ulong, Address>()
             {
                 {50, _address50},
                 {150, _address150}
@@ -146,9 +146,9 @@ namespace Nethermind.AuRa.Test.Reward
             Assert.That(result, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
         }
 
-        [TestCase(10, 100ul)]
-        [TestCase(15, 150ul)]
-        public void calculates_rewards_correctly_for_uncles(long blockNumber, ulong expectedReward)
+        [TestCase(10ul, 100ul)]
+        [TestCase(15ul, 150ul)]
+        public void calculates_rewards_correctly_for_uncles(ulong blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             _block = _block.WithReplacedBody(new BlockBody(_block.Body.Transactions, new[]

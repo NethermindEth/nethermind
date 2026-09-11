@@ -41,21 +41,21 @@ namespace Nethermind.Trie
 
         public void VisitBranch(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}BRANCH | -> {KeccakOrRlpStringOfNode(node)}");
 
-        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+        public void VisitExtension(in OldStyleTrieVisitContext context, TrieNode node) => _builder.AppendLine($"{GetPrefix(context)}EXTENSION {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
 
         public void VisitLeaf(in OldStyleTrieVisitContext context, TrieNode node)
         {
             if (!expectAccounts)
             {
-                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+                _builder.AppendLine($"{GetPrefix(context)}LEAF {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
             }
         }
 
         public void VisitAccount(in OldStyleTrieVisitContext context, TrieNode node, in AccountStruct account)
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.AsSpan());
+            _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key!).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            RlpReader valueReader = new(node.Value.AsSpan());
             if (!context.IsStorage)
             {
                 _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
@@ -64,12 +64,13 @@ namespace Nethermind.Trie
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueDecoderContext.DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {valueReader.DecodeByteArray().ToHexString(true, true)}");
             }
         }
 
         public override string ToString() => _builder.ToString();
 
-        private static string? KeccakOrRlpStringOfNode(TrieNode node) => node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
+        private static string KeccakOrRlpStringOfNode(TrieNode node) =>
+            node.Keccak is { } keccak ? keccak.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
     }
 }

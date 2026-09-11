@@ -9,13 +9,22 @@ namespace Nethermind.EraE.Archive;
 
 internal sealed class EraSlimReceiptDecoder
 {
+    /// <summary>Smallest RLP encoding of a slim receipt.</summary>
+    /// <remarks><c>["", "", "", []]</c> - four one-byte items under a one-byte sequence prefix.</remarks>
+    private const int MinSlimReceiptLength = 5;
+
+    private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<TxReceipt>(RlpLimit.DefaultLimit.Limit);
+
     public TxReceipt[] Decode(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
 
         int outerLength = ctx.ReadSequenceLength();
         int outerEnd = ctx.Position + outerLength;
-        int count = ctx.PeekNumberOfItemsRemaining(outerEnd);
+        // The entry is decompressed without a size cap, so the count must be bounded by its own bytes.
+        int maxReceipts = Math.Min(ReceiptsRlpLimit.Limit, (outerEnd - ctx.Position) / MinSlimReceiptLength);
+        int count = ctx.PeekNumberOfItemsRemaining(outerEnd, maxReceipts + 1);
+        Rlp.GuardLimit(count, maxReceipts, ReceiptsRlpLimit);
 
         TxReceipt[] receipts = new TxReceipt[count];
         for (int i = 0; i < count; i++)
@@ -29,7 +38,7 @@ internal sealed class EraSlimReceiptDecoder
         return receipts;
     }
 
-    private static TxReceipt DecodeSlimReceipt(ref Rlp.ValueDecoderContext ctx)
+    private static TxReceipt DecodeSlimReceipt(ref RlpReader ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int receiptEnd = ctx.Position + sequenceLength;
@@ -64,17 +73,11 @@ internal sealed class EraSlimReceiptDecoder
                     $"Invalid slim receipt status encoding length: {statusBytes.Length}");
         }
 
-        receipt.GasUsedTotal = ctx.DecodePositiveLong();
+        receipt.GasUsedTotal = ctx.DecodeULong();
 
         int logsLength = ctx.ReadSequenceLength();
         int logsEnd = ctx.Position + logsLength;
-        int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd);
-
-        LogEntry[] logs = new LogEntry[logCount];
-        for (int i = 0; i < logCount; i++)
-        {
-            logs[i] = Rlp.Decode<LogEntry>(ref ctx);
-        }
+        LogEntry[] logs = LogEntryDecoder.DecodeLogs(ref ctx, logsEnd);
 
         if (ctx.Position != logsEnd)
             throw new RlpException("Slim receipt logs list was not fully consumed.");

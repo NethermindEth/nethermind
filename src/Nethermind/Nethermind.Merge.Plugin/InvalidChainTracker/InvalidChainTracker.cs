@@ -61,16 +61,7 @@ public class InvalidChainTracker(
         }
     }
 
-    private Node GetNode(Hash256 hash)
-    {
-        if (!_tree.TryGet(hash, out Node node))
-        {
-            node = new Node();
-            _tree.Set(hash, node);
-        }
-
-        return node;
-    }
+    private Node GetNode(Hash256 hash) => _tree.SetOrGet(hash, 0, static (_, _) => new Node());
 
     private void PropagateLastValidHash(Node node)
     {
@@ -152,14 +143,14 @@ public class InvalidChainTracker(
     public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
-        Node node = GetNode(blockHash);
+        if (!_tree.TryGet(blockHash, out Node node))
+        {
+            return false;
+        }
+
         lock (node)
         {
-            if (node.LastValidHash is not null)
-            {
-                lastValidHash = node.LastValidHash;
-            }
-
+            lastValidHash = node.LastValidHash;
             return node.LastValidHash is not null;
         }
     }

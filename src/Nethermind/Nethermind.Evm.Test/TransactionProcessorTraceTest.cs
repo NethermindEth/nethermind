@@ -13,17 +13,16 @@ namespace Nethermind.Evm.Test;
 
 public class TransactionProcessorTraceTest : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-    [TestCase(21000)]
-    [TestCase(50000)]
-    public void Trace_should_not_charge_gas(long gasLimit)
+    [Test]
+    public void Trace_should_not_charge_gas([Values(21000UL, 50000UL)] ulong gasLimit)
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit, gasPrice: 0);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.All);
         _processor.Trace(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         ParityStateChange<UInt256?> senderBalance = tracer.BuildResult().StateChanges[TestItem.AddressA].Balance;
-        Assert.That((senderBalance.Before - senderBalance.After), Is.EqualTo(transaction.Value));
+        Assert.That((senderBalance.Before - senderBalance.After), Is.EqualTo((UInt256)transaction.Value));
     }
 }

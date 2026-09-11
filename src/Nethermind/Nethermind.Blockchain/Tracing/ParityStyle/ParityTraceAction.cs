@@ -19,7 +19,7 @@ public class ParityTraceAction
     public string? CreationMethod { get; set; }
     public Address? From { get; set; }
     public Address? To { get; set; }
-    public long Gas { get; set; }
+    public ulong Gas { get; set; }
     public UInt256 Value { get; set; }
     public CappedArray<byte> Input { get; set; }
 

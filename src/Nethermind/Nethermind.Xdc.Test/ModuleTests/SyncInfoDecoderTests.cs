@@ -62,8 +62,8 @@ public class SyncInfoDecoderTests
         SyncInfoDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(syncInfo);
-        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
-        SyncInfo decoded = decoder.Decode(ref decoderContext);
+        RlpReader decoderContext = new(encoded.Bytes);
+        SyncInfo decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
     }
@@ -85,12 +85,12 @@ public class SyncInfoDecoderTests
         );
 
         SyncInfoDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(syncInfo));
-        decoder.Encode(stream, syncInfo);
-        stream.Position = 0;
+        byte[] bytes = new byte[decoder.GetLength(syncInfo, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, syncInfo);
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        SyncInfo decoded = decoder.Decode(ref decoderContext);
+        RlpReader decoderContext = new(bytes);
+        SyncInfo decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(syncInfo).UsingXdcComparer());
     }
@@ -133,19 +133,19 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
-        SyncInfo decoded = decoder.Decode(ref context);
+        RlpReader context = new(Rlp.OfEmptyList.Bytes);
+        SyncInfo? decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
 
     [Test]
-    public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
+    public void Decode_EmptyByteArray_RlpReader_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
+        RlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
 
-        SyncInfo decoded = decoder.Decode(ref decoderContext);
+        SyncInfo? decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.Null);
     }

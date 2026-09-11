@@ -4,7 +4,9 @@
 using System;
 using Nethermind.Core;
 using G1 = Nethermind.Crypto.Bls.P1;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2 = Nethermind.Crypto.Bls.P2;
+using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -27,11 +29,11 @@ internal static partial class Eip2537
     internal static readonly byte[] G1Infinity = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     internal static readonly byte[] G2Infinity = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    private const int _maxDiscountG1 = 519;
-    private const int _maxDiscountG2 = 524;
+    private const ulong _maxDiscountG1 = 519;
+    private const ulong _maxDiscountG2 = 524;
 
     private static readonly byte[] _baseFieldOrder = [0x1a, 0x01, 0x11, 0xea, 0x39, 0x7f, 0xe6, 0x9a, 0x4b, 0x1b, 0xa7, 0xb6, 0x43, 0x4b, 0xac, 0xd7, 0x64, 0x77, 0x4b, 0x84, 0xf3, 0x85, 0x12, 0xbf, 0x67, 0x30, 0xd2, 0xa0, 0xf6, 0xb0, 0xf6, 0x24, 0x1e, 0xab, 0xff, 0xfe, 0xb1, 0x53, 0xff, 0xff, 0xb9, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xaa, 0xab];
-    private static readonly (int g1, int g2)[] _discountTable =
+    private static readonly (ulong g1, ulong g2)[] _discountTable =
     [
         (0, 0), // 0
         (1000, 1000), // 1
@@ -164,76 +166,90 @@ internal static partial class Eip2537
         (519, 524) // 128
     ];
 
-    internal static int DiscountForG1(int k) => k >= 128 ? _maxDiscountG1 : _discountTable[k].g1;
+    internal static ulong DiscountForG1(ulong k) => k >= 128 ? _maxDiscountG1 : _discountTable[(int)k].g1;
 
-    internal static int DiscountForG2(int k) => k >= 128 ? _maxDiscountG2 : _discountTable[k].g2;
+    internal static ulong DiscountForG2(ulong k) => k >= 128 ? _maxDiscountG2 : _discountTable[(int)k].g2;
+
+    // validates a raw point of `fieldElements` field elements (each a 16-byte zero pad + 48-byte
+    // value) and reports whether every value is zero (i.e. the point at infinity)
+    private static Result ValidateRawPoint(ReadOnlySpan<byte> raw, int fieldElements, out bool isInfinity)
+    {
+        isInfinity = true;
+        if (raw.Length != fieldElements * LenFp)
+            return Errors.InvalidFieldLength;
+
+        for (int i = 0; i < fieldElements; i++)
+        {
+            ReadOnlySpan<byte> fe = raw.Slice(i * LenFp, LenFp);
+            Result valid = ValidRawFp(fe);
+            if (!valid)
+                return valid;
+            if (fe[LenFpPad..].ContainsAnyExcept((byte)0))
+                isInfinity = false;
+        }
+
+        return Result.Success;
+    }
 
     internal static Result TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
     {
-        if (raw.Length != LenG1)
-            return Errors.InvalidFieldLength;
+        Result result = ValidateRawPoint(raw, 2, out bool isInfinity);
+        if (!result)
+            return result;
 
-        Result result = ValidRawFp(raw[..LenFp]) && ValidRawFp(raw[LenFp..]);
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
 
-        if (result)
-        {
-            // set to infinity point by default
-            p.Zero();
-
-            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
-            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..];
-
-            bool isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
-
-            if (isInfinity)
-                return Result.Success;
-
-            p.Decode(fp0, fp1);
-
-            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
-        }
-
-        return result;
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
     }
 
+    // as above, decoding into affine layout
+    internal static Result TryDecodeRaw(this G1Affine p, ReadOnlySpan<byte> raw)
+    {
+        Result result = ValidateRawPoint(raw, 2, out bool isInfinity);
+        if (!result)
+            return result;
+
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
+
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+    }
 
     // decodes and checks point is on curve
     internal static Result TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
-        if (raw.Length != LenG2)
-            return Errors.InvalidFieldLength;
+        Result result = ValidateRawPoint(raw, 4, out bool isInfinity);
+        if (!result)
+            return result;
 
-        Result result =
-            ValidRawFp(raw[..LenFp]) &&
-            ValidRawFp(raw[LenFp..(2 * LenFp)]) &&
-            ValidRawFp(raw[(2 * LenFp)..(3 * LenFp)]) &&
-            ValidRawFp(raw[(3 * LenFp)..]);
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
 
-        if (result)
-        {
-            // set to infinity point by default
-            p.Zero();
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..(2 * LenFp)],
+            raw[(2 * LenFp + LenFpPad)..(3 * LenFp)], raw[(3 * LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
+    }
 
-            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
-            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..(2 * LenFp)];
-            ReadOnlySpan<byte> fp2 = raw[(2 * LenFp + LenFpPad)..(3 * LenFp)];
-            ReadOnlySpan<byte> fp3 = raw[(3 * LenFp + LenFpPad)..];
+    // as above, decoding into affine layout
+    internal static Result TryDecodeRaw(this G2Affine p, ReadOnlySpan<byte> raw)
+    {
+        Result result = ValidateRawPoint(raw, 4, out bool isInfinity);
+        if (!result)
+            return result;
 
-            bool isInfinity =
-                !fp0.ContainsAnyExcept((byte)0) &&
-                !fp1.ContainsAnyExcept((byte)0) &&
-                !fp2.ContainsAnyExcept((byte)0) &&
-                !fp3.ContainsAnyExcept((byte)0);
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
 
-            if (isInfinity)
-                return Result.Success;
-
-            p.Decode(fp0, fp1, fp2, fp3);
-
-            return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
-        }
-
-        return result;
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..(2 * LenFp)],
+            raw[(2 * LenFp + LenFpPad)..(3 * LenFp)], raw[(3 * LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
     }
 
     internal static byte[] EncodeRaw(this G1 p)
@@ -317,7 +333,7 @@ internal static partial class Eip2537
 
     private static Result DecodeAndCheckSubgroupG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
-        G1 p = new(pointBuffer.Span[(dest * G1.Sz)..]);
+        G1Affine p = new(pointBuffer.Span[(dest * G1Affine.Sz)..]);
         Result result = p.TryDecodeRaw(rawPoint.Span);
 
         return result
@@ -327,7 +343,7 @@ internal static partial class Eip2537
 
     private static Result DecodeAndCheckSubgroupG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
-        G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
+        G2Affine p = new(pointBuffer.Span[(dest * G2Affine.Sz)..]);
         Result result = p.TryDecodeRaw(rawPoint.Span);
 
         return result

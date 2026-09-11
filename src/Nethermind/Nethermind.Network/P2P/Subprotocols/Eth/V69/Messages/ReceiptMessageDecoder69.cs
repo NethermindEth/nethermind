@@ -13,10 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpDecoder<TxReceipt>
 {
-    // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
-    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
-
-    protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemEmptyList())
         {
@@ -35,29 +32,21 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
+            txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
+            txReceipt.GasUsedTotal = firstItem.ToULong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
+            txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-        int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
-        ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
-        LogEntry[] entries = new LogEntry[numberOfReceipts];
-        for (int i = 0; i < numberOfReceipts; i++)
-        {
-            entries[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
-        }
-
-        txReceipt.Logs = entries;
+        txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
         // Handle any remaining extra bytes
         bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
@@ -109,13 +98,17 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (int i = 0; i < item.Logs.Length; i++)
+        LogEntry[] logs = GetLogs(item);
+        for (int i = 0; i < logs.Length; i++)
         {
-            logsLength += Rlp.LengthOf(item.Logs[i]);
+            logsLength += Rlp.LengthOf(logs[i]);
         }
 
         return logsLength;
     }
+
+    private static LogEntry[] GetLogs(TxReceipt item) =>
+        item.Logs ?? throw new RlpException("Receipt logs are null.");
 
     public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -123,39 +116,39 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         return Rlp.LengthOfSequence(total);
     }
 
-    public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
         (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
 
-        rlpStream.StartSequence(totalContentLength);
+        writer.StartSequence(totalContentLength);
 
-        rlpStream.Encode((byte)item.TxType);
+        writer.Encode((byte)item.TxType);
 
         if (!skipStateAndStatus)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {
-                rlpStream.Encode(item.StatusCode);
+                writer.Encode(item.StatusCode);
             }
             else
             {
-                rlpStream.Encode(item.PostTransactionState);
+                writer.Encode(item.PostTransactionState);
             }
         }
 
-        rlpStream.Encode(item.GasUsedTotal);
+        writer.Encode(item.GasUsedTotal);
 
-        rlpStream.StartSequence(logsLength);
-        LogEntry[] logs = item.Logs;
+        writer.StartSequence(logsLength);
+        LogEntry[] logs = GetLogs(item);
         for (int i = 0; i < logs.Length; i++)
         {
-            rlpStream.Encode(logs[i]);
+            LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
         }
     }
 }

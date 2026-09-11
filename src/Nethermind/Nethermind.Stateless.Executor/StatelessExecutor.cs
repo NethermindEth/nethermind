@@ -12,62 +12,69 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    /// <summary>
-    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
-    /// </summary>
-    /// <remarks>
-    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
-    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
-    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
-    /// The failure result is therefore encoded up front, before execution begins, so the
-    /// callback can access it.
-    /// </remarks>
-    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
-
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        StatelessPayload payload = InputDecoder.Decode(data);
-        ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
-        Transaction[] transactions = payload.Block.Transactions;
+        byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
+        FailureOutput = output;
+        StatelessPayload payload;
+
+        try
+        {
+            // Also installs the run's hash seed, which every hash-keyed container below depends on.
+            payload = InputDecoder.Decode(data);
+        }
+        catch (Exception ex)
+        {
+            Debug.Fail(ex.Message);
+            return output;
+        }
+
         StatelessValidationResult result = new()
         {
             NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
             IsSuccess = false,
-            ChainConfig = payload.ChainConfig
+            ChainId = payload.ChainId,
+            SchemaId = payload.SchemaId
         };
-        byte[] output = StatelessValidationResult.Encode(result);
+        output = StatelessValidationResult.Encode(result);
         bool success = false;
 
+        // Published before block reconstruction, the first step that can throw, so a failure there
+        // still reports the decoded metadata rather than the zero sentinel.
         FailureOutput = output;
 
-        if (transactions.Length == publicKeys.Length)
+        try
         {
-            try
+            Block block = payload.GetBlock();
+            ReadOnlySpan<SszPublicKey> publicKeys = payload.PublicKeys.Span;
+            Transaction[] transactions = block.Transactions;
+
+            if (transactions.Length == publicKeys.Length &&
+                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span))
             {
-                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig);
-                IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
+                ISpecProvider specProvider = payload.SpecProvider;
+                IReleaseSpec spec = specProvider.GetSpec(block.Header);
 #if !ZK_EVM
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
                 for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
+                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
 
                 using Witness witness = payload.Witness.ToWitness();
 
-                success = Execute(payload.Block, witness, specProvider);
+                success = Execute(block, witness, specProvider);
             }
-            catch (Exception ex)
-            {
-                Debug.Fail(ex.Message);
-            }
+        }
+        catch (Exception ex)
+        {
+            Debug.Fail(ex.Message);
         }
 
         if (success)
@@ -118,7 +125,7 @@ public static class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 
@@ -139,19 +146,47 @@ public static class StatelessExecutor
         return true;
     }
 
-    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
-    {
-        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
-            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+    /// <summary>
+    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
+    /// </summary>
+    /// <remarks>
+    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
+    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
+    /// The failure result is therefore encoded up front, before execution begins, so the
+    /// callback can access it.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
 
-        // Empty arrays mean ActiveFork was omitted — use the base provider as-is.
-        if (chainConfig.ActiveFork.Fork == 0 &&
-            chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
-            chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
+    private static readonly StatelessValidationResult _defaultFailureResult = new()
+    {
+        NewPayloadRequestRoot = Hash256.Zero,
+        IsSuccess = false,
+        ChainId = 0,
+        SchemaId = 0
+    };
+
+    /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
+    internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)
+    {
+        int index = 0;
+
+        foreach (Transaction transaction in transactions)
         {
-            return baseProvider;
+            byte[]?[]? hashes = transaction.BlobVersionedHashes;
+
+            if (hashes is null)
+                continue;
+
+            foreach (byte[]? hash in hashes)
+            {
+                if (index == expected.Length || !expected[index].Bytes.SequenceEqual(hash))
+                    return false;
+
+                index++;
+            }
         }
 
-        return StatelessSpecProvider.Create(baseProvider, chainConfig.ActiveFork);
+        return index == expected.Length;
     }
 }

@@ -67,7 +67,7 @@ public class Eth69ProtocolHandlerTests
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         _syncManager.FindHeader(Arg.Any<Hash256>()).Returns(_genesisBlock.Header);
-        _syncManager.LowestBlock.Returns(0);
+        _syncManager.LowestBlock.Returns(0UL);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
@@ -279,15 +279,15 @@ public class Eth69ProtocolHandlerTests
 
     private static IEnumerable<TestCaseData> InvalidBlockRangeUpdates()
     {
-        yield return new TestCaseData(2L, 1L, Keccak.Compute("2")).SetName("earliest_after_latest");
-        yield return new TestCaseData(1L, 2L, Keccak.Zero).SetName("empty_hash");
+        yield return new TestCaseData(2UL, 1UL, Keccak.Compute("2")).SetName("earliest_after_latest");
+        yield return new TestCaseData(1UL, 2UL, Keccak.Zero).SetName("empty_hash");
     }
 
     [TestCaseSource(nameof(InvalidBlockRangeUpdates))]
-    public void Should_disconnect_on_invalid_BlockRangeUpdate(long earliestBlock, long latestBlock, Hash256 latestBlockHash)
+    public void Should_disconnect_on_invalid_BlockRangeUpdate(ulong earliestBlock, ulong latestBlock, Hash256 latestBlockHash)
     {
         HandleIncomingStatusMessage();
-        long headNumber = _handler.HeadNumber;
+        ulong headNumber = _handler.HeadNumber;
         Hash256? headHash = _handler.HeadHash;
 
         using BlockRangeUpdateMessage msg = new()

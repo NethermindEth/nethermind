@@ -23,25 +23,22 @@ namespace Nethermind.Serialization.Rlp
         {
         }
 
-        protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
+        protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             TxReceipt txReceipt = new();
-            if (!decoderContext.IsSequenceNext())
+            if (!rlp.IsSequenceNext(position))
             {
-                decoderContext.SkipLength();
-                txReceipt.TxType = (TxType)decoderContext.ReadByte();
+                rlp.SkipLength(ref position);
+                txReceipt.TxType = (TxType)rlp.Data[position++];
             }
 
-            int receiptEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            byte[] firstItem = decoderContext.DecodeByteArray();
+            rlp.ReadSequenceLength(ref position, out int receiptLength);
+            int receiptEnd = position + receiptLength;
+            rlp.DecodeByteArray(ref position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -51,58 +48,66 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak();
-            if (isStorage) txReceipt.BlockNumber = (long)decoderContext.DecodeUInt256();
-            if (isStorage) txReceipt.Index = decoderContext.DecodePositiveInt();
-            if (isStorage) txReceipt.Sender = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.Recipient = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.ContractAddress = decoderContext.DecodeAddress();
-            if (isStorage) txReceipt.GasUsed = decoderContext.DecodePositiveLong();
-            txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
-            txReceipt.Bloom = decoderContext.DecodeBloom();
+            if (isStorage)
+            {
+                txReceipt.BlockHash = rlp.DecodeKeccakOrNull(ref position);
+                txReceipt.BlockNumber = rlp.DecodeULong(ref position);
+                txReceipt.Index = rlp.DecodePositiveInt(ref position);
+                txReceipt.Sender = rlp.DecodeAddressOrNull(ref position);
+                txReceipt.Recipient = rlp.DecodeAddressOrNull(ref position);
+                txReceipt.ContractAddress = rlp.DecodeAddressOrNull(ref position);
+                txReceipt.GasUsed = rlp.DecodeULong(ref position);
+            }
 
-            int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
+            txReceipt.Bloom = rlp.DecodeBloomOrNull(ref position);
+
+            rlp.ReadSequenceLength(ref position, out int logsLength);
+            int lastCheck = position + logsLength;
+            decoderContext.Position = position;
             List<LogEntry> logEntries = [];
 
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));
-            }
-
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (!allowExtraBytes)
-            {
-                decoderContext.Check(lastCheck);
-            }
-
-            if (!allowExtraBytes)
-            {
-                if (isStorage && supportTxHash && decoderContext.Position < receiptEnd)
+                LogEntry? logEntry = LogEntryDecoder.Instance.Decode(
+                    ref decoderContext,
+                    RlpBehaviors.AllowExtraBytes);
+                if (logEntry is not null)
                 {
-                    // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
-                    if (decoderContext.PeekByte() == MarkTxHashByte)
-                    {
-                        decoderContext.ReadByte();
-                        txReceipt.TxHash = decoderContext.DecodeKeccak();
-                    }
+                    logEntries.Add(logEntry);
+                }
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+            {
+                position = decoderContext.Position;
+                RlpHelpers.Check(position, lastCheck);
+
+                // since txHash was added later and may not be in rlp, we provide special mark byte that it will be next
+                if (isStorage && supportTxHash && position < receiptEnd && rlp.Data[position] == MarkTxHashByte)
+                {
+                    position++;
+                    txReceipt.TxHash = rlp.DecodeKeccakOrNull(ref position);
                 }
 
                 // since error was added later we can only rely on it in cases where we read receipt only and no data follows, empty errors might not be serialized
-                if (decoderContext.Position < receiptEnd)
+                if (position < receiptEnd)
                 {
-                    txReceipt.Error = decoderContext.DecodeString();
+                    txReceipt.Error = rlp.DecodeString(ref position);
                 }
+
+                decoderContext.Position = position;
             }
 
             txReceipt.Logs = logEntries.ToArray();
             return txReceipt;
         }
 
-        public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                rlpStream.EncodeNullObject();
+                writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
@@ -116,64 +121,64 @@ namespace Nethermind.Serialization.Rlp
             {
                 if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
                 {
-                    rlpStream.StartByteArray(sequenceLength + 1, false);
+                    writer.StartByteArray(sequenceLength + 1, false);
                 }
 
-                rlpStream.WriteByte((byte)item.TxType);
+                writer.WriteByte((byte)item.TxType);
             }
 
-            rlpStream.StartSequence(totalContentLength);
+            writer.StartSequence(totalContentLength);
             if (isEip658receipts)
             {
-                rlpStream.Encode(item.StatusCode);
+                writer.Encode(item.StatusCode);
             }
             else
             {
-                rlpStream.Encode(item.PostTransactionState);
+                writer.Encode(item.PostTransactionState);
             }
 
             if (isStorage)
             {
-                rlpStream.Encode(item.BlockHash);
-                rlpStream.Encode(item.BlockNumber);
-                rlpStream.Encode(item.Index);
-                rlpStream.Encode(item.Sender);
-                rlpStream.Encode(item.Recipient);
-                rlpStream.Encode(item.ContractAddress);
-                rlpStream.Encode(item.GasUsed);
-                rlpStream.Encode(item.GasUsedTotal);
-                rlpStream.Encode(item.Bloom);
+                writer.Encode(item.BlockHash);
+                writer.Encode(item.BlockNumber);
+                writer.Encode(item.Index);
+                writer.Encode(item.Sender);
+                writer.Encode(item.Recipient);
+                writer.Encode(item.ContractAddress);
+                writer.Encode(item.GasUsed);
+                writer.Encode(item.GasUsedTotal);
+                writer.Encode(item.Bloom);
 
-                rlpStream.StartSequence(logsLength);
+                writer.StartSequence(logsLength);
 
-                LogEntry[] logs = item.Logs;
+                LogEntry[] logs = GetLogs(item);
                 for (int i = 0; i < logs.Length; i++)
                 {
-                    rlpStream.Encode(logs[i]);
+                    LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
                 }
 
                 if (supportTxHash)
                 {
-                    rlpStream.WriteByte(MarkTxHashByte);
-                    rlpStream.Encode(item.TxHash);
+                    writer.WriteByte(MarkTxHashByte);
+                    writer.Encode(item.TxHash);
                 }
 
-                rlpStream.Encode(item.Error);
+                writer.Encode(item.Error);
             }
             else
             {
-                rlpStream.Encode(item.GasUsedTotal);
-                rlpStream.Encode(item.Bloom);
+                writer.Encode(item.GasUsedTotal);
+                writer.Encode(item.Bloom);
 
-                rlpStream.StartSequence(logsLength);
+                writer.StartSequence(logsLength);
 
-                LogEntry[] logs = item.Logs;
+                LogEntry[] logs = GetLogs(item);
                 for (int i = 0; i < logs.Length; i++)
                 {
-                    rlpStream.Encode(logs[i]);
+                    LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
                 }
 
-                rlpStream.Encode(item.Error);
+                writer.Encode(item.Error);
             }
         }
 
@@ -224,19 +229,28 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (int i = 0; i < item.Logs.Length; i++)
+            LogEntry[] logs = GetLogs(item);
+            for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(item.Logs[i]);
+                logsLength += Rlp.LengthOf(logs[i]);
             }
 
             return logsLength;
         }
 
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
+            if (item is null)
+            {
+                return Rlp.OfEmptyList.Length;
+            }
+
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
@@ -249,7 +263,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors,
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,
             out TxReceiptStructRef item)
         {
             item = new TxReceiptStructRef();
@@ -284,15 +298,19 @@ namespace Nethermind.Serialization.Rlp
             if (isStorage)
             {
                 decoderContext.DecodeKeccakStructRef(out item.BlockHash);
-                item.BlockNumber = (long)decoderContext.DecodeUInt256();
+                item.BlockNumber = decoderContext.DecodeULong();
                 item.Index = decoderContext.DecodePositiveInt();
                 decoderContext.DecodeAddressStructRef(out item.Sender);
                 decoderContext.DecodeAddressStructRef(out item.Recipient);
                 decoderContext.DecodeAddressStructRef(out item.ContractAddress);
-                item.GasUsed = decoderContext.DecodePositiveLong();
+                item.GasUsed = decoderContext.DecodeULong();
             }
-            item.GasUsedTotal = decoderContext.DecodePositiveLong();
-            decoderContext.DecodeBloomStructRef(out item.Bloom);
+            item.GasUsedTotal = decoderContext.DecodeULong();
+            decoderContext.DecodeBloomStructRef(out item.Bloom, out bool bloomWasMissing);
+            if (bloomWasMissing)
+            {
+                item.Bloom = default;
+            }
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();
@@ -321,10 +339,10 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviour,
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors behaviour,
             out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => HashDecoder.DecodeArray(ref valueDecoderContext);
+        public Hash256[] DecodeTopics(RlpReader reader) => HashDecoder.DecodeNonNullArray(ref reader);
 
         public bool CanDecodeBloom => true;
     }

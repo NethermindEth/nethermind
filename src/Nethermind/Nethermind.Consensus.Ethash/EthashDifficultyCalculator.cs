@@ -32,10 +32,10 @@ namespace Nethermind.Consensus.Ethash
             in UInt256 parentDifficulty,
             ulong parentTimestamp,
             ulong currentTimestamp,
-            long blockNumber,
+            ulong blockNumber,
             bool parentHasUncles)
         {
-            IReleaseSpec spec = specProvider.GetSpec(blockNumber, currentTimestamp);
+            IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(blockNumber, currentTimestamp));
             if (spec.FixedDifficulty is not null && blockNumber != 0)
             {
                 return (UInt256)spec.FixedDifficulty.Value;
@@ -70,10 +70,25 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        private static BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
+        private static BigInteger TimeBomb(IReleaseSpec spec, ulong blockNumber)
         {
-            blockNumber -= spec.DifficultyBombDelay;
-            return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
+            if (blockNumber < spec.DifficultyBombDelay)
+            {
+                return BigInteger.Zero;
+            }
+            ulong effective = blockNumber - spec.DifficultyBombDelay;
+            if (effective < InitialDifficultyBombBlock)
+            {
+                return BigInteger.Zero;
+            }
+            ulong exponent = effective / 100000;
+            if (exponent < 2)
+            {
+                return BigInteger.Zero;
+            }
+            exponent -= 2;
+            int exp = exponent > 256 ? 256 : (int)exponent;
+            return BigInteger.Pow(2, exp);
         }
     }
 }

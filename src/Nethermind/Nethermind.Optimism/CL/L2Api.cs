@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -11,12 +10,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Optimism.CL;
@@ -32,7 +31,7 @@ public class L2Api(
 
     public async Task<L2Block> GetBlockByNumber(ulong number)
     {
-        BlockForRpc? block = await RetryGetBlock(new((long)number));
+        BlockForRpc? block = await RetryGetBlock(new(number));
         ArgumentNullException.ThrowIfNull(block); // We cannot get null here
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
@@ -73,7 +72,7 @@ public class L2Api(
             l1BlockInfo =
                 L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(txs[0].Data.Span, block.ExtraData);
             systemConfig =
-                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, (ulong)block.GasLimit);
+                systemConfigDeriver.SystemConfigFromL2BlockInfo(txs[0].Data.Span, block.ExtraData, block.GasLimit);
         }
         else
         {
@@ -84,7 +83,7 @@ public class L2Api(
         {
             PayloadAttributes = payloadAttributes,
             L1BlockInfo = l1BlockInfo,
-            Number = (ulong)block.Number!,
+            Number = block.Number!.Value,
             SystemConfig = systemConfig
         };
         return result;
@@ -138,7 +137,7 @@ public class L2Api(
         };
     }
 
-    public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, long blockNumber)
+    public Task<AccountProof?> GetProof(Address accountAddress, StorageKeys storageKeys, ulong blockNumber)
     {
         // TODO: Retry logic
         ResultWrapper<AccountProof> result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));

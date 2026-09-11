@@ -21,8 +21,8 @@ public class BlockHeader
         Hash256 unclesHash,
         Address beneficiary,
         in UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[] extraData,
         ulong? blobGasUsed = null,
@@ -46,7 +46,7 @@ public class BlockHeader
         SlotNumber = slotNumber;
     }
 
-    public virtual long GenesisBlockNumber => 0;
+    public virtual ulong GenesisBlockNumber => 0;
     public bool IsGenesis => Number == GenesisBlockNumber;
     public Hash256? ParentHash { get; set; }
     public Hash256? UnclesHash { get; set; }
@@ -58,9 +58,9 @@ public class BlockHeader
     public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty;
-    public long Number { get; set; }
-    public long GasUsed { get; set; }
-    public long GasLimit { get; set; }
+    public ulong Number { get; set; }
+    public ulong GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = [];
@@ -69,8 +69,6 @@ public class BlockHeader
     public ulong Nonce { get; set; }
     public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
-    public byte[]? AuRaSignature { get; set; }
-    public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas;
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
@@ -183,5 +181,38 @@ public class BlockHeader
         BlockHeader header = (BlockHeader)MemberwiseClone();
         header.Bloom = Bloom?.Clone() ?? new Bloom();
         return header;
+    }
+
+    /// <summary>
+    /// Copy carrying the consensus inputs needed to re-execute the block; execution outputs
+    /// (state root, gas used, logs bloom) are reset so processing recomputes them. Subclasses
+    /// override to also preserve subclass-specific seal fields (e.g. AuRa step + signature).
+    /// </summary>
+    public virtual BlockHeader CloneForProcessing()
+    {
+        BlockHeader clone = new(ParentHash!, UnclesHash!, Beneficiary!, Difficulty, Number, GasLimit, Timestamp, ExtraData);
+        CopyProcessingFields(clone);
+        return clone;
+    }
+
+    protected void CopyProcessingFields(BlockHeader dst)
+    {
+        dst.Bloom = Core.Bloom.Empty;
+        dst.Author = Author;
+        dst.Hash = Hash;
+        dst.MixHash = MixHash;
+        dst.Nonce = Nonce;
+        dst.TxRoot = TxRoot;
+        dst.TotalDifficulty = TotalDifficulty;
+        dst.ReceiptsRoot = ReceiptsRoot;
+        dst.BaseFeePerGas = BaseFeePerGas;
+        dst.WithdrawalsRoot = WithdrawalsRoot;
+        dst.RequestsHash = RequestsHash;
+        dst.IsPostMerge = IsPostMerge;
+        dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        dst.SlotNumber = SlotNumber;
+        dst.BlockAccessListHash = BlockAccessListHash;
+        dst.BlobGasUsed = BlobGasUsed;
+        dst.ExcessBlobGas = ExcessBlobGas;
     }
 }

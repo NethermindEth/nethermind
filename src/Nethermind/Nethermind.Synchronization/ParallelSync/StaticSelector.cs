@@ -35,6 +35,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public Task StopAsync() => Task.CompletedTask;
+        public Task StartAsync() => Task.CompletedTask;
         public void Update() { }
 
         public event EventHandler<SyncModeChangedEventArgs> Changing

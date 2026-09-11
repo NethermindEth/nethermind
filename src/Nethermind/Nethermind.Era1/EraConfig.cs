@@ -7,11 +7,11 @@ public class EraConfig : IEraConfig
 {
     public string? ImportDirectory { get; set; }
     public string? ExportDirectory { get; set; }
-    public long From { get; set; }
-    public long To { get; set; }
+    public ulong From { get; set; }
+    public ulong To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
-    public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
+    public ulong MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
     public string? NetworkName { get; set; }
     public int Concurrency { get; set; }
-    public long ImportBlocksBufferSize { get; set; } = 1024 * 4;
+    public ulong ImportBlocksBufferSize { get; set; } = 1024 * 4;
 }

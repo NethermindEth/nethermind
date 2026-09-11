@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -40,7 +39,7 @@ public record EthCapabilities(
 /// <summary>Head block number and hash.</summary>
 /// <param name="Number">Block number.</param>
 /// <param name="Hash">Block hash.</param>
-public readonly record struct ChainHead(long Number, Hash256 Hash);
+public readonly record struct ChainHead(ulong Number, Hash256 Hash);
 
 /// <summary>Availability descriptor for one historical data resource.</summary>
 /// <param name="Disabled"><c>true</c> when the resource is completely unavailable on this node.</param>
@@ -48,12 +47,12 @@ public readonly record struct ChainHead(long Number, Hash256 Hash);
 /// <param name="DeleteStrategy">Retention / deletion strategy. Present only when data is pruned with a rolling window. Omitted for archive nodes or disabled resources.</param>
 public readonly record struct ResourceAvailability(
     bool Disabled,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OldestBlock = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ulong? OldestBlock = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DeleteStrategy? DeleteStrategy = null);
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
 /// <param name="Type">Strategy type — currently always <c>"window"</c>; the spec uses <c>oneOf</c> to leave room for future strategies.</param>
-/// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity).</param>
+/// <param name="RetentionBlocks">Number of recent blocks retained, serialized as a hex QUANTITY string per the spec's <c>uint</c> type.</param>
 public readonly record struct DeleteStrategy(
     string Type,
-    [property: JsonConverter(typeof(LongRawJsonConverter))] long RetentionBlocks);
+    ulong RetentionBlocks);

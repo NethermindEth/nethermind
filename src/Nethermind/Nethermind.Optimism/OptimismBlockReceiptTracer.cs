@@ -24,7 +24,7 @@ public class OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorld
 
         if (CurrentTx.IsDeposit())
         {
-            depositNonce = _worldState.GetNonce(CurrentTx.SenderAddress!).ToUInt64(null);
+            depositNonce = _worldState.GetNonce(CurrentTx.SenderAddress!);
             // We write nonce after tx processing, so need to subtract one
             if (depositNonce > 0)
             {
@@ -42,7 +42,7 @@ public class OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorld
     protected override TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         // Update cumulative gas tracking without creating a throwaway receipt
-        long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
+        ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         (ulong? depositNonce, ulong? version) = GetDepositReceiptData(Block.Header);
 

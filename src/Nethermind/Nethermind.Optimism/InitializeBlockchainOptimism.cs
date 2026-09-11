@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -13,7 +13,12 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainOptimism(
+    OptimismNethermindApi api,
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    ITxGossipPolicy txGossipPolicy,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy, specChangeTxValidator)
 {
     protected override async Task InitBlockchain()
     {
@@ -22,8 +27,6 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadI
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
-
-    protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>
         api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(chainHeadInfoProvider);

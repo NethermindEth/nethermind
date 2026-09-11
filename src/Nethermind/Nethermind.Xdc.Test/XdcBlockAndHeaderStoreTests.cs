@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Xdc.RLP;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -28,8 +29,8 @@ internal class XdcBlockAndHeaderStoreTests
         blockNumDb = new MemDb();
         blockDb = new MemDb();
 
-        _headerStore = new XdcHeaderStore(headerDb, blockNumDb);
-        _blockStore = new XdcBlockStore(blockDb);
+        _headerStore = new XdcHeaderStore(headerDb, blockNumDb, new XdcHeaderDecoder());
+        _blockStore = new XdcBlockStore(blockDb, new XdcHeaderDecoder());
     }
 
     [Test]

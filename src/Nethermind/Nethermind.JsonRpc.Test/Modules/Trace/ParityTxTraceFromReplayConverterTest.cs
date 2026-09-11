@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Todo(Improve.Refactor, "Different action serializers")]
         public void Can_serialize_reward()
         {
-            Block block = Build.A.Block.WithNumber(long.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
+            Block block = Build.A.Block.WithNumber(ulong.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);
@@ -157,7 +157,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test, Ignore("Reenable it after running compare on PoW chains")]
         public void Can_serialize_reward_state_only()
         {
-            Block block = Build.A.Block.WithNumber(long.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
+            Block block = Build.A.Block.WithNumber(ulong.Parse("4563918244f40000".AsSpan(), NumberStyles.AllowHexSpecifier)).TestObject;
             IBlockTracer blockTracer = new ParityLikeBlockTracer(ParityTraceTypes.StateDiff);
             blockTracer.StartNewBlockTrace(block);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(null);

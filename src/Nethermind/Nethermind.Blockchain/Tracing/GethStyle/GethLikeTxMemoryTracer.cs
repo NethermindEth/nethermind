@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -16,10 +14,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     private readonly Transaction? _transaction;
 
-    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options) : base(options)
+    public GethLikeTxMemoryTracer(Transaction? transaction, GethTraceOptions options, long destroyRefund = 0) : base(options, destroyRefund)
     {
         _transaction = transaction;
         IsTracingMemory = IsTracingFullMemory;
+        IsTracingRefunds = true;
+        IsTracingActions = true;
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -38,45 +38,32 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         Trace.Gas = gasSpent.SpentGas;
     }
 
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        base.LoadOperationStorage(address, storageIndex, value);
+
+        RecordStorageSnapshot(address, storageIndex, value);
+    }
+
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
         base.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
-        byte[] bigEndian = new byte[32];
-
-        storageIndex.ToBigEndian(bigEndian);
-
-        CurrentTraceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left)
-            .ToArray()
-            .ToHexString(false);
+        RecordStorageSnapshot(address, storageIndex, newValue);
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    private void RecordStorageSnapshot(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
-        int previousDepth = CurrentTraceEntry?.Depth ?? 0;
+        if (CurrentTraceEntry is null)
+            return;
 
-        base.StartOperation(pc, opcode, gas, env);
-
-        if (CurrentTraceEntry.Depth > previousDepth)
-        {
-            CurrentTraceEntry.Storage = [];
-
-            Trace.StoragesByDepth.Push(previousTraceEntry is null ? [] : previousTraceEntry.Storage);
-        }
-        else if (CurrentTraceEntry.Depth < previousDepth)
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on leaving the call.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(Trace.StoragesByDepth.Pop());
-        }
-        else
-        {
-            if (previousTraceEntry is null)
-                throw new InvalidOperationException("Missing the previous trace on continuation.");
-
-            CurrentTraceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);
-        }
+        CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
     }
+
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
+    }
+
 }

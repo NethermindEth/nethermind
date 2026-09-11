@@ -71,7 +71,7 @@ public class TaikoPayloadPreparationService(
                 }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
-                return new NoBlockProductionContext(block, UInt256.Zero);
+                return new BlockProductionSnapshot(block, UInt256.Zero);
             },
             (payloadId, existing) =>
             {
@@ -159,7 +159,7 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        Rlp.ValueDecoderContext ctx = new(payloadAttributes.BlockMetadata!.TxList!);
+        RlpReader ctx = new(payloadAttributes.BlockMetadata!.TxList!);
 
         int transactionsSequenceLength = ctx.ReadSequenceLength();
         int transactionsCheck = ctx.Position + transactionsSequenceLength;

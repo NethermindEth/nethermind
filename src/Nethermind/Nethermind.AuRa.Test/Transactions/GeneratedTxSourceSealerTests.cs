@@ -30,25 +30,26 @@ namespace Nethermind.AuRa.Test.Transactions
             IStateReader stateReader = Substitute.For<IStateReader>();
             Address nodeAddress = TestItem.AddressA;
 
-            UInt256 expectedNonce = 10;
+            ulong expectedNonce = 10;
             stateReader.TryGetAccount(blockHeader, nodeAddress, out Arg.Any<AccountStruct>())
                 .Returns(x =>
                 {
-                    x[2] = new AccountStruct(expectedNonce, UInt256.Zero);
+                    x[2] = new AccountStruct(expectedNonce, 0UL);
                     return true;
                 });
 
             ulong expectedTimeStamp = 100;
             timestamper.UnixTime.Returns(UnixTime.FromSeconds(expectedTimeStamp));
 
-            int gasLimit = 200;
+            ulong gasLimit = 200;
             ITxSource innerTxSource = Substitute.For<ITxSource>();
-            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] { tx1, tx2 });
+            BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(blockHeader.Number + 1).TestObject;
+            innerTxSource.GetTransactions(blockHeader, targetBlock, gasLimit).Returns(new[] { tx1, tx2 });
 
             TxSealer txSealer = new(new Signer((ulong)chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
             GeneratedTxSource transactionFiller = new(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
 
-            Transaction[] sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
+            Transaction[] sealedTxs = transactionFiller.GetTransactions(blockHeader, targetBlock, gasLimit).ToArray();
             Transaction sealedTx1 = sealedTxs.First();
             Transaction sealedTx2 = sealedTxs.Skip(1).First();
 

@@ -44,9 +44,9 @@ public sealed class BeaconHeadersSyncFeed(
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
     private bool _chainMerged;
 
-    protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
+    protected override ulong HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
-    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
+    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue) <=
                                                     _pivot.PivotDestinationNumber || _chainMerged;
 
     protected override BlockHeader? LowestInsertedBlockHeader
@@ -59,7 +59,7 @@ public sealed class BeaconHeadersSyncFeed(
         }
     }
 
-    protected override long TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
+    protected override ulong TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
 
     protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
     public override string FeedName => nameof(BeaconHeadersSyncFeed);
@@ -71,7 +71,7 @@ public sealed class BeaconHeadersSyncFeed(
 
     public override AllocationContexts Contexts => AllocationContexts.Headers;
 
-    private long ExpectedPivotNumber =>
+    private ulong ExpectedPivotNumber =>
         _pivot.PivotParentHash is not null ? _pivot.PivotNumber - 1 : _pivot.PivotNumber;
 
     private Hash256 ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
@@ -84,7 +84,7 @@ public sealed class BeaconHeadersSyncFeed(
         _pivotNumber = ExpectedPivotNumber;
         _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
 
-        long startNumber = _pivotNumber;
+        ulong startNumber = _pivotNumber;
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;

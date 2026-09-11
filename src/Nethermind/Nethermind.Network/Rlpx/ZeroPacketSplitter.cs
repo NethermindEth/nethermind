@@ -71,19 +71,19 @@ namespace Nethermind.Network.Rlpx
                 }
                 else
                 {
-                    NettyRlpStream stream = new(output);
                     int contentLength = Rlp.LengthOf(_contextId) + Rlp.LengthOf(0);
                     if (i == 0)
                     {
                         contentLength += Rlp.LengthOf(totalPayloadSize);
                     }
                     output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                    stream.StartSequence(contentLength);
-                    stream.Encode(0);
-                    stream.Encode(_contextId);
+                    ByteBufferRlpWriter writer = new(output);
+                    writer.StartSequence(contentLength);
+                    writer.Encode(0);
+                    writer.Encode(_contextId);
                     if (i == 0)
                     {
-                        stream.Encode(totalPayloadSize);
+                        writer.Encode(totalPayloadSize);
                     }
                     output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }

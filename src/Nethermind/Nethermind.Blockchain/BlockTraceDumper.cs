@@ -29,7 +29,7 @@ public static class BlockTraceDumper
     {
         if (toFile || toLog)
         {
-            Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
+            Rlp rlp = Rlp.Encode(block, RlpBehaviors.AllowExtraBytes);
             Hash256 blockHash = block.Hash;
             if (toFile)
             {

@@ -21,22 +21,21 @@ public sealed class RlpByteArrayList : IByteArrayList, IRlpWrapper
 
     public int RlpLength => _inner.RlpLength;
 
-    public void Write(RlpStream stream) => _inner.Write(stream);
+    public void Write<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => _inner.Write(ref writer);
 
-    public static RlpByteArrayList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null)
+    public static RlpByteArrayList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner, RlpLimit? limit = null)
     {
-        if (limit is null)
-        {
-            return new(RlpItemList.DecodeList(ref ctx, memoryOwner));
-        }
+        // An omitted limit must not mean no limit, so fall back to the default cap.
+        RlpLimit effectiveLimit = limit ?? RlpLimit.DefaultLimit;
 
         int prefixStart = ctx.Position;
         int innerLength = ctx.ReadSequenceLength();
         int end = ctx.Position + innerLength;
         // Early-out the walk at limit + 1: any count above the limit triggers the same disconnect,
         // so we don't need to keep counting past it (matters for malicious inputs with millions of items).
-        int count = ctx.PeekNumberOfItemsRemaining(end, limit.Value.Limit + 1);
-        ctx.GuardLimit(count, limit);
+        int count = ctx.PeekNumberOfItemsRemaining(end, effectiveLimit.Limit + 1);
+        ctx.GuardLimit(count, effectiveLimit);
 
         Memory<byte> rlpRegion = memoryOwner.Memory.Slice(prefixStart, end - prefixStart);
         ctx.Position = end;

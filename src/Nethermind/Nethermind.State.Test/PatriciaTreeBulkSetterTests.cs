@@ -242,7 +242,7 @@ public class PatriciaTreeBulkSetterTests
         return randData;
     }
 
-    private static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
+    internal static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
     {
         Random rng = new(seed);
         List<(Hash256 key, byte[] value)> items = [];

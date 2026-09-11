@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
@@ -101,9 +102,8 @@ public class ArrayPoolListRefTests
         Assert.That(list.AsSpan().ToArray(), Is.EqualTo(expected));
     }
 
-    [TestCase(10)]
-    [TestCase(-1)]
-    public void Insert_should_throw(int index)
+    [Test]
+    public void Insert_should_throw([Values(10, -1)] int index)
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -195,9 +195,8 @@ public class ArrayPoolListRefTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Get_should_throw(int item)
+    [Test]
+    public void Get_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -231,9 +230,8 @@ public class ArrayPoolListRefTests
         }
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Set_should_throw(int item)
+    [Test]
+    public void Set_should_throw([Values(8, -1)] int item)
     {
         ArrayPoolListRef<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -267,6 +265,20 @@ public class ArrayPoolListRefTests
         {
             Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Enumerable.Range(0, items + 2)));
             Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
+        }
+    }
+
+    [Test]
+    public void AddRange_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a List<T>, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolListRef<int> list = new(source.Count);
+        list.AddRange(source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.ToArray(), Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
         }
     }
 

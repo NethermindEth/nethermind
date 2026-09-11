@@ -26,7 +26,7 @@ public class NoPoS : IPoSSwitcher
     public UInt256? FinalTotalDifficulty => null;
     public bool TransitionFinished => false;
     public Hash256? ConfiguredTerminalBlockHash => Keccak.Zero;
-    public long? ConfiguredTerminalBlockNumber => null;
+    public ulong? ConfiguredTerminalBlockNumber => null;
 
     public bool TryUpdateTerminalBlock(BlockHeader header) => throw new NotImplementedException();
 

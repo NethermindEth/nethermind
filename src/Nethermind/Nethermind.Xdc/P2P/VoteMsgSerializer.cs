@@ -4,7 +4,6 @@
 using DotNetty.Buffers;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
-using System;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.P2P;
@@ -17,16 +16,15 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
     {
         int totalLength = GetLength(message, out int contentLength);
         byteBuffer.EnsureWritable(totalLength);
-        NettyRlpStream stream = new(byteBuffer);
-        _voteDecoder.Encode(stream, message.Vote);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        _voteDecoder.Encode(ref writer, message.Vote);
     }
 
     public VoteMsg Deserialize(IByteBuffer byteBuffer)
     {
-        Memory<byte> memory = byteBuffer.AsMemory();
-        Rlp.ValueDecoderContext ctx = new(memory, true);
+        RlpReader ctx = new(byteBuffer.AsSpan());
         Types.Vote vote = _voteDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(memory.Length);
+        byteBuffer.SkipBytes(ctx.Position);
         return new() { Vote = vote };
     }
 

@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -16,13 +15,6 @@ namespace Ethereum.Rlp.Test
     [TestFixture]
     public class RlpTests
     {
-        private sealed class TestRlpStream : RlpStream
-        {
-            public TestRlpStream(int length) : base(length) { }
-            public TestRlpStream(byte[] data) : base(data) { }
-            public void CallWriteZero(int length) => WriteZero(length);
-        }
-
         [Test]
         public void TestEmpty()
         {
@@ -47,34 +39,30 @@ namespace Ethereum.Rlp.Test
         }
 
         [Test]
-        public void WriteZero_ClearsAndAdvances_OnPreFilledBuffer()
+        public void EncodeBloom_Empty_ClearsAndAdvances_OnPreFilledBuffer()
         {
-            byte[] buffer = Enumerable.Repeat((byte)0xAB, 32).ToArray();
-            TestRlpStream stream = new(buffer) { Position = 5 };
-            stream.CallWriteZero(7);
+            int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
+            byte[] buffer = new byte[total + 8];
+            Array.Fill(buffer, (byte)0xAB);
+            RlpWriter writer = new(buffer.AsSpan(5));
+            writer.Encode(Bloom.Empty);
 
-            Assert.That(stream.Position, Is.EqualTo(12));
-            Assert.That(buffer.AsSpan(5, 7).ToArray(), Is.EqualTo(new byte[7]));
-            Assert.That(buffer.AsSpan(0, 5).ToArray(), Is.EqualTo(Enumerable.Repeat((byte)0xAB, 5).ToArray()));
-            Assert.That(buffer.AsSpan(12).ToArray(), Is.EqualTo(Enumerable.Repeat((byte)0xAB, 20).ToArray()));
-        }
-
-        [Test]
-        public void WriteZero_AdvancesByRequestedLength_OnNewBuffer()
-        {
-            TestRlpStream stream = new(16) { Position = 3 };
-            stream.CallWriteZero(4);
-            Assert.That(stream.Position, Is.EqualTo(7));
-            Assert.That(stream.Data.AsSpan(3, 4).ToArray(), Is.EqualTo(new byte[4]));
+            Assert.That(writer.Position, Is.EqualTo(total));
+            Assert.That(buffer[5], Is.EqualTo(185));
+            Assert.That(buffer[6], Is.EqualTo(1));
+            Assert.That(buffer[7], Is.EqualTo(0));
+            Assert.That(buffer.AsSpan(8, 256).ToArray(), Is.EqualTo(new byte[256]));
+            Assert.That(buffer.AsSpan(0, 5).ToArray(), Is.EqualTo(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 0xAB }));
+            Assert.That(buffer.AsSpan(5 + total).ToArray(), Is.EqualTo(new byte[] { 0xAB, 0xAB, 0xAB }));
         }
 
         [Test]
         public void EncodeBloom_Empty_Writes256Zeros()
         {
             int total = Nethermind.Serialization.Rlp.Rlp.LengthOf(Bloom.Empty);
-            TestRlpStream stream = new(total);
-            stream.Encode(Bloom.Empty);
-            byte[] bytes = stream.Data.AsSpan().ToArray();
+            byte[] bytes = new byte[total];
+            RlpWriter writer = new(bytes);
+            writer.Encode(Bloom.Empty);
 
             Assert.That(bytes.Length, Is.EqualTo(total));
             Assert.That(bytes[0], Is.EqualTo(185));

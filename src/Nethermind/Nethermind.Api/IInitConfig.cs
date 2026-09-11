@@ -67,7 +67,7 @@ public interface IInitConfig : IConfig
     string RpcDbUrl { get; set; }
 
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
-    long? MemoryHint { get; set; }
+    ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
@@ -85,7 +85,7 @@ public interface IInitConfig : IConfig
     INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
-    long? ExitOnBlockNumber { get; set; }
+    ulong? ExitOnBlockNumber { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }

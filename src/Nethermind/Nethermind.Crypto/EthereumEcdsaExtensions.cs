@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -11,12 +13,26 @@ namespace Nethermind.Crypto;
 public static class EthereumEcdsaExtensions
 {
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+
+    /// <remarks>
+    /// Cross-context cache of recovered senders keyed by transaction hash: a transaction recovered
+    /// on mempool ingress becomes a lookup on block arrival. Legacy transactions are excluded —
+    /// their signing hash depends on the ambient chain id, so the hash alone is not a safe global key.
+    /// The key is sound only while <see cref="Transaction.Hash"/> matches the signed content; all
+    /// ingress paths derive it from the raw bytes, and callers must not mutate a transaction's
+    /// content or signature after the hash is set.
+    /// </remarks>
+    private const int SenderCacheCapacity = 1 << 15;
+    private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
+
+    /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
+    internal static void ClearSenderCache() => _senderCache.Clear();
+
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
-        KeccakRlpStream stream = new();
-        stream.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(stream, chainId, codeAddress, nonce);
-        Signature sig = ecdsa.Sign(signer, stream.GetValueHash());
+        KeccakRlpWriter writer = new();
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, chainId, codeAddress, nonce);
+        Signature sig = ecdsa.Sign(signer, writer.GetValueHash());
         return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
     }
 
@@ -27,7 +43,9 @@ public static class EthereumEcdsaExtensions
             tx.ChainId = ecdsa.ChainId;
         }
 
-        ValueHash256 hash = ValueKeccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, ecdsa.ChainId).Bytes);
+        KeccakRlpWriter writer = new();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
+        ValueHash256 hash = writer.GetValueHash();
         tx.Signature = ecdsa.Sign(privateKey, in hash);
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
@@ -42,11 +60,8 @@ public static class EthereumEcdsaExtensions
     /// <param name="sender"></param>
     /// <param name="tx"></param>
     /// <returns></returns>
-    public static bool Verify(this IEthereumEcdsa ecdsa, Address sender, Transaction tx)
-    {
-        Address? recovered = ecdsa.RecoverAddress(tx);
-        return recovered?.Equals(sender) ?? false;
-    }
+    public static bool Verify(this IEthereumEcdsa ecdsa, Address sender, Transaction tx) =>
+        ecdsa.TryRecoverAddress(tx, out Address? recovered) && recovered.Equals(sender);
 
     /// <summary>
     /// Recovers the address that signed the transaction.
@@ -59,9 +74,47 @@ public static class EthereumEcdsaExtensions
     {
         Signature signature = tx.Signature
             ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
-        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
 
-        return ecdsa.RecoverAddress(signature, in hash);
+        return RecoverAddress(ecdsa, tx, signature, useSignatureChainId);
+    }
+
+    /// <summary>
+    /// Tries to recover the address that signed the transaction.
+    /// </summary>
+    /// <param name="ecdsa">The ECDSA implementation used for recovery.</param>
+    /// <param name="tx">The transaction whose signature should be recovered.</param>
+    /// <param name="address">The recovered address when recovery succeeds.</param>
+    /// <param name="useSignatureChainId">Whether to use the chain id encoded in a legacy EIP-155 signature.</param>
+    /// <returns><see langword="true"/> when the transaction has a recoverable sender address; otherwise <see langword="false"/>.</returns>
+    public static bool TryRecoverAddress(this IEthereumEcdsa ecdsa, Transaction tx, [NotNullWhen(true)] out Address? address, bool useSignatureChainId = false)
+    {
+        if (tx.Signature is not { } signature)
+        {
+            address = null;
+            return false;
+        }
+
+        address = RecoverAddress(ecdsa, tx, signature, useSignatureChainId);
+        return address is not null;
+    }
+
+    private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
+    {
+        Hash256? txHash = tx.Type == TxType.Legacy ? null : tx.Hash;
+        if (txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
+        {
+            return cached;
+        }
+
+        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        Address? recovered = ecdsa.RecoverAddress(signature, in hash);
+
+        if (txHash is not null && recovered is not null)
+        {
+            _senderCache.Set(txHash.ValueHash256, recovered);
+        }
+
+        return recovered;
     }
 
     /// <summary>
@@ -90,24 +143,25 @@ public static class EthereumEcdsaExtensions
                            || signature.V == CalculateV(ecdsa.ChainId, true);
         ulong chainId = tx.Type switch
         {
-            TxType.Legacy when useSignatureChainId => signature.ChainId.Value,
+            TxType.Legacy when useSignatureChainId => signature.ChainId
+                ?? throw new InvalidDataException("Cannot recover signature hash from a legacy EIP-155 signature without a chain id."),
             TxType.Legacy => ecdsa.ChainId,
-            _ => tx.ChainId!.Value,
+            _ => tx.ChainId
+                ?? throw new InvalidDataException("Cannot recover signature hash from a typed transaction without a chain id."),
         };
 
-        KeccakRlpStream stream = new();
-        _txDecoder.EncodeTx(stream, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+        KeccakRlpWriter writer = new();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
-        return stream.GetValueHash();
+        return writer.GetValueHash();
     }
 
     public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
-        KeccakRlpStream stream = new();
-        stream.WriteByte(Eip7702Constants.Magic);
-        AuthorizationTupleDecoder.EncodeWithoutSignature(stream, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-        return ecdsa.RecoverAddress(tuple.AuthoritySignature, stream.GetValueHash());
+        KeccakRlpWriter writer = new();
+        AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+        return ecdsa.RecoverAddress(tuple.AuthoritySignature, writer.GetValueHash());
     }
 }

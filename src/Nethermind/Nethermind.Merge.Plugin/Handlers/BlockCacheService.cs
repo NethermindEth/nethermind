@@ -78,7 +78,7 @@ public class BlockCacheService : IBlockCacheService
     private bool TryGetHighestNumberedUnprotectedBlock(out Hash256AsKey blockHash)
     {
         Hash256AsKey highestNumberedHash = default;
-        long highestBlockNumber = long.MinValue;
+        ulong highestBlockNumber = 0UL;
         bool foundBlock = false;
 
         foreach (KeyValuePair<Hash256AsKey, Block> cachedBlock in _blockCache)

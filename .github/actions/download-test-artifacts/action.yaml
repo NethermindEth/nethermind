@@ -1,0 +1,49 @@
+name: Download test artifacts
+description: >-
+  Downloads and unpacks the prebuilt test binaries matching this runner's RID
+  (produced by build-test-artifacts.yml) and verifies the RID/variant marker.
+  Run after actions/checkout so the target tree exists.
+
+inputs:
+  variant:
+    description: Artifact variant tag to consume (release, checked).
+    default: release
+
+outputs:
+  rid:
+    description: The RID resolved for this runner.
+    value: ${{ steps.rid.outputs.rid }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve RID
+      id: rid
+      shell: bash
+      run: |
+        case "${{ runner.os }}-${{ runner.arch }}" in
+          Linux-X64)   rid=linux-x64 ;;
+          Linux-ARM64) rid=linux-arm64 ;;
+          Windows-X64) rid=win-x64 ;;
+          macOS-ARM64) rid=osx-arm64 ;;
+          *) echo "::error::no artifact RID mapping for runner ${{ runner.os }}-${{ runner.arch }}"; exit 1 ;;
+        esac
+        echo "rid=$rid" >> "$GITHUB_OUTPUT"
+
+    - name: Download test binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: test-bin-${{ inputs.variant }}-${{ steps.rid.outputs.rid }}
+
+    - name: Unpack and verify marker
+      shell: bash
+      run: |
+        set -euo pipefail
+        tar -xf test-bin.tar -C src/Nethermind
+        # Marker is two lines: rid then variant. (Line-by-line read avoids a set -e trip.)
+        { read -r got_rid; read -r got_var; } < src/Nethermind/artifacts/bin/.artifact-marker
+        if [ "$got_rid" != "${{ steps.rid.outputs.rid }}" ] || [ "$got_var" != "${{ inputs.variant }}" ]; then
+          echo "::error::test-binary artifact mismatch: got rid=$got_rid variant=$got_var, expected rid=${{ steps.rid.outputs.rid }} variant=${{ inputs.variant }}"
+          exit 1
+        fi
+        echo "Unpacked test binaries for $got_rid ($got_var)"

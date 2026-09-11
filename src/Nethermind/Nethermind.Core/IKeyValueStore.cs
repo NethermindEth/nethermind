@@ -117,12 +117,55 @@ namespace Nethermind.Core
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
+    /// <summary>Drops a whole key range in one operation, at a cost independent of how many keys it holds.</summary>
+    public interface IRangeRemovableKeyValueStore : IWriteOnlyKeyValueStore
+    {
+        /// <summary>Removes every key in <c>[firstKeyInclusive, lastKeyExclusive)</c>. Exact and durable, but says
+        /// nothing about when their storage comes back - see <see cref="ReclaimRange"/>.</summary>
+        void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+
+        /// <summary>Gives back the storage still held by a range already passed to <see cref="RemoveRange"/>. Best
+        /// effort: frees whole units lying entirely inside it, leaving the rest to compaction. Calling it over a
+        /// range that still holds live keys is a caller error.</summary>
+        void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     public interface ISortedKeyValueStore : IReadOnlyKeyValueStore
     {
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }
 
-        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None);
+
+        /// <summary>
+        /// Finds the first <c>key</c> with <c>lowerBoundIncl &lt;= key &lt; upperBoundExcl</c>,
+        /// or returns <c>false</c> when there is none.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="keyLength"/> and <paramref name="valueLength"/> always report the stored lengths.
+        /// A buffer too short for its part is left untouched instead of throwing.
+        /// </remarks>
+        bool TryGetCeiling(
+            scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+        )
+        {
+            using ISortedView view = GetViewBetween(lowerBoundIncl, upperBoundExcl);
+            if (!view.MoveNext())
+            {
+                keyLength = 0;
+                valueLength = 0;
+                return false;
+            }
+
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            ReadOnlySpan<byte> value = view.CurrentValue;
+            keyLength = key.Length;
+            valueLength = value.Length;
+            key.TryCopyTo(keyBuffer);
+            value.TryCopyTo(valueBuffer);
+            return true;
+        }
     }
 
     /// <summary>

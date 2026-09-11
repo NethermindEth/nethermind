@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -49,12 +50,12 @@ namespace Nethermind.Core
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; }
-        public long BlockNumber { get; set; }
+        public ulong BlockNumber { get; set; }
         public Hash256? BlockHash { get; set; }
         public Hash256? TxHash { get; set; }
         public int Index { get; set; }
-        public long GasUsed { get; set; }
-        public long GasUsedTotal { get; set; }
+        public ulong GasUsed { get; set; }
+        public ulong GasUsedTotal { get; set; }
 
         // Diagnostic-only fields. NOT part of the consensus receipt RLP - the receipt
         // encoders in Nethermind.Serialization.Rlp write only StatusCode, GasUsed,
@@ -62,12 +63,12 @@ namespace Nethermind.Core
         // receipts root or block hashes. They are surfaced solely in the diagnostic
         // JSON dump (BlockTraceDumper) to aid investigation of EIP-7778/EIP-8037
         // gas-accounting issues.
-        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (regular dim).</summary>
-        public long BlockGasUsed { get; set; }
+        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (execution dim).</summary>
+        public ulong BlockGasUsed { get; set; }
         /// <summary>EIP-8037 state-dim gas (storage / state-mutating ops) used by block accounting.</summary>
-        public long StorageGasUsed { get; set; }
-        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas).</summary>
-        public long ExecutionGasUsed { get; set; }
+        public ulong StorageGasUsed { get; set; }
+        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas). Not the EIP-8037 execution-dimension block-accounting figure — see <see cref="BlockGasUsed"/>.</summary>
+        public ulong ExecutionGasUsed { get; set; }
         /// <summary>Effective gas price after EIP-1559 baseFee adjustment - computed at receipt-build time.</summary>
         public UInt256 EffectiveGasPrice { get; set; }
 
@@ -82,7 +83,8 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
+        [AllowNull]
+        public Bloom Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
@@ -102,12 +104,12 @@ namespace Nethermind.Core
         ///     EIP-658
         /// </summary>
         public byte StatusCode { get; set; } = receipt.StatusCode;
-        public long BlockNumber { get; set; } = receipt.BlockNumber;
+        public ulong BlockNumber { get; set; } = receipt.BlockNumber;
         public Hash256StructRef BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
         public Hash256StructRef TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
         public int Index { get; set; } = receipt.Index;
-        public long GasUsed { get; set; } = receipt.GasUsed;
-        public long GasUsedTotal { get; set; } = receipt.GasUsedTotal;
+        public ulong GasUsed { get; set; } = receipt.GasUsed;
+        public ulong GasUsedTotal { get; set; } = receipt.GasUsedTotal;
         public AddressStructRef Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
         public AddressStructRef ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
         public AddressStructRef Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();
@@ -120,7 +122,7 @@ namespace Nethermind.Core
         /// </summary>
         public Hash256StructRef PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
 
-        public BloomStructRef Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
+        public BloomStructRef Bloom = receipt.Bloom.ToStructRef();
 
         /// <summary>
         /// Rlp encoded logs

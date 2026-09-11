@@ -17,6 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly bool _includeTransactions;
         private readonly ISpecProvider _specProvider;
+        private readonly IBlockForRpcFactory _blockForRpcFactory;
 
 
         [ConstructorWithSideEffect]
@@ -25,6 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IBlockTree? blockTree,
             ILogManager? logManager,
             ISpecProvider specProvider,
+            IBlockForRpcFactory blockForRpcFactory,
             TransactionsOption? options = null)
             : base(jsonRpcDuplexClient)
         {
@@ -32,6 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger<NewHeadSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
             _specProvider = specProvider;
+            _blockForRpcFactory = blockForRpcFactory;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
@@ -39,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(async () =>
         {
-            using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
+            using JsonRpcResult result = CreateSubscriptionMessage(_blockForRpcFactory.Create(e.Block, _includeTransactions, _specProvider));
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
         });

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -12,7 +12,7 @@ using Nethermind.Logging;
 namespace Nethermind.Xdc;
 
 public class StartXdcBlockProducer(
-    INethermindApi nethermindApi,
+    IBlockProducerEnvFactory blockProducerEnvFactory,
     IEpochSwitchManager epochSwitchManager,
     IMasternodesCalculator masternodesCalculator,
     IXdcConsensusContext xdcConsensusContext,
@@ -31,7 +31,7 @@ public class StartXdcBlockProducer(
         ILogger logger = logManager.GetClassLogger<StartXdcBlockProducer>();
         if (logger.IsDebug) logger.Debug("Starting XDC block producer & sealer");
 
-        IBlockProducerEnv env = nethermindApi.BlockProducerEnvFactory.CreatePersistent();
+        IBlockProducerEnv env = blockProducerEnvFactory.CreatePersistent();
 
         return new XdcBlockProducer(
             epochSwitchManager,

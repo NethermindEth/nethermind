@@ -18,17 +18,16 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class AuRaNethermindApi(NethermindApi.Dependencies dependencies) : NethermindApi(dependencies)
     {
-        public IAuRaBlockFinalizationManager? AuRaFinalizationManager { get; set; }
-
         public TxAuRaFilterBuilders TxAuRaFilterBuilders => Context.Resolve<TxAuRaFilterBuilders>();
         public IValidatorStore ValidatorStore => Context.Resolve<IValidatorStore>();
         public AuraStatefulComponents AuraStatefulComponents => Context.Resolve<AuraStatefulComponents>();
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache => Context.Resolve<ReportingContractBasedValidator.Cache>();
-        public StartBlockProducerAuRa CreateStartBlockProducer() => Context.Resolve<StartBlockProducerAuRa>();
     }
 
     public class AuraStatefulComponents(IAuraConfig auraConfig, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager)
     {
+        internal IReportingValidator MainProcessingReportingValidator { get; set; } = NullReportingValidator.Instance;
+
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
             = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,

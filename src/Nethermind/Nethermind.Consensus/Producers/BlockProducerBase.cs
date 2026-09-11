@@ -214,7 +214,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit(parent, GasLimitCalculator) ?? GasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
@@ -241,7 +241,7 @@ namespace Nethermind.Consensus.Producers
 
             IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
                 Array.Empty<Transaction>() :
-                TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
+                TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

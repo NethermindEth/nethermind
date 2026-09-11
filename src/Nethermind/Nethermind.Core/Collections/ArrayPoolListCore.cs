@@ -87,6 +87,22 @@ internal static class ArrayPoolListCore<T>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AddRange(
+        ArrayPool<T> pool,
+        ref T[] array,
+        ref int capacity,
+        ref int count,
+        ICollection<T> items)
+    {
+        int itemsCount = items.Count;
+        if (itemsCount == 0) return;
+
+        GuardResize(pool, ref array, ref capacity, count, itemsCount);
+        items.CopyTo(array, count);
+        count += itemsCount;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Clear(T[] array, ref int count)
     {
         ClearToCount(array, count);

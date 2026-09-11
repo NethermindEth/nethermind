@@ -13,9 +13,8 @@ public interface IHistoryConfig : IConfig
         DefaultValue = "Disabled")]
     PruningModes Pruning { get; set; }
 
-    // For EIP-4444 should be 82125
     [ConfigItem(
-        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. For mainnet this must be at least 82125.",
+        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter.",
         DefaultValue = "82125")]
     uint RetentionEpochs { get; set; }
 
@@ -30,7 +29,7 @@ public interface IHistoryConfig : IConfig
     [ConfigItem(
         Description = "Number of epochs to wait between each history pruning.",
         DefaultValue = "8")]
-    uint PruningInterval { get; set; }
+    ulong PruningInterval { get; set; }
 
     [ConfigItem(
         Description = "Maximum time in seconds allowed for a single history pruning pass. Set to 0 to disable the timeout.",

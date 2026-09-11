@@ -8,8 +8,8 @@
       "jsonrpc": "2.0",
       "method": "eth_getLogs",
       "params": [{
-        "fromBlock": "{{Hex(RecentBlock - 9)}}",
-        "toBlock": "{{Hex(RecentBlock)}}",
+        "fromBlock": "{{Hex(Recent.Number - 9)}}",
+        "toBlock": "{{Hex(Recent.Number)}}",
         "address": ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "0xdAC17F958D2ee523a2206206994597C13D831ec7"],
         "topics": [
           "{{Topic.Transfer}}",

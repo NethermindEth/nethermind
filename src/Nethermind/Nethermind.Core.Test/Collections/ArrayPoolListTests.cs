@@ -104,9 +104,8 @@ public class ArrayPoolListTests
         Assert.That(list, Is.EqualTo(expected));
     }
 
-    [TestCase(10)]
-    [TestCase(-1)]
-    public void Insert_should_throw(int index)
+    [Test]
+    public void Insert_should_throw([Values(10, -1)] int index)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -177,9 +176,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Get_should_throw(int item)
+    [Test]
+    public void Get_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -197,9 +195,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Set_should_throw(int item)
+    [Test]
+    public void Set_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -218,6 +215,19 @@ public class ArrayPoolListTests
         list.AddRange(Enumerable.Range(2, items));
         Assert.That(list, Is.EqualTo(Enumerable.Range(0, items + 2)));
         Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
+    }
+
+    [Test]
+    public void Construct_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolList<int> list = new(source.Count, source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
+        }
     }
 
     [Test]
@@ -286,9 +296,8 @@ public class ArrayPoolListTests
         Assert.That(action, Throws.TypeOf<InvalidCastException>());
     }
 
-    [TestCase("null")]
-    [TestCase(null)]
-    public void Should_not_throw_on_invalid_type_lookup(object? value)
+    [Test]
+    public void Should_not_throw_on_invalid_type_lookup([Values("null", null)] object? value)
     {
         using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
@@ -430,4 +439,27 @@ public class ArrayPoolListTests
         Assert.That(exception, Is.True);
     }
 #endif
+}
+
+public class ArrayPoolUtilitiesTests
+{
+    private static object[][] CapacityCases() =>
+    [
+        [1, 1],
+        [3, 4],
+        [(1 << 28) + 1, 1 << 29],
+        [(1 << 30) + 1, (1 << 30) + 1],
+        [Array.MaxLength, Array.MaxLength],
+        [int.MaxValue, int.MaxValue],
+    ];
+
+    [TestCaseSource(nameof(CapacityCases))]
+    public void Get_power_of_two_capacity_returns_safe_capacity(int minimumLength, int expectedCapacity)
+        => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
+
+    [Test]
+    public void Get_power_of_two_capacity_requires_positive_length([Values(0, -1)] int minimumLength)
+        => Assert.That(
+            () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
 }

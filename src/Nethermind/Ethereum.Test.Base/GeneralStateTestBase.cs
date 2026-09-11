@@ -10,8 +10,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -75,6 +77,13 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
+            // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
+            // run, and a fire-and-forget background convert from one test can race another test's files. Long
+            // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+            flatDbConfig.EnableLongFinality = false;
+            configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
@@ -185,10 +194,15 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
+            string? txError = txResult is { TransactionExecuted: false } failedResult
+                ? failedResult.ErrorDescription
+                : blockValidationError;
+
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
             {
                 TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
-                StateRoot = stateProvider.StateRoot
+                StateRoot = stateProvider.StateRoot,
+                Error = differences.Count > 0 ? string.Join("; ", differences) : txError,
             };
 
             if (differences.Count > 0)
@@ -213,7 +227,8 @@ namespace Ethereum.Test.Base
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
             }
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+            // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
+            stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
         }

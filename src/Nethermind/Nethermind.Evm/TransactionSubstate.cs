@@ -28,7 +28,7 @@ public readonly ref struct TransactionSubstate
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
 
-    private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
+    private static readonly FrozenDictionary<ulong, string> PanicReasons = new Dictionary<ulong, string>
     {
         { 0x00, "generic panic" },
         { 0x01, "assert(false)" },
@@ -54,10 +54,12 @@ public readonly ref struct TransactionSubstate
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
+    internal bool ShouldRestoreRipemdTouch { get; init; }
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
-        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        // Reflection-free error name; see FastToString for why Enum.ToString() can't be used here.
+        Error = isTracerConnected ? exceptionType.FastToString() : SomeError;
         SubstateError = substateError;
         EvmExceptionType = exceptionType;
         Refund = 0;
@@ -72,7 +74,7 @@ public readonly ref struct TransactionSubstate
         JournalSet<Address>? destroyList,
         JournalCollection<LogEntry>? logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        bool isTracerConnected = default,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
@@ -124,7 +126,7 @@ public readonly ref struct TransactionSubstate
             if (span.Length < WordSize) return null;
 
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
+            if (!panicCode.IsUint64 || !PanicReasons.TryGetValue(panicCode.u0, out string? panicReason))
             {
                 return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
             }

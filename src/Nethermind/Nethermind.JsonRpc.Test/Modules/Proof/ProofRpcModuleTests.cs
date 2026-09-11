@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
@@ -19,7 +18,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Db;
@@ -66,7 +64,6 @@ public class ProofRpcModuleTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
             .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
@@ -79,9 +76,8 @@ public class ProofRpcModuleTests
     [TearDown]
     public void TearDown() => _container.Dispose();
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Can_get_transaction(bool withHeader)
+    [Test]
+    public async Task Can_get_transaction([Values] bool withHeader)
     {
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
         TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
@@ -100,18 +96,16 @@ public class ProofRpcModuleTests
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
+    [Test]
+    public async Task When_getting_non_existing_tx_correct_error_code_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, withHeader);
         Assert.That(response.Contains($"{ErrorCodes.ResourceNotFound}"), Is.True);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
+    [Test]
+    public async Task When_getting_non_existing_receipt_correct_error_code_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
@@ -208,7 +202,6 @@ public class ProofRpcModuleTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IReceiptFinder>(_receiptFinder)
             .AddSingleton<IDbProvider>(_dbProvider)

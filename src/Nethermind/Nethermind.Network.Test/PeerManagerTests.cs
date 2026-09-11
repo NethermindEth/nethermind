@@ -12,6 +12,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -38,6 +39,64 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerManager.Start();
             await ctx.PeerManager.StopAsync();
+        }
+
+        [Test]
+        public async Task Start_rejects_non_positive_peer_update_interval([Values(0, -1)] int interval)
+        {
+            await using Context ctx = new();
+            ctx.NetworkConfig.PeersUpdateInterval = interval;
+
+            InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(
+                () => ctx.PeerManager.Start())!;
+
+            Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
+        }
+
+        [Test]
+        public async Task Periodic_peer_update_continues_after_no_candidate_iterations()
+        {
+            const int expectedSelectionCount = 3;
+            int selectionCount = 0;
+            TaskCompletionSource thirdSelection = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(_ =>
+            {
+                if (Interlocked.Increment(ref selectionCount) == expectedSelectionCount)
+                {
+                    thirdSelection.TrySetResult();
+                }
+
+                return peers;
+            });
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(Array.Empty<Peer>());
+
+            INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
+            networkConfig.MaxActivePeers.Returns(1);
+            networkConfig.NumConcurrentOutgoingConnects.Returns(1);
+            networkConfig.MaxOutgoingConnectPerSec.Returns(20);
+            networkConfig.PeersUpdateInterval.Returns(10);
+
+            PeerManager peerManager = new(
+                Substitute.For<IRlpxHost>(),
+                peerPool,
+                Substitute.For<INodeStatsManager>(),
+                networkConfig,
+                Substitute.For<IEnode>(),
+                LimboLogs.Instance);
+
+            peerManager.Start();
+            try
+            {
+                await thirdSelection.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.That(Volatile.Read(ref selectionCount), Is.GreaterThanOrEqualTo(expectedSelectionCount));
+            }
+            finally
+            {
+                await peerManager.StopAsync();
+            }
         }
 
         [Test]
@@ -151,19 +210,99 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
         }
 
+        /// <remarks>
+        /// The numbers are the point of the case: eight workers against two slots, throttled to four dials a
+        /// second, so every worker dequeues a candidate and suspends in the rate limiter with its slot claimed
+        /// but not yet active. That is the window a plain capacity check cannot see - reverting the claim dials
+        /// five or six against a cap of two, on every run.
+        /// </remarks>
         [Test]
         public async Task Will_only_connect_up_to_max_peers()
         {
-            await using Context ctx = new(1);
-            ctx.SetupPersistedPeers(50);
+            const int candidateCount = 50;
+            const int maxActivePeers = 2;
+
+            await using Context ctx = new(parallelism: 8, maxActivePeers: maxActivePeers);
+            ctx.NetworkConfig.MaxOutgoingConnectPerSec = 4;
+            ctx.CreatePeerManager();
+            ctx.SetupPersistedPeers(candidateCount);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            const int expectedConnectCount = 25;
-            await ctx.RlpxPeer.WaitForConnectCallsAsync(expectedConnectCount, TimeSpan.FromSeconds(30));
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(maxActivePeers, TimeSpan.FromSeconds(30));
             await Task.Delay(_delayLong);
 
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(expectedConnectCount, expectedConnectCount + 1));
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(maxActivePeers));
+        }
+
+        [Test]
+        public async Task Will_release_the_claimed_slot_when_the_candidate_is_already_active()
+        {
+            await using Context ctx = new(maxActivePeers: 2);
+            ctx.PeerManager.Start();
+
+            // An IN session for the same node can be initialized while the OUT attempt is in the rate
+            // limiter, so AddActivePeer refuses it - and the slot it claimed has to go back.
+            Node contested = new(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 30303);
+            ctx.PeerPool.ActivePeers[contested.Id] = new Peer(contested);
+            ctx.PeerPool.GetOrAdd(contested);
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "an already active node was dialed again");
+
+            ctx.PeerPool.GetOrAdd(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.5", 30303));
+
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "the claim was not released, so the freed slot is unusable");
+        }
+
+        /// <remarks>
+        /// Contacting a candidate spends an entry in the production recent-IP filter, which then suppresses
+        /// it for five minutes. A candidate that loses the last slot before it can claim one was never
+        /// dialed, so it must not pay that price - it is offered again as soon as capacity returns, and that
+        /// offer has to reach the dial.
+        /// </remarks>
+        [Test]
+        public async Task Will_not_consume_the_contact_filter_when_the_slot_is_lost_before_the_claim()
+        {
+            const int maxActivePeers = 3;
+
+            await using Context ctx = new(maxActivePeers: maxActivePeers);
+            ctx.RlpxPeer.UseRecentIpFilter();
+
+            // Port 0 keeps the candidate out of the update loop's selection, leaving the peer-added fast
+            // path as the only way it is dialed - which is what makes the interleaving below reproducible.
+            Node refused = new(new PrivateKeyGenerator().Generate().PublicKey, "203.0.113.1", 0);
+
+            // CanConnectToPeer is the only step between the free-slot check and the claim, so taking the
+            // slots from its stats lookup lands the candidate inside the window the claim has to close.
+            bool filled = false;
+            ctx.Stats = ForwardingStats(ctx.Stats, node =>
+            {
+                if (filled || node.Id != refused.Id) return;
+
+                PrivateKeyGenerator keyGenerator = new();
+                while (ctx.PeerPool.ActivePeers.Count < maxActivePeers)
+                {
+                    PublicKey key = keyGenerator.Generate().PublicKey;
+                    ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "203.0.113.2", 30303));
+                }
+
+                filled = true;
+            });
+            ctx.CreatePeerManager();
+            ctx.PeerManager.Start();
+
+            ctx.PeerPool.GetOrAdd(refused);
+
+            Assert.That(filled, Is.True, "the candidate never reached the claim");
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "dialed with no slot left");
+            Assert.That(ctx.RlpxPeer.ContactedIps, Is.Empty, "a filter entry was spent on a dial that never happened");
+
+            // Capacity is back, so the retry has to get through - a spent entry would hold it off for the
+            // next five minutes.
+            ctx.PeerPool.ActivePeers.Clear();
+            ctx.PeerPool.TryRemove(refused.Id, out _);
+            ctx.PeerPool.GetOrAdd(refused);
+
+            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1), "the refused candidate stayed suppressed");
         }
 
         [Test]
@@ -291,13 +430,51 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(2));
         }
 
-        [TestCase(true, ConnectionDirection.In)]
-        [TestCase(false, ConnectionDirection.In)]
-        // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
-        [TestCase(false, ConnectionDirection.Out)]
+        [Test]
+        public async Task MaxActivePeers_is_not_inflated_by_static_or_trusted()
+        {
+            await using Context ctx = new(maxActivePeers: 20);
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20));
+
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1) { IsStatic = true });
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1) { IsTrusted = true });
+
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static and trusted peers do not inflate the limit");
+        }
+
+        // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
+        // applied when a session completes the P2P Hello exchange.
+        [TestCase(11, 10, true)]
+        [TestCase(10, 10, false)]
+        [TestCase(9, 10, false)]
+        public async Task On_max_active_peer_limit(int activePeerCount, int maxActivePeer, bool shouldDisconnect)
+        {
+            await using Context ctx = new(maxActivePeers: maxActivePeer);
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < activePeerCount; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
+            }
+
+            ISession session = Substitute.For<ISession>();
+            session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
+
+            if (shouldDisconnect)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+        }
+
+        [Test]
         [NonParallelizable]
-        public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
-            ConnectionDirection firstDirection)
+        public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once([Values] bool shouldLose,
+            [Values(ConnectionDirection.In, ConnectionDirection.Out)] ConnectionDirection firstDirection)
         {
             await using Context ctx = new();
 
@@ -312,8 +489,8 @@ namespace Nethermind.Network.Test
             session1.RemotePort = 12345;
             session1.RemoteNodeId =
                 (firstDirection == ConnectionDirection.In)
-                    ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
-                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
+                    ? (shouldLose ? TestItem.PublicKeyB : TestItem.PublicKeyC)
+                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyB);
 
             void EnsureSession(ISession? session)
             {
@@ -335,11 +512,13 @@ namespace Nethermind.Network.Test
             }
             else
             {
+                // Dialing rlpx directly would leave the session unowned: the peer manager only keeps an
+                // outgoing session for a peer it already made active. Adding the node to the pool makes it
+                // dial, which activates the peer and attaches the OUT session before the IN one arrives.
                 ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
-                if (!await ctx.RlpxPeer.ConnectAsync(session1.Node))
-                {
-                    throw new NetworkingException($"Failed to connect to {session1.Node:s}", NetworkExceptionType.TargetUnreachable);
-                }
+                ctx.PeerPool.GetOrAdd(session1.Node);
+                Assert.That(() => ctx.PeerManager.ActivePeers.SingleOrDefault()?.OutSession,
+                    Is.Not.Null.After(_delayLonger, 20), "peer manager did not establish the OUT session");
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
             }
@@ -362,6 +541,37 @@ namespace Nethermind.Network.Test
         }
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
+
+        [Test]
+        public async Task Will_not_dial_a_node_carrying_this_nodes_own_identity()
+        {
+            await using Context ctx = new();
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(0).After(_delay),
+                "a discovered node carrying the local identity is a hairpinned self-dial and must never be attempted");
+        }
+
+        [Test]
+        public async Task Will_not_select_a_static_node_carrying_this_nodes_own_identity()
+        {
+            await using Context ctx = new();
+            ctx.RlpxPeer.MakeItFail();
+            const long neverRanked = -424242;
+            Node self = new(TestItem.PublicKeyA, "1.2.3.4", 30303) { IsStatic = true, CurrentReputation = neverRanked };
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.TestNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "5.6.7.8", 30303));
+            ctx.TestNodeSource.AddNode(self);
+            await Task.Delay(_delayLonger);
+
+            Assert.That(self.CurrentReputation, Is.EqualTo(neverRanked),
+                "a static peer bypasses the pre-candidate filters, so the local identity has to be dropped from the static projection too - otherwise it is selected every round, discarded again at dial time without taking a slot, and the update loop never reaches its idle delay");
+        }
 
         [Test]
         public async Task Will_fill_up_on_disconnects()
@@ -454,8 +664,10 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 ctx.DiscoverNew(25);
-                await Task.Delay(_delay);
-                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25 * (i + 1)).After(_delayLonger, 10));
+                // The manager keeps retrying failed peers in the background, so the counter never
+                // settles — assert it reaches each cycle's threshold instead of an exact value.
+                await ctx.RlpxPeer.WaitForConnectCallsAsync(25 * (i + 1), TimeSpan.FromSeconds(30));
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.AtLeast(25 * (i + 1)));
             }
         }
 
@@ -652,7 +864,7 @@ namespace Nethermind.Network.Test
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
+            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith<NodeEventArgs>(new ExplicitNodeRemovalEventArgs(
                 new Node(staticNodes.First())));
 
             Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
@@ -704,6 +916,27 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_delay, 10));
         }
 
+        /// <summary>
+        /// A stats manager that answers from <paramref name="inner"/> and runs <paramref name="onNodeChecked"/>
+        /// on every compatibility lookup, the one the dial fast path makes per candidate.
+        /// </summary>
+        private static INodeStatsManager ForwardingStats(INodeStatsManager inner, Action<Node> onNodeChecked)
+        {
+            INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+            stats.GetOrAdd(Arg.Any<Node>()).Returns(call => inner.GetOrAdd(call.Arg<Node>()));
+            stats.GetCurrentReputation(Arg.Any<Node>()).Returns(call => inner.GetCurrentReputation(call.Arg<Node>()));
+            stats.IsConnectionDelayed(Arg.Any<Node>()).Returns(call => inner.IsConnectionDelayed(call.Arg<Node>()));
+            stats.HasFailedValidation(Arg.Any<Node>()).Returns(call => inner.HasFailedValidation(call.Arg<Node>()));
+            stats.FindCompatibilityValidationResult(Arg.Any<Node>()).Returns(call =>
+            {
+                Node node = call.Arg<Node>();
+                onNodeChecked(node);
+                return inner.FindCompatibilityValidationResult(node);
+            });
+
+            return stats;
+        }
+
         private class Context : IAsyncDisposable
         {
             public RlpxMock RlpxPeer { get; }
@@ -726,7 +959,7 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
-                NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, RlpxPeer, LimboLogs.Instance);
+                NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.MaxActivePeers = maxActivePeers;
                 NetworkConfig.PeersPersistenceInterval = 50;
@@ -741,7 +974,7 @@ namespace Nethermind.Network.Test
                 CreatePeerManager();
             }
 
-            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
+            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 
@@ -858,6 +1091,9 @@ namespace Nethermind.Network.Test
         private class RlpxMock(List<Session> sessions) : IRlpxHost
         {
             private readonly List<Session> _sessions = sessions;
+            private NodeFilter _nodeFilter = NodeFilter.AcceptAll;
+            private int _connectAsyncCallsCount;
+
             public ISessionMonitor SessionMonitor { get; }
 
             public event Action? ConnectCalled;
@@ -866,10 +1102,7 @@ namespace Nethermind.Network.Test
 
             public Task<bool> ConnectAsync(Node node)
             {
-                lock (this)
-                {
-                    ConnectAsyncCallsCount++;
-                }
+                Interlocked.Increment(ref _connectAsyncCallsCount);
 
                 if (_isFailing)
                 {
@@ -930,11 +1163,10 @@ namespace Nethermind.Network.Test
                 session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
             }
 
-            public int ConnectAsyncCallsCount { get; set; }
+            public int ConnectAsyncCallsCount => Volatile.Read(ref _connectAsyncCallsCount);
 
             public Task Shutdown() => Task.CompletedTask;
 
-            public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
             public int LocalPort => 0;
             public event EventHandler<SessionEventArgs> SessionCreated;
             public event SessionDisconnectedEventHandler SessionDisconnected;
@@ -963,7 +1195,19 @@ namespace Nethermind.Network.Test
 
             public void MakeItFail() => _isFailing = true;
 
-            public bool ShouldContact(IPAddress ip, bool exactOnly = false) => true;
+            /// <summary>Addresses accepted for contact, that is, the ones that spent a filter entry.</summary>
+            public ConcurrentBag<IPAddress> ContactedIps { get; } = [];
+
+            /// <summary>Replaces the accept-everything default with the production recent-IP filter.</summary>
+            public void UseRecentIpFilter() => _nodeFilter = NodeFilter.CreateExact(size: 256, timeout: TimeSpan.FromMinutes(5));
+
+            public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+            {
+                if (!_nodeFilter.TryAccept(ip, exactOnly)) return false;
+
+                ContactedIps.Add(ip);
+                return true;
+            }
 
             private void Track(Session session) => session.Disconnected += OnSessionDisconnected;
 

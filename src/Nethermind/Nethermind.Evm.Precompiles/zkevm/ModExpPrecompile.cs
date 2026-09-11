@@ -30,11 +30,14 @@ public partial class ModExpPrecompile
         uint expStart = expOffset > uint.MaxValue ? uint.MaxValue : (uint)expOffset;
         uint modulusStart = modulusOffset > uint.MaxValue ? uint.MaxValue : (uint)modulusOffset;
 
-        ReadOnlySpan<byte> @base = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
-        ReadOnlySpan<byte> exp = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
         ReadOnlySpan<byte> modulus = inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength);
         byte[] result = new byte[modulusLength];
 
+        if (modulus.IsEmpty || modulus.IndexOfAnyExcept((byte)0) < 0)
+            return result;
+
+        ReadOnlySpan<byte> @base = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
+        ReadOnlySpan<byte> exp = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
         Accelerators.ModExp(@base, exp, modulus, result);
 
         return result;

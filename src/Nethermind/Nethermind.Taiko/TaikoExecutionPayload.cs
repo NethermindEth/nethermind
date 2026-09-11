@@ -16,9 +16,9 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
 {
     /// <summary>
     /// Taiko always uses V2 payloads regardless of the EVM spec (Cancun/Prague/Osaka).
-    /// The base ValidateFork would reject V2 payloads when EIP-4844 is active.
+    /// The base gate would reject V2 payloads when EIP-4844 is active.
     /// </summary>
-    public override bool ValidateFork(ISpecProvider specProvider) => true;
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion) => true;
 
     /// <summary>
     /// Taiko always uses V2 engine API payloads. The base ValidateParams rejects V2 once
@@ -75,11 +75,9 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     public new byte[][]? Transactions
     {
         get => _encodedTransactions is [] ? null : _encodedTransactions;
-        set
-        {
-            _encodedTransactions = value ?? [];
-            _transactions = null;
-        }
+        // Delegates so the base setter's memo invalidation (decoded transactions, tx-root task)
+        // stays in one place.
+        set => base.Transactions = value ?? [];
     }
 
     // Note: the base GetExecutionPayloadVersion override is intentionally absent.

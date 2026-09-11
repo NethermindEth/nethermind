@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -29,7 +28,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
+    public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
@@ -82,14 +81,21 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public void Dispose()
     {
         TrackingState state = _trackingState;
-        _trackingState = null;
+        _trackingState = null!;
         TrackingState.ResetAndReturn(state);
     }
 
     private sealed class TrackingState
     {
-        private static readonly ConcurrentQueue<TrackingState> _trackerPool = new();
-        public static TrackingState RentState() => _trackerPool.TryDequeue(out TrackingState tracker) ? tracker : new TrackingState();
+        // Rented once per top-level execution, not per frame, so one slot per thread is the whole win;
+        // the collections a returned state keeps sized would otherwise be retained a slot at a time.
+        private static readonly EvmObjectPool<TrackingState> _trackerPool = new(localCapacity: 1);
+
+        public static TrackingState RentState()
+        {
+            if (_trackerPool.TryDequeue(out TrackingState? tracker)) return tracker;
+            return new TrackingState();
+        }
 
         public static void ResetAndReturn(TrackingState state)
         {

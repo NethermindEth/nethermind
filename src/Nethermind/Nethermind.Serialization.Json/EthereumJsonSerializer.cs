@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Text.Encodings.Web;
@@ -54,8 +55,8 @@ namespace Nethermind.Serialization.Json
         private readonly JsonConverter[] _instanceConverters;
         private readonly object _instanceOptionsLock = new();
 
-        private JsonSerializerOptions _jsonOptions = null!;
-        private JsonSerializerOptions _jsonOptionsIndented = null!;
+        private JsonSerializerOptions _jsonOptions;
+        private JsonSerializerOptions _jsonOptionsIndented;
         private int _instanceOptionsVersion;
 
         public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int maxDepth = DefaultMaxDepth)
@@ -72,19 +73,19 @@ namespace Nethermind.Serialization.Json
             RefreshInstanceOptions();
         }
 
-        public object Deserialize(string json, Type type) => JsonSerializer.Deserialize(json, type, GetSerializerOptions(indented: false));
+        public object? Deserialize(string json, Type type) => JsonSerializer.Deserialize(json, type, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(Stream stream) => JsonSerializer.Deserialize<T>(stream, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(Stream stream) => JsonSerializer.Deserialize<T>(stream, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(ReadOnlySpan<byte> utf8Json) => JsonSerializer.Deserialize<T>(utf8Json, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(ReadOnlySpan<byte> utf8Json) => JsonSerializer.Deserialize<T>(utf8Json, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(ref Utf8JsonReader json) => JsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(ref Utf8JsonReader json) => JsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
 
         public string Serialize<T>(T value, bool indented = false) => JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
+        private static JsonSerializerOptions CreateOptions(bool indented, bool strictQuantity = false, IEnumerable<JsonConverter>? instanceConverters = null, int maxDepth = DefaultMaxDepth)
         {
             SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers);
 
@@ -102,10 +103,10 @@ namespace Nethermind.Serialization.Json
                 TypeInfoResolver = BuildTypeInfoResolver(additionalResolvers),
                 Converters =
                 {
-                    new LongConverter(),
-                    new UInt256Converter(),
+                    new LongConverter(strictQuantity),
+                    new UInt256Converter(strictQuantity),
                     new EvmWordConverter(),
-                    new ULongConverter(),
+                    new ULongConverter(strictQuantity),
                     new IntConverter(),
                     new ByteArrayConverter(),
                     new HexBytesConverter(),
@@ -113,9 +114,9 @@ namespace Nethermind.Serialization.Json
                     new ByteReadOnlyMemoryConverter(),
                     new NullableByteReadOnlyMemoryConverter(),
                     new ArrayPoolListByteHexConverter(),
-                    new NullableLongConverter(),
-                    new NullableULongConverter(),
-                    new NullableUInt256Converter(),
+                    new NullableLongConverter(strictQuantity),
+                    new NullableULongConverter(strictQuantity),
+                    new NullableUInt256Converter(strictQuantity),
                     new NullableIntConverter(),
                     new TxTypeConverter(),
                     new DoubleConverter(),
@@ -134,6 +135,7 @@ namespace Nethermind.Serialization.Json
                     new Hash256Converter(strictHexFormat),
                     new Hash256ArrayConverter(),
                     new IPAddressConverter(),
+                    new BitArrayConverter(),
                     new CappedArrayJsonConverter<int>(),
                     new CappedArrayByteJsonConverter(),
                 }
@@ -212,6 +214,9 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
+        /// <summary>Options for RPC request parameter deserialization, enforcing EIP-1474 QUANTITY format when <see cref="StrictHexFormat"/> is <see langword="true"/>.</summary>
+        public static JsonSerializerOptions JsonRpcRequestOptions { get; private set; } = CreateOptions(indented: false);
+
         private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: true);
         private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: false);
 
@@ -287,6 +292,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
+        [MemberNotNull(nameof(_jsonOptions), nameof(_jsonOptionsIndented))]
         private void RefreshInstanceOptions()
         {
             _jsonOptions = CreateOptions(indented: false, instanceConverters: _instanceConverters, maxDepth: _maxDepth);
@@ -298,6 +304,7 @@ namespace Nethermind.Serialization.Json
         {
             JsonOptions = CreateOptions(indented: false);
             JsonOptionsIndented = CreateOptions(indented: true);
+            JsonRpcRequestOptions = CreateOptions(indented: false, strictQuantity: _strictHexFormat);
             Interlocked.Increment(ref _optionsVersion);
         }
 

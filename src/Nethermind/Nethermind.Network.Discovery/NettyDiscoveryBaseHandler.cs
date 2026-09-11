@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -8,13 +9,41 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery;
 
-public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager) : SimpleChannelInboundHandler<DatagramPacket>
+public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager, IChannel? channel = null) : SimpleChannelInboundHandler<DatagramPacket>
 {
     private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryBaseHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private IChannel? _channel = channel;
 
     // https://github.com/ethereum/devp2p/blob/master/discv4.md#wire-protocol
     // https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#udp-communication
     protected const int MaxPacketSize = 1280;
+
+    protected IChannel Channel => _channel ?? throw new InvalidOperationException("Discovery channel is not initialized.");
+
+    public void InitializeChannel(IChannel channel) => _channel = channel;
+
+    /// <summary>
+    /// Reduces an IPv4-mapped IPv6 sender address (<c>::ffff:a.b.c.d</c>, reported by dual-stack sockets) to its plain IPv4 form.
+    /// </summary>
+    protected static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
+    {
+        IPAddress address = endpoint.Address.NormalizeMappedIPv4();
+        return ReferenceEquals(address, endpoint.Address) ? endpoint : new IPEndPoint(address, endpoint.Port);
+    }
+
+    public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
+
+    public override void ChannelInactive(IChannelHandlerContext context)
+    {
+        CloseInbound();
+        base.ChannelInactive(context);
+    }
+
+    public override void HandlerRemoved(IChannelHandlerContext context)
+    {
+        CloseInbound();
+        base.HandlerRemoved(context);
+    }
 
     public override void ChannelRead(IChannelHandlerContext ctx, object msg)
     {
@@ -39,4 +68,10 @@ public abstract class NettyDiscoveryBaseHandler(ILogManager? logManager) : Simpl
 
         return true;
     }
+
+    protected virtual void CloseInbound()
+    {
+    }
+
+    public event EventHandler? OnChannelActivated;
 }

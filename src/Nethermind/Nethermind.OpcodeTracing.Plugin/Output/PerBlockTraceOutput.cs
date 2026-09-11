@@ -35,7 +35,7 @@ public sealed class PerBlockMetadata
     /// Gets or sets the block number.
     /// </summary>
     [JsonPropertyName("blockNumber")]
-    public required long BlockNumber { get; init; }
+    public required ulong BlockNumber { get; init; }
 
     /// <summary>
     /// Gets or sets the parent block hash.
@@ -49,7 +49,7 @@ public sealed class PerBlockMetadata
     /// </summary>
     [JsonPropertyName("timestamp")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? Timestamp { get; init; }
+    public ulong? Timestamp { get; init; }
 
     /// <summary>
     /// Gets or sets the number of transactions in the block.
@@ -63,7 +63,7 @@ public sealed class PerBlockMetadata
     /// </summary>
     [JsonPropertyName("gasUsed")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? GasUsed { get; init; }
+    public ulong? GasUsed { get; init; }
 
     /// <summary>
     /// Gets or sets the UTC timestamp when this block trace was created.

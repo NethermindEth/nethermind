@@ -33,7 +33,7 @@ public class BeaconPivotTests
             PivotTotalDifficulty = "1000"
         };
         _blockTree = Substitute.For<IBlockTree>();
-        _blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+        _blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
     }
 
     [Test]

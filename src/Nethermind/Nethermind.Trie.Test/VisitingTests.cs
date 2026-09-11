@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -37,7 +36,7 @@ public class VisitingTests
             raw.Clear();
 
             raw[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
-            patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i))));
+            patriciaTree.Set(raw, Rlp.Encode(new Account(10UL, (ulong)(10_000_000 + i))));
         }
 
         using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
@@ -98,7 +97,7 @@ public class VisitingTests
             stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
 
             stateTree.Set(stateKey,
-                new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
+                new Account(10UL, (ulong)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
         }
 
         stateTree.Commit();

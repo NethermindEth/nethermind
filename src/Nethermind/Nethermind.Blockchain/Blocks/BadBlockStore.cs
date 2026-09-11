@@ -5,15 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
+public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDecoder = null) : IBadBlockStore
 {
-    private readonly BlockDecoder _blockDecoder = new();
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
@@ -22,21 +23,21 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
+        blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
 
         TruncateToMaxSize();
     }
 
     public IEnumerable<Block> GetAll() => blockDb.GetAllValues(true).Select(bytes =>
     {
-        Rlp.ValueDecoderContext ctx = ((byte[]?)bytes ?? []).AsRlpValueContext();
+        RlpReader ctx = new(((byte[]?)bytes ?? []));
         return _blockDecoder.Decode(ref ctx);
     });
 
     private void TruncateToMaxSize()
     {
-        int toDelete = (int)(blockDb.GatherMetric().Size - maxSize!);
+        int toDelete = (int)(blockDb.EstimatedCount - maxSize);
         if (toDelete > 0)
         {
             foreach (Block blockToDelete in GetAll().Take(toDelete))
@@ -46,5 +47,5 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         }
     }
 
-    private void Delete(long blockNumber, Hash256 blockHash) => blockDb.Delete(blockNumber, blockHash);
+    private void Delete(ulong blockNumber, Hash256 blockHash) => blockDb.Delete(blockNumber, blockHash);
 }

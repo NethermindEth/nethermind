@@ -44,7 +44,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain =
             await CreateBlockchain(Shanghai.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -171,9 +171,9 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         var fcuState = new
         {
-            headBlockHash = chain.BlockTree.HeadHash.ToString(),
-            safeBlockHash = chain.BlockTree.HeadHash.ToString(),
-            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(),
+            headBlockHash = chain.BlockTree.HeadHash!.ToString(),
+            safeBlockHash = chain.BlockTree.HeadHash!.ToString(),
+            finalizedBlockHash = chain.BlockTree.HeadHash!.ToString(),
         };
         var payloadAttributes = new
         {
@@ -210,8 +210,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         var fcuState = new
         {
-            headBlockHash = chain.BlockTree.HeadHash.ToString(),
-            safeBlockHash = chain.BlockTree.HeadHash.ToString(),
+            headBlockHash = chain.BlockTree.HeadHash!.ToString(),
+            safeBlockHash = chain.BlockTree.HeadHash!.ToString(),
             finalizedBlockHash = Keccak.Zero.ToString()
         };
         var payloadAttrs = new
@@ -242,7 +242,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new()
@@ -269,7 +269,7 @@ public partial class EngineModuleTests
 
         Address feeRecipient = TestItem.AddressA;
 
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         uint count = 3;
         int value = 10;
 
@@ -488,9 +488,9 @@ public partial class EngineModuleTests
         BlockDecoder blockDecoder = new();
 
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
-        blockTree.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>())
+        blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
             .Returns(i => GetHeader(input.Impl(i)));
-        blockStore.GetRlp(Arg.Any<long>(), Arg.Any<Hash256>())
+        blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
             .Returns(i =>
             {
                 Block? block = input.Impl(i);
@@ -529,6 +529,7 @@ public partial class EngineModuleTests
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
+
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) => builder
@@ -557,7 +558,10 @@ public partial class EngineModuleTests
             new ExecutionPayloadBodyV1Result([], null)
         ]);
 
-        await AssertStreamedJsonMatchesSerializer(response);
+        string streamedJson = await AssertStreamedJsonMatchesSerializer(response);
+
+        // V1 bodies predate EIP-7928 and must not carry the blockAccessList key.
+        Assert.That(streamedJson, Does.Not.Contain("blockAccessList"));
     }
 
     [Test]
@@ -606,7 +610,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Hash256 blockHash = new(input.BlockHash);
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -797,7 +801,7 @@ public partial class EngineModuleTests
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
-        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash!;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
         ResultWrapper<GetPayloadV2Result?> getPayloadResult =
@@ -879,7 +883,7 @@ public partial class EngineModuleTests
         bool waitForBlockImprovement,
         Withdrawal[]? withdrawals)
     {
-        Hash256 head = chain.BlockTree.HeadHash;
+        Hash256 head = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -921,11 +925,11 @@ public partial class EngineModuleTests
             new TestCaseData(((Func<CallInfo, Block?> BlockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, expectedBodies))
                 .SetName(name);
 
-        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject;
+        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<ulong>(0)).TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
         yield return Case("AllMissing", _ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
-        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<long>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<ulong>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
         yield return Case("AllPresent", BuildBlock, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
     }
 

@@ -10,9 +10,9 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead, IBeaconPivot beaconPivot) : IPeerAllocationStrategy
+public class PostMergeBlocksSyncPeerAllocationStrategy(ulong? minBlocksAhead, IBeaconPivot beaconPivot) : IPeerAllocationStrategy
 {
-    private readonly long? _minBlocksAhead = minBlocksAhead;
+    private readonly ulong? _minBlocksAhead = minBlocksAhead;
     private readonly IBeaconPivot _beaconPivot = beaconPivot;
 
     private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;

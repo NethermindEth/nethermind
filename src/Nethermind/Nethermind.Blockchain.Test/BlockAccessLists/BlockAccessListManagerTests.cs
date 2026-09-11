@@ -31,11 +31,12 @@ public class BlockAccessListManagerTests
 
         public Harness() => Manager = new BlockAccessListManager(
             WorldState,
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
-            new BlocksConfig(), // ParallelExecutionBatchRead defaults to true
-            Substitute.For<IWithdrawalProcessorFactory>());
+            new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
+            Substitute.For<IWithdrawalProcessorFactory>(),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
+            // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
+            readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
         /// <summary>
         /// Stubs <see cref="IWorldState.HintBal"/> to return <paramref name="hint"/>, then runs

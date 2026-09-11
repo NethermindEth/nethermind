@@ -99,4 +99,48 @@ public class InterlockedEx
 
         return current;
     }
+
+    /// <summary>
+    /// Atomically sets a field to the maximum of the field's current value and a specified value.
+    /// </summary>
+    /// <param name="location">The field to update</param>
+    /// <param name="value">The value to compare with the current value</param>
+    /// <returns>The original value of the field</returns>
+    public static ulong Max(ref ulong location, ulong value)
+    {
+        ulong current, newValue;
+        do
+        {
+            current = location;
+            newValue = Math.Max(current, value);
+
+            if (current >= value)
+                return current;
+        }
+        while (Interlocked.CompareExchange(ref location, newValue, current) != current);
+
+        return current;
+    }
+
+    /// <summary>
+    /// Atomically sets a field to the minimum of the field's current value and a specified value.
+    /// </summary>
+    /// <param name="location">The field to update</param>
+    /// <param name="value">The value to compare with the current value</param>
+    /// <returns>The original value of the field</returns>
+    public static ulong Min(ref ulong location, ulong value)
+    {
+        ulong current, newValue;
+        do
+        {
+            current = location;
+            newValue = Math.Min(current, value);
+
+            if (current <= value)
+                return current;
+        }
+        while (Interlocked.CompareExchange(ref location, newValue, current) != current);
+
+        return current;
+    }
 }

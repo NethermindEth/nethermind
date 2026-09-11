@@ -16,11 +16,20 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
+
+internal static class ScopeProviderTestExtensions
+{
+    // Test convenience overload: begins a scope with a throwaway metrics accumulator for tests that
+    // call the scope provider directly and do not assert on the folded counters.
+    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader? baseBlock)
+        => provider.BeginScope(baseBlock, new LocalMetrics());
+}
 
 public class FlatOverridableWorldScopeTests
 {
@@ -32,7 +41,6 @@ public class FlatOverridableWorldScopeTests
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
 
-        public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public FlatOverridableWorldScope OverridableScope => field ??= Container.Resolve<FlatOverridableWorldScope>();
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
@@ -60,7 +68,7 @@ public class FlatOverridableWorldScopeTests
                         .Returns(_ =>
                         {
                             SnapshotPooledList snapshotList = new(0);
-                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false);
+                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty());
                         });
 
                     flatDbManager.HasStateForBlock(Arg.Any<StateId>())
@@ -86,7 +94,9 @@ public class FlatOverridableWorldScopeTests
             foreach ((Snapshot snapshot, TransientResource resource) in FlatDbManagerAddSnapshotCalls)
             {
                 snapshot.Dispose();
-                ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, resource);
+                // Mirror FlatOverridableWorldScope.AddSnapshot: returning to the pool directly would recycle
+                // the resource while a warmer lease is still outstanding and double-return it on that release.
+                resource.ReleaseLease();
             }
 
             _container?.Dispose();

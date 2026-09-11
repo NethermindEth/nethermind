@@ -32,7 +32,7 @@ public sealed class BlocksRootContext : IDisposable
     private ValueHash256? _historicalRoot;
 
     public bool Populated { get; private set; }
-    public long StartingBlockNumber { get; }
+    public ulong StartingBlockNumber { get; }
     public ulong? StartingBlockTimestamp { get; }
 
     public ValueHash256 AccumulatorRoot =>
@@ -44,7 +44,7 @@ public sealed class BlocksRootContext : IDisposable
     public ValueHash256 HistoricalRoot =>
         _historicalRoot ?? throw new InvalidOperationException("Historical root not set or not finalized.");
 
-    public BlocksRootContext(long startingBlockNumber, ulong? startingBlockTimestamp = null, ISpecProvider? specProvider = null)
+    public BlocksRootContext(ulong startingBlockNumber, ulong? startingBlockTimestamp = null, ISpecProvider? specProvider = null)
     {
         StartingBlockNumber = startingBlockNumber;
         StartingBlockTimestamp = startingBlockTimestamp;

@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
+                ulong gasRemaining = block.Header.GasLimit - block.GasUsed;
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                 if (expectedNonce != currentTx.Nonce)
                 {
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");

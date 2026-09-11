@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Json;
 /// <see cref="InitialEwma"/> for fields with known size distributions
 /// (transactions vs. blob bundle vs. execution requests).
 /// </remarks>
-public class ByteArrayArrayConverter : JsonConverter<byte[][]>
+public class ByteArrayArrayConverter : JsonConverter<byte[]?[]?>
 {
     /// <summary>Initial EMA value; overridden per call-site to bias for the expected count.</summary>
     protected virtual int InitialEwma => 16;
@@ -31,7 +31,7 @@ public class ByteArrayArrayConverter : JsonConverter<byte[][]>
     public ByteArrayArrayConverter() => _ewma = InitialEwma;
 
     /// <inheritdoc/>
-    public override byte[][]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override byte[]?[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) return null;
         if (reader.TokenType != JsonTokenType.StartArray || !reader.Read()) ThrowJsonException();
@@ -40,14 +40,14 @@ public class ByteArrayArrayConverter : JsonConverter<byte[][]>
         // Pow2 rounding of EMA matches ArrayPool's bucket sizes and gives natural slack
         // (anything in (N/2, N] rounds to N). Rent then snaps to its own bucket >= request.
         int seed = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(2, Volatile.Read(ref _ewma)));
-        using ArrayPoolListRef<byte[]> values = new(seed);
+        using ArrayPoolListRef<byte[]?> values = new(seed);
         while (reader.TokenType != JsonTokenType.EndArray)
         {
-            values.Add(ByteArrayConverter.Convert(ref reader)!);
+            values.Add(ByteArrayConverter.Convert(ref reader));
             if (!reader.Read()) ThrowJsonException();
         }
 
-        byte[][] result = values.ToArray();
+        byte[]?[] result = values.ToArray();
         int count = values.Count;
 
         // EMA alpha = 1/8. Race-tolerant: Volatile is enough; lost updates only slow convergence.
@@ -58,15 +58,22 @@ public class ByteArrayArrayConverter : JsonConverter<byte[][]>
     }
 
     /// <inheritdoc/>
-    public override void Write(Utf8JsonWriter writer, byte[][] value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, byte[]?[]? value, JsonSerializerOptions options)
     {
         if (value is null) { writer.WriteNullValue(); return; }
 
         writer.WriteStartArray();
         for (int i = 0; i < value.Length; i++)
         {
-            if (value[i] is byte[] item) ByteArrayConverter.Convert(writer, item, skipLeadingZeros: false);
-            else writer.WriteNullValue();
+            byte[]? item = value[i];
+            if (item is null)
+            {
+                writer.WriteNullValue();
+            }
+            else
+            {
+                ByteArrayConverter.Convert(writer, item, skipLeadingZeros: false);
+            }
         }
         writer.WriteEndArray();
     }

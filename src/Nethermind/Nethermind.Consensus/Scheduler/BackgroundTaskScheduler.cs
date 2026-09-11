@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -34,7 +35,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IBranchProcessor _branchProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
+    private readonly Lock _blockProcessingLock = new();
+    private int _activeBlockProcessingBranches;
     private long _queueCount;
+    private readonly int[] _stats = new int[BackgroundTaskTypeRegistry.MaxTaskTypes];
 
     private CancellationTokenSource _blockProcessorCancellationTokenSource;
     private volatile TaskCompletionSource? _blockProcessingDoneSignal;
@@ -64,7 +68,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _capacity = capacity;
 
         _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
-        _branchProcessor.BlockProcessed += BranchProcessorOnBranchProcessed;
+        _branchProcessor.BranchProcessingCompleted += BranchProcessorOnBranchProcessingCompleted;
 
         // TaskScheduler to run tasks at BelowNormal priority
         _scheduler = new BelowNormalPriorityTaskScheduler(
@@ -79,27 +83,69 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         // If we are syncing, we don't block background task processing
         // as there are potentially no gaps between blocks
-        if (!_headInfo.IsSyncing)
+        if (_headInfo.IsSyncing)
         {
-            long depth = Volatile.Read(ref _queueCount);
-            if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth}");
+            return;
+        }
+
+        long depth;
+        lock (_blockProcessingLock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (_activeBlockProcessingBranches++ != 0)
+            {
+                return;
+            }
+
+            depth = Volatile.Read(ref _queueCount);
             // Signal that block processing is in progress so StartChannel can async-wait
             _blockProcessingDoneSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             // On block processing, cancel the block process CTS so running tasks can exit quickly
             _blockProcessorCancellationTokenSource.Cancel();
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Block processing starting, background queue depth: {depth} [{FormatStats()}]");
     }
 
-    private void BranchProcessorOnBranchProcessed(object? sender, BlockProcessedEventArgs e)
+    private void BranchProcessorOnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
-        // Once the block is processed, we replace the cancellation token with a fresh uncanceled one.
-        // The previous source is intentionally not disposed: StartChannel reads it lock-free, so disposing
-        // here would race that read (ObjectDisposedException on .Token). A source with no timer or wait
-        // handle is safe to let the GC reclaim.
-        Interlocked.Exchange(ref _blockProcessorCancellationTokenSource, new CancellationTokenSource());
+        CancellationTokenSource? oldTokenSource = null;
+        TaskCompletionSource? signal = null;
 
-        // Signal that block processing is done so the paused consumers can resume
-        Interlocked.Exchange(ref _blockProcessingDoneSignal, null)?.TrySetResult();
+        lock (_blockProcessingLock)
+        {
+            if (_disposed || _activeBlockProcessingBranches == 0)
+            {
+                return;
+            }
+
+            if (--_activeBlockProcessingBranches != 0)
+            {
+                return;
+            }
+
+            oldTokenSource = _blockProcessorCancellationTokenSource;
+            _blockProcessorCancellationTokenSource = new CancellationTokenSource();
+            signal = _blockProcessingDoneSignal;
+            _blockProcessingDoneSignal = null;
+        }
+
+        oldTokenSource.Dispose();
+        signal?.TrySetResult();
+    }
+
+    private CancellationTokenSource CreateTaskCancellationTokenSource()
+    {
+        lock (_blockProcessingLock)
+        {
+            return CancellationTokenSource.CreateLinkedTokenSource(
+                _blockProcessorCancellationTokenSource.Token,
+                _mainCancellationTokenSource.Token);
+        }
     }
 
     private async Task StartChannel()
@@ -109,9 +155,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             while (await _taskQueue.Reader.WaitToReadAsync(_mainCancellationTokenSource.Token))
             {
                 // Create fresh CancellationTokenSource for current block processing
-                CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
-                            Volatile.Read(ref _blockProcessorCancellationTokenSource).Token,
-                            _mainCancellationTokenSource.Token);
+                CancellationTokenSource cts = CreateTaskCancellationTokenSource();
                 try
                 {
                     CancellationToken token = cts.Token;
@@ -140,6 +184,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                             // Task already expired or re-queue failed — run with cancelled token
                         }
 
+                        AddToStats(activity.TaskId, -1);
                         await activity.Do(token);
                         Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
                     }
@@ -173,7 +218,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+    public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+        where TReq : notnull, IBackgroundTaskRequest<TReq>
     {
         Activity<TReq> activity = Activity<TReq>.Rent(
             DateTimeOffset.UtcNow + (timeout ?? DefaultTimeout),
@@ -184,27 +230,64 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         if (Interlocked.Increment(ref _queueCount) <= _capacity)
         {
+            // Counted before the write so a consumer can never decrement ahead of the increment
+            AddToStats(TReq.TaskId, 1);
             if (_taskQueue.Writer.TryWrite(activity))
             {
                 UpdateQueueCount();
                 return true;
             }
+
+            AddToStats(TReq.TaskId, -1);
         }
 
         Evm.Metrics.IncrementTotalBackgroundTasksDropped();
         long now = Environment.TickCount64;
         long lastLog = Volatile.Read(ref _lastDropLogTicks);
-        if (_logger.IsWarn && now - lastLog > 10_000 && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
+        if (!Volatile.Read(ref _disposed)
+            && _logger.IsWarn
+            && now - lastLog > 10_000
+            && Interlocked.CompareExchange(ref _lastDropLogTicks, now, lastLog) == lastLog)
         {
             _logger.Warn(
-                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{source ?? "unknown"}]. " +
+                $"Background task queue is full (Count: {_queueCount}, Capacity: {_capacity}), dropping task [{BackgroundTaskTypeRegistry.GetName(TReq.TaskId) ?? "unknown"}]. " +
                 $"Totals: queued={Evm.Metrics.TotalBackgroundTasksQueued}, executed={Evm.Metrics.TotalBackgroundTasksExecuted}, " +
-                $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}");
+                $"dropped={Evm.Metrics.TotalBackgroundTasksDropped}. " +
+                $"Stats: {FormatStats()}");
         }
         Interlocked.Decrement(ref _queueCount);
         request.TryDispose();
         activity.Return();
         return false;
+    }
+
+    /// <remarks>
+    /// Task ids are dense from 0, so counters live in a flat array and the scheduling path pays a single
+    /// interlocked add. Ids past <see cref="BackgroundTaskTypeRegistry.MaxTaskTypes"/> go untracked.
+    /// </remarks>
+    private void AddToStats(int taskId, int delta)
+    {
+        int[] stats = _stats;
+        if ((uint)taskId < (uint)stats.Length)
+        {
+            Interlocked.Add(ref stats[taskId], delta);
+        }
+    }
+
+    private string FormatStats()
+    {
+        StringBuilder builder = new();
+        for (int id = 0; id < _stats.Length; id++)
+        {
+            int count = Volatile.Read(ref _stats[id]);
+            if (count > 0 && BackgroundTaskTypeRegistry.GetName(id) is string name)
+            {
+                if (builder.Length > 0) builder.Append(", ");
+                builder.Append('(').Append(name).Append(": ").Append(count).Append(')');
+            }
+        }
+
+        return builder.ToString();
     }
 
     private void UpdateQueueCount() => Evm.Metrics.NumberOfBackgroundTasksScheduled = Volatile.Read(ref _queueCount);
@@ -214,7 +297,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         if (Interlocked.CompareExchange(ref _disposed, true, false)) return;
 
         _branchProcessor.BlocksProcessing -= BranchProcessorOnBranchesProcessing;
-        _branchProcessor.BlockProcessed -= BranchProcessorOnBranchProcessed;
+        _branchProcessor.BranchProcessingCompleted -= BranchProcessorOnBranchProcessingCompleted;
 
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();
@@ -222,11 +305,34 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // until they observe cancellation and complete.
         await Task.WhenAll(_tasksExecutors);
         _mainCancellationTokenSource.Dispose();
-        _blockProcessorCancellationTokenSource.Dispose();
+        lock (_blockProcessingLock)
+        {
+            _activeBlockProcessingBranches = 0;
+            _blockProcessingDoneSignal = null;
+            _blockProcessorCancellationTokenSource.Dispose();
+        }
         _scheduler.Dispose();
     }
 
-    private sealed class Activity<TReq> : IActivity
+    /// <summary>
+    /// Snapshot of currently queued task counts, keyed by the request type's reported name.
+    /// </summary>
+    internal IReadOnlyDictionary<string, int> GetStats()
+    {
+        Dictionary<string, int> stats = [];
+        for (int id = 0; id < _stats.Length; id++)
+        {
+            if (BackgroundTaskTypeRegistry.GetName(id) is string name)
+            {
+                // Accumulate: two ids resolving to one name must merge, never replace one another
+                stats[name] = (stats.TryGetValue(name, out int existing) ? existing : 0) + Volatile.Read(ref _stats[id]);
+            }
+        }
+
+        return stats;
+    }
+
+    private sealed class Activity<TReq> : IActivity where TReq : IBackgroundTaskRequest<TReq>
     {
         private const int MaxPooled = 1024;
         private static readonly ConcurrentQueue<Activity<TReq>> Pool = new();
@@ -236,6 +342,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         private Func<TReq, CancellationToken, Task>? _fulfillFunc;
 
         public DateTimeOffset Deadline { get; private set; }
+        public int TaskId => TReq.TaskId;
 
         public static Activity<TReq> Rent(DateTimeOffset deadline, TReq request, Func<TReq, CancellationToken, Task> fulfillFunc)
         {
@@ -304,6 +411,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private interface IActivity : IComparable<IActivity>
     {
         DateTimeOffset Deadline { get; }
+        int TaskId { get; }
         Task Do(CancellationToken cancellationToken);
     }
 

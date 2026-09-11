@@ -55,9 +55,9 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
-        long BestKnownNumber { get; }
+        ulong BestKnownNumber { get; }
 
-        long BestKnownBeaconNumber { get; }
+        ulong BestKnownBeaconNumber { get; }
 
         /// <summary>
         /// Inserts a disconnected block header (without body)
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
 
         void UpdateHeadBlock(Hash256 blockHash);
 
-        void NewOldestBlock(long oldestBlock);
+        void NewOldestBlock(ulong oldestBlock);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBlock(long number, Hash256 blockHash);
+        bool IsKnownBlock(ulong number, Hash256 blockHash);
 
         /// <summary>
         /// Checks if beacon block was inserted and the block RLP is in the DB
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
-        bool IsKnownBeaconBlock(long number, Hash256 blockHash);
+        bool IsKnownBeaconBlock(ulong number, Hash256 blockHash);
 
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain
         /// <param name="number">Number of the block to check (needed for faster lookup)</param>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if processed, otherwise <value>False</value></returns>
-        bool WasProcessed(long number, Hash256 blockHash);
+        bool WasProcessed(ulong number, Hash256 blockHash);
 
         /// <summary>
         /// Reorgs the main chain to <paramref name="newHead"/>: walks back from it to the current main chain
@@ -157,18 +157,17 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash);
+        (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash);
 
-        ChainLevelInfo? FindLevel(long number);
+        ChainLevelInfo? FindLevel(ulong number);
 
-        BlockInfo FindCanonicalBlockInfo(long blockNumber);
+        BlockInfo? FindCanonicalBlockInfo(ulong blockNumber);
 
-        Hash256? FindHash(long blockNumber);
+        Hash256? FindHash(ulong blockNumber);
 
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         void DeleteInvalidBlock(Block invalidBlock);
-
         /// <summary>
         /// Records <paramref name="badBlock"/> as invalid without altering the canonical chain.
         /// </summary>
@@ -181,14 +180,27 @@ namespace Nethermind.Blockchain
         /// </remarks>
         void ReportBadBlock(Block badBlock);
 
-        void DeleteOldBlock(long blockNumber, Hash256 blockHash);
+        /// <summary>Deletes every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever
+        /// their hashes and whether or not a chain level lists them.</summary>
+        void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive);
+
+        /// <summary>Drops many ranges in one call, so the block store can invalidate its hash-keyed cache once
+        /// instead of once per range. The default loops <see cref="DeleteOldBlockRange"/>.</summary>
+        void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+        {
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges) DeleteOldBlockRange(fromInclusive, toExclusive);
+        }
+
+        /// <summary>Drops one old block's body, for a caller keeping some of the heights in a range it is reclaiming.
+        /// </summary>
+        void DeleteOldBlock(ulong blockNumber, Hash256 blockHash);
 
         void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash);
 
         /// <summary>
         /// Block number of the most recent finalized block; 0 if none.
         /// </summary>
-        long LastFinalizedBlockLevel { get; }
+        ulong LastFinalizedBlockLevel { get; }
 
         /// <summary>
         /// Fires when <see cref="ForkChoiceUpdated"/> advances <see cref="IBlockFinder.FinalizedHash"/>
@@ -216,11 +228,11 @@ namespace Nethermind.Blockchain
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
         event EventHandler<ForkChoiceUpdateEventArgs> OnForkChoiceUpdated;
 
-        int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
+        int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);
 
-        void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint);
+        void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, ulong clearBeaconMainChainStartPoint);
 
         void RecalculateTreeLevels();
 
@@ -231,13 +243,17 @@ namespace Nethermind.Blockchain
         /// for blocks before sync pivot.
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
-        (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+        (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
 
-        public readonly struct ForkChoiceUpdateEventArgs(Block? head, long safe, long finalized)
+        /// <summary>Publishes the served-history floor surfaced by <see cref="IBlockFinder.LowestServedBlock"/>.
+        /// A no-op everywhere except the live tree - read-only and overlay trees never own the floor.</summary>
+        void UpdateLowestServedBlock(ulong lowestServed) { }
+
+        public readonly struct ForkChoiceUpdateEventArgs(Block? head, ulong safe, ulong finalized)
         {
             public Block? Head => head;
-            public long Safe => safe;
-            public long Finalized => finalized;
+            public ulong Safe => safe;
+            public ulong Finalized => finalized;
         }
         bool IsProcessingBlock { get; set; }
     }

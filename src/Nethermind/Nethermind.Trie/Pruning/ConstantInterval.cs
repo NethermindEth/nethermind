@@ -5,7 +5,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class ConstantInterval(long snapshotInterval) : IPersistenceStrategy
     {
-        public bool ShouldPersist(long blockNumber) => blockNumber % snapshotInterval == 0;
+        public bool ShouldPersist(ulong blockNumber) => blockNumber % (ulong)snapshotInterval == 0;
 
         public bool IsFullPruning => false;
     }

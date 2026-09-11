@@ -4,7 +4,6 @@
 using System;
 using System.Net;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats.Model;
@@ -24,7 +23,6 @@ namespace Nethermind.Network.Rlpx
         Task Init();
         Task<bool> ConnectAsync(Node node);
         Task Shutdown();
-        PublicKey LocalNodeId { get; }
         int LocalPort { get; }
 
         /// <summary>

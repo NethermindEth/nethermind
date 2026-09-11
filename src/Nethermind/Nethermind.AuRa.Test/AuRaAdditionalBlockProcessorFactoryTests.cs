@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test
             {
                 ValidatorType = validatorType,
                 Addresses = new[] { Address.Zero },
-                Validators = new Dictionary<long, AuRaParameters.Validator>()
+                Validators = new Dictionary<ulong, AuRaParameters.Validator>()
                 {
                     {
                         0, new AuRaParameters.Validator()

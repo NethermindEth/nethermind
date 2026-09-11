@@ -192,8 +192,11 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public bool TryTakeFirst(out TValue? first)
         {
-            if (GetFirsts().Min is TValue min)
+            if (GetBest() is TValue min)
+            {
                 return TryRemove(GetKey(min), out first);
+            }
+
             first = default;
             return false;
         }
@@ -217,7 +220,29 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Returns best overall element as per supplied comparer order.
         /// </summary>
-        public TValue? GetBest() => GetFirsts().Min;
+        public TValue? GetBest()
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+
+            TValue? best = default;
+            bool hasBest = false;
+            foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
+            {
+                TValue? candidate = bucket.Value.Min;
+                if (candidate is null)
+                {
+                    continue;
+                }
+
+                if (!hasBest || _sortedComparer.Compare(candidate, best!) < 0)
+                {
+                    best = candidate;
+                    hasBest = true;
+                }
+            }
+
+            return best;
+        }
 
         /// <summary>
         /// Gets last element in supplied comparer order.

@@ -18,6 +18,6 @@ namespace Nethermind.Consensus.AuRa.Services
 
         public ulong? MaxSecondsIntervalForProducingBlocksHint() => (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * CurrentStepDuration() * HealthHintConstants.ProducingSafetyMultiplier;
 
-        private uint CurrentStepDuration() => Math.Max((uint)_auRaStepCalculator.CurrentStepDuration, 1);
+        private ulong CurrentStepDuration() => Math.Max(_auRaStepCalculator.CurrentStepDuration, 1UL);
     }
 }

@@ -7,6 +7,6 @@ namespace Nethermind.EraE.Admin;
 
 public interface IAdminEraService
 {
-    ResultWrapper<string> ExportHistory(string destination, long from, long to);
-    ResultWrapper<string> ImportHistory(string source, long from, long to, string? accumulatorFile);
+    ResultWrapper<string> ExportHistory(string destination, ulong from, ulong to);
+    ResultWrapper<string> ImportHistory(string source, ulong from, ulong to, string? accumulatorFile);
 }

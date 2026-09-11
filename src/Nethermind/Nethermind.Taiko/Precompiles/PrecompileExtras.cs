@@ -19,10 +19,10 @@ namespace Nethermind.Taiko.Precompiles;
 /// before the chain has any origins). Precompiles must treat <c>null</c> as permissive — the
 /// proving layer enforces correctness in those contexts.</para>
 /// </remarks>
-public readonly struct PrecompileExtras(long remainingGas = 0, UInt256? l1Origin = null)
+public readonly struct PrecompileExtras(ulong remainingGas = 0, UInt256? l1Origin = null)
 {
     public static readonly PrecompileExtras None = default;
 
-    public readonly long RemainingGas = remainingGas;
+    public readonly ulong RemainingGas = remainingGas;
     public readonly UInt256? L1Origin = l1Origin;
 }

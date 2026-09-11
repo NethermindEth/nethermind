@@ -166,7 +166,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithChainId(1)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .WithGasLimit(21_000)
                 .WithMaxFeePerGas(20_000_000_000)
                 .WithMaxPriorityFeePerGas(1_000_000_000)
@@ -244,7 +244,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     {
         ISszEndpointHandler[] handlers =
         [
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(engine),
+            new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(engine),
             new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(engine),
             new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(engine),
             new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(engine),

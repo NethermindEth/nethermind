@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,7 +63,9 @@ public class BloomFilterTests
     [Test]
     public void Add_ConcurrentWithMightContain_ShouldWork()
     {
-        using Bloom bloom = NewBloom(capacity: 10000);
+        // The capacity is far above the 30k added keys. A saturated filter's
+        // false-positive rate masks a single lost write and defeats the check below.
+        using Bloom bloom = NewBloom(capacity: 100_000);
         const int iterationsPerThread = 10000;
 
         Task[] writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
@@ -85,7 +88,20 @@ public class BloomFilterTests
 
         Task.WaitAll(writerTasks.Concat(readerTasks).ToArray());
 
-        Assert.Pass("Concurrent operations completed without exceptions");
+        // A bloom filter never returns a false negative. Every added hash must be found
+        // afterwards. A miss means a concurrent-access race lost a write.
+        List<ulong> lost = [];
+        for (int threadId = 0; threadId < 3; threadId++)
+        {
+            ulong hash = (ulong)(threadId * 1000000);
+            for (int i = 0; i < iterationsPerThread; i++)
+            {
+                if (!bloom.MightContain(hash)) lost.Add(hash);
+                hash++;
+            }
+        }
+
+        Assert.That(lost, Is.Empty, "hashes lost during concurrent add");
     }
 
     [Test]
@@ -95,6 +111,15 @@ public class BloomFilterTests
 
         bloom.Dispose();
         Assert.DoesNotThrow(() => bloom.Dispose());
+    }
+
+    [Test]
+    public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue([Values(0UL, 1UL, 0xDEADBEEFCAFEBABEUL, ulong.MaxValue)] ulong key)
+    {
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
+            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+
+        Assert.That(bloom.MightContain(key), Is.True, "AlwaysTrue sentinel must match every probe");
     }
 
     [Test]
@@ -110,7 +135,7 @@ public class BloomFilterTests
         const int totalItems = 500;
         using Bloom bloom = NewBloom(capacity: totalItems);
 
-        for (ulong i = 0; i < (ulong)totalItems; i++) bloom.Add(i);
+        for (ulong i = 0; i < totalItems; i++) bloom.Add(i);
 
         Assert.That(bloom.Count, Is.EqualTo(totalItems));
         for (ulong i = 0; i < 50; i++)
@@ -119,18 +144,12 @@ public class BloomFilterTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Constructor_RejectsNonPositiveCapacity(long capacity) =>
+    [Test]
+    public void Constructor_RejectsNonPositiveCapacity([Values(0, -1, long.MinValue)] long capacity) =>
         Assert.That(() => NewBloom(capacity: capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(0.0)]
-    [TestCase(-1.0)]
-    [TestCase(double.NaN)]
-    [TestCase(double.PositiveInfinity)]
-    [TestCase(double.NegativeInfinity)]
-    public void Constructor_RejectsInvalidBitsPerKey(double bitsPerKey) =>
+    [Test]
+    public void Constructor_RejectsInvalidBitsPerKey([Values(0.0, -1.0, double.NaN, double.PositiveInfinity, double.NegativeInfinity)] double bitsPerKey) =>
         Assert.That(() => NewBloom(bitsPerKey: bitsPerKey), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

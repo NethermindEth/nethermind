@@ -105,18 +105,39 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(_sortedPool.TryGetBucket(tx.SenderAddress, out _), Is.False);
         }
 
+        [Test]
+        public void GetBest_returns_first_transaction_without_removing_it()
+        {
+            Transaction lowPriority = Build.A.Transaction
+                .WithGasPrice(1)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            lowPriority.Hash = lowPriority.CalculateHash();
+            Transaction highPriority = Build.A.Transaction
+                .WithGasPrice(2)
+                .WithSenderAddress(TestItem.AddressB)
+                .TestObject;
+            highPriority.Hash = highPriority.CalculateHash();
+
+            _sortedPool.TryInsert(lowPriority.Hash, lowPriority);
+            _sortedPool.TryInsert(highPriority.Hash, highPriority);
+
+            Assert.That(_sortedPool.GetBest(), Is.EqualTo(highPriority));
+            Assert.That(_sortedPool.Count, Is.EqualTo(2));
+        }
+
         private static IEnumerable<TestCaseData> VisitBucketCases()
         {
-            yield return new TestCaseData(Array.Empty<int>(), int.MaxValue, Array.Empty<int>())
+            yield return new TestCaseData(Array.Empty<ulong>(), int.MaxValue, Array.Empty<int>())
                 .SetName("VisitBucket_missing_group_visits_nothing");
-            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
+            yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
                 .SetName("VisitBucket_iterates_all_items_in_ascending_nonce_order");
-            yield return new TestCaseData(new[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
+            yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
                 .SetName("VisitBucket_stops_after_visitor_returns_false");
         }
 
         [TestCaseSource(nameof(VisitBucketCases))]
-        public void VisitBucket_visits_expected_nonces(int[] insertNonces, int stopAfterNonce, int[] expectedVisited)
+        public void VisitBucket_visits_expected_nonces(ulong[] insertNonces, int stopAfterNonce, int[] expectedVisited)
         {
             InsertNonces(TestItem.AddressA, insertNonces);
 
@@ -139,12 +160,12 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(act, Throws.TypeOf<ArgumentNullException>());
         }
 
-        private void InsertNonces(Address sender, ReadOnlySpan<int> nonces)
+        private void InsertNonces(Address sender, ReadOnlySpan<ulong> nonces)
         {
-            foreach (int nonce in nonces)
+            foreach (ulong nonce in nonces)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
+                    .WithNonce(nonce)
                     .WithSenderAddress(sender)
                     .TestObject;
                 tx.Hash = tx.CalculateHash();

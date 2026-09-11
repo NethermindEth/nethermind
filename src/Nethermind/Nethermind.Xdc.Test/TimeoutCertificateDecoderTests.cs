@@ -30,8 +30,8 @@ public class TimeoutCertificateDecoderTests
         TimeoutCertificateDecoder decoder = new();
 
         Rlp encoded = decoder.Encode(tc);
-        Rlp.ValueDecoderContext decoderContext = encoded.Bytes.AsRlpValueContext();
-        TimeoutCertificate decoded = decoder.Decode(ref decoderContext);
+        RlpReader decoderContext = new(encoded.Bytes);
+        TimeoutCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(tc).UsingXdcComparer());
     }

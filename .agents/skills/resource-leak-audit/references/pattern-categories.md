@@ -62,29 +62,13 @@ Search ALL of these (Full Audit Mode) or the relevant subset (PR Mode).
 - [ ] **String interning** — string.Intern() or static dictionaries of strings.
 - [ ] **async void** — exceptions crash process, skip finally, leak resources.
 - [ ] **Lazy\<T\> with disposable** — Lazy caches forever. If T is IDisposable, never cleaned up.
+- [ ] **GC.SuppressFinalize without Dispose** — suppression without disposal skips cleanup entirely.
 
-## Additional Search Strategies
+## Safe-Wrapper Bypass (backward search)
 
-### Pattern-Based
-- Prior leak-fix PRs via `git log --grep="dispose" --grep="leak" --all-match`
-- Cancel() without Dispose() on CTS fields
-- Empty/incomplete Dispose() bodies
-- Compound expressions creating multiple disposables
-- Overridden methods discarding disposable parameters
-- `_disposed` flags without Interlocked
-- Factory methods returning disposables (`Create*`, `Open*`, `Build*`)
-- `Task.Run` / `Task.Factory.StartNew` closures
-- `GC.SuppressFinalize` without Dispose
-- WeakReference / ConditionalWeakTable accumulation
+Using the safe patterns discovered in Step 0b, search for code using the raw pattern instead:
 
-### Safe-Wrapper Bypass
 - Raw pool rental without codebase's disposable wrapper
 - Manual `.Dispose()` on locals instead of `using var`
 - `.SetResult()` instead of `.TrySetResult()` on TCS
 - `bool _disposed` when codebase convention is `Interlocked.Exchange`
-
-### Interaction-Tracing
-- `Task.WhenAll` launching async loops — cross-task calls during shutdown
-- `CancellationToken` parameters never referenced in method body
-- Dispose chains across ownership boundaries (A creates, passes to C, who disposes?)
-- `finally` blocks in async loops — do they complete channels/TCS or just log?

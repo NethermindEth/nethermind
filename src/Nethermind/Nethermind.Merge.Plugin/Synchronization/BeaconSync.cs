@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool MergeTransitionFinished => _poSSwitcher.TransitionFinished;
 
-        public long? GetTargetBlockHeight()
+        public ulong? GetTargetBlockHeight()
         {
             if (_beaconPivot.BeaconPivotExists())
             {
@@ -110,8 +110,22 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256? GetFinalizedHash() => _finalizedHash;
+        /// <remarks>
+        /// Falls back to the finalized hash persisted by the block tree when nothing usable has been set
+        /// (no forkchoice update yet, or a zero finalized hash), so that a node restarted before its first
+        /// pivot update can make progress. Safe because finalized blocks cannot be reorged and pivot updates
+        /// enforce monotonicity, so a stale persisted value can only produce an older-but-valid pivot.
+        /// </remarks>
+        public Hash256? GetFinalizedHash()
+        {
+            Hash256? finalizedHash = _finalizedHash;
+            return finalizedHash is not null && finalizedHash != Keccak.Zero ? finalizedHash : _blockTree.FinalizedHash;
+        }
 
+        /// <remarks>
+        /// Unlike <see cref="GetFinalizedHash"/>, there is no block tree fallback: a head can be reorged away,
+        /// and the block tree's own head reflects local processing progress, not the CL forkchoice target.
+        /// </remarks>
         public Hash256? GetHeadBlockHash() => _headBlockHash;
 
         public void SetForkchoiceHashes(Hash256? finalizedHash, Hash256? headBlockHash)

@@ -39,7 +39,7 @@ public sealed class Validator
         _historicalSummariesProvider = historicalSummariesProvider;
     }
 
-    public bool VerifyAccumulator(long blockNumber, ValueHash256 accumulatorRoot)
+    public bool VerifyAccumulator(ulong blockNumber, ValueHash256 accumulatorRoot)
     {
         if (!TrustedAccumulatorsProvided()) return true;
         ValueHash256? trusted = GetAccumulatorForEpoch(blockNumber / HistoricalRootConstants.SlotsPerHistoricalRoot);
@@ -79,8 +79,8 @@ public sealed class Validator
 
     private bool TrustedAccumulatorsProvided() => _trustedAccumulators is { Count: > 0 };
 
-    private ValueHash256? GetAccumulatorForEpoch(long epochIdx) =>
-        _trustedAccumulators is null || epochIdx < 0 || epochIdx >= _trustedAccumulators.Count
+    private ValueHash256? GetAccumulatorForEpoch(ulong epochIdx) =>
+        _trustedAccumulators is null || epochIdx >= (ulong)_trustedAccumulators.Count
             ? default(ValueHash256?)
             : _trustedAccumulators[(int)epochIdx];
 

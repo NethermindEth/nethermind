@@ -13,10 +13,15 @@ namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec? spec)
         {
-            long depth = currentBlock.Number - number;
-            if (depth <= 0 || depth > BlockhashProvider.MaxDepth)
+            if (number >= currentBlock.Number)
+            {
+                return null;
+            }
+
+            ulong depth = currentBlock.Number - number;
+            if (depth > BlockhashProvider.MaxDepth)
             {
                 return null;
             }

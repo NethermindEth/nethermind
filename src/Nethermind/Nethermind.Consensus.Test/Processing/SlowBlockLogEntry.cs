@@ -79,6 +79,7 @@ public record SlowBlockLogEntry
         [JsonPropertyName("hits")] public long Hits { get; init; }
         [JsonPropertyName("misses")] public long Misses { get; init; }
         [JsonPropertyName("hit_rate")] public double HitRate { get; init; }
+        [JsonPropertyName("repeat_hits")] public long? RepeatHits { get; init; }
     }
 
     public record EvmInfo

@@ -22,8 +22,8 @@ using Nethermind.Sockets;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager) : IStep
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -64,7 +64,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             JsonRpcWebSocketsModule webSocketsModule = new(
                 jsonRpcProcessor,
                 jsonRpcService,
-                api.JsonRpcLocalStats!,
+                jsonRpcLocalStats,
                 api.LogManager,
                 api.EthereumJsonSerializer,
                 jsonRpcUrlCollection,
@@ -78,7 +78,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         Bootstrap.Instance.JsonRpcService = jsonRpcService;
         Bootstrap.Instance.LogManager = api.LogManager;
         Bootstrap.Instance.JsonSerializer = api.EthereumJsonSerializer;
-        Bootstrap.Instance.JsonRpcLocalStats = api.JsonRpcLocalStats!;
+        Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
         Bootstrap.Instance.JsonRpcAuthentication = auth;
 
         JsonRpcRunner jsonRpcRunner = new(
@@ -106,7 +106,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         }
 
         JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, api.ConfigProvider,
-            api.LogManager, api.JsonRpcLocalStats!, api.EthereumJsonSerializer, api.FileSystem);
+            api.LogManager, jsonRpcLocalStats, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
         api.DisposeStack.Push(jsonRpcRunner);

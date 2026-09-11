@@ -32,6 +32,7 @@ namespace Nethermind.Evm.Benchmark
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private VmState<EthereumGasPolicy> _evmState;
         private IWorldState _stateProvider;
+        private IDisposable _stateScope;
 
         public IEnumerable<byte[]> Bytecodes
         {
@@ -81,6 +82,7 @@ namespace Nethermind.Evm.Benchmark
         public void GlobalSetup()
         {
             _stateProvider = TestWorldStateFactory.CreateForTest();
+            _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
             _stateProvider.Commit(_spec);
 
@@ -99,7 +101,7 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(100_000_000L), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+            _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(100_000_000UL), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
         }
 
         [GlobalCleanup]
@@ -107,6 +109,7 @@ namespace Nethermind.Evm.Benchmark
         {
             _evmState.Dispose();
             _environment.Dispose();
+            _stateScope.Dispose();
         }
 
         [Benchmark(Baseline = true)]

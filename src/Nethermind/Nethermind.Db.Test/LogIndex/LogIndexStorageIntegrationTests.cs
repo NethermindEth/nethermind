@@ -56,7 +56,7 @@ namespace Nethermind.Db.Test.LogIndex
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
         private ILogIndexStorage CreateLogIndexStorage(
-            int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
+            int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
             string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
         )
         {
@@ -376,11 +376,11 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, validateMinMax: false);
         }
 
-        [TestCase(1, 1)]
-        [TestCase(32, 64)]
-        [TestCase(64, 64)]
-        [TestCase(65, 64, Explicit = true)]
-        public async Task Set_Compact_ReorgLast_Get_Test(int reorgDepth, int maxReorgDepth)
+        [TestCase(1, 1UL)]
+        [TestCase(32, 64UL)]
+        [TestCase(64, 64UL)]
+        [TestCase(65, 64UL, Explicit = true)]
+        public async Task Set_Compact_ReorgLast_Get_Test(int reorgDepth, ulong maxReorgDepth)
         {
             await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
 

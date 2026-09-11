@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -18,6 +19,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -38,10 +40,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
 
-    public ITracerBag Tracers => _compositeBlockTracer;
-
     private readonly IBranchProcessor _branchProcessor;
-    private readonly IBlockPreprocessorStep _recoveryStep;
+    private readonly ISpecProvider _specProvider;
+    private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
@@ -89,30 +90,44 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// </summary>
     /// <param name="blockTree"></param>
     /// <param name="branchProcessor"></param>
-    /// <param name="recoveryStep"></param>
+    /// <param name="specProvider">Provider used to select fork rules while tracing invalid branches.</param>
+    /// <param name="preprocessorSteps"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
+    /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
-        IBlockPreprocessorStep recoveryStep,
+        ISpecProvider specProvider,
+        IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
         IStateReader stateReader,
         ILogManager logManager,
         Options options,
-        IProcessingStats processingStats)
+        IProcessingStats processingStats,
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
-        _recoveryStep = recoveryStep;
+        _specProvider = specProvider;
+        _preprocessorSteps = preprocessorSteps;
         _stateReader = stateReader;
         _options = options;
 
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
+        if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
+    }
+
+    private void Preprocess(Block block)
+    {
+        for (int i = 0; i < _preprocessorSteps.Count; i++)
+        {
+            _preprocessorSteps[i].RecoverData(block);
+        }
     }
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
@@ -139,7 +154,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
         Hash256? blockHash = block.Hash!;
-        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
+        // InclusionListTransactions aren't in RLP, so a hash-only ref re-resolved from the DB would drop
+        // them and pass a censoring payload.
+        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
 
@@ -281,7 +298,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
-                _recoveryStep.RecoverData(blockRef.Block);
+                Preprocess(blockRef.Block);
 
                 try
                 {
@@ -391,6 +408,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     NotifyFailedOrSkipped(blockRef, block, error);
                 }
+                else if (!processedBlock.IsInclusionListSatisfied)
+                {
+                    // The block was committed normally; signal the CL via newPayload status only.
+                    NotifyInclusionListUnsatisfied(blockRef, processedBlock);
+                }
                 else
                 {
                     if (isTrace) TraceProcessed(block);
@@ -419,6 +441,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
             BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied));
         }
 
         [DoesNotReturn]
@@ -622,7 +651,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }),
+                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, _specProvider),
                     DumpOptions.Geth);
             }
 
@@ -677,7 +706,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         for (int i = 0; i < blocksToProcess.Count; i++)
         {
             /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-            _recoveryStep.RecoverData(blocksToProcess[i]);
+            Preprocess(blocksToProcess[i]);
         }
 
         // Uncommon logging and throws

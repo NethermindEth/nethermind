@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Evm.Precompiles;
@@ -11,7 +10,7 @@ namespace Nethermind.Evm.Test;
 
 public class Eip2537Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => (ulong)((long)MainnetSpecProvider.PragueBlockTimestamp + _timestampAdjustment);
 
     private long _timestampAdjustment;

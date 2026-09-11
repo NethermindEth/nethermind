@@ -19,7 +19,7 @@ public sealed class AdminEraService(
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
 
-    public ResultWrapper<string> ExportHistory(string destination, long from, long to)
+    public ResultWrapper<string> ExportHistory(string destination, ulong from, ulong to)
     {
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
             return ResultWrapper<string>.Fail("An export job is already running.");
@@ -35,7 +35,7 @@ public sealed class AdminEraService(
         return ResultWrapper<string>.Success("Started EraE export task.");
     }
 
-    public ResultWrapper<string> ImportHistory(string source, long from, long to, string? accumulatorFile)
+    public ResultWrapper<string> ImportHistory(string source, ulong from, ulong to, string? accumulatorFile)
     {
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
             return ResultWrapper<string>.Fail("An import job is already running.");

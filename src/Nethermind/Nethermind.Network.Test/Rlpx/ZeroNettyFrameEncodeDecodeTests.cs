@@ -52,8 +52,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             .Do((info =>
             {
                 ZeroPacket packet = (ZeroPacket)info[0];
-                NettyRlpStream rlpStream = new(packet.Content);
-                Rlp.ValueDecoderContext ctx = new(rlpStream.AsSpan());
+                RlpReader ctx = new(packet.Content.AsSpan());
                 byte[] bytes = ctx.DecodeByteArray();
                 reDecoded.WriteBytes(bytes);
             }));

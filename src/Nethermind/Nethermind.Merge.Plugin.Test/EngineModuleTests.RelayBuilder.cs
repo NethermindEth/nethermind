@@ -33,6 +33,26 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public void Boost_relay_rejects_null_payload_attributes()
+    {
+        const string relayUrl = "http://localhost";
+        MockHttpMessageHandler mockHttp = new();
+        mockHttp.Expect(HttpMethod.Post, relayUrl + BoostRelay.GetPayloadAttributesPath)
+            .Respond("application/json", "null");
+        DefaultHttpClient httpClient = new(mockHttp.ToHttpClient(), new EthereumJsonSerializer(), LimboLogs.Instance, 1);
+        BoostRelay relay = new(httpClient, relayUrl);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await relay.GetPayloadAttributes(payloadAttributes, CancellationToken.None));
+    }
+
+    [Test]
     [Obsolete]
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
@@ -62,7 +82,7 @@ public partial class EngineModuleTests
             }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -113,9 +133,9 @@ public partial class EngineModuleTests
         string expected_receiptsRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421";
         string expected_logsBloom = "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
         string expected_prevRandao = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
-        int expected_blockNumber = 1;
-        long expected_gasLimit = 0x3d0900L;
-        int expected_gasUsed = 0;
+        uint expected_blockNumber = 1;
+        ulong expected_gasLimit = 0x3d0900L;
+        uint expected_gasUsed = 0;
         ulong expected_timestamp = 0x3e9UL;
         string expected_extraData = "0x4e65746865726d696e64"; // Nethermind
         UInt256 expected_baseFeePerGas = (UInt256)0;
@@ -168,7 +188,7 @@ public partial class EngineModuleTests
         );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         Task blockImprovementWait = chain.WaitForImprovedBlock();
 
@@ -215,7 +235,7 @@ public partial class EngineModuleTests
         );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;

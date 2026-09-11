@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+#if !ZK_EVM
+using System.Buffers.Binary;
+#endif
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -11,6 +15,67 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TreePathTests
 {
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Hashing_distinguishes_zero_paths_of_different_lengths(bool tiny, bool chained)
+    {
+        HashSet<int> hashes = [];
+        int maximum = tiny ? TinyTreePath.MaxNibbleLength : 64;
+        for (int length = 0; length <= maximum; length++)
+        {
+            TreePath path = new(Keccak.Zero, length);
+            int hash = chained ? new TinyTreePath(path).GetChainedHashCode(0x55555555)
+                : tiny ? new TinyTreePath(path).GetHashCode() : path.GetHashCode();
+            hashes.Add(hash);
+        }
+
+        Assert.That(hashes.Count, Is.EqualTo(maximum + 1));
+    }
+
+    [TestCase(0u)]
+    [TestCase(uint.MaxValue)]
+    public void Tiny_path_hash_includes_each_chained_seed_bit(uint seed)
+    {
+        TinyTreePath path = new(new TreePath(Keccak.Zero, TinyTreePath.MaxNibbleLength));
+        int original = path.GetChainedHashCode(seed);
+        for (int bit = 0; bit < 32; bit++)
+            Assert.That(path.GetChainedHashCode(seed ^ (1u << bit)), Is.Not.EqualTo(original), $"bit {bit}");
+    }
+
+#if !ZK_EVM
+    [TestCase(0u)]
+    [TestCase(0x55555555u)]
+    [TestCase(uint.MaxValue)]
+    public void Tiny_path_chaining_breaks_raw_crc_collision_family(uint seed)
+    {
+        const int count = 256;
+        // Shifted copies of the reflected CRC32C generator leave the checksum unchanged.
+        const ulong crcKernel = 0x105EC76F1UL;
+        HashSet<int> rawHashes = [];
+        HashSet<int> chainedHashes = [];
+        for (int value = 0; value < count; value++)
+        {
+            ulong data = (ulong)TinyTreePath.MaxNibbleLength << 56;
+            for (int bit = 0; bit < 8; bit++)
+                if ((value & (1 << bit)) != 0) data ^= crcKernel << bit;
+
+            ValueHash256 hash = Keccak.Zero;
+            BinaryPrimitives.WriteUInt64LittleEndian(hash.BytesAsSpan, data);
+            TinyTreePath path = new(new TreePath(hash, TinyTreePath.MaxNibbleLength));
+            rawHashes.Add(SpanExtensions.CombineHash(seed, data));
+            chainedHashes.Add(path.GetChainedHashCode(seed));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rawHashes.Count, Is.EqualTo(1));
+            Assert.That(chainedHashes.Count, Is.GreaterThan(count - 4));
+        }
+    }
+
+#endif
+
     [Test]
     public void TestAppend()
     {
@@ -60,12 +125,8 @@ public class TreePathTests
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
-    [TestCase(1)]
-    [TestCase(11)]
-    [TestCase(20)]
-    [TestCase(40)]
-    [TestCase(41)]
-    public void TestAppendArrayDivided(int partition)
+    [Test]
+    public void TestAppendArrayDivided([Values(1, 11, 20, 40, 41)] int partition)
     {
         byte[] nibbles = new byte[64];
         for (int i = 0; i < 64; i++)
@@ -80,6 +141,22 @@ public class TreePathTests
 
         string asHex = path.Span.ToHexString();
         Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+    }
+
+    [Test]
+    public void To_bytes_returns_packed_prefix()
+    {
+        byte[] nibbles = new byte[64];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0xF);
+        }
+
+        TreePath treePath = TreePath.FromNibble(nibbles);
+
+        byte[] result = Nibbles.ToBytes(treePath);
+
+        Assert.That(result, Is.EqualTo(Nibbles.ToBytes(nibbles)).AsCollection);
     }
 
     [TestCase(1, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
@@ -117,6 +194,36 @@ public class TreePathTests
         Assert.That(path.Span.ToHexString(), Is.EqualTo(expectedHashHex));
     }
 
+    [Test]
+    public void TestToNibble([Values(0, 1, 2, 3, 63, 64)] int nibbleLength)
+    {
+        byte[] nibbles = new byte[nibbleLength];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0x0F);
+        }
+
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        byte[] result = path.ToNibble();
+
+        Assert.That(result, Is.EqualTo(nibbles).AsCollection);
+    }
+
+    [Test]
+    public void TestEncodePathMatchesNibbleSpan([Values(0, 1, 2, 3, 20, 63, 64)] int nibbleLength)
+    {
+        byte[] nibbles = new byte[nibbleLength];
+        for (int i = 0; i < nibbles.Length; i++)
+        {
+            nibbles[i] = (byte)(i & 0x0F);
+        }
+
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        Assert.That(Nibbles.EncodePath(path), Is.EqualTo(Nibbles.EncodePath(nibbles)).AsCollection);
+    }
+
     [TestCase("", "", 0)]
     [TestCase("00", "00", 0)]
     [TestCase("01", "01", 0)]
@@ -126,6 +233,8 @@ public class TreePathTests
     [TestCase("010", "01", 1)]
     [TestCase("012", "0120", -1)]
     [TestCase("0120", "012", 1)]
+    [TestCase("000102030405060708090a0b0c0d0e", "000102030405060708090a0b0c0d0f", -1)]
+    [TestCase("000102030405060708090a0b0c0d0f", "000102030405060708090a0b0c0d0e", 1)]
     public void TestCompareTo(string nibbleHex1, string nibbleHex2, int expectedResult)
     {
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
@@ -142,6 +251,8 @@ public class TreePathTests
     [TestCase("0003", 2, "0002", 1)]
     [TestCase("000101", 2, "000100", -1)]
     [TestCase("000101", 3, "000100", 1)]
+    [TestCase("000102030405060708090a0b0c0d0e00", 15, "000102030405060708090a0b0c0d0f00", -1)]
+    [TestCase("000102030405060708090a0b0c0d0f00", 15, "000102030405060708090a0b0c0d0e00", 1)]
     public void TestCompareToTruncated(string nibbleHex1, int truncateLength, string nibbleHex2, int expectedResult)
     {
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
@@ -199,6 +310,20 @@ public class TreePathTests
         Assert.That(path.Length, Is.EqualTo(0));
     }
 
+    [TestCase("", "000000")]
+    [TestCase("01", "100001")]
+    [TestCase("0001020304", "012345")]
+    public void TestEncodeWith3Byte(string nibbleHex, string expectedEncodedHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[3];
+        path.EncodeWith3Byte(buffer);
+
+        Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
+    }
+
     [TestCase("", "0000000000000000")]
     [TestCase("01", "1000000000000001")]
     [TestCase("000102030405060708", "0123456780000009")]
@@ -213,6 +338,32 @@ public class TreePathTests
         path.EncodeWith8Byte(buffer);
 
         Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
+    }
+
+    [Test]
+    public void TestRoundtripWith4Byte([Values("", "01", "0001020304", "000102030405", "00010203040506")] string nibbleHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath original = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[4];
+        original.EncodeWith4Byte(buffer);
+        TreePath decoded = TreePath.DecodeWith4Byte(buffer);
+
+        Assert.That(decoded, Is.EqualTo(original));
+    }
+
+    [Test]
+    public void TestRoundtripWith8Byte([Values("", "01", "000102030405060708", "000102030405060708090a0b0c0d0e", "000102030405")] string nibbleHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath original = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[8];
+        original.EncodeWith8Byte(buffer);
+        TreePath decoded = TreePath.DecodeWith8Byte(buffer);
+
+        Assert.That(decoded, Is.EqualTo(original));
     }
 
     private static TreePath CreateFullTreePath()

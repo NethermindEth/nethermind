@@ -54,6 +54,30 @@ public class TracedAccessWorldStateTests(bool parallel)
         return (tws, scope);
     }
 
+    [Test]
+    public void Mutation_without_generating_block_access_list_throws_actionable_exception()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, 0);
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        TracedAccessWorldState tws = new(inner, parallel);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        using IDisposable scope = tws.BeginScope(baseBlock);
+
+        Assert.That(
+            () => tws.SetNonce(TestItem.AddressA, 1),
+            Throws.InvalidOperationException.With.Message.EqualTo(
+                "Block access list tracing requires a generating block access list to be set."));
+        Assert.That(inner.GetNonce(TestItem.AddressA), Is.Zero);
+    }
+
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_RecordsBalanceChange(
@@ -238,7 +262,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 ws.IncrementNonce(TestItem.AddressA, 1, out _);
             }),
             (Action<TracedAccessWorldState>)(tws =>
-                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1))))
+                Assert.That(tws.GetNonce(TestItem.AddressA), Is.EqualTo(1UL))))
             .SetName("GetNonce_RecordsAccountRead");
 
         yield return new TestCaseData(
@@ -332,7 +356,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             }
             if (expectedNonceChanges > 0)
             {
-                Assert.That(ac!.NonceChange!.Value.Value, Is.EqualTo((ulong)nonce));
+                Assert.That(ac!.NonceChange!.Value.Value, Is.EqualTo(nonce));
             }
         }
     }
@@ -409,6 +433,32 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    [TestCase(true, true, TestName = "AddToBalance suppressed")]
+    [TestCase(true, false, TestName = "AddToBalanceAndCreateIfNotExists suppressed")]
+    [TestCase(false, true, TestName = "AddToBalance not suppressed")]
+    [TestCase(false, false, TestName = "AddToBalanceAndCreateIfNotExists not suppressed")]
+    public void Zero_balance_credit_to_system_user_recorded_only_outside_suppression(bool suppressed, bool plainAdd)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(Address.SystemUser, 0));
+        using (scope)
+        {
+            using IDisposable? systemAccountReadSuppression = suppressed ? tws.BeginSystemAccountReadSuppression() : null;
+
+            if (plainAdd)
+            {
+                tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
+            }
+            else
+            {
+                tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+            }
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);
+            Assert.That(ac, suppressed ? Is.Null : Is.Not.Null);
+        }
+    }
+
     // Repeated same-tx balance/nonce/code/storage writes must reuse the BAL-recorded value as
     // their "old" baseline (not the inner state) and collapse to a single entry at this index.
 
@@ -441,14 +491,14 @@ public class TracedAccessWorldStateTests(bool parallel)
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce1);
-            tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce2);
+            tws.IncrementNonce(TestItem.AddressA, 1, out ulong oldNonce1);
+            tws.IncrementNonce(TestItem.AddressA, 1, out ulong oldNonce2);
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(oldNonce1, Is.EqualTo((UInt256)0), "first old nonce from inner");
-                Assert.That(oldNonce2, Is.EqualTo((UInt256)1), "second old nonce from BAL");
+                Assert.That(oldNonce1, Is.EqualTo(0UL), "first old nonce from inner");
+                Assert.That(oldNonce2, Is.EqualTo(1UL), "second old nonce from BAL");
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.NonceChange, Is.Not.Null);
                 Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(2ul));
@@ -489,7 +539,9 @@ public class TracedAccessWorldStateTests(bool parallel)
         using (scope)
         {
             tws.Set(cell, [0x01]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo(UInt256.One));
             tws.Set(cell, [0x02]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())

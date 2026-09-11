@@ -40,5 +40,5 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 }

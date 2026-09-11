@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
@@ -29,22 +31,26 @@ namespace Nethermind.Evm.Test
 
         public byte[]? ReturnValue { get; private set; }
 
-        public long GasSpent { get; private set; }
+        public ulong GasSpent { get; private set; }
 
         public string? Error { get; private set; }
 
         public byte StatusCode { get; private set; }
 
         public GasConsumed GasConsumedResult { get; private set; }
-        public long CumulativeRegularGasUsed { get; private set; }
+        public ulong CumulativeExecutionGasUsed { get; private set; }
 
         public long Refund { get; private set; }
+
+        public readonly record struct ActionTrace(ulong Gas, UInt256 Value, Address From, Address To, ExecutionType CallType, bool IsPrecompileCall);
+
+        public List<ActionTrace> Actions { get; } = [];
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = [];
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
-            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
+            CumulativeExecutionGasUsed += gasSpent.EffectiveBlockGas;
             GasSpent = gasSpent.SpentGas;
             GasConsumedResult = gasSpent;
             ReturnValue = output;
@@ -53,7 +59,7 @@ namespace Nethermind.Evm.Test
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
-            CumulativeRegularGasUsed += gasSpent.EffectiveBlockGas;
+            CumulativeExecutionGasUsed += gasSpent.EffectiveBlockGas;
             GasSpent = gasSpent.SpentGas;
             GasConsumedResult = gasSpent;
             Error = error;
@@ -63,7 +69,11 @@ namespace Nethermind.Evm.Test
 
         public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
+        public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportedActionErrors.Add(EvmExceptionType.Revert);
+
         public override void ReportRefund(long refund) => Refund += refund;
 
+        public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+            => Actions.Add(new ActionTrace(gas, value, from, to, callType, isPrecompileCall));
     }
 }

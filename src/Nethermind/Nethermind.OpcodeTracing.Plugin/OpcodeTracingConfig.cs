@@ -11,8 +11,8 @@ public class OpcodeTracingConfig : IOpcodeTracingConfig
     public bool Enabled { get; set; }
     public string OutputDirectory { get; set; } = "traces/opcodes";
     public int MaxDegreeOfParallelism { get; set; } = 0;
-    public long? StartBlock { get; set; }
-    public long? EndBlock { get; set; }
-    public long? RecentBlocks { get; set; }
+    public ulong? StartBlock { get; set; }
+    public ulong? EndBlock { get; set; }
+    public ulong? RecentBlocks { get; set; }
     public string Mode { get; set; } = "RealTime";
 }

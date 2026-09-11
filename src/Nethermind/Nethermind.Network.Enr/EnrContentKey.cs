@@ -15,6 +15,12 @@ namespace Nethermind.Network.Enr
         public static ReadOnlySpan<byte> EthU8 => "eth"u8;
 
         /// <summary>
+        /// Consensus-layer information.
+        /// </summary>
+        public const string Eth2 = "eth2";
+        public static ReadOnlySpan<byte> Eth2U8 => "eth2"u8;
+
+        /// <summary>
         /// Name of identity scheme, e.g. "v4"
         /// </summary>
         public const string Id = "id";

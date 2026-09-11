@@ -23,6 +23,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Int256;
@@ -37,6 +38,22 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Lowest_served_block_follows_the_latest_push_but_never_drops_below_the_published_boundary()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        ulong published = tree.GetLowestBlock();
+
+        tree.UpdateLowestServedBlock(published + 500);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published + 500));
+
+        tree.UpdateLowestServedBlock(published + 100);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published + 100), "the served floor follows a descending frontier down");
+
+        tree.UpdateLowestServedBlock(0);
+        Assert.That(tree.LowestServedBlock, Is.EqualTo(published), "the served floor never reports below the published boundary");
+    }
+
     private TestMemDb _blocksInfosDb = null!;
     private TestMemDb _headersDb = null!;
     private TestMemDb _blocksDb = null!;
@@ -292,7 +309,7 @@ public class BlockTreeTests
         Block b3 = Build.A.Block.WithNumber(3).WithDifficulty(7).WithParent(b2).TestObject;
         foreach (Block block in new[] { b1, b2, b3 }) blockTree.SuggestBlock(block);
 
-        List<long> addedToMain = [];
+        List<ulong> addedToMain = [];
         blockTree.BlockAddedToMain += (_, e) => addedToMain.Add(e.Block.Number);
 
         // Reorg to b3 by header only - no preloaded blocks. TryUpdateMainChain must walk the branch and
@@ -303,7 +320,69 @@ public class BlockTreeTests
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(b3.Hash));
         Assert.That(blockTree.IsMainChain(b1.Header) && blockTree.IsMainChain(b2.Header) && blockTree.IsMainChain(b3.Header), Is.True, "branch B canonical");
         Assert.That(blockTree.IsMainChain(a1.Header) || blockTree.IsMainChain(a2.Header), Is.False, "branch A no longer canonical");
-        Assert.That(addedToMain, Is.EqualTo(new long[] { 1, 2, 3 }), "BlockAddedToMain fired for each reorged block in order");
+        Assert.That(addedToMain, Is.EqualTo(new ulong[] { 1, 2, 3 }), "BlockAddedToMain fired for each reorged block in order");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_uses_preloaded_head_when_body_is_missing_from_store()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(blockTree, block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Assert.That(blockTree.SuggestHeader(block1.Header), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.None), Is.Null, "precondition: body is not in the store");
+        Assert.That(blockTree.TryUpdateMainChain(block1.Header, wereProcessed: true), Is.False, "no body and no preloaded block - still rejected");
+
+        bool updated = blockTree.TryUpdateMainChain(block1.Header, wereProcessed: true, preloadedBlocks: new[] { block1 });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.True);
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(block1.Hash));
+            Assert.That(blockTree.IsMainChain(block1.Header), Is.True);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockTreeOverlay_ResetMainChain_sets_overlay_head_without_mutating_base_head()
+    {
+        using TestMemDb baseBlocksDb = new();
+        using TestMemDb overlayBlocksDb = new();
+        using TestMemDb headersDb = new();
+        using TestMemDb blocksInfosDb = new();
+
+        BlockTree BuildTree(TestMemDb blocksDb) => Build.A.BlockTree()
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blocksInfosDb)
+            .WithoutSettingHead
+            .TestObject;
+
+        BlockTree baseTree = BuildTree(baseBlocksDb);
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(baseTree, block0);
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        AddToMain(baseTree, block1);
+
+        GeneratedBlockAccessList generatedBlockAccessList = new();
+        byte[] encodedBlockAccessList = [1];
+        block1.GeneratedBlockAccessList = generatedBlockAccessList;
+        block1.EncodedBlockAccessList = encodedBlockAccessList;
+
+        BlockTree overlayTree = BuildTree(overlayBlocksDb);
+        Assert.That(overlayTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.None), Is.Null, "precondition: body is not in the overlay store");
+        BlockTreeOverlay blockTreeOverlay = new(new ReadOnlyBlockTree(baseTree), overlayTree);
+
+        blockTreeOverlay.ResetMainChain();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayTree.Head!.Hash, Is.EqualTo(block1.Hash));
+            Assert.That(block1.GeneratedBlockAccessList, Is.SameAs(generatedBlockAccessList));
+            Assert.That(block1.EncodedBlockAccessList, Is.SameAs(encodedBlockAccessList));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -562,6 +641,39 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block);
         Block? found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash!, true));
         Assert.That(found, Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_header_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        BlockHeader headerWithoutLevel = Build.A.BlockHeader.WithNumber(2).WithTotalDifficulty(3_000_000).TestObject;
+        Assert.That(blockTree.Insert(headerWithoutLevel, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(headerWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindHeader(headerWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_block_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        // Regression test for issue #8029: an unclean shutdown between the block write and the chain level
+        // write leaves a block without a level. When the beacon search guard skips level creation,
+        // FindBlock with RequireCanonical used to throw NullReferenceException on the missing level.
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        Block blockWithoutLevel = Build.A.Block.WithNumber(2).WithTotalDifficulty(3_000_000L).TestObject;
+        Assert.That(blockTree.Insert(blockWithoutLevel, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(blockWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindBlock(blockWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -972,12 +1084,19 @@ public class BlockTreeTests
         Assert.That(blockTree.Genesis!.CalculateHash(), Is.EqualTo(block0.Hash));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ForkChoiceUpdated_update_hashes()
+    // safeBlockHash is null in the AuRa-finalization-post-snap case (#11775): SafeHash has not been
+    // set yet, so ForkChoiceUpdated must tolerate a null safe (and finalized) hash without NRE'ing in
+    // HeaderStore.GetBlockNumber. The subscriber forces evaluation of the OnForkChoiceUpdated args
+    // (the GetBlockNumber lookups), which is skipped when the event has no subscribers.
+    [TestCase(true, TestName = "ForkChoiceUpdated_update_hashes")]
+    [TestCase(false, TestName = "ForkChoiceUpdated_tolerates_null_safe_hash")]
+    public void ForkChoiceUpdated_update_hashes(bool withSafeHash)
     {
         BlockTree blockTree = BuildBlockTree();
+        blockTree.OnForkChoiceUpdated += (_, _) => { };
+
         Hash256 finalizedBlockHash = TestItem.KeccakB;
-        Hash256 safeBlockHash = TestItem.KeccakC;
+        Hash256? safeBlockHash = withSafeHash ? TestItem.KeccakC : null;
         blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
         using (Assert.EnterMultipleScope())
         {
@@ -1407,9 +1526,9 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
-    public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(long beginIndex, long insertedBlocks)
+    public void When_lowestInsertedHeaderWasNotPersisted_useBinarySearchToLoadLowestInsertedHeader(ulong beginIndex, ulong insertedBlocks)
     {
-        long? expectedResult = insertedBlocks == 0L ? null : beginIndex - insertedBlocks + 1L;
+        ulong? expectedResult = insertedBlocks == 0ul ? null : beginIndex - insertedBlocks + 1ul;
 
         SyncConfig syncConfig = new()
         {
@@ -1424,8 +1543,9 @@ public class BlockTreeTests
         BlockTree tree = builder.TestObject;
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-        for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
+        for (ulong k = 0; k < insertedBlocks; k++)
         {
+            ulong i = beginIndex - k;
             tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
         }
 
@@ -1455,9 +1575,9 @@ public class BlockTreeTests
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
         tree.RecalculateTreeLevels();
 
-        for (int i = 1; i < 100; i++)
+        for (ulong i = 1ul; i < 100ul; i++)
         {
-            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithParent(tree.FindHeader(i - 1, BlockTreeLookupOptions.None)!).TestObject);
+            tree.Insert(Build.A.BlockHeader.WithNumber(i).WithParent(tree.FindHeader(i - 1ul, BlockTreeLookupOptions.None)!).TestObject);
         }
 
         BlockTree loadedTree = Build.A.BlockTree()
@@ -1478,10 +1598,10 @@ public class BlockTreeTests
         Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(50));
     }
 
-    [TestCase(5, 10)]
-    [TestCase(10, 10)]
-    [TestCase(12, 0)]
-    public void Does_not_load_bestKnownNumber_before_syncPivot(long syncPivot, long expectedBestKnownNumber)
+    [TestCase(5ul, 10ul)]
+    [TestCase(10ul, 10ul)]
+    [TestCase(12ul, 0ul)]
+    public void Does_not_load_bestKnownNumber_before_syncPivot(ulong syncPivot, ulong expectedBestKnownNumber)
     {
         SyncConfig syncConfig = new()
         {
@@ -1512,34 +1632,34 @@ public class BlockTreeTests
 
     private static readonly object[] SourceOfBSearchTestCases =
     {
-        new object[] {1L, 0L},
-        new object[] {1L, 1L},
-        new object[] {2L, 0L},
-        new object[] {2L, 1L},
-        new object[] {2L, 2L},
-        new object[] {3L, 0L},
-        new object[] {3L, 1L},
-        new object[] {3L, 2L},
-        new object[] {3L, 3L},
-        new object[] {4L, 0L},
-        new object[] {4L, 1L},
-        new object[] {4L, 2L},
-        new object[] {4L, 3L},
-        new object[] {4L, 4L},
-        new object[] {5L, 0L},
-        new object[] {5L, 1L},
-        new object[] {5L, 2L},
-        new object[] {5L, 3L},
-        new object[] {5L, 4L},
-        new object[] {5L, 5L},
-        new object[] {728000, 0L},
-        new object[] {7280000L, 1L}
+        new object[] {1ul, 0ul},
+        new object[] {1ul, 1ul},
+        new object[] {2ul, 0ul},
+        new object[] {2ul, 1ul},
+        new object[] {2ul, 2ul},
+        new object[] {3ul, 0ul},
+        new object[] {3ul, 1ul},
+        new object[] {3ul, 2ul},
+        new object[] {3ul, 3ul},
+        new object[] {4ul, 0ul},
+        new object[] {4ul, 1ul},
+        new object[] {4ul, 2ul},
+        new object[] {4ul, 3ul},
+        new object[] {4ul, 4ul},
+        new object[] {5ul, 0ul},
+        new object[] {5ul, 1ul},
+        new object[] {5ul, 2ul},
+        new object[] {5ul, 3ul},
+        new object[] {5ul, 4ul},
+        new object[] {5ul, 5ul},
+        new object[] {728000ul, 0ul},
+        new object[] {7280000ul, 1ul}
     };
 
     [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
-    public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
+    public void Loads_best_known_correctly_on_inserts(ulong beginIndex, ulong insertedBlocks)
     {
-        long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
+        ulong expectedResult = insertedBlocks == 0ul ? 0ul : beginIndex;
 
         SyncConfig syncConfig = new()
         {
@@ -1555,8 +1675,9 @@ public class BlockTreeTests
 
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-        for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
+        for (ulong k = 0; k < insertedBlocks; k++)
         {
+            ulong i = beginIndex - k;
             Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
             tree.Insert(block.Header);
             tree.Insert(block);
@@ -1599,7 +1720,7 @@ public class BlockTreeTests
 
         List<Block> blocks = [genesis];
 
-        for (long i = 1; i < 100; i++)
+        for (ulong i = 1ul; i < 100ul; i++)
         {
             Block block = Build.A.Block
                 .WithNumber(i)
@@ -1607,7 +1728,7 @@ public class BlockTreeTests
                 .WithTotalDifficulty(i).TestObject;
             blocks.Add(block);
             parent = block;
-            if (i <= 50)
+            if (i <= 50ul)
             {
                 // tree.Insert(block.Header);
                 tree.SuggestBlock(block);
@@ -1621,7 +1742,7 @@ public class BlockTreeTests
         // tip short-circuits at the first beacon parent. Move exactly the supplied blocks so the whole
         // pre-state is canonical, then assert the reload caps the head at the best persisted state.
         tree.ForceMainChainForTest(blocks);
-        tree.BestPersistedState = 50;
+        builder.StateBoundary.BestPersistedState = 50ul;
 
         BlockTree loadedTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -1629,14 +1750,41 @@ public class BlockTreeTests
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        Assert.That(loadedTree.Head?.Number, Is.EqualTo(50));
+        Assert.That(loadedTree.Head?.Number, Is.EqualTo(50ul));
+    }
+
+    [TestCase(null, 90ul, TestName = "Start block: no persisted state falls back to HEAD")]
+    [TestCase(50ul, 50ul, TestName = "Start block: persisted state is used when present")]
+    [TestCase(95ul, 95ul, TestName = "Start block: persisted state is used even above the HEAD pointer")]
+    public void Loads_start_block_from_persisted_state_else_head(ulong? persistedState, ulong expectedHead)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+        Block block = Build.A.Block.Genesis.TestObject;
+        tree.SuggestBlock(block);
+        List<Block> blocks = [block];
+        for (ulong i = 1ul; i < 100ul; i++)
+        {
+            block = Build.A.Block.WithNumber(i).WithParent(block).WithTotalDifficulty(i).TestObject;
+            blocks.Add(block);
+            tree.SuggestBlock(block);
+        }
+        tree.ForceMainChainForTest(blocks);
+
+        tree.UpdateHeadBlock(blocks[90].Hash!);
+        builder.StateBoundary.BestPersistedState = persistedState;
+
+        BlockTree loadedTree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithDatabaseFrom(builder)
+            .TestObject;
+
+        Assert.That(loadedTree.Head?.Number, Is.EqualTo(expectedHead));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1L)]
-    [TestCase(2L)]
-    [TestCase(3L)]
-    public void Loads_best_known_correctly_on_inserts_followed_by_suggests(long pivotNumber)
+    [Test]
+    public void Loads_best_known_correctly_on_inserts_followed_by_suggests([Values(1ul, 2ul, 3ul)] ulong pivotNumber)
     {
         SyncConfig syncConfig = new()
         {
@@ -1650,14 +1798,14 @@ public class BlockTreeTests
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
         Block? pivotBlock = null;
-        for (long i = pivotNumber; i > 0; i--)
+        for (ulong i = pivotNumber; i > 0; i--)
         {
             Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
             pivotBlock ??= block;
             tree.Insert(block.Header);
         }
 
-        tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1).WithParent(pivotBlock!.Header).TestObject);
+        tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1ul).WithParent(pivotBlock!.Header).TestObject);
 
         BlockTree loadedTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -1667,16 +1815,16 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
-            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1ul), "tree");
+            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1ul), "loaded tree");
         }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_known_correctly_when_head_before_pivot()
     {
-        int pivotNumber = 1000;
-        int head = 10;
+        ulong pivotNumber = 1000ul;
+        ulong head = 10ul;
         SyncConfig syncConfig = new()
         {
             PivotNumber = pivotNumber
@@ -1696,7 +1844,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_insert_genesis()
     {
-        long pivotNumber = 0L;
+        ulong pivotNumber = 0ul;
 
         SyncConfig syncConfig = new()
         {
@@ -1720,7 +1868,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_set_zero_total_difficulty()
     {
-        long pivotNumber = 0L;
+        ulong pivotNumber = 0ul;
 
         SyncConfig syncConfig = new()
         {
@@ -1748,7 +1896,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Persists_chain_level_info()
     {
-        long pivotNumber = 5L;
+        ulong pivotNumber = 5ul;
 
         SyncConfig syncConfig = new()
         {
@@ -1764,9 +1912,9 @@ public class BlockTreeTests
 
         tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-        for (long i = 5; i > 0; i--)
+        for (ulong i = 5ul; i > 0; i--)
         {
-            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
+            Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1ul).TestObject;
             tree.Insert(block.Header);
             Received.InOrder(() =>
             {
@@ -1780,7 +1928,7 @@ public class BlockTreeTests
     {
         SyncConfig syncConfig = new()
         {
-            PivotNumber = 0L,
+            PivotNumber = 0ul,
         };
 
         BlockTreeBuilder builder = Build.A.BlockTree()
@@ -1792,7 +1940,7 @@ public class BlockTreeTests
         tree.SuggestBlock(genesis);
 
         Block previousBlock = genesis;
-        for (int i = 1; i < 10; i++)
+        for (ulong i = 1ul; i < 10ul; i++)
         {
             Block block = Build.A.Block.WithNumber(i).WithParent(previousBlock).TestObject;
             tree.SuggestBlock(block);
@@ -1916,12 +2064,7 @@ public class BlockTreeTests
         Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(0, 1));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Throws_when_start_below_zero()
-    {
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(-1, 1));
-    }
+
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_delete_too_many()
@@ -1977,16 +2120,17 @@ public class BlockTreeTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(10, false, 10000000ul)]
-    [TestCase(4, false, 4000000ul)]
-    [TestCase(10, true, 10000000ul)]
-    public void Recovers_total_difficulty(int chainLength, bool deleteAllLevels, ulong expectedTotalDifficulty)
+    [TestCase(10ul, false, 10000000ul)]
+    [TestCase(4ul, false, 4000000ul)]
+    [TestCase(10ul, true, 10000000ul)]
+    public void Recovers_total_difficulty(ulong chainLength, bool deleteAllLevels, ulong expectedTotalDifficulty)
     {
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength);
         BlockTree blockTree = blockTreeBuilder.TestObject;
-        int chainLeft = deleteAllLevels ? 0 : 1;
-        for (int i = chainLength - 1; i >= chainLeft; i--)
+        ulong chainLeft = deleteAllLevels ? 0UL : 1UL;
+        for (ulong i = chainLength; i > chainLeft;)
         {
+            i--;
             ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
             if (level is not null)
             {
@@ -2006,8 +2150,9 @@ public class BlockTreeTests
 
         Assert.That(blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo(new UInt256(expectedTotalDifficulty)));
 
-        for (int i = chainLength - 1; i >= 0; i--)
+        for (ulong i = chainLength; i > 0;)
         {
+            i--;
             ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
 
             Assert.That(level, Is.Not.Null);
@@ -2092,7 +2237,7 @@ public class BlockTreeTests
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
         AddToMain(blockTree, block0);
 
-        long blockAddedToMainHeadNumber = 0;
+        ulong blockAddedToMainHeadNumber = 0ul;
         blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainHeadNumber = blockTree.Head!.Header.Number; };
 
         AddToMain(blockTree, block1);
@@ -2133,9 +2278,8 @@ public class BlockTreeTests
         Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void On_restart_loads_already_processed_genesis_block(bool wereProcessed)
+    [Test]
+    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();
@@ -2166,7 +2310,11 @@ public class BlockTreeTests
                 extraData: [])
             {
                 Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
-                Bloom = Core.Bloom.Empty
+                Bloom = Core.Bloom.Empty,
+                StateRoot = Keccak.EmptyTreeHash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             // Second block
@@ -2183,6 +2331,9 @@ public class BlockTreeTests
                 Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             // Third block
@@ -2199,6 +2350,9 @@ public class BlockTreeTests
                 Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,
                 StateRoot = genesis.Header.Hash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
+                MixHash = Keccak.Zero
             });
 
             tree.SuggestBlock(genesis);
@@ -2237,7 +2391,7 @@ public class BlockTreeTests
         {
             currentHeader = Build.A.BlockHeader
                 .WithDifficulty(1)
-                .WithTotalDifficulty((long)(currentHeader.TotalDifficulty + 1)!)
+                .WithTotalDifficulty((ulong)(currentHeader.TotalDifficulty + 1)!)
                 .WithParent(currentHeader)
                 .TestObject;
             batch.Add(currentHeader);
@@ -2245,7 +2399,7 @@ public class BlockTreeTests
 
         blockTree.BulkInsertHeader(batch);
 
-        for (int i = 1; i < 101; i++)
+        for (ulong i = 1ul; i < 101ul; i++)
         {
             Assert.That(blockTree.FindHeader(i, BlockTreeLookupOptions.None), Is.Not.Null);
         }
@@ -2257,9 +2411,9 @@ public class BlockTreeTests
         private bool _wait = true;
 
         public bool PreventsAcceptingNewBlocks => true;
-        public long StartLevelInclusive => 0;
-        public long EndLevelExclusive => 3;
-        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
+        public ulong StartLevelInclusive => 0;
+        public ulong EndLevelExclusive => 3;
+        public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken)
         {
             if (_wait)
             {
@@ -2279,7 +2433,7 @@ public class BlockTreeTests
             Task.FromResult(BlockVisitOutcome.None);
 
         public Task<LevelVisitOutcome> VisitLevelEnd(
-            ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken) =>
+            ChainLevelInfo? chainLevelInfo, ulong levelNumber, CancellationToken cancellationToken) =>
             Task.FromResult(LevelVisitOutcome.None);
     }
 
@@ -2316,7 +2470,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void On_UpdateMainBranch_UpdateSyncPivot_ToLowestPersistedHeader()
     {
-        long pivotNumber = 3L;
+        ulong pivotNumber = 3ul;
 
         SyncConfig syncConfig = new()
         {
@@ -2325,30 +2479,30 @@ public class BlockTreeTests
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
-        BlockTree tree = Build.A.BlockTree()
-            .WithSyncConfig(syncConfig)
-            .TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
 
         Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
         Block block = Build.A.Block.Genesis.TestObject;
         Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
 
-        for (long i = 1; i <= 5; i++)
+        for (ulong i = 1ul; i <= 5ul; i++)
         {
-            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            block = Build.A.Block.WithTotalDifficulty(1ul).WithParent(block).TestObject;
             Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
             Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
-        tree.BestPersistedState = 5;
-        BlockHeader persistedStateHeader = tree.FindHeader(tree.BestPersistedState.Value, BlockTreeLookupOptions.RequireCanonical)!;
+        builder.StateBoundary.BestPersistedState = 5ul;
+        BlockHeader persistedStateHeader = tree.FindHeader(5ul, BlockTreeLookupOptions.RequireCanonical)!;
 
-        for (long i = 6; i < 10; i++)
+        for (ulong i = 6ul; i < 10ul; i++)
         {
-            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            block = Build.A.Block.WithTotalDifficulty(1ul).WithParent(block).TestObject;
             tree.SuggestBlock(block);
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
@@ -2359,7 +2513,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void On_ForkChoiceUpdated_UpdateSyncPivot_ToFinalizedHeader_BeforePersistedState()
     {
-        long pivotNumber = 3L;
+        ulong pivotNumber = 3ul;
 
         SyncConfig syncConfig = new()
         {
@@ -2368,27 +2522,27 @@ public class BlockTreeTests
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
-        BlockTree tree = Build.A.BlockTree()
-            .WithSyncConfig(syncConfig)
-            .TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
 
         Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
         Block block = Build.A.Block.Genesis.TestObject;
         Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
 
-        for (long i = 1; i <= 10; i++)
+        for (ulong i = 1ul; i <= 10ul; i++)
         {
-            block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
+            block = Build.A.Block.WithTotalDifficulty(1ul).WithParent(block).TestObject;
             Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
-        tree.BestPersistedState = 7;
-        BlockHeader persistedStateHeader = tree.FindHeader(tree.BestPersistedState.Value, BlockTreeLookupOptions.RequireCanonical)!;
+        builder.StateBoundary.BestPersistedState = 7ul;
+        BlockHeader persistedStateHeader = tree.FindHeader(7ul, BlockTreeLookupOptions.RequireCanonical)!;
 
-        for (long i = 4; i < 10; i++)
+        for (ulong i = 4ul; i < 10ul; i++)
         {
             BlockHeader header = tree.FindHeader(i, BlockTreeLookupOptions.RequireCanonical)!;
             tree.ForkChoiceUpdated(header.Hash, header.Hash);
@@ -2407,7 +2561,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void On_UpdateMainBranch_UpdateSyncPivot_ToHeaderUnderReorgDepth()
     {
-        long pivotNumber = 3L;
+        ulong pivotNumber = 3ul;
 
         SyncConfig syncConfig = new()
         {
@@ -2416,37 +2570,38 @@ public class BlockTreeTests
             PivotHash = TestItem.KeccakA.ToString(),
         };
 
-        BlockTree tree = Build.A.BlockTree()
-            .WithSyncConfig(syncConfig)
-            .TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithSyncConfig(syncConfig);
+        BlockTree tree = builder.TestObject;
 
         Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
         Block block = Build.A.Block.Genesis.TestObject;
         Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
 
-        for (long i = 1; i <= 5; i++)
+        for (ulong i = 1ul; i <= 5ul; i++)
         {
             block = Build.A.Block
                 .WithParent(block)
-                .WithDifficulty(1L)
-                .WithTotalDifficulty(block.TotalDifficulty + 1)
+                .WithDifficulty(1ul)
+                .WithTotalDifficulty(block.TotalDifficulty + 1ul)
                 .TestObject;
             Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
-        for (long i = 6; i < 100; i++)
+        for (ulong i = 6ul; i < 100ul; i++)
         {
             block = Build.A.Block
                 .WithParent(block)
-                .WithDifficulty(1L)
-                .WithTotalDifficulty(block.TotalDifficulty + 1)
+                .WithDifficulty(1ul)
+                .WithTotalDifficulty(block.TotalDifficulty + 1ul)
                 .TestObject;
             tree.SuggestBlock(block);
+            // Set before TryUpdateMainChain: the pivot recalculation it triggers reads the provider.
+            builder.StateBoundary.BestPersistedState = block.Number;
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
-            tree.BestPersistedState = block.Number;
 
             if (block.Number > pivotNumber + Reorganization.MaxDepth)
             {
@@ -2520,11 +2675,11 @@ public class BlockTreeTests
         }
     }
 
-    [TestCase(1, false, TestName = "SingleDescendant")]
-    [TestCase(3, false, TestName = "MultipleDescendants")]
-    [TestCase(3, true, TestName = "MultipleDescendantsWithGap")]
+    [TestCase(1ul, false, TestName = "SingleDescendant")]
+    [TestCase(3ul, false, TestName = "MultipleDescendants")]
+    [TestCase(3ul, true, TestName = "MultipleDescendantsWithGap")]
     [MaxTime(Timeout.MaxTestTime)]
-    public void TryUpdateMainChain_WhenBeaconSyncMarksThenReorgsToSibling_ClearsStaleMarkers(int descendantCount, bool simulateGap)
+    public void TryUpdateMainChain_WhenBeaconSyncMarksThenReorgsToSibling_ClearsStaleMarkers(ulong descendantCount, bool simulateGap)
     {
         // Beacon sync marks N descendants canonical (wereProcessed=false, Head stays stale at H=1).
         // FCU reorgs to sibling at the same height. All stale markers must be cleared.
@@ -2535,7 +2690,7 @@ public class BlockTreeTests
         Block headBlock = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xAA]).TestObject;
         blockTree.SuggestBlock(headBlock);
 
-        Block[] descendants = BuildAndSuggestChain(blockTree, headBlock, descendantCount);
+        Block[] descendants = BuildAndSuggestChain(blockTree, headBlock, (int)descendantCount);
 
         // FCU sets Head to headBlock at H=1
         blockTree.TryUpdateMainChain(headBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { headBlock });
@@ -2574,13 +2729,13 @@ public class BlockTreeTests
         }
 
         // FindCanonicalBlockInfo must return null for all orphaned heights
-        for (int h = 2; h <= descendantCount + 1; h++)
+        for (ulong h = 2; h <= descendantCount + 1; h++)
         {
             Assert.That(blockTree.FindCanonicalBlockInfo(h), Is.Null, $"H={h} must return null — orphaned after reorg");
         }
 
         // Canonical lookup at H=1 must return sibling
-        BlockInfo? infoAt1 = blockTree.FindCanonicalBlockInfo(1);
+        BlockInfo? infoAt1 = blockTree.FindCanonicalBlockInfo(1ul);
         Assert.That(infoAt1, Is.Not.Null);
         Assert.That(infoAt1!.BlockHash, Is.EqualTo(sibling.Hash!), "H=1 must return sibling's hash");
     }
@@ -2969,6 +3124,515 @@ public class BlockTreeTests
             // Height 1 must return the new canonical B1
             Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(b1.Hash!), "height 1 must return B1 after reorg");
         }
+    }
+
+    [Test]
+    public void RecalculateTreeLevels_WhenKnownHeadersSitBelowLowestInsertedBeaconHeader_MovesPointerToSuggestedChainBoundary()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        BlockTreeInsertHeaderOptions beaconInsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+
+        BlockHeader header5 = Build.A.BlockHeader.WithNumber(5).WithParent(tree.Head!.Header).TestObject;
+        BlockHeader header6 = Build.A.BlockHeader.WithNumber(6).WithParent(header5).TestObject;
+        BlockHeader header7 = Build.A.BlockHeader.WithNumber(7).WithParent(header6).TestObject;
+        tree.Insert(header5, beaconInsert);
+        tree.Insert(header6, beaconInsert);
+        tree.Insert(header7, beaconInsert);
+        // An interrupted backfill persists the pointer above headers it already inserted.
+        tree.LowestInsertedBeaconHeader = header7;
+
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(5UL));
+    }
+
+    [Test]
+    public void RecalculateTreeLevels_WhenBeaconHeaderParentIsUnknown_KeepsPointer()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+
+        BlockHeader detached = Build.A.BlockHeader.WithNumber(7).WithParentHash(TestItem.KeccakA).TestObject;
+        tree.Insert(detached, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(7UL));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void RecalculateTreeLevels_WhenBeaconSegmentOverlapsBestSuggested_MovesPointerToBeaconJunction()
+    {
+        // The beacon fork overlaps the best-suggested level: a stop bound anchored on the
+        // BestSuggestedHeader number would refuse the walk entirely, while an unanchored
+        // walk would descend past the junction into the synced chain.
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+        BlockTree tree = Build.A.BlockTree(specProvider)
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead
+            .TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        tree.SuggestBlock(block5);
+
+        BlockHeader beacon5 = Build.A.BlockHeader.WithParent(previous.Header).WithExtraData(new byte[] { 2 }).TestObject;
+        BlockHeader beacon6 = Build.A.BlockHeader.WithParent(beacon5).TestObject;
+        BlockTreeInsertHeaderOptions beaconInsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        tree.Insert(beacon5, beaconInsert);
+        tree.Insert(beacon6, beaconInsert);
+        tree.LowestInsertedBeaconHeader = beacon6;
+
+        tree.RecalculateTreeLevels();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(5UL), "lowest beacon");
+            Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(block5.Hash), "suggested header");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_post_merge_when_suggested_blocks_sit_ahead_of_head()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        tree.SuggestBlock(block5);
+        tree.SuggestBlock(block6);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.Head?.Number, Is.EqualTo(4UL), "head");
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(block6.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(block6.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_latest_suggested_sibling_post_merge_when_level_has_competing_payloads()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block olderSibling = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).WithExtraData(new byte[] { 1 }).TestObject;
+        Block latestSibling = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).WithExtraData(new byte[] { 2 }).TestObject;
+        tree.SuggestBlock(olderSibling);
+        tree.SuggestBlock(latestSibling);
+        Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(latestSibling.Hash), "runtime pointer");
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(latestSibling.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(latestSibling.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_post_merge_when_header_sits_ahead_of_body()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        tree.SuggestBlock(block5);
+        tree.SuggestHeader(block6.Header);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(block6.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(block5.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_beacon_post_merge_when_beacon_blocks_sit_ahead_of_head()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        tree.Insert(block5, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        tree.Insert(block6, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(block6.Hash), "beacon header");
+            Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(block6.Hash), "beacon body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_beacon_from_beacon_entry_when_level_also_has_canonical_block()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block[] chain = SuggestProcessedPostMergeChain(tree);
+
+        // beacon fork at the head's level: the canonical lookup would resolve the main-chain sibling
+        BlockHeader beaconSibling = Build.A.BlockHeader.WithParent(chain[3].Header).WithExtraData(new byte[] { 2 }).TestObject;
+        tree.Insert(beaconSibling, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(beaconSibling.Hash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_non_beacon_header_when_level_also_has_beacon_body_entry()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+        Block regularBlock = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block beaconBody = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).WithExtraData(new byte[] { 2 }).TestObject;
+        tree.Insert(regularBlock, BlockTreeInsertBlockOptions.SaveHeader);
+        tree.Insert(beaconBody, BlockTreeInsertBlockOptions.SaveHeader,
+            BlockTreeInsertHeaderOptions.BeaconBodyMetadata | BlockTreeInsertHeaderOptions.NotOnMainChain);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(regularBlock.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(regularBlock.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_body_from_canonical_entry_when_header_only_beacon_body_is_stored()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block[] chain = SuggestProcessedPostMergeChain(tree);
+        Block beaconBody = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(chain[^1]).TestObject;
+        tree.Insert(beaconBody, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
+
+        BlockInfo beaconInfo = tree.FindLevel(beaconBody.Number)!.BlockInfos[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beaconInfo.IsBeaconHeader, Is.True, "beacon header metadata");
+            Assert.That(beaconInfo.IsBeaconBody, Is.False, "beacon body metadata");
+        }
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(chain[^1].Hash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Beacon_body_reinsert_preserves_processed_metadata_after_reload()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block[] chain = SuggestProcessedPostMergeChain(tree);
+        Block beaconBlock = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(chain[^1]).TestObject;
+        tree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
+        Assert.That(tree.TryUpdateMainChain(beaconBlock.Header, true, preloadedBlocks: new[] { beaconBlock }), Is.True, "test setup");
+        BlockInfo? canonicalBlockInfo = tree.FindCanonicalBlockInfo(beaconBlock.Number);
+        Assert.That(canonicalBlockInfo, Is.Not.Null, "test setup");
+        Assert.That(canonicalBlockInfo!.BlockNumber, Is.EqualTo(beaconBlock.Number), "test setup");
+
+        BlockTreeInsertHeaderOptions bodyReinsert = BlockTreeInsertHeaderOptions.BeaconBodyMetadata | BlockTreeInsertHeaderOptions.NotOnMainChain;
+        tree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, bodyReinsert);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        BlockInfo reloadedInfo = reloaded.FindLevel(beaconBlock.Number)!.BlockInfos[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloadedInfo.Metadata,
+                Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain), "beacon metadata");
+            Assert.That(reloadedInfo.WasProcessed, Is.True, "processed metadata");
+            Assert.That(reloaded.Head?.Hash, Is.EqualTo(beaconBlock.Hash), "head");
+            Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(beaconBlock.Hash), "beacon body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Beacon_header_reinsert_keeps_body_metadata_so_load_sees_no_corruption()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        // engine_newPayload while syncing stores the tip blocks with header + body beacon metadata
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        Block block7 = Build.A.Block.WithNumber(7).WithDifficulty(0).WithParent(block6).TestObject;
+        tree.Insert(block5, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        tree.Insert(block6, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        tree.Insert(block7, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+
+        // a beacon pivot update / beacon-headers backfill re-inserts the same headers without a body flag
+        BlockTreeInsertHeaderOptions headerReinsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        tree.Insert(block5.Header, headerReinsert);
+        tree.Insert(block6.Header, headerReinsert);
+        tree.Insert(block7.Header, headerReinsert);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindLevel(7)!.BlockInfos[0].Metadata,
+                Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain), "beacon metadata");
+            Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(block7.Hash), "beacon body");
+            Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(4UL), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_with_bodies_ahead_of_lost_headers_recovers_persisted_candidate_without_persisted_ceiling()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block genesis = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(genesis);
+        tree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
+
+        // an unexpected shutdown lost the header tail while the bodies survived
+        Block[] chain = InsertBlocks(tree, genesis, 7);
+        DeleteHeaders(builder, chain, firstLostHeaderIndex: 4);
+
+        Assert.That(builder.StateBoundary.BestPersistedState, Is.Null, "test setup");
+        TestLogger logger = new();
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithLogManager(new OneLoggerLogManager(new(logger)))
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.Head?.Hash, Is.EqualTo(chain[3].Hash), "head");
+            Assert.That(reloaded.BestSuggestedHeader?.Number, Is.EqualTo(4UL), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(4UL), "suggested body clamped to header");
+            Assert.That(logger.LogList, Has.None.Contains("persisted ceiling is unavailable"), "recovery info");
+            Assert.That(logger.LogList, Has.None.Contains("Failed attempt to fix 'header < body' corruption"), "recovery error");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_with_bodies_ahead_of_lost_headers_recovers_processed_candidate_without_persisted_ceiling()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block[] canonicalChain = SuggestProcessedPostMergeChain(tree);
+        Block processedCandidate = canonicalChain[^1];
+        Block[] bodiesAhead = InsertBlocks(tree, processedCandidate, 3);
+        tree.UpdateHeadBlock(canonicalChain[0].Hash!);
+        DeleteHeaders(builder, bodiesAhead, firstLostHeaderIndex: 0);
+
+        Assert.That(builder.StateBoundary.BestPersistedState, Is.Null, "test setup");
+        Assert.That(tree.FindLevel(processedCandidate.Number)!.MainChainBlock!.WasProcessed, Is.True, "test setup");
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.Head?.Hash, Is.EqualTo(processedCandidate.Hash), "head");
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(processedCandidate.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(processedCandidate.Hash), "suggested body clamped to header");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_with_bodies_ahead_of_lost_headers_logs_error_when_known_persisted_candidate_is_unprocessed()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block genesis = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(genesis);
+        tree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
+
+        Block[] chain = InsertBlocks(tree, genesis, 7);
+        Block unprocessedCandidate = chain[3];
+        DeleteHeaders(builder, chain, firstLostHeaderIndex: 4);
+        builder.StateBoundary.BestPersistedState = unprocessedCandidate.Number;
+
+        Assert.That(tree.FindLevel(unprocessedCandidate.Number)!.MainChainBlock!.WasProcessed, Is.False, "test setup");
+        TestLogger logger = new();
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithLogManager(new OneLoggerLogManager(new(logger)))
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(unprocessedCandidate.Hash), "suggested header");
+            Assert.That(logger.LogList, Has.Some.Contains("Failed attempt to fix 'header < body' corruption"), "recovery error");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_with_bodies_ahead_of_lost_headers_logs_error_without_throwing_when_processed_candidate_body_is_missing()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block[] canonicalChain = SuggestProcessedPostMergeChain(tree);
+        Block processedCandidate = canonicalChain[^1];
+        Block[] bodiesAhead = InsertBlocks(tree, processedCandidate, 3);
+        builder.BlockStore.Delete(processedCandidate.Number, processedCandidate.Hash!);
+        DeleteHeaders(builder, bodiesAhead, firstLostHeaderIndex: 0);
+
+        Assert.That(builder.StateBoundary.BestPersistedState, Is.Null, "test setup");
+        Assert.That(tree.FindLevel(processedCandidate.Number)!.MainChainBlock!.WasProcessed, Is.True, "test setup");
+        TestLogger logger = new();
+        BlockTree? reloaded = null;
+
+        Assert.DoesNotThrow(() =>
+            reloaded = Build.A.BlockTree(specProvider)
+                .WithDatabaseFrom(builder)
+                .WithLogManager(new OneLoggerLogManager(new(logger)))
+                .WithoutSettingHead
+                .TestObject);
+
+        Assert.That(reloaded, Is.Not.Null, "reloaded tree");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded!.Head?.Hash, Is.EqualTo(canonicalChain[0].Hash), "safe head");
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(processedCandidate.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody, Is.Null, "suggested body");
+            Assert.That(logger.LogList, Has.Some.Contains("Failed attempt to fix 'header < body' corruption"), "recovery error");
+        }
+    }
+
+    private static Block[] InsertBlocks(BlockTree tree, Block parent, int count)
+    {
+        Block[] blocks = new Block[count];
+        for (int i = 0; i < count; i++)
+        {
+            Block block = Build.A.Block.WithNumber(parent.Number + 1).WithDifficulty(0).WithParent(parent).TestObject;
+            tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader);
+            blocks[i] = block;
+            parent = block;
+        }
+
+        return blocks;
+    }
+
+    private static void DeleteHeaders(BlockTreeBuilder builder, IReadOnlyList<Block> blocks, int firstLostHeaderIndex)
+    {
+        for (int i = firstLostHeaderIndex; i < blocks.Count; i++)
+        {
+            builder.HeaderStore.Delete(blocks[i].Hash!);
+        }
+    }
+
+    private static CustomSpecProvider PostMergeSpecProvider() => new(((ForkActivation)0, London.Instance))
+    {
+        TerminalTotalDifficulty = UInt256.Zero
+    };
+
+    private static Block[] SuggestProcessedPostMergeChain(BlockTree tree)
+    {
+        Block[] chain = new Block[5];
+        Block previous = chain[0] = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(previous);
+        tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
+        for (int i = 1; i <= 4; i++)
+        {
+            Block block = chain[i] = Build.A.Block.WithNumber((ulong)i).WithDifficulty(0).WithParent(previous).TestObject;
+            tree.SuggestBlock(block);
+            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
+            previous = block;
+        }
+
+        return chain;
     }
 
     private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)

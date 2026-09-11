@@ -574,7 +574,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     TestItem.Addresses[i],
                     TrieScenarios.AccountJustState0
                         .WithChangedBalance((UInt256)(i + 10))
-                        .WithChangedNonce((UInt256)1)
+                        .WithChangedNonce(1UL)
                         .WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0))
                         .WithChangedStorageRoot(storage.RootHash));
             }
@@ -616,7 +616,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     TestItem.Addresses[i],
                     TrieScenarios.AccountJustState0
                         .WithChangedBalance((UInt256)(i + 100))
-                        .WithChangedNonce((UInt256)2)
+                        .WithChangedNonce(2UL)
                         .WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code1))
                         .WithChangedStorageRoot(storage.RootHash));
             }

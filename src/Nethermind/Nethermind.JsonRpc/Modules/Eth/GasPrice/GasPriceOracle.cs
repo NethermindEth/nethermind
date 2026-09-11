@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return ValueTask.FromResult(gasPriceEstimate!);
         }
 
-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber) =>
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
@@ -74,9 +74,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks(headBlock.Number,
                 EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas,
-                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee));
+                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee),
+                _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice);
 
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice;
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
@@ -86,22 +87,27 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction, UInt256? substituteForEmptyBlock = null)
         {
-            IEnumerable<Block> GetBlocks(long currentBlockNumber)
+            IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
             {
-                while (currentBlockNumber >= 0)
+                do
                 {
                     if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
-                    yield return _blockFinder.FindBlock(currentBlockNumber)!;
-                    currentBlockNumber--;
-                }
+                    Block? block = _blockFinder.FindBlock(currentBlockNumber);
+                    if (block is null)
+                    {
+                        yield break;
+                    }
+
+                    yield return block;
+                } while (currentBlockNumber-- != 0);
             }
 
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction, substituteForEmptyBlock);
         }
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction, UInt256? substituteForEmptyBlock)
         {
             int txCount = 0;
 
@@ -131,7 +137,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 if (txFromCurrentBlock == 0)
                 {
                     blocksToGoBack--;
-                    yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
+                    yield return substituteForEmptyBlock ?? FallbackGasPrice(currentBlock.BaseFeePerGas);
                 }
 
                 if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)

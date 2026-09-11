@@ -52,6 +52,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // Environments
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
                 blockProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -83,7 +84,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
     internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler
     {
         readonly Dictionary<Hash256, Address[]> _penaltiesCache = [];
-        public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
+        public Address[] Penalize(ulong number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
             IXdcReleaseSpec spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
             if (number == spec.SwitchBlock)
@@ -107,7 +108,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             _penaltiesCache[currentHash] = penalized.ToArray();
             return _penaltiesCache[currentHash];
         }
-        public Address[] HandlePenalties(long number, Hash256 currentHash, Address[] candidates)
+        public Address[] HandlePenalties(ulong number, Hash256 currentHash, Address[] candidates)
             => Penalize(number, currentHash, candidates, 7);
     }
 

@@ -70,6 +70,7 @@ public class ParityLikeTxTracer : TxTracer
 
     public sealed override bool IsTracingActions { get; protected set; }
     public sealed override bool IsTracingReceipt { get; protected set; }
+    public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }
     public sealed override bool IsTracingState { get; protected set; }
@@ -124,7 +125,7 @@ public class ParityLikeTxTracer : TxTracer
 
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
-    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after) => new(before, after);
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
@@ -237,12 +238,14 @@ public class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
-        if (_trace.Action!.TraceAddress.Length == 0)
+        _trace.Action ??= CreateRootActionFromTx();
+
+        if (_trace.Action.TraceAddress.Length == 0)
         {
             _trace.Output = output;
         }
 
-        _trace.Action!.Result!.Output = output;
+        _trace.Action.Result!.Output = output;
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
@@ -257,19 +260,25 @@ public class ParityLikeTxTracer : TxTracer
 
         if (_trace.Action is null)
         {
-            ParityTraceAction action = RentAction();
-            action.From = _tx!.SenderAddress;
-            action.To = _tx.To;
-            action.Value = _tx.Value;
-            action.Input = CopyInput(_tx.Data);
-            action.Gas = _tx.GasLimit;
-            action.CallType = _tx.IsMessageCall ? "call" : "init";
+            ParityTraceAction action = CreateRootActionFromTx();
             action.Error = error;
             _trace.Action = action;
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    private ParityTraceAction CreateRootActionFromTx()
+    {
+        ParityTraceAction action = RentAction();
+        action.From = _tx!.SenderAddress;
+        action.To = _tx.To;
+        action.Value = _tx.Value;
+        action.Input = CopyInput(_tx.Data);
+        action.Gas = _tx.GasLimit;
+        action.CallType = _tx.IsMessageCall ? "call" : "init";
+        return action;
+    }
+
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
@@ -289,18 +298,18 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasAlreadySetForCurrentOp)
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation!.Cost -= (_treatGasParityStyle ? 0 : gas);
+            _currentOperation!.Cost -= (_treatGasParityStyle ? 0UL : gas);
 
             // based on Parity behaviour - adding stipend to the gas cost
-            if (_currentOperation.Cost == 7400)
+            if (_currentOperation.Cost == 7400UL)
             {
-                _currentOperation.Cost = 9700;
+                _currentOperation.Cost = 9700UL;
             }
 
             _currentOperation.Push = _currentPushList.ToArray();
@@ -344,7 +353,7 @@ public class ParityLikeTxTracer : TxTracer
         value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (_trace.StateChanges is null)
         {
@@ -401,7 +410,7 @@ public class ParityLikeTxTracer : TxTracer
         change = RentByteStateChange(before, after);
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
         ParityTraceAction action = RentAction();
@@ -444,7 +453,7 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         if (_currentAction!.Result is null)
         {
@@ -457,14 +466,18 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert);
+
+    private void HandleActionError(EvmExceptionType evmExceptionType)
     {
         _currentAction!.Result = null;
         _currentAction.Error = GetErrorDescription(evmExceptionType);
         PopAction();
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         if (_currentAction!.Result is null)
         {
@@ -482,6 +495,6 @@ public class ParityLikeTxTracer : TxTracer
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) =>
         _currentOperation!.Used = gasAvailable;
 }

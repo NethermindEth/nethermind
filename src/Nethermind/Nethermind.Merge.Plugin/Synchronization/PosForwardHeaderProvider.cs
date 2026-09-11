@@ -32,7 +32,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
     private readonly Lock _cacheLock = new();
     private BlockHeader?[]? _cachedHeaders;
     private Hash256? _cachedProcessDestinationHash;
-    private long _cachedProcessDestinationNumber;
+    private ulong _cachedProcessDestinationNumber;
     private int _cachedSkipLastN;
 
     public PosForwardHeaderProvider(
@@ -59,12 +59,15 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
     private bool ShouldUsePreMerge() => !_beaconPivot.BeaconPivotExists() && !_poSSwitcher.HasEverReachedTerminalBlock();
 
-    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(int skipLastN, int maxHeader, CancellationToken cancellation)
+    public override Task<IOwnedReadOnlyList<BlockHeader?>?> GetBlockHeaders(ulong skipLastNUlong, ulong maxHeaderUlong, CancellationToken cancellation)
     {
         if (ShouldUsePreMerge())
         {
-            return base.GetBlockHeaders(skipLastN, maxHeader, cancellation);
+            return base.GetBlockHeaders(skipLastNUlong, maxHeaderUlong, cancellation);
         }
+
+        int skipLastN = (int)skipLastNUlong;
+        int maxHeader = (int)maxHeaderUlong;
 
         _syncReport.FullSyncBlocksDownloaded.TargetValue = Math.Max(_beaconPivot.PivotNumber, _beaconPivot.PivotDestinationNumber);
 
@@ -120,15 +123,15 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
             BlockHeader? processDestination = _beaconPivot.ProcessDestination;
             Hash256? currentHash = processDestination?.Hash;
-            long currentNumber = processDestination?.Number ?? long.MaxValue;
+            ulong currentNumber = processDestination?.Number ?? ulong.MaxValue;
             if (_cachedProcessDestinationHash != currentHash || _cachedProcessDestinationNumber != currentNumber) return null;
 
             cached = _cachedHeaders;
             // `cached[0]` is the anchor that `BlockDownloader.AssembleRequest` consumes as `parentHeader`;
             // start at `BestKnownNumber` (not `+1`) so the anchor stays at slice index 0.
-            long desiredStart = Math.Min(_blockTree.BestKnownNumber, currentNumber);
-            long cacheStart = cached[0]!.Number;
-            long cacheEnd = cached[^1]!.Number;
+            ulong desiredStart = Math.Min(_blockTree.BestKnownNumber, currentNumber);
+            ulong cacheStart = cached[0]!.Number;
+            ulong cacheEnd = cached[^1]!.Number;
             if (desiredStart < cacheStart || desiredStart > cacheEnd) return null;
 
             offset = (int)(desiredStart - cacheStart);
@@ -148,7 +151,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         {
             _cachedHeaders = headers;
             _cachedProcessDestinationHash = destination?.Hash;
-            _cachedProcessDestinationNumber = destination?.Number ?? long.MaxValue;
+            _cachedProcessDestinationNumber = destination?.Number ?? ulong.MaxValue;
             _cachedSkipLastN = skipLastN;
         }
     }
@@ -163,8 +166,8 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
             BlockHeader?[]? cached = _cachedHeaders;
             if (cached is null) return;
 
-            long cacheStart = cached[0]!.Number;
-            long cacheEnd = cached[^1]!.Number;
+            ulong cacheStart = cached[0]!.Number;
+            ulong cacheEnd = cached[^1]!.Number;
 
             // Reorgs may start below `cacheStart`; scan until we hit a block inside the cached range.
             for (int i = 0; i < headers.Count; i++)
@@ -177,7 +180,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
                 {
                     _cachedHeaders = null;
                     _cachedProcessDestinationHash = null;
-                    _cachedProcessDestinationNumber = 0;
+                    _cachedProcessDestinationNumber = 0UL;
                     _cachedSkipLastN = 0;
                 }
                 // First in-range block's hash commits to all earlier blocks in this update.
@@ -235,7 +238,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
 
         if (addResult == AddBlockResult.Added)
         {
-            if ((_beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+            if ((_beaconPivot.ProcessDestination?.Number ?? ulong.MaxValue) < currentBlock.Number)
             {
                 // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
                 // already processed header starting from `ProcessDestination`.

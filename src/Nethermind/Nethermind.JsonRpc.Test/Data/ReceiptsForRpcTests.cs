@@ -65,8 +65,6 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [TestCase("StateGasSpill", "stateGasSpill")]
-        [TestCase("StateGasSpillBurned", "stateGasSpillBurned")]
-        [TestCase("StateGasSpillReclassified", "stateGasSpillReclassified")]
         [TestCase("StateGasSpillRefunded", "stateGasSpillRefunded")]
         public void Diagnostic_receipt_surface_does_not_include_internal_spill_counters(string clrPropertyName, string jsonPropertyName)
         {
@@ -77,6 +75,23 @@ namespace Nethermind.JsonRpc.Test.Data
 
             using JsonDocument document = JsonDocument.Parse(serialized);
             Assert.That(document.RootElement.TryGetProperty(jsonPropertyName, out _), Is.False);
+        }
+
+        private const string LeadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+        private const string LeadingZeroByteRootHex = "0x009ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+
+        [TestCase(LeadingZeroRootHex, LeadingZeroRootHex)]
+        [TestCase(LeadingZeroByteRootHex, LeadingZeroByteRootHex)]
+        public void Serializes_root_as_full_width_data(string rootHex, string expectedRoot)
+        {
+            // A receipt root is DATA per EIP-1474. The writer must keep all 64 digits.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.PostTransactionState = new Hash256(rootHex);
+
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
         }
 
         [Test]
@@ -132,6 +147,56 @@ namespace Nethermind.JsonRpc.Test.Data
 
             Assert.That(receiptForRpc, Is.Not.Null);
             Assert.That(receiptForRpc!.ToReceipt().Error, Is.Null);
+        }
+
+        [Test]
+        public void Post_byzantium_receipt_serializes_status_without_root()
+        {
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = Keccak.OfAnEmptyString,
+                StatusCode = 1,
+                GasUsedTotal = 1000,
+                Logs = []
+            };
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.TryGetProperty("root", out _), Is.False);
+            Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+        }
+
+        [Test]
+        public void Pre_byzantium_receipt_serializes_root_without_status()
+        {
+            TxReceipt receipt = new()
+            {
+                Bloom = Bloom.Empty,
+                Index = 0,
+                Recipient = TestItem.AddressA,
+                Sender = TestItem.AddressB,
+                BlockHash = TestItem.KeccakA,
+                BlockNumber = 1,
+                GasUsed = 1000,
+                TxHash = Keccak.OfAnEmptyString,
+                PostTransactionState = TestItem.KeccakB,
+                GasUsedTotal = 1000,
+                Logs = []
+            };
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+            JsonElement root = document.RootElement;
+
+            Assert.That(root.TryGetProperty("status", out _), Is.False);
+            Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
         }
 
         private static TxReceipt CreateDiagnosticReceipt()
