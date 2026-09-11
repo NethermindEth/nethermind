@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 

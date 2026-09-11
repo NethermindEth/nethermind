@@ -123,6 +123,22 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
+
+        /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers. The returned bytes must not be mutated.</remarks>
+        internal byte[] GetPureReadStorage(in StorageCell cell)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.GetPureRead(cell);
+        }
+
+        /// <summary>Reads a parent-state account without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal Account? GetPureReadAccount(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetPureRead(address);
+        }
         public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();
