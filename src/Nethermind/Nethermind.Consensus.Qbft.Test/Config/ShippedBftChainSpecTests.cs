@@ -149,12 +149,35 @@ public class ShippedBftChainSpecTests
             Assert.That(schedule.GetFork(9_434_168, 0).BlockReward, Is.EqualTo(UInt256.Parse("750000000000000000")), "first halving");
             Assert.That(schedule.GetFork(137_280_000, 0).BlockReward, Is.EqualTo(UInt256.Zero), "the last transition ends the emission");
 
-            // A live node following the published genesis diverged on the state root of empty block
-            // 51,192,000, which can only be the block reward. The published transitions schedule no
-            // change anywhere near it, so the reward is flat across the divergence point and the
-            // chain must be running a genesis this file does not describe.
             Assert.That(schedule.GetFork(51_191_999, 0).BlockReward, Is.EqualTo(UInt256.Parse("1464843750000000")));
-            Assert.That(schedule.GetFork(51_192_000, 0).BlockReward, Is.EqualTo(UInt256.Parse("1464843750000000")));
+            Assert.That(schedule.GetFork(51_191_999, 0).MiningBeneficiary, Is.Null, "paid to the proposer");
+        }
+    }
+
+    /// <summary>
+    /// At block 51,192,000 KalyChain raised the reward to 3 KLC and redirected it to a fixed
+    /// address, so it no longer goes to the proposer. The project has never published this, and a
+    /// node running its published genesis diverges on the state root of that block.
+    /// </summary>
+    /// <remarks>
+    /// Read off the chain itself with <c>trace_block</c>, which reports the reward author and value
+    /// for any historical block: 51,191,999 pays 1464843750000000 to validator 0x7366f751, and
+    /// 51,192,000 pays 3000000000000000000 to 0x8b80800c, which is no validator. The beneficiary's
+    /// balance rises by exactly that much per block from there while every validator's is flat.
+    /// </remarks>
+    [Test]
+    public void KalyChainRedirectsTheRewardToAFixedBeneficiary()
+    {
+        BftForksSchedule schedule = LoadEngine(Load("kalychain.json")).Schedule;
+        Address beneficiary = new("0x8b80800Cf6dA88D59EB09CaE4Fd2196423c48b26");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.GetFork(51_192_000, 0).BlockReward, Is.EqualTo(UInt256.Parse("3000000000000000000")));
+            Assert.That(schedule.GetFork(51_192_000, 0).MiningBeneficiary, Is.EqualTo(beneficiary));
+
+            // Besu carries unspecified fields forward, so the next halving keeps the beneficiary.
+            Assert.That(schedule.GetFork(54_912_000, 0).BlockReward, Is.EqualTo(UInt256.Parse("732421875000000")));
+            Assert.That(schedule.GetFork(54_912_000, 0).MiningBeneficiary, Is.EqualTo(beneficiary));
         }
     }
 

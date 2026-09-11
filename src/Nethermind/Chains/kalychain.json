@@ -66,6 +66,11 @@
           "blockreward": "1464843750000000"
         },
         {
+          "block": 51192000,
+          "blockreward": "3000000000000000000",
+          "miningbeneficiary": "0x8b80800Cf6dA88D59EB09CaE4Fd2196423c48b26"
+        },
+        {
           "block": 54912000,
           "blockreward": "732421875000000"
         },

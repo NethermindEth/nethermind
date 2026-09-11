@@ -73,6 +73,15 @@ genesis with a `config.discovery.bootnodes` section added, and
 `Nethermind.Consensus.Qbft.Test/Config/ShippedBftChainSpecTests.cs` pins every genesis hash to what
 the live network reports.
 
+KalyChain is the one exception: its chainspec carries a `transitions.qbft` entry at block 51,192,000
+that the project has never published. From that block the chain pays 3 KLC rather than the scheduled
+1464843750000000 wei, and pays it to `0x8b80800Cf6dA88D59EB09CaE4Fd2196423c48b26` instead of the
+proposer. A node running the published genesis diverges on the state root of that block, which
+carries no transactions, so only the reward can differ. The entry was read off the chain with
+`trace_block`, which reports the reward author and value for any historical block and is the quickest
+way to diagnose a reward divergence on a Besu BFT chain. Their published file is stale because the
+project has moved to a successor chain, id 3890, while 3888 keeps producing blocks.
+
 Fast sync and snap sync are off for all of them: Besu serves snap only when started with
 `--snapsync-server-enabled`, and `GetNodeData` is gone from eth/67, so there is no state-download
 path and the chains are synced in full.
