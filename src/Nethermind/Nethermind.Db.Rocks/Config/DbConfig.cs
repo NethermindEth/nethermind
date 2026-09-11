@@ -336,9 +336,24 @@ public class DbConfig : IDbConfig
     public string FlatHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
     public string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
 
+    public string? FlatHistoryAccountHistoryDbRocksDbOptions { get; set; }
+    public string? FlatHistoryAccountHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatHistoryStorageHistoryDbRocksDbOptions { get; set; }
+    public string? FlatHistoryStorageHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatHistoryAccountCommitmentsDbRocksDbOptions { get; set; }
+    public string? FlatHistoryAccountCommitmentsDbAdditionalRocksDbOptions { get; set; }
+
+    public string? FlatHistoryStorageCommitmentsDbRocksDbOptions { get; set; }
+    public string? FlatHistoryStorageCommitmentsDbAdditionalRocksDbOptions { get; set; }
+
     // The replay-sized write buffers matter only for the two bulky value columns.
     public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+    public string? FlatHistoryAvailableBlocksDbAdditionalRocksDbOptions { get; set; }
+
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+    public string? FlatHistoryStorageClearsDbAdditionalRocksDbOptions { get; set; }
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }

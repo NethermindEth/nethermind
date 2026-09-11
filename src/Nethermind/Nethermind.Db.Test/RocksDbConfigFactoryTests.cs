@@ -55,4 +55,73 @@ public class RocksDbConfigFactoryTests
         IRocksDbConfig config = factory.GetForDatabase("Metadata", null);
         Assert.That(config.RocksDbOptions, Does.Not.Contain("skip_checking_sst_file_sizes_on_db_open"));
     }
+
+    [Test]
+    public void FlatHistoryColumnsInheritSharedAndColumnSpecificOptions(
+        [Values("AccountHistory", "StorageHistory", "AvailableBlocks", "StorageClears", "AccountCommitments", "StorageCommitments")] string columnName)
+    {
+        DbConfig dbConfig = new()
+        {
+            RocksDbOptions = "base;",
+            AdditionalRocksDbOptions = "base-additional;",
+            FlatHistoryDbRocksDbOptions = "shared;",
+            FlatHistoryDbAdditionalRocksDbOptions = "shared-additional;",
+            SkipCheckingSstFileSizesOnDbOpen = false
+        };
+        SetColumnOptions(dbConfig, columnName);
+
+        RocksDbConfigFactory factory = new(dbConfig, new TestHardwareInfo(0), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("FlatHistory", columnName);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.RocksDbOptions, Is.EqualTo("base;shared;column;"));
+            Assert.That(config.AdditionalRocksDbOptions, Is.EqualTo("base-additional;shared-additional;column-additional;"));
+        }
+    }
+
+    [Test]
+    public void FlatHistoryMarkerColumnsKeepDedicatedWriteBuffers([Values("AvailableBlocks", "StorageClears")] string columnName)
+    {
+        const string expectedOptions = "write_buffer_size=8000000;max_write_buffer_number=2;";
+        DbConfig dbConfig = new();
+        RocksDbConfigFactory factory = new(dbConfig, new TestHardwareInfo(0), LimboLogs.Instance);
+        IRocksDbConfig config = factory.GetForDatabase("FlatHistory", columnName);
+
+        Assert.That(config.RocksDbOptions, Does.Contain(expectedOptions));
+    }
+
+    private static void SetColumnOptions(DbConfig dbConfig, string columnName)
+    {
+        switch (columnName)
+        {
+            case "AccountHistory":
+                dbConfig.FlatHistoryAccountHistoryDbRocksDbOptions = "column;";
+                dbConfig.FlatHistoryAccountHistoryDbAdditionalRocksDbOptions = "column-additional;";
+                break;
+            case "StorageHistory":
+                dbConfig.FlatHistoryStorageHistoryDbRocksDbOptions = "column;";
+                dbConfig.FlatHistoryStorageHistoryDbAdditionalRocksDbOptions = "column-additional;";
+                break;
+            case "AccountCommitments":
+                dbConfig.FlatHistoryAccountCommitmentsDbRocksDbOptions = "column;";
+                dbConfig.FlatHistoryAccountCommitmentsDbAdditionalRocksDbOptions = "column-additional;";
+                break;
+            case "StorageCommitments":
+                dbConfig.FlatHistoryStorageCommitmentsDbRocksDbOptions = "column;";
+                dbConfig.FlatHistoryStorageCommitmentsDbAdditionalRocksDbOptions = "column-additional;";
+                break;
+            case "AvailableBlocks":
+                dbConfig.FlatHistoryAvailableBlocksDbRocksDbOptions = "column;";
+                dbConfig.FlatHistoryAvailableBlocksDbAdditionalRocksDbOptions = "column-additional;";
+                break;
+            case "StorageClears":
+                dbConfig.FlatHistoryStorageClearsDbRocksDbOptions = "column;";
+                dbConfig.FlatHistoryStorageClearsDbAdditionalRocksDbOptions = "column-additional;";
+                break;
+            default:
+                Assert.Fail($"Unknown flat history column: {columnName}");
+                break;
+        }
+    }
 }

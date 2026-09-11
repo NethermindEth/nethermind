@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
 using Nethermind.Api.Steps;
@@ -80,12 +81,6 @@ public class XdcModule : Module
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
             .AddSingleton<XdcSyncReadOnlyTxProcessingEnvFactory>()
-            .AddKeyedSingleton<IMasternodeVotingContract>(
-                XdcStateSyncSnapshotManager.StateSyncContractKey,
-                context => CreateVotingContract(
-                    context.Resolve<IAbiEncoder>(),
-                    context.Resolve<ISpecProvider>(),
-                    context.Resolve<XdcSyncReadOnlyTxProcessingEnvFactory>()))
             .AddSingleton<IMintedRecordContract, MintedRecordContract>()
 
             // sealer
@@ -122,7 +117,6 @@ public class XdcModule : Module
             // sync
             .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
-            .AddSingleton<IXdcStateSyncSnapshotManager, XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
 
@@ -151,6 +145,18 @@ public class XdcModule : Module
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
             .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
             .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>();
+
+        builder.RegisterType<XdcStateSyncSnapshotManager>()
+            .As<IXdcStateSyncSnapshotManager>()
+            .AsSelf()
+            .WithAttributeFiltering()
+            .WithParameter(new ResolvedParameter(
+                (parameter, _) => parameter.ParameterType == typeof(IMasternodeVotingContract),
+                (_, context) => CreateVotingContract(
+                    context.Resolve<IAbiEncoder>(),
+                    context.Resolve<ISpecProvider>(),
+                    context.Resolve<XdcSyncReadOnlyTxProcessingEnvFactory>())))
+            .SingleInstance();
 
         RegisterRewardCalculatorSource(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();

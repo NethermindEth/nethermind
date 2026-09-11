@@ -57,7 +57,7 @@ public sealed class FlatStateActivationPolicy
         using IPersistence.IPersistenceReader reader = flatPersistence.Value.CreateReader();
         if (reader.CurrentState != StateId.PreGenesis)
         {
-            if (logger.IsInfo) logger.Info("State backend: flat (existing FlatDB detected).");
+            if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
             _result = true;
         }
         else if (ContainsLegacyState(fileSystem, dbFactory.GetFullDbPath(new DbSettings("State", DbNames.State))))
@@ -66,7 +66,7 @@ public sealed class FlatStateActivationPolicy
         }
         else
         {
-            if (logger.IsInfo) logger.Info("State backend: flat (fresh node, FlatDB enabled).");
+            if (logger.IsInfo) logger.Info("State backend: flat (fresh node, flat DB enabled).");
             _result = true;
         }
 
