@@ -52,6 +52,8 @@ public class ImportPbtFromPreimageFlatTests
         byte[] bigCode = new byte[codeLength];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
         Hash256 bigCodeHash = Keccak.Compute(bigCode);
+        byte[] delegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
+        Hash256 delegationHash = Keccak.Compute(delegation);
 
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
@@ -61,6 +63,8 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
         // A second contract with the same code exercises content-addressed chunk deduplication.
         PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressD, 1, 0, delegation);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressE, 1, 0, delegation);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
@@ -73,10 +77,13 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
             batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
             batch.SetAccount(TestItem.AddressC, new Account(9, 5).WithChangedCodeHash(bigCodeHash));
+            batch.SetAccount(TestItem.AddressD, new Account(1, 0).WithChangedCodeHash(delegationHash));
+            batch.SetAccount(TestItem.AddressE, new Account(1, 0).WithChangedCodeHash(delegationHash));
         }
 
         MemDb codeDb = new();
         codeDb[bigCodeHash.Bytes] = bigCode;
+        codeDb[delegationHash.Bytes] = delegation;
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
@@ -98,7 +105,7 @@ public class ImportPbtFromPreimageFlatTests
         }
         Assert.That(reader.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(2), "shared code references survive later account changes");
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
-        Assert.That(scan.Accounts.RecordCount, Is.EqualTo(3), scan.Format());
+        Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
@@ -128,6 +135,8 @@ public class ImportPbtFromPreimageFlatTests
         bundle.CompleteLeafChanges();
         model.Clear();
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressD, 1, 0, delegation);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressE, 1, 0, delegation);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.Zero);

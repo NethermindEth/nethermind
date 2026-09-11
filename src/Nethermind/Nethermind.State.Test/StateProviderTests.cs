@@ -320,6 +320,35 @@ public class StateProviderTests(bool useFlat)
             Throws.TypeOf<InvalidOperationException>());
     }
 
+    [TestCase(0, 7)]
+    [TestCase(0, 5)]
+    [TestCase(2, 3)]
+    public void InsertCode_persists_only_the_supplied_memory(int offset, int length)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        byte[] backingCode = Bytes.FromHexString("600160005baabb");
+        ReadOnlyMemory<byte> code = backingCode.AsMemory(offset, length);
+        byte[] expectedCode = code.ToArray();
+        ValueHash256 codeHash = ValueKeccak.Compute(expectedCode);
+        BlockHeader block;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(_address1, 1);
+            provider.InsertCode(_address1, codeHash, code, Prague.Instance);
+            provider.Commit(Prague.Instance);
+            provider.CommitTree(0);
+            block = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(block))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetCode(codeHash), Is.EqualTo(expectedCode));
+            Assert.That(provider.GetCodeHash(_address1), Is.EqualTo(codeHash));
+        }
+    }
+
     [TestCase(false, Description = "code of a reverted deployment is dropped")]
     [TestCase(true, Description = "code redeployed after the revert is still persisted")]
     public void Code_of_restored_deployment_is_persisted_only_when_redeployed(bool redeployAfterRestore)
