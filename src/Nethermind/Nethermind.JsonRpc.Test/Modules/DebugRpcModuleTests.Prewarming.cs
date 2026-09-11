@@ -34,8 +34,7 @@ public partial class DebugRpcModuleTests
         CountingEnvironmentFactory environments = null!;
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsDebug.Returns(true);
-        ILogManager logs = Substitute.For<ILogManager>();
-        logs.GetClassLogger<HistoricalTracePrewarmer>().Returns(new ILogger(logger));
+        ILogManager logs = new OneLoggerLogManager(new ILogger(logger));
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithFlatDb(flatDb)
             .Build(builder => builder.AddSingleton<HistoricalTracePrewarmer>(context =>
