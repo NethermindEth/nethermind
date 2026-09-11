@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test;
 public class PrecompileStaticCallTests : VirtualMachineTestsBase
 {
     /// <summary>Largest ID output the VM keeps a scratch buffer for; anything longer is allocated per call.</summary>
-    private const int RetainedScratchLimit = 64 * 1024;
+    private const int RetainedScratchLimit = 1024 * 1024;
 
     private const int RecordSize = 96;
     private const int InputOffset = 512;
@@ -115,7 +115,7 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
         // buffer of its own; the short calls around them must still see only their own bytes.
         byte[] code = BuildIdentityChain([32, RetainedScratchLimit, 32, RetainedScratchLimit + 32, 32], out byte[] expected);
 
-        AssertOutput(code, expected, gasLimit: 200_000UL);
+        AssertOutput(code, expected, gasLimit: 4_000_000UL);
     }
 
     [Test]
@@ -189,7 +189,7 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
 
             int record = step * RecordSize;
             code = code
-                .STATICCALL(50_000, IdentityPrecompile.Address, InputOffset, (UInt256)length, 0, 0)
+                .STATICCALL(1_000_000, IdentityPrecompile.Address, InputOffset, (UInt256)length, 0, 0)
                 .Op(Instruction.POP)
                 .RETURNDATASIZE()
                 .MSTORE((UInt256)record);

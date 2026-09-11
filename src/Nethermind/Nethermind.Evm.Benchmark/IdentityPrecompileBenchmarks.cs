@@ -31,8 +31,8 @@ namespace Nethermind.Evm.Benchmark;
 public class IdentityPrecompileBenchmarks
 {
     private const int CallsPerInvoke = 32;
-    private const ulong GasLimit = 30_000_000;
-    private const ulong GasPerCall = 1_000_000;
+    private const ulong GasLimit = 500_000_000;
+    private const ulong GasPerCall = 10_000_000;
 
     private IContainer _container = null!;
     private ILifetimeScope _processingScope = null!;
@@ -41,7 +41,8 @@ public class IdentityPrecompileBenchmarks
     private IVirtualMachine _vm = null!;
     private CodeInfo _code = null!;
 
-    [Params(32, 1024, 64 * 1024, 96 * 1024)]
+    /// <summary>The last size is one word past the VM's retained-scratch limit; the rest are at or below it.</summary>
+    [Params(32, 1024, 64 * 1024, 96 * 1024, 1024 * 1024, 1024 * 1024 + 32)]
     public int InputSize { get; set; }
 
     [GlobalSetup]
@@ -61,7 +62,9 @@ public class IdentityPrecompileBenchmarks
         _vm.SetTxExecutionContext(new TxExecutionContext(Address.Zero, _processingScope.Resolve<ICodeInfoRepository>(), null, 0));
         _code = new CodeInfo(BuildCode());
 
-        for (int i = 0; i < 1_000; i++) ExecuteContract();
+        // Scaled by payload, so the largest rows do not spend minutes copying before the first measurement.
+        int warmups = Math.Clamp(64 * 1024 * 1024 / (InputSize * CallsPerInvoke), 8, 1_000);
+        for (int i = 0; i < warmups; i++) ExecuteContract();
     }
 
     [GlobalCleanup]

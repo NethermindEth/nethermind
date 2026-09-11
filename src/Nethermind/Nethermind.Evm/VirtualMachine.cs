@@ -114,8 +114,9 @@ public partial class VirtualMachine<TGasPolicy>(
     private byte[] _tracedStackWords = [];
 
     private const int MinPrecompileScratch = 4 * 1024;
-    // Kept under the 85,000-byte large object heap threshold so the retained buffer never tenures there.
-    private const int MaxRetainedPrecompileScratch = 64 * 1024;
+    // Memory expansion is quadratic, so an ID call this large already costs millions of gas and cannot repeat
+    // often; past here the per-call allocation is lost in the call's own cost and is not worth retaining for.
+    private const int MaxRetainedPrecompileScratch = 1024 * 1024;
 
     /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
     /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
@@ -990,7 +991,8 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
     /// <remarks>Buffers up to <see cref="MaxRetainedPrecompileScratch"/> are kept for reuse; a larger one is
     /// handed out but not retained, so a single outsized call does not leave a large object attached to the VM
-    /// for the rest of its life. The threshold keeps the retained buffer below the large object heap limit.
+    /// for the rest of its life. Retaining past the 85,000-byte large object heap threshold is deliberate: the
+    /// per-call allocation it replaces lands on that heap too, and does so on every call rather than once.
     /// </remarks>
     internal Memory<byte> RentPrecompileScratch(int length)
     {
