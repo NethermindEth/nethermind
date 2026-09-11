@@ -77,8 +77,8 @@ public class InclusionListBuilderTests
     }
 
     // An entry too big for the remaining budget is skipped rather than ending the encoding, so another
-    // sender's smaller transaction can still take the space. The skipped sender's own later nonces cannot:
-    // their predecessor is missing, so they would spend the scarce byte budget on an unappendable entry.
+    // sender's smaller transaction can still take the space. The skipped sender's own later nonces are
+    // excused whenever it is absent, so listing them spends the scarce byte budget for no extra coverage.
     [TestCase(true, TestName = "Sender_run_ends_at_a_tx_skipped_for_size")]
     [TestCase(false, TestName = "Tx_skipped_for_size_leaves_other_senders_alone")]
     public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit(bool sameSender)

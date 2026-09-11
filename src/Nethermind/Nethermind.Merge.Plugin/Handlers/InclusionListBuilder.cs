@@ -98,8 +98,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         try
         {
             int size = 0;
-            // The sample orders each sender's run by ascending nonce, so once one entry is dropped for size
-            // the rest of that sender's run is unappendable and would only waste the list's scarce budget.
+            // The sample orders each sender's run by ascending nonce, so once one entry is skipped the rest
+            // of that run is excused whenever the skipped one is absent: budget spent for no extra coverage.
             HashSet<AddressAsKey>? droppedSenders = null;
             foreach (Transaction tx in txs)
             {
