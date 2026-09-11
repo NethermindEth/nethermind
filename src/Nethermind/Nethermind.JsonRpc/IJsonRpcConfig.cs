@@ -224,6 +224,11 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
     int FiltersTimeout { get; set; }
 
+    [ConfigItem(
+        Description = "The max number of results (logs, block hashes, or pending transaction hashes) queued across all `eth_filters`. New filters are rejected while this budget is exhausted. `0` to disable the limit.",
+        DefaultValue = "1000000")]
+    int FiltersMaxQueuedItems { get; set; }
+
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }
 
