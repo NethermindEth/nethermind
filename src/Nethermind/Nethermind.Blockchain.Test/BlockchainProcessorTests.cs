@@ -22,6 +22,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -33,9 +34,8 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
-    [TestCase("null_hash")]
-    [TestCase("default_either")]
-    public void LogDiagnosticTrace_does_not_throw_for_edge_cases(string variant)
+    [Test]
+    public void LogDiagnosticTrace_does_not_throw_for_edge_cases([Values("null_hash", "default_either")] string variant)
     {
         ILogger logger = LimboLogs.Instance.GetClassLogger<BlockchainProcessorTests>();
         Either<Hash256, IList<Block>> input = variant == "null_hash"
@@ -247,7 +247,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 

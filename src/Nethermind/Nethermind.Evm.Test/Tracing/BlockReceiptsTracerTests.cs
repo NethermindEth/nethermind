@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -148,6 +149,23 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewTxTrace(nextBlock.Transactions[0]);
 
             nextOtherTracer.Received(1).StartNewTxTrace(nextBlock.Transactions[0]);
+        }
+
+        [Test]
+        public void ResetForParallelTx_does_not_reserve_capacity_for_the_whole_block([Values(1_000, 100_000)] int txCount)
+        {
+            Transaction tx = Build.A.Transaction.TestObject;
+            Transaction[] txs = new Transaction[txCount];
+            Array.Fill(txs, tx);
+            Block block = Build.A.Block.WithTransactions(txs).TestObject;
+            BlockReceiptsTracer tracer = new(true);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            tracer.ResetForParallelTx(block, NullBlockTracer.Instance);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.That(allocated, Is.LessThan(1024),
+                "a parallel tracer must reserve receipt capacity for its single transaction, not for the block");
         }
     }
 }

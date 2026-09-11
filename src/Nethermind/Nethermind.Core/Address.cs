@@ -227,14 +227,18 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode() =>
-#if ZK_EVM
-                // Always 20 bytes, so skip the length-dispatching FastHash and use the
-                // dedicated 20-byte hasher — the dominant Dictionary/FrozenSet probe on zkVM.
-                unchecked((int)GetHashCode64());
-#else
-                Bytes.FastHash();
-#endif
+        public override int GetHashCode() => GetHashCodeNonVirtual();
+
+        /// <summary>Returns exactly what <see cref="GetHashCode"/> returns, without a virtual call.</summary>
+        /// <remarks>
+        /// ILC lowers a <c>callvirt</c> on this sealed type's <see cref="GetHashCode"/> override to a vtable
+        /// dispatch rather than resolving it statically, so a caller on a hash-table probe path — chiefly
+        /// <see cref="AddressAsKey.GetHashCode"/> — pays an out-of-line call it cannot inline through.
+        /// An address is always 20 bytes, so the body skips the length-dispatching <see cref="SpanExtensions.FastHash"/>
+        /// for the dedicated 20-byte hasher.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -294,12 +298,28 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
 
-#if ZK_EVM
-        // A precompile lives at a low address (top 16 bytes zero), so its trailing number
-        // IS the membership key. Returns that number when the top 16 bytes are zero, or -1
-        // otherwise — lets IReleaseSpec.IsPrecompile swap a FrozenSet hash+probe for a bitmask.
+        /// <summary>Whether this address could name a precompile at all: sixteen leading zero bytes.</summary>
+        /// <remarks>The membership test every CALL pays. Two loads reject an ordinary contract, against
+        /// hashing and probing twenty bytes, and unlike <see cref="PrecompileIndexOrNegative"/> the answer
+        /// holds for every number a plugin might register at.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool CouldBePrecompile()
+        {
+            ref byte b = ref Unsafe.AsRef(in FirstByte);
+            return (Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) == 0;
+        }
+
+        /// <summary>The precompile number this address names, or negative if it cannot be used as an index.</summary>
+        /// <remarks>A precompile lives at a low address, so its trailing number is the membership key and
+        /// "which one" becomes an index rather than a hash and a probe over twenty bytes. Callers bound the
+        /// index themselves, since a plugin may register far above the low run — Taiko's sit at 0x10001 and
+        /// 0x10002. This answers "which one", never "is it one": a tail that overflows <see cref="int"/>
+        /// also comes back negative, so membership is <see cref="CouldBePrecompile"/>.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int PrecompileIndexOrNegative()
         {
+            // The shape test is repeated rather than calling CouldBePrecompile so that the base ref is
+            // loaded once: this is the zkVM guest's precompile path, measured to an exact step count.
             ref byte b = ref Unsafe.AsRef(in FirstByte);
             if ((Unsafe.ReadUnaligned<ulong>(ref b) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))) != 0)
             {
@@ -310,7 +330,6 @@ namespace Nethermind.Core
             uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
             return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
         }
-#endif
     }
 
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
@@ -354,7 +373,9 @@ namespace Nethermind.Core
         public static implicit operator AddressAsKey(Address key) => new(key);
 
         public bool Equals(AddressAsKey other) => Equals(in other);
-        public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override int GetHashCode() => _key?.GetHashCodeNonVirtual() ?? 0;
         public override string ToString() => _key?.ToString() ?? "<null>";
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -154,7 +154,8 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -171,7 +172,8 @@ public class GethStyleTracer(
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -203,9 +205,10 @@ public class GethStyleTracer(
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };
+        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider)
-            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken);
+            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {
@@ -224,7 +227,7 @@ public class GethStyleTracer(
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
-            _ => new GethLikeBlockMemoryTracer(options),
+            _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -234,9 +237,10 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
+        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider)
-            : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken);
+            : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {

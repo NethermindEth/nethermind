@@ -13,7 +13,7 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    public class StateReader(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
+    public class StateReader(ITrieStore trieStore, IKeyValueStore codeDb, ILogManager logManager) : IStateReader
     {
         private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         private readonly StateTree _state = new(trieStore.GetTrieStore(null), logManager);

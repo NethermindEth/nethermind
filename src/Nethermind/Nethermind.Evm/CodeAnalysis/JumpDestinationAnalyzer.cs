@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,11 +13,12 @@ using System.Threading;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
+public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -24,12 +26,18 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const int PUSH32 = (int)Instruction.PUSH32;
     private const int BitShiftPerInt64 = 6;
 
-    private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
+    private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
+    /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
+    internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
+    /// <summary>The jump-destination bitmap, built on first use; one bit per code byte.</summary>
+    internal long[] JumpDestinationBitmap => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
         _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
@@ -43,6 +51,10 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateOrWaitForJumpDestinationBitmap()
     {
+        // A single processor never queues the background analysis, so there is no completion event
+        // to allocate, signal or wait on; the guest folds the rest of the method away.
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return CreateJumpDestinationBitmap();
+
         object? previous = Volatile.Read(ref _analysisComplete);
         if (previous is null)
         {
@@ -60,15 +72,17 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         return (long[])previous;
     }
 
-    private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
+    [MemberNotNull(nameof(_jumpDestinationBitmap))]
+    private void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
         // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
+        Debug.Assert(_jumpDestinationBitmap is not null);
     }
 
-    private void AnalyzeJumpDestinations(out object previous)
+    private void AnalyzeJumpDestinations([NotNull] out object? previous)
     {
         ManualResetEventSlim analysisComplete = new(initialState: false);
         previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
@@ -123,65 +137,6 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
 
     internal static long[] CreateBitmap(int codeLength)
         => new long[GetInt64ArrayLengthFromBitLength(codeLength)];
-
-    [SkipLocalsInit]
-    internal static long[] PopulateJumpDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
-    {
-        ProcessJumpDestinationBitmap_Scalar(programCounter: 0, bitmap, code);
-        return bitmap;
-    }
-
-    [SkipLocalsInit]
-    private static void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
-    {
-        // Flags for the 64-bit bitmap segment holding the last JUMPDEST seen; flushed only when a
-        // later JUMPDEST lands in a different segment (and once at the end), so the common bytes -
-        // neither JUMPDEST nor PUSH - pay a single unsigned range check and nothing else.
-        long currentFlags = 0;
-        nuint flagsPosition = 0;
-        nuint length = (nuint)code.Length;
-        ref byte codeRef = ref MemoryMarshal.GetReference(code);
-        while (programCounter < length)
-        {
-            int op = Unsafe.AddByteOffset(ref codeRef, programCounter);
-
-            // Everything outside [JUMPDEST, PUSH32] advances by one; this covers ~3/4 of real bytecode.
-            if ((uint)(op - JUMPDEST) > PUSH32 - JUMPDEST)
-            {
-                programCounter++;
-                continue;
-            }
-
-            if (op == JUMPDEST)
-            {
-                if ((programCounter ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
-                {
-                    MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-                    currentFlags = 0;
-                }
-
-                // Shift wraps at 64, matching the bit's position within its segment.
-                currentFlags |= 1L << (int)programCounter;
-                flagsPosition = programCounter;
-                programCounter++;
-            }
-            else if (op >= PUSH1)
-            {
-                // Fast forward past the push data; it holds no jump destinations.
-                programCounter += (nuint)op - PUSH1 + 2;
-            }
-            else
-            {
-                // 0x5c-0x5f (TLOAD/TSTORE/MCOPY/PUSH0): no immediate data, single-byte advance.
-                programCounter++;
-            }
-        }
-
-        if (currentFlags != 0)
-        {
-            MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-        }
-    }
 
     [SkipLocalsInit]
     internal static long[] PopulateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
@@ -257,7 +212,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         if (programCounter + skip < (nuint)code.Length)
         {
             // Scalar tail for the final (length % 64) bytes
-            ProcessJumpDestinationBitmap_Scalar(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
+            ProcessJumpDestinationBitmap_Byte(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
         }
 
         return bitmap;
@@ -354,7 +309,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     /// Checks if the position is in a code segment.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsJumpDestination(long[] bitvec, int pos)
+    internal static bool IsJumpDestination(long[] bitvec, int pos)
     {
         int vecIndex = pos >> BitShiftPerInt64;
         // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't.

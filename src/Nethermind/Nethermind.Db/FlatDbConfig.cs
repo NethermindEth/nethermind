@@ -7,16 +7,27 @@ namespace Nethermind.Db;
 
 public class FlatDbConfig : IFlatDbConfig
 {
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; } = true;
     public bool EnablePreimageRecording { get; set; } = false;
     public bool HistoryEnabled { get; set; } = false;
+    public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
+    public ulong HistoryRetentionSinceBlock { get; set; } = 0;
     public ulong HistoryPruneIntervalBlocks { get; set; } = 1024;
     public int HistoryPrunePassBudgetSeconds { get; set; } = 5;
     public string? HistorySliceAddresses { get; set; }
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
     public long HistoryVerifyMaxRows { get; set; } = 0;
+    public bool ArchiveProofServeEnabled { get; set; } = false;
+    public bool ArchiveProofBuildEnabled { get; set; } = false;
+    public int ArchiveProofFanOut { get; set; } = 8;
+    public long ArchiveProofMaxScannedRows { get; set; } = 0;
+    public int ArchiveProofCheckpointIntervalLog2 { get; set; } = 0;
+    public bool ArchiveProofDiscardMismatchedLayout { get; set; } = false;
+    public int ArchiveProofEpochLog2 { get; set; } = 0;
+    public int ArchiveProofRecentEpochs { get; set; } = 0;
+    public int ArchiveProofFineEpochs { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

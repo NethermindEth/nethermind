@@ -48,10 +48,8 @@ public class XdcProtocolVersionTests
         Assert.That(peer.Handler.MessageIdSpaceSize, Is.EqualTo(messageIdSpaceSize));
     }
 
-    [TestCase(XdcProtocolVersions.Legacy)]
-    [TestCase(XdcProtocolVersions.Xdc164)]
-    [TestCase(XdcProtocolVersions.Xdc165)]
-    public void Order_and_lending_broadcasts_do_not_break_the_session(byte version)
+    [Test]
+    public void Order_and_lending_broadcasts_do_not_break_the_session([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc164, XdcProtocolVersions.Xdc165)] byte version)
     {
         using Peer peer = Peer.Create(version);
         peer.ReceiveStatus();
@@ -62,10 +60,8 @@ public class XdcProtocolVersionTests
         peer.Session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
-    [TestCase(XdcProtocolVersions.Legacy)]
-    [TestCase(XdcProtocolVersions.Xdc164)]
-    [TestCase(XdcProtocolVersions.Xdc165)]
-    public void Consensus_messages_are_handled_on_every_version(byte version)
+    [Test]
+    public void Consensus_messages_are_handled_on_every_version([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc164, XdcProtocolVersions.Xdc165)] byte version)
     {
         using Peer peer = Peer.Create(version);
         peer.ReceiveStatus();
@@ -78,9 +74,8 @@ public class XdcProtocolVersionTests
         peer.VotesManager.Received(1).OnReceiveVote(vote);
     }
 
-    [TestCase(XdcProtocolVersions.Legacy)]
-    [TestCase(XdcProtocolVersions.Xdc164)]
-    public void Pooled_transaction_codes_are_rejected_below_xdc165(byte version)
+    [Test]
+    public void Pooled_transaction_codes_are_rejected_below_xdc165([Values(XdcProtocolVersions.Legacy, XdcProtocolVersions.Xdc164)] byte version)
     {
         using Peer peer = Peer.Create(version);
         peer.ReceiveStatus();
