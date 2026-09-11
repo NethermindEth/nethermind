@@ -1969,24 +1969,40 @@ public class FrameTxProcessorTests
 
     // A batch unrolling entirely inside the body leaves the assertion running against the restored state.
     [Test]
-    public void Execute_AtomicBatchInTheBodyUnrolls_PostTxStillAsserts()
+    public void Execute_AtomicBatchInTheBodyUnrolls_PostTxAssertsAgainstTheRestoredState()
     {
+        Address assertion = TestItem.AddressF;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        // TXDIFF 0x01 is a live read, so the frame passes only once the unroll has taken the write back out.
+        DeployContract(assertion, PostTxAssertAll((Txdiff(0x01, Observer, 0), To32(UInt256.Zero))));
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
-            new TxFrame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, Observer, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, target: Observer),
             Frame(TxFrame.ModeSender, target: Recipient),
-            Frame(TxFrame.ModePostTx, target: Observer));
+            Frame(TxFrame.ModePostTx, target: assertion));
 
-        CallOutputTracer tracer = new();
+        FrameReceiptTracer tracer = new();
 
-        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
-            "the POST_TX write halts against the state the unroll restored");
-        AssertStorage(Observer, 0, UInt256.Zero, "the batch write is gone and the assertion added none");
+        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the batch write has to land for the unroll to have anything to undo");
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the batch's terminal frame is the one whose failure unrolls it");
+            Assert.That(tracer.FrameReceipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the assertion reads the unrolled slot back as empty");
+            Assert.That(tracer.FrameReceipts[1].StateGasUsed, Is.Zero,
+                "the unrolled write's state charge goes back with its state");
+            Assert.That(tracer.FrameReceipts[1].ExecutionGasUsed, Is.Not.Zero,
+                "an unrolled frame keeps the execution gas it burned");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1ul), "an unroll leaves the transaction valid");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)tracer.GasSpent),
+                "the payer is still charged for the unrolled work");
+        }
     }
 
     // A failure in a later assertion must unwind the whole body, not only what ran after the first.
