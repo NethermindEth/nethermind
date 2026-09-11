@@ -309,6 +309,105 @@ public class BlockhashProviderTests
                 : Is.EqualTo(genesisHash));
     }
 
+    /// <summary>A cached entry must never outlive the block it was resolved for.</summary>
+    /// <remarks>Two headers at the same height writing different parent hashes land on the same ring slot,
+    /// which is the case a per-block memo gets wrong if it keys on the block number alone.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_cache_does_not_serve_another_block()
+    {
+        ulong chainLength = 42ul;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
+        BlockTree tree = builder.TestObject;
+        BlockHeader? head = tree.FindHeader(chainLength - 1ul, BlockTreeLookupOptions.None);
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        // The state path is gated on EIP-7709, which no named fork enables yet.
+        ReleaseSpec releaseSpec = new()
+        {
+            IsEip2935Enabled = true,
+            IsEip7709Enabled = true,
+            Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
+        };
+        ISpecProvider specProvider = new CustomSpecProvider((new ForkActivation(0, genesis.Timestamp), releaseSpec));
+        BlockhashProvider provider = new(new BlockhashCache(builder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
+        BlockhashStore store = new(worldState);
+
+        using IDisposable _ = worldState.BeginScope(current.Header);
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+        IReleaseSpec spec = specProvider.GetSpec(current.Header);
+        ulong number = current.Header.Number - 1;
+
+        Hash256 firstParent = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        current.Header.ParentHash = firstParent;
+        store.ApplyBlockhashStateChanges(current.Header, spec);
+
+        Span<byte> buffer = stackalloc byte[Hash256.Size];
+        Assert.That(provider.TryGetBlockhash(current.Header, number, spec, buffer), Is.True);
+        Assert.That(buffer.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()), "first block");
+
+        // A second header at the same height overwrites the same ring slot.
+        Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        BlockHeader secondHeader = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject.Header;
+        secondHeader.ParentHash = secondParent;
+        store.ApplyBlockhashStateChanges(secondHeader, spec);
+
+        Assert.That(provider.TryGetBlockhash(secondHeader, number, spec, buffer), Is.True);
+        Assert.That(buffer.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "second block must not be served the first block's entry");
+    }
+
+    /// <summary>Repeated lookups must keep agreeing with a direct read from state.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_cached_lookup_matches_uncached()
+    {
+        ulong chainLength = 42ul;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
+        BlockTree tree = builder.TestObject;
+        BlockHeader? head = tree.FindHeader(chainLength - 1ul, BlockTreeLookupOptions.None);
+
+        (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
+        Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
+        tree.SuggestHeader(current.Header);
+
+        // The state path is gated on EIP-7709, which no named fork enables yet.
+        ReleaseSpec releaseSpec = new()
+        {
+            IsEip2935Enabled = true,
+            IsEip7709Enabled = true,
+            Eip2935RingBufferSize = Eip2935Constants.RingBufferSize
+        };
+        ISpecProvider specProvider = new CustomSpecProvider((new ForkActivation(0, genesis.Timestamp), releaseSpec));
+        BlockhashProvider provider = new(new BlockhashCache(builder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
+        BlockhashStore store = new(worldState);
+
+        using IDisposable _ = worldState.BeginScope(current.Header);
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
+        IReleaseSpec spec = specProvider.GetSpec(current.Header);
+        store.ApplyBlockhashStateChanges(current.Header, spec);
+
+        Span<byte> buffer = stackalloc byte[Hash256.Size];
+        for (int round = 0; round < 3; round++)
+        {
+            for (ulong number = 0; number < current.Header.Number; number++)
+            {
+                Hash256? expected = store.GetBlockHashFromState(current.Header, number, spec);
+                bool found = provider.TryGetBlockhash(current.Header, number, spec, buffer);
+
+                Assert.That(found, Is.EqualTo(expected is not null), $"round {round}, number {number}");
+                if (expected is not null)
+                {
+                    Assert.That(buffer.ToArray(), Is.EqualTo(expected.Bytes.ToArray()), $"round {round}, number {number}");
+                }
+            }
+        }
+    }
+
     /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
     /// <remarks>Measures the allocating overload in the same run, so the comparison fails loudly if that
     /// one ever stops allocating rather than silently passing on an unrelated build.</remarks>

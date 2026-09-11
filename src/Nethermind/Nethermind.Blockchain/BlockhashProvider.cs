@@ -28,6 +28,9 @@ namespace Nethermind.Blockchain
         private Hash256[]? _hashes;
         private long _prefetchVersion;
 
+        private const int StateHashCacheSize = 256;
+        private readonly CachedBlockhash?[] _stateHashCache = new CachedBlockhash?[StateHashCacheSize];
+
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
             if (spec.IsBlockHashInStateAvailable)
@@ -57,7 +60,7 @@ namespace Nethermind.Blockchain
         {
             if (spec.IsBlockHashInStateAvailable)
             {
-                return _blockhashStore.TryGetBlockHashFromState(currentBlock, number, spec, destination);
+                return TryGetCachedBlockHashFromState(currentBlock, number, spec, destination);
             }
 
             Hash256? hash = GetBlockhash(currentBlock, number, spec);
@@ -65,6 +68,55 @@ namespace Nethermind.Blockchain
 
             hash.Bytes.CopyTo(destination);
             return true;
+        }
+
+        /// <summary>Serves EIP-2935 lookups from a per-block memo of what state already returned.</summary>
+        /// <remarks>
+        /// The ring buffer is written once per block by the system call before any transaction runs, and no
+        /// transaction can write to it, so a resolved entry cannot change while the block executes. Entries
+        /// carry the header they were resolved against and are matched by reference, so anything resolved for
+        /// a different block simply misses rather than being served stale — there is no invalidation step to
+        /// get wrong. Cached values come from state rather than from the block tree, which matters at the
+        /// fork boundary where the buffer is still filling and the two disagree.
+        /// </remarks>
+        private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, Span<byte> destination)
+        {
+            ref CachedBlockhash? slot = ref _stateHashCache[(int)(number & (StateHashCacheSize - 1))];
+
+            CachedBlockhash? entry = Volatile.Read(ref slot);
+            if (entry is not null && entry.Number == number && ReferenceEquals(entry.Header, currentBlock))
+            {
+                entry.CopyTo(destination);
+                return true;
+            }
+
+            if (!_blockhashStore.TryGetBlockHashFromState(currentBlock, number, spec, destination))
+            {
+                return false;
+            }
+
+            Volatile.Write(ref slot, new CachedBlockhash(currentBlock, number, destination));
+            return true;
+        }
+
+        /// <summary>One resolved ring-buffer entry, immutable so that a racing reader sees all of it or none.</summary>
+        /// <remarks>Transactions may execute in parallel, and a torn read pairing one block number with
+        /// another's bytes would be a consensus fault, so the entry is published as a single reference.</remarks>
+        private sealed class CachedBlockhash
+        {
+            private readonly ValueHash256 _hash;
+
+            public CachedBlockhash(BlockHeader header, ulong number, ReadOnlySpan<byte> hash)
+            {
+                Header = header;
+                Number = number;
+                _hash = new ValueHash256(hash);
+            }
+
+            public BlockHeader Header { get; }
+            public ulong Number { get; }
+
+            public void CopyTo(Span<byte> destination) => _hash.Bytes.CopyTo(destination);
         }
 
         private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, ulong number)
