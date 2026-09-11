@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CompositeTxTracer : ITxTracer
+public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 {
     internal readonly IList<ITxTracer> _txTracers;
 
@@ -75,6 +75,22 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
     public bool IsTracingLogs { get; }
+
+    public UInt256 InstructionMask
+    {
+        get
+        {
+            UInt256 mask = UInt256.Zero;
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                ITxTracer tracer = _txTracers[index];
+                if (!tracer.IsTracingInstructions && !tracer.IsTracingStack && !tracer.IsTracingMemory && !tracer.IsTracingReturnData) continue;
+                if (tracer is not IInstructionTracingFilter filter) return UInt256.MaxValue;
+                mask |= filter.InstructionMask;
+            }
+            return mask;
+        }
+    }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {

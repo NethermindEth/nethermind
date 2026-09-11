@@ -16,9 +16,13 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public class NativePrestateTracer : GethLikeNativeTxTracer
+public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter
 {
     public const string PrestateTracer = "prestateTracer";
+
+    public UInt256 InstructionMask => CaptureMask;
+
+    private static readonly UInt256 CaptureMask = CreateCaptureMask();
 
     private readonly IWorldState? _worldState;
     private readonly Hash256? _txHash;
@@ -68,6 +72,23 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
     protected override GethLikeTxTrace CreateTrace() => new();
 
+    private static UInt256 CreateCaptureMask()
+    {
+        UInt256 mask = UInt256.Zero;
+        for (int opcode = 0; opcode <= byte.MaxValue; opcode++)
+        {
+            if (RequiresStack((Instruction)opcode))
+                mask |= UInt256.One << opcode;
+        }
+        return mask;
+    }
+
+    private static bool RequiresStack(Instruction opcode) => opcode is Instruction.SLOAD or Instruction.SSTORE
+        or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
+        or Instruction.BALANCE or Instruction.SELFDESTRUCT
+        or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
+        or Instruction.CREATE or Instruction.CREATE2;
+
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
@@ -115,11 +136,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         _executingAccount = env.ExecutingAccount;
 
         IsTracingMemory = _op == Instruction.CREATE2;
-        IsTracingStack = _op is Instruction.SLOAD or Instruction.SSTORE
-            or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
-            or Instruction.BALANCE or Instruction.SELFDESTRUCT
-            or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
-            or Instruction.CREATE or Instruction.CREATE2;
+        IsTracingStack = RequiresStack(_op);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)

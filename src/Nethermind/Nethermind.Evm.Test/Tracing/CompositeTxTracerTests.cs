@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -14,6 +15,40 @@ namespace Nethermind.Evm.Test.Tracing;
 [Parallelizable(ParallelScope.All)]
 public class CompositeTxTracerTests
 {
+    [Test]
+    public void InstructionMask_WhenSiblingNeedsSnapshots_RequiresFullTracing(
+        [Values] bool stack, [Values] bool memory, [Values] bool returnData)
+    {
+        ITxTracer filtered = Substitute.For<ITxTracer, IInstructionTracingFilter>();
+        filtered.IsTracingInstructions.Returns(true);
+        ((IInstructionTracingFilter)filtered).InstructionMask.Returns(UInt256.One);
+        ITxTracer observer = Substitute.For<ITxTracer>();
+        observer.IsTracingStack.Returns(stack);
+        observer.IsTracingMemory.Returns(memory);
+        observer.IsTracingReturnData.Returns(returnData);
+        using CompositeTxTracer tracer = new(filtered, observer);
+
+        Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData ? UInt256.MaxValue : UInt256.One));
+    }
+
+    [Test]
+    public void InstructionMask_WhenCancellationForcesSnapshots_RequiresFullTracing(
+        [Values] bool stack, [Values] bool memory, [Values] bool returnData, [Values] bool instructions)
+    {
+        ITxTracer filtered = Substitute.For<ITxTracer, IInstructionTracingFilter>();
+        filtered.IsTracingInstructions.Returns(true);
+        ((IInstructionTracingFilter)filtered).InstructionMask.Returns(UInt256.One);
+        using CancellationTxTracer tracer = new(filtered)
+        {
+            IsTracingStack = stack,
+            IsTracingMemory = memory,
+            IsTracingReturnData = returnData,
+            IsTracingInstructions = instructions,
+        };
+
+        Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData || instructions ? UInt256.MaxValue : UInt256.One));
+    }
+
     [Test]
     public void StartOperation_WhenRequirementsChange_PreservesOtherTracers(
         [Values] bool otherStack, [Values] bool otherMemory)

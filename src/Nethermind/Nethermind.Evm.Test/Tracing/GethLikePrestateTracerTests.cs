@@ -21,6 +21,45 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
+    {
+        RecordingPrestateTracer tracer = new(TestState);
+        using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
+            tracer, fullTrace ? new FullInstructionTracer() : NullTxTracer.Instance));
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(2)
+            .Op(Instruction.ADD)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Does.Contain(Instruction.SLOAD));
+            Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
+            Assert.That(tracer.Error, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Execute_WhenExcludedOpcodeFails_ReportsTheError()
+    {
+        using RecordingPrestateTracer tracer = new(TestState);
+
+        Execute(tracer, Prepare.EvmCode.Op(Instruction.ADD).Done, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Does.Not.Contain(Instruction.ADD));
+            Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        }
+    }
+
     private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
     private const string DiffMode = """{"diffMode":true}""";
     private const string PrestateMode = """{"diffMode":false}""";
@@ -496,9 +535,35 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private GethLikeTxTrace ExecutePrestate(NativePrestateTracer tracer, byte[] code, bool wrapped)
     {
-        using ITxTracer executionTracer = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer), default) : tracer;
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(tracer, new FullInstructionTracer()), default)
+            : tracer;
         Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
         return tracer.BuildResult();
+    }
+
+    private sealed class FullInstructionTracer : TxTracer
+    {
+        public override bool IsTracingInstructions => true;
+    }
+
+    private sealed class RecordingPrestateTracer(IWorldState worldState)
+        : NativePrestateTracer(worldState, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
+    {
+        public List<Instruction> Operations { get; } = [];
+        public EvmExceptionType? Error { get; private set; }
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
+            Operations.Add(opcode);
+            base.StartOperation(pc, opcode, gas, env);
+        }
+
+        public override void ReportOperationError(EvmExceptionType error)
+        {
+            Error = error;
+            base.ReportOperationError(error);
+        }
     }
 
     private static byte[] SStore => Prepare.EvmCode
