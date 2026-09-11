@@ -50,6 +50,10 @@ public class ProofRpcModuleTests
     /// transaction instead of the requested one is a visible failure.</summary>
     private const int StaleReceiptIndexTxIndex = 1;
 
+    /// <summary>Logs the stale-index arrangements put on the transaction preceding the requested one; the only logs
+    /// a prefix taken in block transaction order may count.</summary>
+    private const int StaleReceiptIndexLogsBefore = 3;
+
     [SetUp]
     public async Task Setup()
     {
@@ -245,9 +249,10 @@ public class ProofRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receiptWithProof.Receipt.TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
-            // The retraced block emits no logs at all, so a non-zero base is what shows the log index was counted
-            // over the stored set — the same set the served logs themselves come from.
-            Assert.That(receiptWithProof.Receipt.Logs[0].LogIndex, Is.Not.Zero);
+            // Identical under both scenarios, so the stale stored Index moves nothing; and non-zero, where the
+            // retraced block emits no logs at all, so the count came from the stored set the served logs
+            // themselves come from.
+            Assert.That(receiptWithProof.Receipt.Logs[0].LogIndex, Is.EqualTo(StaleReceiptIndexLogsBefore));
             Assert.That(receiptWithProof.Receipt.Logs[0].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
             Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
             Assert.That(receiptWithProof.ReceiptProof, Is.EqualTo(expectedReceiptProof));
@@ -387,7 +392,8 @@ public class ProofRpcModuleTests
     /// <remarks>
     /// The substituted set is wider than the block and carries logs the block never emitted, so counting over it
     /// answers non-zero where the retraced receipts answer 0, which makes the served <c>logIndex</c> evidence of
-    /// which of the two the receipt was served against.
+    /// which of the two the receipt was served against. Both the requested receipt and the one for the dropped
+    /// transaction carry logs of their own, so a prefix that wrongly admits either is visible in that number.
     /// </remarks>
     /// <returns>The requested transaction's hash.</returns>
     private Hash256 ArrangeStaleReceiptIndex(StaleReceiptIndexScenario scenario)
@@ -395,7 +401,6 @@ public class ProofRpcModuleTests
         Block block = _blockTree.FindBlock(1)!;
         Hash256 txHash = block.Transactions[StaleReceiptIndexTxIndex].Hash!;
 
-        const int logsBeforeRequested = 3;
         const int logsOnDroppedTransaction = 5;
         const int logsOnRequested = 1;
 
@@ -410,13 +415,10 @@ public class ProofRpcModuleTests
         // requested transaction now occupies is for a transaction this block no longer contains.
         TxReceipt[] receipts =
         [
-            ReceiptWithLogs(block.Transactions[0].Hash!, 0, logsBeforeRequested),
+            ReceiptWithLogs(block.Transactions[0].Hash!, 0, StaleReceiptIndexLogsBefore),
             ReceiptWithLogs(TestItem.KeccakF, StaleReceiptIndexTxIndex, logsOnDroppedTransaction),
             ReceiptWithLogs(txHash, staleIndex, logsOnRequested)
         ];
-
-        Assert.That(receipts.GetBlockLogFirstIndex(StaleReceiptIndexTxIndex), Is.Not.Zero,
-            "the stored set must disagree with the retraced one, or the served log index proves nothing");
 
         ArrangeReceiptFinder(block, txHash, receipts);
 

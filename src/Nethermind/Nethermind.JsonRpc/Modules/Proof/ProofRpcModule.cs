@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -101,10 +102,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-            // Counted over the stored set the served logs come from, so the served logIndex identifies the same log
-            // eth_getTransactionReceipt and eth_getLogs do; the block-derived position keeps a stale stored Index
-            // from shifting it.
-            int logIndexStart = storedReceipts.GetBlockLogFirstIndex(txIndex);
+            int logIndexStart = GetLogIndexStart(txs, storedReceipts, txIndex);
 
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
@@ -210,6 +208,40 @@ namespace Nethermind.JsonRpc.Modules.Proof
             TxReceipt[] storedReceipts = receiptFinder.Get(block);
             resolved = new ResolvedTransaction(block, txIndex, storedReceipts, storedReceipts.ForTransaction(txHash));
             return true;
+        }
+
+        /// <summary>
+        /// Counts the logs the block emits ahead of the transaction at <paramref name="txIndex"/>, over the stored
+        /// receipts the served logs themselves come from.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not <see cref="ReceiptsExtensions.GetBlockLogFirstIndex"/>, which tests the threshold against
+        /// each stored <c>Index</c>: a stale index on the requested receipt counts its own logs toward its own
+        /// starting offset, and one on any other receipt moves that receipt in or out of the prefix. Matching by
+        /// transaction hash puts the prefix in block order instead, which also drops receipts for transactions the
+        /// resolved block no longer contains. A preceding transaction with no stored receipt contributes nothing,
+        /// as it does for <c>eth_getTransactionReceipt</c> over the same partial set.
+        /// </remarks>
+        private static int GetLogIndexStart(Transaction[] txs, TxReceipt[] storedReceipts, int txIndex)
+        {
+            if (txIndex == 0) return 0;
+
+            HashSet<Hash256> preceding = new(txIndex);
+            for (int i = 0; i < txIndex; i++)
+            {
+                preceding.Add(txs[i].Hash!);
+            }
+
+            int logIndexStart = 0;
+            foreach (TxReceipt storedReceipt in storedReceipts)
+            {
+                if (storedReceipt.TxHash is not null && preceding.Contains(storedReceipt.TxHash))
+                {
+                    logIndexStart += storedReceipt.Logs?.Length ?? 0;
+                }
+            }
+
+            return logIndexStart;
         }
 
         private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
