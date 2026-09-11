@@ -54,7 +54,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _readCoverage = readCoverage;
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
-        _codeChangesByHash = BuildCodeChangesByHash();
+        _codeChangesByHash = _suggestedBlockAccessList?.GetCodeChangesByHash();
         _transientStorageProvider.Reset();
     }
 
@@ -398,36 +398,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             return true;
         }
         return false;
-    }
-
-    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
-    {
-        if (_suggestedBlockAccessList is null)
-        {
-            return null;
-        }
-
-        // Built once per block; entries are immutable across the block. TryGetCodeByHash filters
-        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible. The
-        // dictionary itself is only allocated when at least one account declares a code change,
-        // so most blocks (which rarely contain deployments) skip the per-block allocation.
-        Dictionary<ValueHash256, (uint Index, byte[] Code)>? codeChangesByHash = null;
-        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
-        {
-            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
-            if (codeChanges.Length == 0) continue;
-            codeChangesByHash ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
-            foreach (CodeChange codeChange in codeChanges)
-            {
-                if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
-                    || codeChange.Index < existing.Index)
-                {
-                    codeChangesByHash[codeChange.CodeHash] = (codeChange.Index, codeChange.Code);
-                }
-            }
-        }
-
-        return codeChangesByHash;
     }
 
     private static bool TryGetDeclaredSlotChanges(ReadOnlyAccountChanges accountChanges, UInt256 slot, out ReadOnlySlotChanges? slotChanges)

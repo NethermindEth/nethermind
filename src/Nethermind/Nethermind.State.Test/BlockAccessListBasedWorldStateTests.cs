@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -213,6 +214,37 @@ public class BlockAccessListBasedWorldStateTests
         public override ulong GetNonce(Address address) => _nonce;
         public override ref readonly ValueHash256 GetCodeHash(Address address) => ref _codeHash;
         public override bool AccountExists(Address address) => !ReportMissing && base.AccountExists(address);
+    }
+
+    [Test]
+    public void GetCodeByHash_ConcurrentReadersKeepIndependentIndicesAndBlocks([Values] bool hasCodeChanges)
+    {
+        byte[] code = [0x00, 0x01];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        CodeChange[] changes = hasCodeChanges ? [new CodeChange(1, code), new CodeChange(5, code)] : [];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithCodeChanges(changes).TestObject).TestObject;
+        ReadOnlyBlockAccessList next = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(10, code)).TestObject).TestObject;
+        Block originalBlock = Build.A.Block.WithBlockAccessList(bal).TestObject;
+        Block nextBlock = Build.A.Block.WithBlockAccessList(next).TestObject;
+
+        Parallel.For(0, 8, index =>
+        {
+            (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState((uint)index, bal);
+            using (scope)
+            {
+                Assert.That(bws.GetCode(hash), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
+                bws.Setup(nextBlock);
+                Assert.That(bws.GetCode(hash), Is.Null);
+                bws.Setup(originalBlock);
+                Assert.That(bws.GetCode(hash), Is.EqualTo(hasCodeChanges && index > 1 ? code : null));
+                bws.ClearParentReader();
+                Assert.That(bws.GetCode(hash), Is.Null);
+            }
+        });
     }
 
     [Test]
