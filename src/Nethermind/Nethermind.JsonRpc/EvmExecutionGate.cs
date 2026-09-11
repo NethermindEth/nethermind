@@ -75,8 +75,12 @@ internal sealed class EvmExecutionGate
     // Waiters still waiting. Distinct from _waiters.Count, which also holds entries whose caller has already given
     // up: a waiter that is overtaken is by construction outlived by its overtaker, so it expires while something
     // live sits ahead of it in the heap and cannot be reaped from the head. Counting the heap would let those
-    // corpses fill the depth cap and shed healthy callers. Decremented by whichever of grant/abandon settles the
-    // waiter, so it is exact.
+    // corpses fill the depth cap and shed healthy callers.
+    //
+    // Settled from a timer thread that holds no lock, so this is only ever read where being transiently high is
+    // harmless - the depth cap, where it just sheds a little early. Admission itself is decided from the heap,
+    // which is exact under the lock: reading a stale live count there would park a caller behind a waiter that no
+    // longer exists, with nobody left holding a lease to release it.
     private int _liveWaiters;
 
     /// <param name="config">Supplies the permit count and the wait budget.</param>
@@ -109,20 +113,26 @@ internal sealed class EvmExecutionGate
         Waiter? waiter = null;
         lock (_lock)
         {
-            // A free permit is taken directly only when nobody is already queued, so an arrival cannot barge past
-            // waiters that the ordering has already placed ahead of it.
-            if (_liveWaiters == 0 && _freePermits > 0)
+            DropSettled();
+
+            // A free permit is taken directly only when the queue is empty, so an arrival cannot barge past a
+            // waiter the ordering has already placed ahead of it.
+            if (_waiters.Count == 0 && _freePermits > 0)
             {
                 _freePermits--;
                 return ValueTask.FromResult(new Lease(this));
             }
 
-            if (allowQueue && _budget > TimeSpan.Zero && _liveWaiters < _maxWaiters)
+            if (allowQueue && _budget > TimeSpan.Zero && Volatile.Read(ref _liveWaiters) < _maxWaiters)
             {
-                DropSettled();
                 waiter = new Waiter(this);
-                _liveWaiters++;
+                Interlocked.Increment(ref _liveWaiters);
                 _waiters.Enqueue(waiter, (_timestamp() + weight * _quantumTicks, _sequence++));
+
+                // A permit can be free here even though the queue was not empty - the head may have expired
+                // between its own release and this arrival. Hand it over now rather than leaving the queue parked
+                // behind an idle permit with no lease outstanding to release it.
+                GrantToWaiter();
             }
         }
 
@@ -188,6 +198,21 @@ internal sealed class EvmExecutionGate
         }
     }
 
+    /// <summary>Hands one free permit to the longest-deserving live waiter, if there is both.</summary>
+    private void GrantToWaiter()
+    {
+        if (_freePermits == 0) return;
+
+        while (_waiters.TryDequeue(out Waiter? waiter, out _))
+        {
+            if (waiter.TryGrant())
+            {
+                _freePermits--;
+                return;
+            }
+        }
+    }
+
     /// <remarks>
     /// Settled entries no longer count against the depth cap, so this only reclaims memory. Reaping the head is
     /// enough in steady state; the bounded rebuild covers a long stall, where nothing is released and expired
@@ -199,7 +224,7 @@ internal sealed class EvmExecutionGate
 
         if (_waiters.Count <= _maxWaiters * 2) return;
 
-        List<(Waiter Waiter, (long, long) Key)> live = new(_liveWaiters);
+        List<(Waiter Waiter, (long, long) Key)> live = new(_waiters.Count);
         while (_waiters.TryDequeue(out Waiter? waiter, out (long, long) key))
         {
             if (!waiter.IsSettled) live.Add((waiter, key));

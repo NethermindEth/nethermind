@@ -229,8 +229,8 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Arrivals_beyond_the_queue_depth_cap_are_shed_rather_than_queued()
     {
-        // What turns the bound on overtaker count into a bound on the wait: with the queue capped, the work that
-        // can be admitted ahead of a waiter is capped too, so a queued request is served rather than timed out.
+        // The cap bounds queue depth and refuses past it on arrival. It makes no promise about the wait - see the
+        // remark on EvmExecutionGate, which is explicit that the ordering is not a liveness guarantee.
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
@@ -260,17 +260,46 @@ public class EvmExecutionGateTests
     /// at the call itself rather than from the returned task after the wait budget.</summary>
     private static bool ShedsOnArrival(EvmExecutionGate gate, bool allowQueue = true)
     {
+        ValueTask<EvmExecutionGate.Lease> pending;
         try
         {
-            ValueTask<EvmExecutionGate.Lease> pending = gate.AcquireAsync(1, allowQueue);
-            // Queued rather than shed. Observe the task so a later timeout is not an unobserved fault.
-            _ = pending.AsTask().ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
-            return false;
+            pending = gate.AcquireAsync(1, allowQueue);
         }
         catch (LimitExceededException)
         {
             return true;
         }
+
+        // Not shed - but "did not throw" alone would also cover a free permit, which would mean the caller never
+        // tested the saturated gate it meant to. Distinguish the two rather than reporting both as "queued".
+        if (pending.IsCompletedSuccessfully)
+        {
+            pending.Result.Dispose();
+            Assert.Fail("a permit was free, so the gate was not saturated and the shed path was never exercised");
+        }
+
+        // Genuinely queued. Observe the task so a later timeout is not an unobserved fault.
+        _ = pending.AsTask().ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        return false;
+    }
+
+    [Test]
+    public async Task An_expired_waiter_does_not_park_the_gate()
+    {
+        // A waiter that timed out leaves its entry in the heap. A later arrival must not queue behind it: at that
+        // point nothing holds a lease, so there would be nobody left to release a permit and the caller would wait
+        // out its whole budget for no reason. Admission is therefore decided from the heap, which is exact under
+        // the lock, rather than from the live count, which a timer thread settles without it.
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
+
+        held.Dispose();
+
+        // Admitted straight away rather than after another budget.
+        using EvmExecutionGate.Lease next = await Acquire(gate);
+        Assert.That(gate.QueuedCount, Is.Zero);
     }
 
     [Test]

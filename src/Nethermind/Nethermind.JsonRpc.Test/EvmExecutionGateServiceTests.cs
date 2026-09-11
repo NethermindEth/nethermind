@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Eth;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -159,14 +158,19 @@ public class EvmExecutionGateServiceTests
         // Checked against the concrete streaming types rather than the declared payload: every streaming result is
         // substituted at runtime under a base (GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace), so a test
         // that looked for a declared IStreamableResult would never match and would pass vacuously.
-        // The streaming results all live alongside IStreamableResult in Nethermind.JsonRpc.
-        Type[] streamingTypes = [.. typeof(IStreamableResult).Assembly.GetTypes()
+        // Scanned across the loaded Nethermind assemblies rather than just Nethermind.JsonRpc: Merge.Plugin
+        // implements IStreamableResult too, and a plugin could flag IsEvmExecution on a streaming-capable payload.
+        Assembly[] loaded = [.. AppDomain.CurrentDomain.GetAssemblies()
+            .Where(static a => a.GetName().Name?.StartsWith("Nethermind.", StringComparison.Ordinal) == true)];
+
+        Type[] streamingTypes = [.. loaded
+            .SelectMany(SafeExportedTypes)
             .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IStreamableResult).IsAssignableFrom(t))];
 
         Assert.That(streamingTypes, Is.Not.Empty, "the guard is only meaningful if streaming types were found");
 
         List<string> offenders = [];
-        foreach (Type moduleType in AllRpcModuleInterfaces())
+        foreach (Type moduleType in AllRpcModuleInterfaces(loaded))
         {
             foreach (MethodInfo method in moduleType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
@@ -189,11 +193,27 @@ public class EvmExecutionGateServiceTests
             "a method flagged IsEvmExecution must not be able to return an IStreamableResult; see JsonRpcMethodAttribute.IsEvmExecution");
     }
 
-    private static IEnumerable<Type> AllRpcModuleInterfaces() =>
-        new[] { typeof(IEthRpcModule).Assembly, typeof(IDebugRpcModule).Assembly }
-            .Distinct()
-            .SelectMany(static a => a.GetExportedTypes())
+    private static IEnumerable<Type> AllRpcModuleInterfaces(Assembly[] assemblies) =>
+        assemblies
+            .SelectMany(SafeExportedTypes)
             .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t));
+
+    /// <summary>Exported types of an assembly, tolerating one whose dependencies are not all loaded.</summary>
+    private static IEnumerable<Type> SafeExportedTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetExportedTypes();
+        }
+        catch (ReflectionTypeLoadException e)
+        {
+            return e.Types.Where(static t => t is not null)!;
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+    }
 
     /// <summary>Payload types a JSON-RPC method can resolve to, unwrapping Task/ValueTask and the result wrapper.</summary>
     private static IEnumerable<Type> PayloadTypes(MethodInfo method)
