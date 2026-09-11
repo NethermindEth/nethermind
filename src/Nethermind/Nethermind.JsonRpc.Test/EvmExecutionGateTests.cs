@@ -284,22 +284,50 @@ public class EvmExecutionGateTests
     }
 
     [Test]
-    public async Task An_expired_waiter_does_not_park_the_gate()
+    public async Task The_gate_still_admits_after_heavy_concurrent_expiry()
     {
-        // A waiter that timed out leaves its entry in the heap. A later arrival must not queue behind it: at that
-        // point nothing holds a lease, so there would be nobody left to release a permit and the caller would wait
-        // out its whole budget for no reason. Admission is therefore decided from the heap, which is exact under
-        // the lock, rather than from the live count, which a timer thread settles without it.
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60);
-        EvmExecutionGate.Lease held = await Acquire(gate);
+        // Exercises the paths that maintain the live count concurrently - enqueue under the lock, expiry from the
+        // timer thread, release from the holder - and checks the count settles and the gate is still usable.
+        //
+        // It does NOT pin the lost-update race the Interlocked increment exists for: that window is a couple of
+        // instructions between the read and write of a non-atomic ++, and it does not reproduce here (measured:
+        // 3/3 passes against the non-atomic version). That fix rests on the memory model, not on this test. What
+        // this does catch is a wholesale accounting mistake, such as a decrement path that stops running.
+        EvmExecutionGate gate = Gate(permits: 2, maxQueueWaitMs: 40);
+        EvmExecutionGate.Lease first = await Acquire(gate);
+        EvmExecutionGate.Lease second = await Acquire(gate);
 
-        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
+        const int threads = 8;
+        const int perThread = 40;
+        Task[] workers = new Task[threads];
+        for (int t = 0; t < threads; t++)
+        {
+            workers[t] = Task.Run(async () =>
+            {
+                for (int i = 0; i < perThread; i++)
+                {
+                    try
+                    {
+                        (await gate.AcquireAsync(1, allowQueue: true)).Dispose();
+                    }
+                    catch (LimitExceededException)
+                    {
+                        // Expected: the gate is saturated for the whole run.
+                    }
+                }
+            });
+        }
 
-        held.Dispose();
+        await Task.WhenAll(workers);
+        first.Dispose();
+        second.Dispose();
 
-        // Admitted straight away rather than after another budget.
-        using EvmExecutionGate.Lease next = await Acquire(gate);
-        Assert.That(gate.QueuedCount, Is.Zero);
+        Assert.That(gate.QueuedCount, Is.Zero,
+            "a lost decrement never recovers, and the first one disables the free-permit fast path for good");
+
+        // The fast path is the thing the drift destroys, so check it still works rather than only the counter.
+        using EvmExecutionGate.Lease afterwards = await Acquire(gate);
+        Assert.Pass();
     }
 
     [Test]

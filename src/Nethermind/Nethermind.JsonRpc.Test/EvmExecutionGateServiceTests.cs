@@ -3,13 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
@@ -158,19 +158,23 @@ public class EvmExecutionGateServiceTests
         // Checked against the concrete streaming types rather than the declared payload: every streaming result is
         // substituted at runtime under a base (GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace), so a test
         // that looked for a declared IStreamableResult would never match and would pass vacuously.
-        // Scanned across the loaded Nethermind assemblies rather than just Nethermind.JsonRpc: Merge.Plugin
-        // implements IStreamableResult too, and a plugin could flag IsEvmExecution on a streaming-capable payload.
-        Assembly[] loaded = [.. AppDomain.CurrentDomain.GetAssemblies()
-            .Where(static a => a.GetName().Name?.StartsWith("Nethermind.", StringComparison.Ordinal) == true)];
+        // Anchored to named assemblies rather than whatever the host happens to have loaded, which varies with
+        // test filtering and sharding and could silently narrow the guard to nothing. Scope is therefore what this
+        // project references: plugin modules (Merge, Optimism, Taiko) are NOT covered, and a plugin that flags
+        // IsEvmExecution on a streaming-capable payload would not be caught here.
+        Assembly[] scanned = [typeof(IStreamableResult).Assembly];
 
-        Type[] streamingTypes = [.. loaded
-            .SelectMany(SafeExportedTypes)
+        Type[] streamingTypes = [.. scanned
+            .SelectMany(static a => a.GetTypes())
             .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IStreamableResult).IsAssignableFrom(t))];
 
-        Assert.That(streamingTypes, Is.Not.Empty, "the guard is only meaningful if streaming types were found");
+        // Anti-vacuity: both halves must actually be populated, or the guard passes by finding nothing.
+        Assert.That(streamingTypes, Is.Not.Empty, "no IStreamableResult implementations were found to check against");
+        Assert.That(AllRpcModuleInterfaces(scanned).Any(static t => t.Name == nameof(IEthRpcModule)), Is.True,
+            "the eth module was not in the scanned set, so gated methods would not be seen");
 
         List<string> offenders = [];
-        foreach (Type moduleType in AllRpcModuleInterfaces(loaded))
+        foreach (Type moduleType in AllRpcModuleInterfaces(scanned))
         {
             foreach (MethodInfo method in moduleType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
             {
@@ -195,25 +199,8 @@ public class EvmExecutionGateServiceTests
 
     private static IEnumerable<Type> AllRpcModuleInterfaces(Assembly[] assemblies) =>
         assemblies
-            .SelectMany(SafeExportedTypes)
+            .SelectMany(static a => a.GetExportedTypes())
             .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t));
-
-    /// <summary>Exported types of an assembly, tolerating one whose dependencies are not all loaded.</summary>
-    private static IEnumerable<Type> SafeExportedTypes(Assembly assembly)
-    {
-        try
-        {
-            return assembly.GetExportedTypes();
-        }
-        catch (ReflectionTypeLoadException e)
-        {
-            return e.Types.Where(static t => t is not null)!;
-        }
-        catch (FileNotFoundException)
-        {
-            return [];
-        }
-    }
 
     /// <summary>Payload types a JSON-RPC method can resolve to, unwrapping Task/ValueTask and the result wrapper.</summary>
     private static IEnumerable<Type> PayloadTypes(MethodInfo method)

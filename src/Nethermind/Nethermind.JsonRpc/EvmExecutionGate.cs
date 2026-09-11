@@ -69,6 +69,7 @@ internal sealed class EvmExecutionGate
     private readonly long _quantumTicks;
     private readonly int _maxPermits;
     private readonly int _maxWaiters;
+    private readonly List<(Waiter Waiter, (long Deadline, long Sequence) Key)> _rebuildScratch = [];
     private long _sequence;
     private int _freePermits;
 
@@ -113,26 +114,32 @@ internal sealed class EvmExecutionGate
         Waiter? waiter = null;
         lock (_lock)
         {
-            DropSettled();
-
-            // A free permit is taken directly only when the queue is empty, so an arrival cannot barge past a
-            // waiter the ordering has already placed ahead of it.
-            if (_waiters.Count == 0 && _freePermits > 0)
-            {
-                _freePermits--;
-                return ValueTask.FromResult(new Lease(this));
-            }
+            if (TryTakeFreePermit()) return ValueTask.FromResult(new Lease(this));
 
             if (allowQueue && _budget > TimeSpan.Zero && Volatile.Read(ref _liveWaiters) < _maxWaiters)
             {
+                // Only the enqueue path pays for the rebuild; the shed path below crosses this lock on every
+                // saturated request and must not carry an O(n log n) spike.
+                ReapSettledHead(mayRebuild: true);
+
                 waiter = new Waiter(this);
-                Interlocked.Increment(ref _liveWaiters);
                 _waiters.Enqueue(waiter, (_timestamp() + weight * _quantumTicks, _sequence++));
+                // After the enqueue: an enqueue that threw would otherwise leave a count nothing can ever settle,
+                // permanently shrinking the usable depth.
+                Interlocked.Increment(ref _liveWaiters);
 
                 // A permit can be free here even though the queue was not empty - the head may have expired
                 // between its own release and this arrival. Hand it over now rather than leaving the queue parked
                 // behind an idle permit with no lease outstanding to release it.
                 GrantToWaiter();
+            }
+            else if (TryTakeFreePermit())
+            {
+                // The timer thread can settle the head between the reap above and this point, both while this
+                // lock is held, since it does not take the lock. A caller that will not queue - a batch item, an
+                // authenticated or IPC caller, or anything past the depth cap - would otherwise be shed with a
+                // 503 while a permit sat idle and nothing was left to claim it.
+                return ValueTask.FromResult(new Lease(this));
             }
         }
 
@@ -198,6 +205,19 @@ internal sealed class EvmExecutionGate
         }
     }
 
+    /// <summary>Takes a free permit when the queue holds nobody who should go first.</summary>
+    /// <remarks>Reaps settled entries before deciding, so an expired waiter cannot make an arrival queue behind a
+    /// corpse. The heap is exact under the lock; the live count is not, since the timer thread settles without it.</remarks>
+    private bool TryTakeFreePermit()
+    {
+        ReapSettledHead(mayRebuild: false);
+
+        if (_waiters.Count > 0 || _freePermits == 0) return false;
+
+        _freePermits--;
+        return true;
+    }
+
     /// <summary>Hands one free permit to the longest-deserving live waiter, if there is both.</summary>
     private void GrantToWaiter()
     {
@@ -214,23 +234,25 @@ internal sealed class EvmExecutionGate
     }
 
     /// <remarks>
-    /// Settled entries no longer count against the depth cap, so this only reclaims memory. Reaping the head is
-    /// enough in steady state; the bounded rebuild covers a long stall, where nothing is released and expired
-    /// entries pile up behind a live one.
+    /// Settled entries no longer count against the depth cap, so the rebuild only reclaims memory. Reaping the
+    /// head is enough in steady state and is amortised O(1); the rebuild covers a long stall, where nothing is
+    /// released and expired entries pile up behind a live one, and is therefore confined to the enqueue path.
     /// </remarks>
-    private void DropSettled()
+    private void ReapSettledHead(bool mayRebuild)
     {
         while (_waiters.TryPeek(out Waiter? head, out _) && head.IsSettled) _waiters.Dequeue();
 
-        if (_waiters.Count <= _maxWaiters * 2) return;
+        if (!mayRebuild || _waiters.Count <= _maxWaiters * 2) return;
 
-        List<(Waiter Waiter, (long, long) Key)> live = new(_waiters.Count);
+        // Reused rather than allocated: this runs while the one global gate lock is held.
+        _rebuildScratch.Clear();
         while (_waiters.TryDequeue(out Waiter? waiter, out (long, long) key))
         {
-            if (!waiter.IsSettled) live.Add((waiter, key));
+            if (!waiter.IsSettled) _rebuildScratch.Add((waiter, key));
         }
 
-        foreach ((Waiter waiter, (long, long) key) in live) _waiters.Enqueue(waiter, key);
+        foreach ((Waiter waiter, (long, long) key) in _rebuildScratch) _waiters.Enqueue(waiter, key);
+        _rebuildScratch.Clear();
     }
 
     [DoesNotReturn, StackTraceHidden]
