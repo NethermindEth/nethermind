@@ -16,9 +16,6 @@ namespace Nethermind.Evm.Test;
 
 public class PrecompileStaticCallTests : VirtualMachineTestsBase
 {
-    /// <summary>Largest ID output the VM keeps a scratch buffer for; anything longer is allocated per call.</summary>
-    private const int RetainedScratchLimit = 1024 * 1024;
-
     private const int RecordSize = 96;
     private const int InputOffset = 512;
 
@@ -113,9 +110,10 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     {
         // The second call fills the retained buffer exactly and the fourth exceeds it, so it is served by a
         // buffer of its own; the short calls around them must still see only their own bytes.
-        byte[] code = BuildIdentityChain([32, RetainedScratchLimit, 32, RetainedScratchLimit + 32, 32], out byte[] expected);
+        const int limit = VirtualMachineStatics.MaxRetainedPrecompileScratch;
+        byte[] code = BuildIdentityChain([32, limit, 32, limit + 32, 32], out byte[] expected);
 
-        AssertOutput(code, expected, gasLimit: 4_000_000UL);
+        AssertOutput(code, expected, gasLimit: DefaultBlockGasLimit);
     }
 
     [Test]

@@ -41,6 +41,17 @@ public sealed class EthereumVirtualMachine(
 public static class VirtualMachineStatics
 {
     public const int MaxCallDepth = 1024;
+
+    /// <summary>Smallest buffer the VM keeps for an ID precompile output.</summary>
+    public const int MinPrecompileScratch = 4 * 1024;
+
+    /// <summary>Largest ID precompile output the VM keeps a buffer for; a longer one is allocated per call.</summary>
+    /// <remarks>Memory expansion is quadratic, so an ID call this large already costs millions of gas and cannot
+    /// repeat often; past here the per-call allocation is lost in the call's own cost and is not worth retaining
+    /// for. Retaining past the 85,000-byte large object heap threshold is deliberate: the per-call allocation it
+    /// replaces lands on that heap too, and does so on every call rather than once.</remarks>
+    public const int MaxRetainedPrecompileScratch = 1024 * 1024;
+
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
@@ -112,11 +123,6 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
     /// <remarks>Reused across instructions, like the stack it mirrors; only a stack-tracing run allocates it.</remarks>
     private byte[] _tracedStackWords = [];
-
-    private const int MinPrecompileScratch = 4 * 1024;
-    // Memory expansion is quadratic, so an ID call this large already costs millions of gas and cannot repeat
-    // often; past here the per-call allocation is lost in the call's own cost and is not worth retaining for.
-    private const int MaxRetainedPrecompileScratch = 1024 * 1024;
 
     /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
     /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
@@ -989,11 +995,9 @@ public partial class VirtualMachine<TGasPolicy>(
         !codeSource.Equals(Ripemd160Address);
 
     /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
-    /// <remarks>Buffers up to <see cref="MaxRetainedPrecompileScratch"/> are kept for reuse; a larger one is
-    /// handed out but not retained, so a single outsized call does not leave a large object attached to the VM
-    /// for the rest of its life. Retaining past the 85,000-byte large object heap threshold is deliberate: the
-    /// per-call allocation it replaces lands on that heap too, and does so on every call rather than once.
-    /// </remarks>
+    /// <remarks>Buffers up to <see cref="VirtualMachineStatics.MaxRetainedPrecompileScratch"/> are kept for reuse;
+    /// a larger one is handed out but not retained, so a single outsized call does not leave a large object
+    /// attached to the VM for the rest of its life.</remarks>
     internal Memory<byte> RentPrecompileScratch(int length)
     {
         byte[] buffer = _precompileScratch;

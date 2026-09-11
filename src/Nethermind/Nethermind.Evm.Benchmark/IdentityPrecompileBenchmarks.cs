@@ -42,7 +42,9 @@ public class IdentityPrecompileBenchmarks
     private CodeInfo _code = null!;
 
     /// <summary>The last size is one word past the VM's retained-scratch limit; the rest are at or below it.</summary>
-    [Params(32, 1024, 64 * 1024, 96 * 1024, 1024 * 1024, 1024 * 1024 + 32)]
+    [Params(32, 1024, 64 * 1024, 96 * 1024,
+        VirtualMachineStatics.MaxRetainedPrecompileScratch,
+        VirtualMachineStatics.MaxRetainedPrecompileScratch + 32)]
     public int InputSize { get; set; }
 
     [GlobalSetup]
