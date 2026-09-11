@@ -2359,8 +2359,8 @@ namespace Nethermind.TxPool
                     static (_, prev, gen) => prev.LastGeneration == gen ? prev : (gen, prev.DistinctHeads + 1),
                     generation);
 
-                // A removal racing the check above leaves an entry nothing else will clean up. Removed
-                // conditionally, so a resubmission that already created a fresh entry isn't clobbered.
+                // A removal racing the check above leaves an entry nothing else cleans up. Conditional remove,
+                // so a concurrent eviction attempt that already created a fresh entry isn't clobbered.
                 if (!_transactions.ContainsKey(tx.Hash!.ValueHash256))
                 {
                     ((ICollection<KeyValuePair<ValueHash256, (long LastGeneration, int DistinctHeads)>>)_frameEvictionAttempts)

@@ -3035,17 +3035,21 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test]
-        public async Task EvictTransaction_spends_one_retry_budget_unit_per_head()
+        private Transaction CreateBudgetedFrameTxPool(int budget)
         {
-            const int budget = 2;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            return SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+        }
 
-            Transaction frameTx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+        [Test]
+        public async Task EvictTransaction_spends_one_retry_budget_unit_per_head()
+        {
+            const int budget = 2;
+            Transaction frameTx = CreateBudgetedFrameTxPool(budget);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             int evicted = 0;
@@ -3085,13 +3089,7 @@ namespace Nethermind.TxPool.Test
         public async Task EvictTransaction_gives_a_resubmitted_transaction_a_fresh_budget()
         {
             const int budget = 2;
-            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
-
-            Transaction frameTx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction frameTx = CreateBudgetedFrameTxPool(budget);
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.EvictTransaction(frameTx), Is.False, "spends the first of two units, retained");
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
