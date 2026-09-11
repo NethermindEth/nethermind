@@ -22,10 +22,11 @@ public class BlockAccessListJournalTests
 {
     [Test]
     public void Coverage_reduces_workers_and_checks_partial_words(
-        [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast)
+        [Values(0, 1, 63, 64, 65, 511, 512, 513)] int count, [Values] bool omitLast, [Values] bool wideKeys)
     {
         UInt256[] slots = new UInt256[count];
-        for (int i = 0; i < count; i++) slots[i] = (UInt256)i;
+        for (int i = 0; i < count; i++)
+            slots[i] = wideKeys ? new UInt256((ulong)(count - i), (ulong)i, (ulong)i / 2, (ulong)i / 4) : (UInt256)i;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(slots).TestObject).TestObject;
         using BalReadStoragePlan plan = new(bal);
@@ -33,7 +34,7 @@ public class BlockAccessListJournalTests
         int marked = omitLast ? Math.Max(0, count - 1) : count;
         for (int i = 0; i < marked; i++)
         {
-            StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+            StorageCell cell = new(TestItem.AddressA, slots[i]);
             workers[i % 2].TryMark(cell);
             workers[i % 2].TryMark(cell);
         }
@@ -42,6 +43,40 @@ public class BlockAccessListJournalTests
             Assert.That(workers[0].ChargeableReadCount + workers[1].ChargeableReadCount, Is.EqualTo((ulong)marked));
             Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
         }
+    }
+
+    [Test]
+    public void Coverage_distinguishes_accounts_and_reuses_cached_hits_and_misses()
+    {
+        StorageCell first = new(TestItem.AddressA, 1);
+        StorageCell last = new(TestItem.AddressA, 3);
+        StorageCell other = new(TestItem.AddressB, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(first.Address).WithStorageReads(first.Index, last.Index).TestObject,
+            Build.An.AccountChanges.WithAddress(other.Address).WithStorageReads(other.Index).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage worker = plan.CreateCoverage();
+        StorageCell[] misses = [new(first.Address, 0), new(first.Address, 2), new(first.Address, 4), new(TestItem.AddressC, 1)];
+        for (int slice = 0; slice < 2; slice++)
+        {
+            worker.StartSlice();
+            foreach (StorageCell miss in misses)
+            {
+                Assert.That(worker.TryMark(miss), Is.False);
+                Assert.That(worker.TryMark(miss), Is.False);
+            }
+            Assert.That(worker.ChargeableReadCount, Is.Zero);
+            Assert.That(worker.TryMark(first), Is.True);
+            Assert.That(worker.TryMark(new StorageCell(new Address(first.Address.Bytes), first.Index)), Is.True);
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
+            Assert.That(worker.TryMark(other), Is.True);
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(2));
+            Assert.That(worker.TryMark(last), Is.True);
+            Assert.That(worker.ChargeableReadCount, Is.EqualTo(3));
+        }
+        Assert.That(plan.TryFindUncovered(out _), Is.False);
+        plan.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => worker.TryMark(last));
     }
 
     private static readonly Address[] SystemAddresses =
@@ -53,23 +88,27 @@ public class BlockAccessListJournalTests
     ];
 
     [Test]
-    public void Coverage_reuses_slice_storage_and_excludes_system_reads([ValueSource(nameof(SystemAddresses))] Address systemAddress)
+    public void Coverage_reuses_slice_storage_and_excludes_system_reads(
+        [ValueSource(nameof(SystemAddresses))] Address systemAddress, [Values(1, 65)] int systemReads)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
         StorageCell system = new(systemAddress, 2);
+        UInt256[] systemSlots = new UInt256[systemReads];
+        for (int i = 0; i < systemSlots.Length; i++) systemSlots[i] = (UInt256)(i + 2);
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject,
-            Build.An.AccountChanges.WithAddress(system.Address).WithStorageReads(system.Index).TestObject).TestObject;
+            Build.An.AccountChanges.WithAddress(system.Address).WithStorageReads(systemSlots).TestObject).TestObject;
         using BalReadStoragePlan plan = new(bal);
         BalReadCoverage worker = plan.CreateCoverage();
         worker.TryMark(cell);
-        worker.TryMark(system);
+        foreach (UInt256 slot in systemSlots) worker.TryMark(new StorageCell(systemAddress, slot));
         Assert.That(worker.ChargeableReadCount, Is.EqualTo(1));
         for (int i = 0; i < 10_000; i++)
         {
             worker.StartSlice();
             worker.TryMark(cell);
             worker.TryMark(cell);
+            worker.TryMark(system);
         }
         using (Assert.EnterMultipleScope())
         {

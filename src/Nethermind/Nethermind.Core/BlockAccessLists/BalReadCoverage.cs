@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -17,9 +19,9 @@ public sealed class BalReadCoverage
     private ulong[] _block;
     private ulong[] _slice;
     private readonly List<int> _touchedWords = [];
-    private StorageCell _lastCell;
+    private Address? _lastAddress;
+    private UInt256 _lastSlot;
     private int _lastOrdinal;
-    private bool _hasLastCell;
 
     /// <summary>The owning block plan, or null after it is disposed.</summary>
     public BalReadStoragePlan? Plan { get; private set; }
@@ -41,19 +43,18 @@ public sealed class BalReadCoverage
         foreach (int word in _touchedWords) _slice[word] = 0;
         _touchedWords.Clear();
         ChargeableReadCount = 0;
-        _hasLastCell = false;
+        _lastAddress = null;
     }
 
     /// <summary>Marks a declared read, returning false for slots outside the read plan.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryMark(in StorageCell cell)
     {
         ObjectDisposedException.ThrowIf(Plan is null, this);
-        if (!_hasLastCell || !_lastCell.Equals(cell))
-        {
-            Plan!.TryGetOrdinal(cell, out _lastOrdinal);
-            _lastCell = cell;
-            _hasLastCell = true;
-        }
+        if (cell.Address == _lastAddress && cell.Index == _lastSlot) return _lastOrdinal >= 0;
+        Plan!.TryGetOrdinal(cell, out _lastOrdinal);
+        _lastAddress = cell.Address;
+        _lastSlot = cell.Index;
         int ordinal = _lastOrdinal;
         if (ordinal < 0) return false;
         int word = ordinal >> 6;
@@ -63,11 +64,7 @@ public sealed class BalReadCoverage
             if (_slice[word] == 0) _touchedWords.Add(word);
             _slice[word] |= mask;
             _block[word] |= mask;
-            if (cell.Address != Eip7002Constants.WithdrawalRequestPredeployAddress
-                && cell.Address != Eip7251Constants.ConsolidationRequestPredeployAddress
-                && cell.Address != Eip8282Constants.BuilderDepositRequestPredeployAddress
-                && cell.Address != Eip8282Constants.BuilderExitRequestPredeployAddress)
-                ChargeableReadCount++;
+            if (Plan.IsChargeable(word, mask)) ChargeableReadCount++;
         }
         return true;
     }

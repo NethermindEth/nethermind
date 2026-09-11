@@ -14,6 +14,7 @@ public sealed class BalReadStoragePlan : IDisposable
     private readonly ReadOnlyBlockAccessList _bal;
     private readonly Dictionary<AddressAsKey, (ReadOnlyAccountChanges Account, int Start)> _accounts;
     private readonly ConcurrentQueue<BalReadCoverage> _workers = new();
+    private ulong[] _chargeableReads;
     private bool _disposed;
 
     /// <summary>The number of declared storage reads.</summary>
@@ -31,7 +32,20 @@ public sealed class BalReadStoragePlan : IDisposable
             start = checked(start + account.StorageReads.Length);
         }
         TotalReads = start;
+        _chargeableReads = new ulong[(int)(((long)TotalReads + 63) / 64)];
+        Array.Fill(_chargeableReads, ulong.MaxValue);
+        foreach ((ReadOnlyAccountChanges account, int first) in _accounts.Values)
+        {
+            if (account.Address != Eip7002Constants.WithdrawalRequestPredeployAddress
+                && account.Address != Eip7251Constants.ConsolidationRequestPredeployAddress
+                && account.Address != Eip8282Constants.BuilderDepositRequestPredeployAddress
+                && account.Address != Eip8282Constants.BuilderExitRequestPredeployAddress) continue;
+            for (int ordinal = first; ordinal < first + account.StorageReads.Length; ordinal++)
+                _chargeableReads[ordinal >> 6] &= ~(1UL << (ordinal & 63));
+        }
     }
+
+    internal bool IsChargeable(int word, ulong mask) => (_chargeableReads[word] & mask) != 0;
 
     /// <summary>Finds a declared read's ordinal; write slots are not in this index.</summary>
     public bool TryGetOrdinal(in StorageCell cell, out int ordinal)
@@ -91,5 +105,6 @@ public sealed class BalReadStoragePlan : IDisposable
         _disposed = true;
         while (_workers.TryDequeue(out BalReadCoverage? worker)) worker.Release();
         _accounts.Clear();
+        _chargeableReads = [];
     }
 }
