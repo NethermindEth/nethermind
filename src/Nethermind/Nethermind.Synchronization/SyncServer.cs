@@ -633,6 +633,13 @@ namespace Nethermind.Synchronization
         {
             StopNotifyingPeersAboutNewBlocks();
             StopNotifyingPeersAboutBlockRangeUpdates();
+
+            // After the unsubscribes so no further source can be created; under the lock so it cannot race a
+            // concurrent swap. Without this an in-flight RangeBroadcast keeps notifying peers past disposal.
+            lock (_rangeBroadcastLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+            }
         }
     }
 }
