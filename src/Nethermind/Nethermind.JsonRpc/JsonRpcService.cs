@@ -89,7 +89,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     /// </remarks>
     private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
-        using EvmExecutionGate.Lease lease = await _evmGate.AcquireAsync(CanQueue(request, context));
+        // Weighed before the parameters are bound: the raw length is only readable while the backing buffer lives.
+        int weight = EvmExecutionGate.Weigh(request.ParamsUtf8Length);
+        using EvmExecutionGate.Lease lease = await _evmGate.AcquireAsync(weight, CanQueue(request, context));
         return await ExecuteAsync(request, methodName, method, context);
     }
 

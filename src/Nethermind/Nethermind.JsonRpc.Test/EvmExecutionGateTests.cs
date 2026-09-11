@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
@@ -13,10 +14,25 @@ namespace Nethermind.JsonRpc.Test;
 [Parallelizable(ParallelScope.Self)]
 public class EvmExecutionGateTests
 {
-    private static EvmExecutionGate Gate(int permits, int maxQueueWaitMs = 500) =>
-        new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs });
+    /// <summary>A tick source the test advances by hand, so the aging window does not depend on wall-clock timing.</summary>
+    private sealed class TestClock
+    {
+        private long _ticks;
 
-    private static async Task<EvmExecutionGate.Lease> Acquire(EvmExecutionGate gate) => await gate.AcquireAsync(allowQueue: true);
+        internal long Now() => _ticks;
+
+        internal void Advance(long ticks) => _ticks += ticks;
+    }
+
+    private static EvmExecutionGate Gate(int permits, int maxQueueWaitMs = 500, TestClock? clock = null) =>
+        new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs },
+            clock is null ? null : clock.Now);
+
+    private static long Quantum(int maxQueueWaitMs) =>
+        (long)(TimeSpan.FromMilliseconds(maxQueueWaitMs).TotalSeconds * Stopwatch.Frequency) / EvmExecutionGate.QuantumsPerBudget;
+
+    private static async Task<EvmExecutionGate.Lease> Acquire(EvmExecutionGate gate, int weight = 1) =>
+        await gate.AcquireAsync(weight, allowQueue: true);
 
     [Test]
     public async Task Admits_exactly_the_configured_number_of_permits()
@@ -49,7 +65,7 @@ public class EvmExecutionGateTests
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 5_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
-        ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(allowQueue: true);
+        ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true);
         Assert.That(queued.IsCompleted, Is.False, "the gate is saturated, so this caller must wait");
 
         held.Dispose();
@@ -64,7 +80,7 @@ public class EvmExecutionGateTests
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
-        Assert.That(async () => await gate.AcquireAsync(allowQueue: true), Throws.InstanceOf<LimitExceededException>());
+        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
     }
 
     [Test]
@@ -74,14 +90,14 @@ public class EvmExecutionGateTests
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
         // Would block for a minute if allowQueue were ignored.
-        Assert.That(async () => await gate.AcquireAsync(allowQueue: false), Throws.InstanceOf<LimitExceededException>());
+        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: false), Throws.InstanceOf<LimitExceededException>());
     }
 
     [Test]
-    public async Task Waiters_are_admitted_in_arrival_order()
+    public async Task Waiters_of_equal_weight_are_admitted_in_arrival_order()
     {
-        // The property shortest-job-first ordering gives up. A cost-ordered gate reorders these, and with no aging
-        // the later-but-cheaper caller wins every release.
+        // Weight decides the ordering only between different cost classes; within one class the deadline reduces
+        // to arrival time, so equal-weight callers keep strict FIFO and none can be overtaken.
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
@@ -89,7 +105,7 @@ public class EvmExecutionGateTests
         ValueTask<EvmExecutionGate.Lease>[] waiters = new ValueTask<EvmExecutionGate.Lease>[waiterCount];
         for (int i = 0; i < waiterCount; i++)
         {
-            waiters[i] = gate.AcquireAsync(allowQueue: true);
+            waiters[i] = gate.AcquireAsync(1, allowQueue: true);
             // Each waiter must be queued before the next one arrives, or arrival order is not defined.
             Assert.That(waiters[i].IsCompleted, Is.False);
         }
@@ -114,22 +130,74 @@ public class EvmExecutionGateTests
     }
 
     [Test]
-    public async Task A_waiter_is_served_under_sustained_arrivals_rather_than_starved()
+    public async Task Lighter_callers_are_admitted_ahead_of_a_heavier_one_that_arrived_first()
     {
-        // Regression guard for cost-ordered admission without aging: a caller the ordering deprioritises must still
-        // be served while new callers keep arriving, not shed at its budget for as long as the load continues.
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
+        // The reason for ordering by cost at all: a small eth_call must not sit behind large simulations, which is
+        // what drives the mean response time an operator actually perceives.
+        TestClock clock = new();
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
-        ValueTask<EvmExecutionGate.Lease> firstInLine = gate.AcquireAsync(allowQueue: true);
-        Assert.That(firstInLine.IsCompleted, Is.False);
+        ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
+        ValueTask<EvmExecutionGate.Lease> light = gate.AcquireAsync(1, allowQueue: true);
 
-        // A stream of later arrivals, each released immediately, mimics steady light traffic.
-        Task laterArrivals = Task.Run(async () =>
+        held.Dispose();
+
+        // The light caller arrived second but carries less slack, so it holds the only permit.
+        using (await light)
+        {
+            Assert.That(heavy.IsCompleted, Is.False, "the heavier caller must still be waiting");
+        }
+
+        (await heavy).Dispose();
+    }
+
+    [Test]
+    public async Task A_heavy_waiter_is_not_overtaken_once_its_slack_has_elapsed()
+    {
+        // The aging property. Unaged cost ordering lets every later light caller overtake forever, so a heavy
+        // request sheds at its budget for as long as light load continues; anchoring the deadline to arrival
+        // bounds the overtaking at (weight - 1) quanta.
+        const int budgetMs = 30_000;
+        TestClock clock = new();
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
+
+        // Past the heavy caller's slack window, so any later light caller now has the later deadline.
+        clock.Advance(Quantum(budgetMs) * EvmExecutionGate.MaxWeight);
+        ValueTask<EvmExecutionGate.Lease> lateLight = gate.AcquireAsync(1, allowQueue: true);
+
+        held.Dispose();
+
+        using (await heavy)
+        {
+            Assert.That(lateLight.IsCompleted, Is.False, "the aged-in heavy caller must go first");
+        }
+
+        (await lateLight).Dispose();
+    }
+
+    [Test]
+    public async Task A_heavy_waiter_is_served_under_sustained_light_arrivals()
+    {
+        // End-to-end guard on the same property: a heavy caller must be served while light traffic keeps arriving,
+        // not shed every time for as long as the load lasts.
+        const int budgetMs = 30_000;
+        TestClock clock = new();
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
+        Assert.That(heavy.IsCompleted, Is.False);
+
+        Task lightArrivals = Task.Run(async () =>
         {
             for (int i = 0; i < 50; i++)
             {
-                using EvmExecutionGate.Lease lease = await gate.AcquireAsync(allowQueue: true);
+                clock.Advance(Quantum(budgetMs));
+                using EvmExecutionGate.Lease lease = await gate.AcquireAsync(1, allowQueue: true);
             }
         });
 
@@ -137,9 +205,9 @@ public class EvmExecutionGateTests
 
         // Released before draining the arrivals: with one permit, holding it here would deadlock the very traffic
         // whose pressure the test is applying.
-        (await firstInLine).Dispose();
+        (await heavy).Dispose();
 
-        await laterArrivals;
+        await lightArrivals;
         Assert.Pass();
     }
 
@@ -150,7 +218,7 @@ public class EvmExecutionGateTests
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
-        ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(allowQueue: true);
+        ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true);
         Assert.That(Interlocked.Read(ref Metrics.EvmExecutionQueueLength), Is.EqualTo(before + 1));
 
         held.Dispose();
@@ -166,7 +234,7 @@ public class EvmExecutionGateTests
         EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 20);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
-        Assert.That(async () => await gate.AcquireAsync(allowQueue: true), Throws.InstanceOf<LimitExceededException>());
+        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
         Assert.That(Interlocked.Read(ref Metrics.EvmExecutionQueueLength), Is.EqualTo(before));
     }
 
@@ -179,7 +247,7 @@ public class EvmExecutionGateTests
         EvmExecutionGate.Lease lease = await Acquire(gate);
         lease.Dispose();
 
-        Assert.That(lease.Dispose, Throws.InstanceOf<SemaphoreFullException>());
+        Assert.That(lease.Dispose, Throws.InstanceOf<InvalidOperationException>());
     }
 
     [Test]
@@ -192,16 +260,23 @@ public class EvmExecutionGateTests
         {
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
-                leases.Add(gate.AcquireAsync(allowQueue: false).Result);
+                leases.Add(gate.AcquireAsync(1, allowQueue: false).Result);
             }
 
-            Assert.That(async () => await gate.AcquireAsync(allowQueue: false), Throws.InstanceOf<LimitExceededException>());
+            Assert.That(async () => await gate.AcquireAsync(1, allowQueue: false), Throws.InstanceOf<LimitExceededException>());
         }
         finally
         {
             foreach (EvmExecutionGate.Lease lease in leases) lease.Dispose();
         }
     }
+
+    [TestCase(0, 1, Description = "no params is the lightest class")]
+    [TestCase(EvmExecutionGate.BytesPerWeightUnit - 1, 1, Description = "just under one unit stays lightest")]
+    [TestCase(EvmExecutionGate.BytesPerWeightUnit, 2, Description = "one full unit moves up a class")]
+    [TestCase(EvmExecutionGate.BytesPerWeightUnit * 64, EvmExecutionGate.MaxWeight, Description = "clamped at the heaviest class")]
+    public void Weight_follows_the_raw_params_length(int paramsByteLength, int expected) =>
+        Assert.That(EvmExecutionGate.Weigh(paramsByteLength), Is.EqualTo(expected));
 
     [TestCase(0, Description = "a non-positive instance count still leaves one usable slot")]
     [TestCase(-5, Description = "a negative instance count still leaves one usable slot")]
