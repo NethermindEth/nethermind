@@ -12,12 +12,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -680,13 +684,20 @@ public partial class EngineModuleTests
 
     // bogota.md engine_forkchoiceUpdatedV5 (2.1-2.2): a VALID head must carry a compliance answer, derived
     // from the retained inclusion list when newPayloadV6 could not answer it (the block was still queued).
-    [TestCase(true, TestName = "ForkchoiceUpdatedV5_answers_a_satisfied_head_left_syncing_by_newPayloadV6")]
-    [TestCase(false, TestName = "ForkchoiceUpdatedV5_answers_an_unsatisfied_head_left_syncing_by_newPayloadV6")]
+    // The stateReadThrows case pins the degradation: evaluating the retained list reads the head's state,
+    // and an absent trie node there must not fail an update that has already applied the head and begun a build.
+    [TestCase(true, false, TestName = "ForkchoiceUpdatedV5_answers_a_satisfied_head_left_syncing_by_newPayloadV6")]
+    [TestCase(false, false, TestName = "ForkchoiceUpdatedV5_answers_an_unsatisfied_head_left_syncing_by_newPayloadV6")]
+    [TestCase(false, true, TestName = "ForkchoiceUpdatedV5_reports_null_when_the_retained_list_evaluation_throws")]
     [NonParallelizable]
-    public async Task ForkchoiceUpdatedV5_answers_compliance_for_a_head_left_syncing(bool satisfied)
+    public async Task ForkchoiceUpdatedV5_answers_compliance_for_a_head_left_syncing(bool satisfied, bool stateReadThrows)
     {
+        HeadStateInterceptor headState = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 100 });
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 100 },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
+                .AddSingleton<IStateReader>(headState)));
+        headState.Inner = chain.StateReader;
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
 
@@ -729,13 +740,95 @@ public partial class EngineModuleTests
             await Task.Delay(20, cts.Token);
         }
 
+        if (stateReadThrows) headState.MissingNodeBlock = payload.BlockHash;
+
+        // Attributes are attached so a failed evaluation is seen to cost no block proposal.
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(payload.BlockHash, parent.Hash!, parent.Hash!), payloadAttributes: null);
+            new ForkchoiceStateV1(payload.BlockHash, parent.Hash!, parent.Hash!),
+            BuildBogotaPayloadAttributes(inclusionList: [], timestamp: payload.Timestamp + 12, slotNumber: 2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Result.ResultType, Is.EqualTo(ResultType.Success), fcu.Result.Error);
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(stateReadThrows ? null : satisfied));
+            Assert.That(fcu.Data.PayloadId, Is.Not.Null);
+        }
+    }
+
+    // The inclusion list is a per-call parameter, not a property of the block, so the answer newPayloadV6
+    // cached for one call must never stand in for a later call that supplied a different list.
+    [TestCase(true, false, TestName = "ForkchoiceUpdatedV5_recomputes_a_resent_inclusion_list_once_the_head_state_is_readable")]
+    [TestCase(false, null, TestName = "ForkchoiceUpdatedV5_reports_null_for_a_resent_inclusion_list_it_cannot_evaluate")]
+    public async Task ForkchoiceUpdatedV5_does_not_answer_a_resent_inclusion_list_from_the_previous_answer(
+        bool stateHealed, bool? expected)
+    {
+        HeadStateInterceptor headState = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
+                .AddSingleton<IStateReader>(headState)));
+        headState.Inner = chain.StateReader;
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        // An empty list is trivially satisfied, so this leaves inclusionListSatisfied=true cached for the head.
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+
+        // Resend the same block with a censoring list, with its state pruned so newPayloadV6 cannot answer.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        headState.PrunedBlock = payload.BlockHash;
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(resend.Data.InclusionListSatisfied, Is.Null);
+        }
+
+        if (stateHealed) headState.PrunedBlock = null;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(satisfied));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(expected));
         }
+    }
+
+    /// <summary>Wraps the chain's <see cref="IStateReader"/> so one block's state can be made unreadable.</summary>
+    /// <remarks>
+    /// <see cref="Inner"/> is assigned once the chain is built, because the reader being wrapped is itself one
+    /// of the chain's components; nothing reads state during the build.
+    /// </remarks>
+    private sealed class HeadStateInterceptor : IStateReader
+    {
+        public IStateReader Inner { get; set; } = null!;
+
+        /// <summary>Block whose state must appear pruned, as it is once the block leaves the pruning window.</summary>
+        public Hash256? PrunedBlock { get; set; }
+
+        /// <summary>Block whose account reads must throw, as they do when a subtrie node is absent under a present root.</summary>
+        public Hash256? MissingNodeBlock { get; set; }
+
+        public bool HasStateForBlock(BlockHeader? baseBlock) => !Matches(baseBlock, PrunedBlock) && Inner.HasStateForBlock(baseBlock);
+
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) =>
+            Matches(baseBlock, MissingNodeBlock)
+                ? throw new MissingTrieNodeException("Node missing", null, TreePath.Empty, Keccak.Zero)
+                : Inner.TryGetAccount(baseBlock, address, out account);
+
+        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index) => Inner.GetStorage(baseBlock, address, in index);
+
+        public byte[]? GetCode(Hash256 codeHash) => Inner.GetCode(codeHash);
+
+        public byte[]? GetCode(in ValueHash256 codeHash) => Inner.GetCode(in codeHash);
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
+            where TCtx : struct, INodeContext<TCtx> => Inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+
+        private static bool Matches(BlockHeader? header, Hash256? hash) => hash is not null && header?.Hash == hash;
     }
 
     private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot)
