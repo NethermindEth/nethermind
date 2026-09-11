@@ -188,6 +188,7 @@ jobs:
       amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
       expb_env: ${{ steps.resolve.outputs.expb_env }}
+      priority_mode: ${{ steps.resolve.outputs.priority_mode }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
       run_count: ${{ steps.resolve.outputs.run_count }}
@@ -264,6 +265,20 @@ jobs:
               flat_write_buffer_floor=""
             fi
             expb_env="${DISPATCH_EXPB_ENV:-}"
+            priority_mode=""
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" || "${_kv}" != EXPB_NETHERMIND_PRIORITY_MODE=* ]] && continue
+              if [[ -n "${priority_mode}" ]]; then
+                echo "EXPB_NETHERMIND_PRIORITY_MODE must be specified at most once."
+                exit 1
+              fi
+              priority_mode="${_kv#*=}"
+            done < <(printf '%s\n' "${expb_env}" | tr ',' '\n')
+            if [[ -n "${priority_mode}" && "${priority_mode}" != "observe" && "${priority_mode}" != "nice" && "${priority_mode}" != "off" ]]; then
+              echo "EXPB_NETHERMIND_PRIORITY_MODE must be observe, nice, or off (got '${priority_mode}')."
+              exit 1
+            fi
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
@@ -328,6 +343,7 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            priority_mode=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -347,6 +363,7 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            priority_mode=""
           fi
 
           # One switch drives the runner and every path that differs between the two boxes, so a
@@ -495,6 +512,7 @@ jobs:
             echo "expb_env<<EOF"
             printf '%s\n' "${expb_env}"
             echo "EOF"
+            echo "priority_mode=${priority_mode}"
           } >> "${GITHUB_OUTPUT}"
 
   prepare-docker:
@@ -1119,6 +1137,21 @@ jobs:
           wait "${tee_pid}"
 
           exit "${expb_exit_code}"
+
+      - name: Verify Linux priority records
+        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' }}
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          PRIORITY_MODE: ${{ needs.resolve.outputs.priority_mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          verifier="${RUNNER_TEMP}/verify-priority-log.py"
+          verifier_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/raw/${GITHUB_SHA}/scripts/priority-bench/verify_priority_log.py"
+          curl --fail --silent --show-error --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" "${verifier_url}" -o "${verifier}"
+          python3 "${verifier}" "${RAW_RUN_LOG}" --mode "${PRIORITY_MODE}"
 
       - name: Analyze benchmark output
         id: analyze
@@ -2457,6 +2490,21 @@ jobs:
           wait "${tee_pid}"
 
           exit "${expb_exit_code}"
+
+      - name: Verify Linux priority records
+        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' }}
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          PRIORITY_MODE: ${{ needs.resolve.outputs.priority_mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          verifier="${RUNNER_TEMP}/verify-priority-log.py"
+          verifier_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/raw/${GITHUB_SHA}/scripts/priority-bench/verify_priority_log.py"
+          curl --fail --silent --show-error --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" "${verifier_url}" -o "${verifier}"
+          python3 "${verifier}" "${RAW_RUN_LOG}" --mode "${PRIORITY_MODE}"
 
       - name: Analyze benchmark output
         id: analyze
