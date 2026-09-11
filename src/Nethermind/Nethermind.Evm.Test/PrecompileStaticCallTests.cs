@@ -68,6 +68,55 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void ReturnDataCopy_after_an_identity_call_whose_output_overlaps_its_input_sees_the_input()
+    {
+        byte[] input = new byte[64];
+        for (int i = 0; i < input.Length; i++) input[i] = (byte)(i + 1);
+
+        byte[] code = Prepare.EvmCode
+            .MSTORE(0, input[..32])
+            .MSTORE(32, input[32..])
+            // Output range overlaps the input range, so the copy rewrites half of [0,64) as it runs.
+            .STATICCALL(50_000, IdentityPrecompile.Address, 0, 64, 32, 64)
+            .Op(Instruction.POP)
+            .RETURNDATACOPY(128, 0, 64)
+            .RETURN(128, 64)
+            .Done;
+
+        ReceiptOnlyTracer tracer = Execute(new ReceiptOnlyTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(input));
+        }
+    }
+
+    [Test]
+    public void ReturnDataCopy_after_the_frame_overwrites_the_identity_input_sees_the_input()
+    {
+        byte[] input = new byte[32];
+        for (int i = 0; i < input.Length; i++) input[i] = (byte)(i + 1);
+
+        byte[] code = Prepare.EvmCode
+            .MSTORE(0, input)
+            .STATICCALL(50_000, IdentityPrecompile.Address, 0, 32, 64, 32)
+            .Op(Instruction.POP)
+            .MSTORE(0, new byte[32])
+            .RETURNDATACOPY(96, 0, 32)
+            .RETURN(96, 32)
+            .Done;
+
+        ReceiptOnlyTracer tracer = Execute(new ReceiptOnlyTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(input));
+        }
+    }
+
+    [Test]
     public void Staticcall_to_precompile_below_base_gas_cost_returns_zero()
         => AssertStaticCallStatus(ECRecoverPrecompile.Address, inputLength: 128, gasForwarded: 100, expectedStatus: 0);
 
