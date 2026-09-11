@@ -2338,14 +2338,10 @@ namespace Nethermind.TxPool
 
         /// <inheritdoc/>
         /// <remarks>
-        /// The long-term cache is cleared, unlike in <see cref="RemoveExpiredFrameTransactions"/>: a payment failure
-        /// turns on chain state that can change.
-        /// <para>
-        /// <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> bounds distinct heads failed on, not total
-        /// re-execution: same-head rebuilds re-charge the validation prefix without spending a unit, and a
-        /// transaction that briefly built successfully still accumulates a later failure the same as a consecutive
-        /// one.
-        /// </para>
+        /// The long-term cache is cleared, unlike <see cref="RemoveExpiredFrameTransactions"/>: a payment
+        /// failure turns on state that can change.
+        /// <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> counts distinct heads, not attempts: same-head
+        /// rebuilds cost CPU but not budget, and an interim success doesn't reset the count.
         /// </remarks>
         public bool EvictTransaction(Transaction tx)
         {
