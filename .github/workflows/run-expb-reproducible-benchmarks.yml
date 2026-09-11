@@ -372,8 +372,9 @@ jobs:
             arm64)
               runner_label="reproducible-benchmarks-arm"
               expb_data_dir="/data/expb-data"
-              # This box carries a single flat snapshot and serves both config spellings from it.
-              flat_snapshot_dir="/data/nethermind/nethermind-flat-25490000"
+              # Legacy and Fusaka configs use distinct snapshots; the ARM runner must have the
+              # matching one mounted instead of silently running legacy payloads on the Fusaka head.
+              flat_snapshot_dir="/data/nethermind/nethermind-flat-snapshot"
               flat_snapshot_block_dir="/data/nethermind/nethermind-flat-25490000"
               ;;
             amd64)
@@ -389,7 +390,7 @@ jobs:
               ;;
           esac
 
-          # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
+          # The ARM box stocks flat snapshots only, and the config render rewrites only the flat
           # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
           if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
             echo "::error::The reproducible-benchmarks-arm runner only serves a flat snapshot - dispatch with arch=amd64 for halfpath."
@@ -880,7 +881,8 @@ jobs:
           # END EXPB_DELAY_RENDER
           payload_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].payloads // .scenarios.[strenv(SK)].payloads_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
           fcus_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].fcus // .scenarios.[strenv(SK)].fcus_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
-          echo "EXPB selected inputs: payloads=${payload_path} fcus=${fcus_path}"
+          snapshot_source="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].snapshot_source // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          echo "EXPB selected inputs: payloads=${payload_path} fcus=${fcus_path} snapshot_source=${snapshot_source}"
 
           if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
             echo "EXPB ARM snapshot directories directly under /data/nethermind:"
@@ -890,6 +892,16 @@ jobs:
               echo "::warning::ARM snapshot root /data/nethermind is not present."
             fi
           fi
+
+          # BEGIN EXPB_ARM_SNAPSHOT_CHECK
+          if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
+            if [[ "${snapshot_source}" == "<missing>" || ! -d "${snapshot_source}" ]]; then
+              echo "::error::ARM snapshot_source directory is missing: ${snapshot_source}. Select a dataset whose matching snapshot exists under /data/nethermind (legacy or Fusaka 25490000)."
+              exit 1
+            fi
+            echo "EXPB ARM snapshot_source exists: ${snapshot_source}"
+          fi
+          # END EXPB_ARM_SNAPSHOT_CHECK
 
           diagnose_jsonl() {
             local kind="$1"
@@ -2343,7 +2355,8 @@ jobs:
           # END EXPB_DELAY_RENDER
           payload_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].payloads // .scenarios.[strenv(SK)].payloads_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
           fcus_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].fcus // .scenarios.[strenv(SK)].fcus_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
-          echo "EXPB selected inputs: payloads=${payload_path} fcus=${fcus_path}"
+          snapshot_source="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].snapshot_source // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          echo "EXPB selected inputs: payloads=${payload_path} fcus=${fcus_path} snapshot_source=${snapshot_source}"
 
           if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
             echo "EXPB ARM snapshot directories directly under /data/nethermind:"
@@ -2353,6 +2366,16 @@ jobs:
               echo "::warning::ARM snapshot root /data/nethermind is not present."
             fi
           fi
+
+          # BEGIN EXPB_ARM_SNAPSHOT_CHECK
+          if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
+            if [[ "${snapshot_source}" == "<missing>" || ! -d "${snapshot_source}" ]]; then
+              echo "::error::ARM snapshot_source directory is missing: ${snapshot_source}. Select a dataset whose matching snapshot exists under /data/nethermind (legacy or Fusaka 25490000)."
+              exit 1
+            fi
+            echo "EXPB ARM snapshot_source exists: ${snapshot_source}"
+          fi
+          # END EXPB_ARM_SNAPSHOT_CHECK
 
           diagnose_jsonl() {
             local kind="$1"
