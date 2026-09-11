@@ -705,7 +705,7 @@
           "Microsoft.IdentityModel.JsonWebTokens": "[8.22.0, )",
           "Nethermind.Crypto.SecP256k1": "[1.7.0, )",
           "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Numerics.Int256": "[1.8.0, )",
+          "Nethermind.Numerics.Int256": "[1.9.0-rc, )",
           "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
           "Testably.Abstractions": "[10.3.0, )"
@@ -1107,7 +1107,7 @@
       "nethermind.serialization.ssz": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.8.0, )"
+          "Nethermind.Numerics.Int256": "[1.9.0-rc, )"
         }
       },
       "nethermind.shutter": {
@@ -1587,9 +1587,9 @@
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.8.0, )",
-        "resolved": "1.8.0",
-        "contentHash": "Y+fQEFPsbfZsvzNEROU4ST86ocICVHDj6FImKxMRYfB1ka7wlQzEShLuxt50Vblo4AaLDlsUloYWyRFfSi+K6A==",
+        "requested": "[1.9.0-rc, )",
+        "resolved": "1.9.0-rc",
+        "contentHash": "tmqiGe8xiYpBqauIhfcxli7f/HfVo840ANtVlNnRMaHwNuA02/W0n/GFJ5clQcd4H71+BDCdJMxCiKfL5KWPWA==",
         "dependencies": {
           "System.IO.Hashing": "10.0.10"
         }
