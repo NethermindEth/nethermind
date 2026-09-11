@@ -63,14 +63,29 @@ public class StorageProviderTests(bool useFlat)
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
     [Test]
-    [NonParallelizable]
-    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned()
+    public void Storage_access_after_scope_disposal_throws()
     {
-        const int ChangeCount = 1_024;
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell storageCell = new(ctx.Address1, UInt256.Zero);
+        IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        scope.Dispose();
 
+        Assert.That(
+            () => provider.Set(in storageCell, _values[1]),
+            Throws.InvalidOperationException);
+
+        using IDisposable nextScope = provider.BeginScope(IWorldState.PreGenesis);
+        Assert.That(provider.Get(in storageCell).IsZero(), Is.True);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned([Values(1_024, 16_384)] int changeCount)
+    {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        for (int i = 0; i < ChangeCount; i++)
+        for (int i = 0; i < changeCount; i++)
         {
             provider.Set(new StorageCell(ctx.Address1, (UInt256)i), _values[1]);
         }
@@ -86,6 +101,7 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(capacityBeforeReturn, Is.GreaterThan(512));
             Assert.That(GetCapacity(blockChange), Is.GreaterThan(0));
             Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReturn));
+            Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
         }
     }
 
@@ -102,7 +118,6 @@ public class StorageProviderTests(bool useFlat)
             GetPrivateField(provider._stateProvider, "_committedThisRound"),
             GetPrivateField(provider._stateProvider, "_nullAccountReads"),
             GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
-            GetPrivateField(provider._persistentStorageProvider, "_committedThisRound"),
             GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
         ];
         int[] capacitiesBeforeReset = new int[collections.Length];
@@ -162,11 +177,8 @@ public class StorageProviderTests(bool useFlat)
     private static int GetCollectionCapacity(object collection) =>
         (int)collection.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(collection)!;
 
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Same_address_same_index_different_values_restore(int snapshot)
+    [Test]
+    public void Same_address_same_index_different_values_restore([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -224,11 +236,8 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
     }
 
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Same_address_different_index(int snapshot)
+    [Test]
+    public void Same_address_different_index([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -455,11 +464,8 @@ public class StorageProviderTests(bool useFlat)
     /// Transient storage can be updated and restored
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Tload_same_address_same_index_different_values_restore(int snapshot)
+    [Test]
+    public void Tload_same_address_same_index_different_values_restore([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -517,11 +523,8 @@ public class StorageProviderTests(bool useFlat)
     /// Transient state does not impact persistent state
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Transient_state_restores_independent_of_persistent_state(int snapshot)
+    [Test]
+    public void Transient_state_restores_independent_of_persistent_state([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -562,11 +565,8 @@ public class StorageProviderTests(bool useFlat)
     /// Persistent state does not impact transient state
     /// </summary>
     /// <param name="snapshot">Snapshot to restore to</param>
-    [TestCase(-1)]
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Persistent_state_restores_independent_of_transient_state(int snapshot)
+    [Test]
+    public void Persistent_state_restores_independent_of_transient_state([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -748,9 +748,8 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Clearing_unaccessed_empty_storage_is_a_noop(bool accountExists)
+    [Test]
+    public void Clearing_unaccessed_empty_storage_is_a_noop([Values] bool accountExists)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -1079,6 +1078,51 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Commit_reports_latest_surviving_write_once([Values] bool clearStorage, [Values] bool restore)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 100);
+        StorageCell second = new(ctx.Address1, 101);
+        StorageCell untouched = new(ctx.Address1, 102);
+        provider.Set(first, _values[1]);
+        provider.Set(second, _values[2]);
+        provider.Set(untouched, _values[3]);
+        provider.Commit(Frontier.Instance);
+        provider.Get(first);
+        provider.Get(second);
+        provider.Get(untouched);
+        provider.Set(first, _values[4]);
+        provider.Set(second, _values[5]);
+        Snapshot snapshot = provider.TakeSnapshot();
+        if (clearStorage) provider.ClearStorage(ctx.Address1);
+        provider.Set(first, _values[6]);
+        provider.Set(second, _values[7]);
+        provider.Set(first, _values[8]);
+        if (restore) provider.Restore(snapshot);
+        ReadCollectingStorageTracer tracer = new();
+
+        provider.Commit(Frontier.Instance, tracer);
+
+        byte[] firstValue = _values[restore ? 4 : 8];
+        byte[] secondValue = _values[restore ? 5 : 7];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Get(first).ToArray(), Is.EqualTo(firstValue));
+            Assert.That(provider.Get(second).ToArray(), Is.EqualTo(secondValue));
+            Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(_values[clearStorage && !restore ? 0 : 3]));
+            Assert.That(tracer.Changes, Has.Count.EqualTo(clearStorage && !restore ? 3 : 2));
+            Assert.That(tracer.Changes[0].Cell, Is.EqualTo(first), "storage changes follow surviving-head insertion order");
+            Assert.That(tracer.Changes[1].Cell, Is.EqualTo(second));
+            Assert.That(tracer.Changes.FindAll(change => change.Cell.Equals(first)), Has.Count.EqualTo(1));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(first)).Before, Is.EqualTo(_values[1]));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(first)).After, Is.EqualTo(firstValue));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(second)).Before, Is.EqualTo(_values[2]));
+            Assert.That(tracer.Changes.Find(change => change.Cell.Equals(second)).After, Is.EqualTo(secondValue));
+        }
+    }
+
+    [Test]
     public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer()
     {
         using Context ctx = new(useFlat);
@@ -1171,9 +1215,8 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Clear_after_same_block_account_deletion_clears_backing_storage(bool recreateAsBalanceOnly)
+    [Test]
+    public void Clear_after_same_block_account_deletion_clears_backing_storage([Values] bool recreateAsBalanceOnly)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
@@ -1244,9 +1287,8 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(2)]
-    [TestCase(1000)]
-    public void Set_empty_value_for_storage_cell_without_read_clears_data(int numItems)
+    [Test]
+    public void Set_empty_value_for_storage_cell_without_read_clears_data([Values(2, 1000)] int numItems)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
@@ -1310,9 +1352,8 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
+    [Test]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator([Values] bool populator)
     {
         PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
@@ -1481,6 +1522,7 @@ public class StorageProviderTests(bool useFlat)
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer
     {
         public System.Collections.Generic.List<StorageCell> Reads { get; } = [];
+        public System.Collections.Generic.List<(StorageCell Cell, byte[] Before, byte[] After)> Changes { get; } = [];
 
         public bool IsTracingState => false;
         public bool IsTracingStorage => true;
@@ -1490,7 +1532,7 @@ public class StorageProviderTests(bool useFlat)
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
         public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
     }
 }

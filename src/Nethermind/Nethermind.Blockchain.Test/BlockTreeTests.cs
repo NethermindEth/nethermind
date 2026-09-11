@@ -1783,10 +1783,8 @@ public class BlockTreeTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(2ul)]
-    [TestCase(3ul)]
-    public void Loads_best_known_correctly_on_inserts_followed_by_suggests(ulong pivotNumber)
+    [Test]
+    public void Loads_best_known_correctly_on_inserts_followed_by_suggests([Values(1ul, 2ul, 3ul)] ulong pivotNumber)
     {
         SyncConfig syncConfig = new()
         {
@@ -2280,9 +2278,8 @@ public class BlockTreeTests
         Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void On_restart_loads_already_processed_genesis_block(bool wereProcessed)
+    [Test]
+    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();

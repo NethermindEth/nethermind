@@ -25,6 +25,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
+    private readonly long _destroyRefund;
     private bool _innerEnvelopeOpen;
     private bool _isDisposed;
     private Hash256? _currentTxHash;
@@ -34,7 +35,8 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         GethTraceOptions options,
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long destroyRefund = 0)
         : base(options.TxHash)
     {
         ArgumentNullException.ThrowIfNull(writer);
@@ -43,6 +45,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
+        _destroyRefund = destroyRefund;
     }
 
     protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
@@ -56,7 +59,7 @@ public sealed class GethLikeBlockEnvelopeStreamingTracer : BlockTracerBase<GethL
         _currentTxHash = tx?.Hash;
         if (_reusableTxTracer is null)
         {
-            _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken);
+            _reusableTxTracer = new GethLikeTxDirectStreamingTracer(tx, _options, _writer, _pipeWriter, _cancellationToken, destroyRefund: _destroyRefund);
         }
         else
         {

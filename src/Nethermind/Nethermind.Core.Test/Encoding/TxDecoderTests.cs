@@ -305,9 +305,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
         }
 
-        [TestCase(9)]
-        [TestCase(33)]
-        public void Rejects_transaction_nonce_too_wide_during_decoding(int nonceLength)
+        [Test]
+        public void Rejects_transaction_nonce_too_wide_during_decoding([Values(9, 33)] int nonceLength)
         {
             byte[] txBytes = BuildLegacyTxWithNonce([0x01, .. new byte[nonceLength - 1]]);
 

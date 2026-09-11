@@ -75,9 +75,8 @@ public class Eip2930Tests
         Assert.That(JObject.Parse(serialized).ContainsKey("accessList"), Is.False);
     }
 
-    [TestCase(TxType.AccessList)]
-    [TestCase(TxType.EIP1559)]
-    public void can_serialize_null_accessList_to_empty_array(TxType txType)
+    [Test]
+    public void can_serialize_null_accessList_to_empty_array([Values(TxType.AccessList, TxType.EIP1559)] TxType txType)
     {
         Transaction transaction = new()
         {
@@ -216,9 +215,8 @@ public class Eip2930Tests
         Assert.That(transactionForRpc.Type, Is.EqualTo(TxType.Legacy));
     }
 
-    [TestCase(TxType.AccessList)]
-    [TestCase(TxType.EIP1559)]
-    public void can_convert_fromTransaction_toTransactionForRpc_and_back(TxType txType)
+    [Test]
+    public void can_convert_fromTransaction_toTransactionForRpc_and_back([Values(TxType.AccessList, TxType.EIP1559)] TxType txType)
     {
         Transaction transaction = new()
         {

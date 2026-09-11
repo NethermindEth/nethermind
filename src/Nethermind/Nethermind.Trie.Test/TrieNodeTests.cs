@@ -26,6 +26,54 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TrieNodeTests
 {
+    [Test]
+    public void Reencoding_full_branch_matches_fresh_encoding(
+        [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
+        [Values(0, 2, 4)] int dirtyBranchCount)
+    {
+        TrieNode original = new(NodeType.Branch);
+        TrieNode expected = new(NodeType.Branch);
+        for (int i = 0; i < 16; i++)
+        {
+            Hash256 hash = Keccak.Compute([(byte)i]);
+            original.SetChild(i, new TrieNode(NodeType.Unknown, hash));
+            expected.SetChild(i, new TrieNode(NodeType.Unknown, hash));
+        }
+        TreePath path = TreePath.Empty;
+        CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        Assert.That(oldRlp.Length, Is.EqualTo(532));
+        TrieNode restored = new(NodeType.Branch, oldRlp);
+        restored.ResolveNode(NullTrieNodeResolver.Instance, path);
+        restored = restored.Clone();
+        TrieNode? replacement = replacementKind switch
+        {
+            0 => null,
+            1 => new Context().TiniestLeaf,
+            _ => new TrieNode(NodeType.Unknown, Keccak.Compute([0xff]))
+        };
+        restored.SetChild(changedIndex, replacement);
+        expected.SetChild(changedIndex, replacement);
+        if (replacementKind == 3) restored.UnresolveChild(changedIndex);
+
+        for (int i = 1; i <= dirtyBranchCount; i++)
+        {
+            int index = (changedIndex + i) % TrieNode.BranchesCount;
+            TrieNode branch = new(NodeType.Branch);
+            for (int childIndex = 0; childIndex < TrieNode.BranchesCount; childIndex++)
+            {
+                branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)index, (byte)childIndex])));
+            }
+            restored.SetChild(index, branch);
+            expected.SetChild(index, branch);
+        }
+
+        // Four materialized children select the parallel measuring path even without AVX-512VL;
+        // two dirty branches select batched measuring on hosts that support it.
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: dirtyBranchCount == 4);
+        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+    }
+
     // private TrieNode _tiniestLeaf;
     // private TrieNode _heavyLeaf;
     // private TrieNode _accountLeaf;
@@ -332,12 +380,8 @@ public class TrieNodeTests
         Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
     }
 
-    [TestCase(0x0001)]
-    [TestCase(0x0003)]
-    [TestCase(0x0007)]
-    [TestCase(0x5555)]
-    [TestCase(0xffff)]
-    public void Resolves_full_branch_children_to_their_individual_hashes(int branchMask)
+    [Test]
+    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
     {
         if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
         {
@@ -492,6 +536,33 @@ public class TrieNodeTests
 
         Hash256 getResult = decoded.GetChildHash(0);
         Assert.That(getResult, Is.Not.Null);
+    }
+
+    /// <remarks>
+    /// A 33-byte sequence in a child slot claims the 32 content bytes only a hash can carry - the trie embeds a
+    /// child only below 32 bytes. Reading it as "not a hash" would send the caller on to <c>GetInlineNodeRlp</c>,
+    /// which accepts a sequence and hands back a 33-byte "inline node", so corruption has to be rejected here.
+    /// </remarks>
+    [Test]
+    public void Get_child_hash_rejects_a_33_byte_sequence_in_place_of_a_hash()
+    {
+        Context ctx = new();
+        TrieNode trieNode = new(NodeType.Extension);
+        trieNode[0] = ctx.HeavyLeaf;
+        trieNode.Key = new byte[] { 5 };
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+
+        byte[] corrupted = rlp.AsSpan().ToArray();
+        // The hash prefix ends the node; 0xe0 keeps the length and the content but says "short list of 32 bytes".
+        corrupted[^(Hash256.Size + 1)] = 0xe0;
+        TrieNode decoded = new(NodeType.Extension, corrupted);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => decoded.GetChildHash(0), Throws.InstanceOf<RlpException>());
+            Assert.That(() => decoded.GetChildHashAsValueKeccak(0, out _), Throws.InstanceOf<RlpException>());
+        }
     }
 
     [Test]
@@ -988,9 +1059,8 @@ public class TrieNodeTests
         Assert.That(trieNode.TryGetDirtyChild(0, out TrieNode? dirtyChild), Is.EqualTo(false));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
+    [Test]
+    public void Extension_child_as_keccak_call_recursively([Values] bool skipPersisted)
     {
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
         TrieNode trieNode = new(NodeType.Extension);

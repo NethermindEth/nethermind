@@ -12,6 +12,9 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Nethermind.State.Flat.History")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
+
 namespace Nethermind.State.Proofs
 {
     /// <summary>
@@ -32,6 +35,24 @@ namespace Nethermind.State.Proofs
         private readonly List<byte[]> _accountProofItems = [];
         private readonly List<byte[]>[] _storageProofItems;
         private readonly CancellationToken _cancellationToken;
+
+        internal CancellationToken CancellationToken => _cancellationToken;
+
+        internal ValueHash256 HashedAddress => Pack(_fullAccountPath);
+
+        internal ValueHash256[] GetHashedStorageKeys()
+        {
+            ValueHash256[] keys = new ValueHash256[_fullStoragePaths.Length];
+            for (int i = 0; i < keys.Length; i++) keys[i] = Pack(_fullStoragePaths[i]);
+            return keys;
+        }
+
+        private static ValueHash256 Pack(Nibble[] nibbles)
+        {
+            Span<byte> bytes = stackalloc byte[Hash256.Size];
+            for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(((byte)nibbles[2 * i] << 4) | (byte)nibbles[2 * i + 1]);
+            return new ValueHash256(bytes);
+        }
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
@@ -85,22 +106,22 @@ namespace Nethermind.State.Proofs
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][]? storageKeys)
             : this(hashedAddress, storageKeys?.Select(ToKey), storageKeys?.Length ?? 0, storageKeys) { }
 
-        public AccountProofCollector(Address? address, params byte[][] storageKeys)
-            : this(Keccak.Compute((address ?? Address.Zero).Bytes).Bytes, storageKeys)
-            => _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
+        public AccountProofCollector(Address address, params byte[][] storageKeys)
+            : this(Keccak.Compute(address.Bytes).Bytes, storageKeys)
+            => _accountProof.Address = _address = address;
 
-        public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
+        public AccountProofCollector(Address address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
-        public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys, CancellationToken cancellationToken = default)
+        public AccountProofCollector(Address address, IReadOnlyCollection<UInt256> storageKeys, CancellationToken cancellationToken = default)
         {
             _cancellationToken = cancellationToken;
             _accountProof = new AccountProof
             {
                 StorageProofs = new StorageProof[storageKeys.Count],
-                Address = _address = address ?? throw new ArgumentNullException(nameof(address))
+                Address = _address = address
             };
-            _fullAccountPath = Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+            _fullAccountPath = Nibbles.FromBytes(ValueKeccak.Compute(_address.Bytes).Bytes);
             _fullStoragePaths = new Nibble[storageKeys.Count][];
             _storageProofItems = new List<byte[]>[storageKeys.Count];
 
@@ -111,7 +132,7 @@ namespace Nethermind.State.Proofs
                 storageKey.ToBigEndian(keyBuffer);
                 _fullStoragePaths[j] = Nibbles.FromBytes(ValueKeccak.Compute(keyBuffer).Bytes);
                 _storageProofItems[j] = [];
-                _accountProof.StorageProofs![j] = new StorageProof
+                _accountProof.StorageProofs[j] = new StorageProof
                 {
                     Key = keyBuffer.ToHexString(true, true),
                     Value = Bytes.ZeroByte
@@ -133,7 +154,7 @@ namespace Nethermind.State.Proofs
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _accountProof.StorageProofs![i].Proof = _storageProofItems[i].ToArray();
+                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();
             }
             return _accountProof;
         }
@@ -210,7 +231,7 @@ namespace Nethermind.State.Proofs
             // RLP, so EIP-1186 / go-ethereum convention is to omit them from the proof entries.
             if (node.Keccak is null) return;
 
-            byte[] rlp = node.FullRlp.ToArray();
+            byte[] rlp = node.FullRlp.ToArray() ?? throw new TrieException("A visited proof node must have encoded RLP.");
             if (ctx.Storage is null)
             {
                 _accountProofItems.Add(rlp);

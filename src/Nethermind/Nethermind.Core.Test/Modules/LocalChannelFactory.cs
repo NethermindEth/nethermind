@@ -98,11 +98,14 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
         public override int GetHashCode() => Id.GetHashCode();
     }
 
-    private class LocalDatagramChannel(string networkGroup) : EmbeddedChannel(EmbeddedChannelId.Instance, false, false, []), IDatagramChannel
+    private class LocalDatagramChannel(string networkGroup) : EmbeddedChannel(EmbeddedChannelId.Instance, false, false, []), IDatagramChannel, IIPEndpointSource
     {
         private static ConcurrentDictionary<(string, EndPoint), WeakReference<LocalDatagramChannel>> channelRegistry = new();
 
         private EndPoint? _bondedEndpoint;
+
+        public IPEndPoint IPEndpoint => _bondedEndpoint as IPEndPoint
+            ?? throw new InvalidOperationException("The datagram channel has not bound to an IP endpoint.");
 
         protected override bool IsCompatible(IEventLoop eventLoop) =>
             // Not sure why its only compatible with EmbeddedEventLoop originally..

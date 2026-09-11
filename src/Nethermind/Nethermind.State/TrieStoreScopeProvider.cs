@@ -37,8 +37,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 {
     private readonly ITrieStore _trieStore = trieStore;
     private readonly ILogManager _logManager = logManager;
-    protected StateTree _backingStateTree;
+    protected StateTree? _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+
+    protected StateTree BackingStateTree =>
+        _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
 
     protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
@@ -47,10 +50,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
-        _backingStateTree ??= CreateStateTree();
-        _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
+        backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        return new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
@@ -257,7 +260,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     {
                         commitTask.Add(Task.Factory.StartNew((ctx) =>
                         {
-                            StorageTree st = (StorageTree)ctx;
+                            StorageTree st = ctx as StorageTree
+                                ?? throw new InvalidOperationException("A storage commit task requires a storage tree.");
                             st.Commit();
                             blockCommitter.ReturnConcurrencyQuota();
                         }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
@@ -277,7 +281,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         internal StorageTree LookupStorageTree(Address address)
         {
-            if (_storages.TryGetValue(address, out StorageTree storageTree))
+            if (_storages.TryGetValue(address, out StorageTree? storageTree))
             {
                 return storageTree;
             }
