@@ -542,10 +542,12 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
 
+        Task improvedBlockWait = chain.WaitForImprovedBlock(genesis.Hash!, minTransactions: 1);
+
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
 
-        await Task.Delay(1000);
+        await improvedBlockWait;
 
         ResultWrapper<GetPayloadV6Result?> getPayloadResult =
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
