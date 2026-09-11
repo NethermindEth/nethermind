@@ -151,28 +151,37 @@ public class InclusionListBuilderTests
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }
 
-    // A too-small reservoir would leave the byte budget under-filled even at the smallest transactions the
-    // pool could offer, silently shrinking every inclusion list. 255 senders each with a minimal legacy tx
-    // (to=null, zero-valued fields — the ~74-75 byte floor the sample capacity is now sized against) must
-    // still saturate most of the byte cap.
-    [Test]
-    public void Reservoir_saturates_the_byte_budget_at_the_smallest_encoded_transaction_size()
+    /// <summary>The smallest transaction the pool could offer: a zero-valued legacy contract creation.</summary>
+    private static Transaction MinimalTx(PrivateKey sender) => Build.A.Transaction
+        .WithNonce(0)
+        .WithValue(0)
+        .WithGasPrice(0)
+        .WithGasLimit(0)
+        .WithTo(null)
+        .WithData([])
+        .SignedAndResolved(sender)
+        .TestObject;
+
+    // A reservoir holding only what the byte cap can emit under-fills every list, silently shrinking it: an
+    // entry skipped for size spends a draw without spending budget, leaving no spare sender to refill it.
+    [TestCase(0, TestName = "Reservoir_saturates_the_byte_budget_at_the_smallest_encoded_transaction_size")]
+    [TestCase(128, TestName = "Reservoir_saturates_the_byte_budget_when_half_the_senders_are_skipped_for_size")]
+    public void Reservoir_saturates_the_byte_budget(int sendersSkippedForSize)
     {
-        Transaction[] txs = [.. TestItem.PrivateKeys.Select(key => Build.A.Transaction
-            .WithNonce(0)
-            .WithValue(0)
-            .WithGasPrice(0)
-            .WithGasLimit(0)
-            .WithTo(null)
-            .WithData([])
-            .SignedAndResolved(key)
-            .TestObject)];
+        // Minimal legacy txs encode to 74-75 bytes, so 255 senders is barely enough to fill 8 KiB; the
+        // skipped ones are headed by a transaction larger than the whole list, so they can never contribute.
+        Transaction[] txs = [.. TestItem.PrivateKeys.Select((key, i) => i < sendersSkippedForSize
+            ? TxOfSize(Eip7805Constants.MaxBytesPerInclusionList, 0, key)
+            : MinimalTx(key))];
 
         using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
         int totalBytes = il.Sum(t => t.Count);
 
-        Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 200));
-        Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 200));
+            Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     [Test]
