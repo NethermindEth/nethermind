@@ -288,6 +288,9 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task concurrent_block_processing_and_poll_does_not_lose_data()
     {
+        _filterStore.Dispose();
+        _filterStore = new FilterStore(Substitute.For<ITimerFactory>(), 400, 100);
+
         BlockFilter blockFilter = new(_currentFilterId++);
         _filterStore.SaveFilter(blockFilter);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);

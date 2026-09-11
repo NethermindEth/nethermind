@@ -142,15 +142,19 @@ public class ChainHeadSpecProviderTests
         Task[] tasks = new Task[workers];
         for (int w = 0; w < workers; w++)
         {
-            tasks[w] = Task.Run(() =>
-            {
-                while (!cts.IsCancellationRequested)
+            tasks[w] = Task.Factory.StartNew(
+                () =>
                 {
-                    IReleaseSpec spec = provider.GetCurrentHeadSpec();
-                    Assert.That(spec, Is.Not.Null);
-                    Assert.That(validSpecs.Contains(spec), Is.True);
-                }
-            });
+                    while (!cts.IsCancellationRequested)
+                    {
+                        IReleaseSpec spec = provider.GetCurrentHeadSpec();
+                        Assert.That(spec, Is.Not.Null);
+                        Assert.That(validSpecs.Contains(spec), Is.True);
+                    }
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
         }
 
         Task rotator = Task.Run(async () =>
@@ -160,11 +164,17 @@ public class ChainHeadSpecProviderTests
                 Volatile.Write(ref currentHeader, headers[round % headers.Length]);
                 await Task.Yield();
             }
-            cts.Cancel();
         });
 
-        await Task.WhenAll(tasks);
-        await rotator;
+        try
+        {
+            await rotator;
+        }
+        finally
+        {
+            cts.Cancel();
+            await Task.WhenAll(tasks);
+        }
     }
 
     private static (ISpecProvider SpecProvider, IBlockFinder BlockFinder) SetupForSingleHeader(BlockHeader header, IReleaseSpec spec)
