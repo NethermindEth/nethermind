@@ -169,9 +169,13 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
             cells[i].Address = ToFfi(warmCells[i].Address);
             cells[i].Key = ToFfi(in index);
         }
-        byte[][] blobHashes = tx.BlobVersionedHashes ?? [];
+        byte[]?[] blobHashes = tx.BlobVersionedHashes ?? [];
         RustEvmNative.FfiHash[] hashes = new RustEvmNative.FfiHash[blobHashes.Length];
-        for (int i = 0; i < blobHashes.Length; i++) hashes[i] = ToFfi(blobHashes[i]);
+        for (int i = 0; i < blobHashes.Length; i++)
+        {
+            hashes[i] = ToFfi(blobHashes[i]
+                ?? throw new InvalidOperationException("Blob versioned hashes must not contain null elements."));
+        }
 
         ReadOnlyMemory<byte> code = env.CodeInfo.IsPrecompile ? ReadOnlyMemory<byte>.Empty : env.CodeInfo.Code;
         ReadOnlyMemory<byte> input = env.InputData;
@@ -637,6 +641,11 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
 
     private static RustEvmNative.FfiHash ToFfi(in ValueHash256 hash) => ToFfi(hash.Bytes);
 
+    /// <remarks>
+    /// The interpreter carries an out-of-gas flag of its own, which the policy here has no
+    /// counterpart for: a frame that is starting has not run out, and one that has comes back
+    /// through <see cref="RustEvmNative.FfiResult.Exception"/> instead.
+    /// </remarks>
     private static RustEvmNative.FfiGas ToFfi(in EthereumGasPolicy gas) => new()
     {
         Remaining = gas.Value,
@@ -644,9 +653,9 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         StateGasUsed = gas.StateGasUsed,
         StateGasSpill = gas.StateGasSpill,
         StateGasSpillRefunded = gas.StateGasSpillRefunded,
-        OutOfGas = (byte)(gas.OutOfGas ? 1 : 0),
     };
 
+    /// <inheritdoc cref="ToFfi(in EthereumGasPolicy)"/>
     private static EthereumGasPolicy FromFfi(in RustEvmNative.FfiGas gas) => new()
     {
         Value = gas.Remaining,
@@ -654,7 +663,6 @@ public sealed unsafe class RustVirtualMachine(IBlockhashProvider? blockHashProvi
         StateGasUsed = gas.StateGasUsed,
         StateGasSpill = gas.StateGasSpill,
         StateGasSpillRefunded = gas.StateGasSpillRefunded,
-        OutOfGas = gas.OutOfGas != 0,
     };
 }
 #endif
