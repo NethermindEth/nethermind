@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -24,6 +25,8 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
+using Nethermind.State.Proofs;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof;
@@ -39,6 +42,12 @@ public class ProofRpcModuleTests
     private IHeaderFinder _headerFinder = null!;
     private IReceiptStorage _receiptStorage = null!;
     private IContainer _container;
+
+    private const string NullResultResponse = """{"jsonrpc":"2.0","result":null,"id":67}""";
+
+    /// <summary>Position in block 1 the stale-index arrangements request; not 0, so serving the block's first
+    /// transaction instead of the requested one is a visible failure.</summary>
+    private const int StaleReceiptIndexTxIndex = 1;
 
     [SetUp]
     public async Task Setup()
@@ -81,11 +90,11 @@ public class ProofRpcModuleTests
     public void TearDown() => _container.Dispose();
 
     [Test]
-    public async Task Can_get_transaction([Values] bool withHeader)
+    public async Task Can_get_transaction([Values] bool withHeader, [Values(0, 1)] int txIndex)
     {
-        Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
-        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
-        Assert.That(txWithProof.Transaction, Is.Not.Null);
+        Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[txIndex].Hash!;
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data!;
+        Assert.That(txWithProof.Transaction.Hash, Is.EqualTo(txHash));
         Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
         if (withHeader)
         {
@@ -104,149 +113,205 @@ public class ProofRpcModuleTests
     public async Task When_getting_non_existing_tx_null_result_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
-        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
+        TransactionForRpcWithProof? txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
         Assert.That(txWithProof, Is.Null);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, withHeader);
-        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
+        Assert.That(response, Is.EqualTo(NullResultResponse));
     }
 
     [Test]
     public async Task When_getting_non_existing_receipt_null_result_is_returned([Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
-        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+        ReceiptWithProof? receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
         Assert.That(receiptWithProof, Is.Null);
 
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
-        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":null,"id":67}"""));
-    }
-
-    [TestCase(true, TestName = "When_receipt_missing_for_resolved_block_transaction_by_hash_returns_null(receipts_pruned)")]
-    [TestCase(false, TestName = "When_receipt_missing_for_resolved_block_transaction_by_hash_returns_null(reorg_mismatched_receipts)")]
-    public void When_receipt_missing_for_resolved_block_transaction_by_hash_returns_null(bool receiptsPruned)
-    {
-        Hash256 txHash = ArrangeMismatchedReceiptSet(receiptsPruned);
-
-        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
-        Assert.That(txWithProof, Is.Null);
-    }
-
-    [TestCase(true, TestName = "When_receipt_missing_for_resolved_block_transaction_receipt_returns_null(receipts_pruned)")]
-    [TestCase(false, TestName = "When_receipt_missing_for_resolved_block_transaction_receipt_returns_null(reorg_mismatched_receipts)")]
-    public void When_receipt_missing_for_resolved_block_transaction_receipt_returns_null(bool receiptsPruned)
-    {
-        Hash256 txHash = ArrangeMismatchedReceiptSet(receiptsPruned);
-
-        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data;
-        Assert.That(receiptWithProof, Is.Null);
+        Assert.That(response, Is.EqualTo(NullResultResponse));
     }
 
     [Test]
-    public void When_receipt_index_beyond_block_transactions_transaction_by_hash_returns_null()
+    public async Task When_transaction_not_servable_transaction_by_hash_returns_null_result([Values] NotServableScenario scenario)
     {
-        Hash256 txHash = ArrangeReceiptIndexBeyondBlockTransactions();
+        Hash256 txHash = ArrangeNotServable(scenario);
 
-        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
-        Assert.That(txWithProof, Is.Null);
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, false);
+        Assert.That(response, Is.EqualTo(NullResultResponse));
     }
 
     [Test]
-    public void When_receipt_index_beyond_block_transactions_transaction_receipt_returns_null()
+    public async Task When_transaction_not_servable_transaction_receipt_returns_null_result([Values] NotServableScenario scenario)
     {
-        Hash256 txHash = ArrangeReceiptIndexBeyondBlockTransactions();
+        Hash256 txHash = ArrangeNotServable(scenario);
 
-        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data;
-        Assert.That(receiptWithProof, Is.Null);
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
+        Assert.That(response, Is.EqualTo(NullResultResponse));
     }
 
     [Test]
-    public void When_receipt_index_points_to_different_transaction_transaction_by_hash_returns_null()
+    public void When_receipt_index_is_stale_transaction_by_hash_serves_the_requested_transaction([Values] StaleReceiptIndexScenario scenario)
     {
-        Hash256 txHash = ArrangeReceiptIndexPointsToDifferentTransaction();
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = ArrangeStaleReceiptIndex(scenario);
 
-        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data;
-        Assert.That(txWithProof, Is.Null);
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, false).Data!;
+
+        Assert.That(txWithProof, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txWithProof.Transaction.Hash, Is.EqualTo(txHash));
+            Assert.That(txWithProof.Transaction.TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
+            Assert.That(txWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
+        }
     }
 
     [Test]
-    public void When_receipt_index_points_to_different_transaction_transaction_receipt_returns_null()
+    public void When_receipt_index_is_stale_transaction_receipt_proves_the_requested_transaction([Values] StaleReceiptIndexScenario scenario)
     {
-        Hash256 txHash = ArrangeReceiptIndexPointsToDifferentTransaction();
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = ArrangeStaleReceiptIndex(scenario);
 
-        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data;
-        Assert.That(receiptWithProof, Is.Null);
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, false).Data!;
+
+        Assert.That(receiptWithProof, Is.Not.Null);
+        Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
     }
 
     /// <remarks>
-    /// Builds a receipt finder whose receipt set for the resolved block doesn't contain a receipt
-    /// matching the transaction hash — either because receipts were pruned, or because a reorg
-    /// resolved the block-number key to a different canonical block with unrelated receipts.
+    /// The receipt guard runs before the tracer environment is built, so a transaction the method cannot serve
+    /// never opens an overridable environment it has no use for.
     /// </remarks>
-    private Hash256 ArrangeMismatchedReceiptSet(bool receiptsPruned)
+    [Test]
+    public void When_transaction_not_servable_transaction_receipt_does_not_build_tracer_env()
     {
-        Block block = _blockTree.FindBlock(1)!;
-        Hash256 txHash = block.Transactions[0].Hash!;
-        TxReceipt[] receipts = receiptsPruned
-            ? Array.Empty<TxReceipt>()
-            : new[] { new TxReceipt { TxHash = TestItem.KeccakH, Index = 0 } };
+        IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
+        Hash256 txHash = ArrangeNotServable(NotServableScenario.MismatchedReceiptSet, tracerEnv);
 
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
-        receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
-        RebuildContainerWith(receiptFinder);
+        ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);
+
+        tracerEnv.DidNotReceiveWithAnyArgs().BuildAndOverride(header: null);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+    }
+
+    /// <summary>
+    /// A transaction the proof methods cannot serve, either because its block cannot be resolved at all, or
+    /// because a resolved block and receipt set cannot serve it.
+    /// </summary>
+    public enum NotServableScenario
+    {
+        /// <summary>The receipt store's recorded block hash for this tx no longer resolves to any block the
+        /// block finder holds — <c>SearchForBlock</c> fails with <see cref="BlockFinderExtensions.HeaderNotFound"/>.</summary>
+        HeaderNotFound,
+
+        /// <summary>The resolved block has no receipts at all.</summary>
+        ReceiptsPruned,
+
+        /// <summary>The resolved block's receipts are for other transactions — what a compact transaction index
+        /// leaves behind once a reorg re-resolves the stored block number to a different canonical block.</summary>
+        MismatchedReceiptSet,
+
+        /// <summary>The resolved block does not carry the requested transaction at all, so it has no position in it
+        /// to prove, even though a receipt claiming that hash is present.</summary>
+        TransactionAbsentFromResolvedBlock
+    }
+
+    /// <summary>
+    /// A receipt whose stored <c>Index</c> disagrees with the requested transaction's position in the resolved block.
+    /// </summary>
+    /// <remarks>
+    /// Defensive: the substituted finder bypasses <c>FullInfoReceiptFinder</c>, which repairs <c>Index</c> to the
+    /// receipt's position in the array, so a stale index survives only in a legacy or partially written receipt blob.
+    /// The stored field must not be what decides which transaction gets proved.
+    /// </remarks>
+    public enum StaleReceiptIndexScenario
+    {
+        /// <summary>The stored <c>Index</c> falls past the end of the block's transaction list.</summary>
+        BeyondBlockTransactions,
+
+        /// <summary>The stored <c>Index</c> falls inside the block's transaction list, but on a different transaction.</summary>
+        PointsToDifferentTransaction
+    }
+
+    /// <remarks>
+    /// <see cref="NotServableScenario.HeaderNotFound"/> and <see cref="NotServableScenario.MismatchedReceiptSet"/> model
+    /// states the real stack reaches (a reorg re-resolving the stored block number to a different canonical block, or
+    /// away from any block the finder still holds); <see cref="NotServableScenario.ReceiptsPruned"/> models a node that
+    /// does not regenerate receipts; <see cref="NotServableScenario.TransactionAbsentFromResolvedBlock"/> is defensive,
+    /// pinning that a hash the resolved block does not contain is never turned into a position in it.
+    /// </remarks>
+    private Hash256 ArrangeNotServable(NotServableScenario scenario, IOverridableEnv<ITracer>? tracerEnv = null)
+    {
+        if (scenario is NotServableScenario.HeaderNotFound)
+        {
+            return ArrangeHeaderNotFound(tracerEnv);
+        }
+
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = scenario is NotServableScenario.TransactionAbsentFromResolvedBlock
+            ? TestItem.KeccakA
+            : block.Transactions[0].Hash!;
+        TxReceipt[] receipts = scenario switch
+        {
+            NotServableScenario.ReceiptsPruned => [],
+            NotServableScenario.MismatchedReceiptSet => [new TxReceipt { TxHash = TestItem.KeccakH, Index = 0 }],
+            NotServableScenario.TransactionAbsentFromResolvedBlock => [new TxReceipt { TxHash = txHash, Index = 0 }],
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
+
+        ArrangeReceiptFinder(block, txHash, receipts, tracerEnv);
 
         return txHash;
     }
 
     /// <remarks>
-    /// Builds a receipt finder that resolves the transaction to a receipt whose <c>Index</c> falls
-    /// outside the resolved block's transaction list — the same receipt/block desync as
-    /// <see cref="ArrangeMismatchedReceiptSet"/>, but via a stale index rather than a missing entry.
+    /// Points the receipt store at a block hash the (real) block tree does not know, reproducing
+    /// <c>SearchForBlock</c>'s <see cref="BlockFinderExtensions.HeaderNotFound"/> path.
     /// </remarks>
-    private Hash256 ArrangeReceiptIndexBeyondBlockTransactions()
+    private Hash256 ArrangeHeaderNotFound(IOverridableEnv<ITracer>? tracerEnv)
     {
-        Block block = _blockTree.FindBlock(1)!;
-        Hash256 txHash = block.Transactions[0].Hash!;
-        TxReceipt[] receipts = new[] { new TxReceipt { TxHash = txHash, Index = block.Transactions.Length } };
-
+        Hash256 txHash = TestItem.KeccakB;
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
-        receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
-        RebuildContainerWith(receiptFinder);
+        receiptFinder.FindBlockHash(txHash).Returns(TestItem.KeccakC);
+        RebuildContainerWith(receiptFinder, tracerEnv);
 
         return txHash;
     }
 
-    /// <remarks>
-    /// Builds a receipt finder that resolves the transaction to a receipt whose <c>Index</c> falls
-    /// within the resolved block's transaction list, but at a slot occupied by a different
-    /// transaction — a reorg that reordered transactions at the same block number leaves a stale
-    /// index that still lands in bounds, unlike <see cref="ArrangeReceiptIndexBeyondBlockTransactions"/>.
-    /// </remarks>
-    private Hash256 ArrangeReceiptIndexPointsToDifferentTransaction()
+    private Hash256 ArrangeStaleReceiptIndex(StaleReceiptIndexScenario scenario)
     {
         Block block = _blockTree.FindBlock(1)!;
-        Hash256 txHash = block.Transactions[0].Hash!;
-        TxReceipt[] receipts = new[] { new TxReceipt { TxHash = txHash, Index = 1 } };
+        Hash256 txHash = block.Transactions[StaleReceiptIndexTxIndex].Hash!;
+        int staleIndex = scenario switch
+        {
+            StaleReceiptIndexScenario.BeyondBlockTransactions => block.Transactions.Length,
+            StaleReceiptIndexScenario.PointsToDifferentTransaction => 0,
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario))
+        };
 
+        ArrangeReceiptFinder(block, txHash, [new TxReceipt { TxHash = txHash, Index = staleIndex }]);
+
+        return txHash;
+    }
+
+    private void ArrangeReceiptFinder(Block block, Hash256 txHash, TxReceipt[] receipts, IOverridableEnv<ITracer>? tracerEnv = null)
+    {
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
         receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
-        RebuildContainerWith(receiptFinder);
-
-        return txHash;
+        RebuildContainerWith(receiptFinder, tracerEnv);
     }
 
     /// <remarks>
     /// Swaps in a substituted <see cref="IReceiptFinder"/> while keeping the real block tree, so
     /// <c>FindBlockHash</c> and <c>Get(block)</c> can be driven independently — used to reproduce a
-    /// resolved block whose receipt set doesn't contain the tx.
+    /// resolved block whose receipt set doesn't contain the tx. A supplied <paramref name="tracerEnv"/>
+    /// replaces the environment the receipt method traces the block in.
     /// </remarks>
-    private void RebuildContainerWith(IReceiptFinder receiptFinder)
+    private void RebuildContainerWith(IReceiptFinder receiptFinder, IOverridableEnv<ITracer>? tracerEnv = null)
     {
         _container.Dispose();
-        _container = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
             .AddSingleton<IBlockTree>(_blockTree)
@@ -254,8 +319,14 @@ public class ProofRpcModuleTests
             .AddSingleton<IDbProvider>(_dbProvider)
             .AddSingleton<IHeaderFinder>(_headerFinder)
             .AddSingleton<IReceiptStorage>(_receiptStorage)
-            .AddSingleton<IWorldStateManager>(_worldStateManager)
-            .Build();
+            .AddSingleton<IWorldStateManager>(_worldStateManager);
+
+        if (tracerEnv is not null)
+        {
+            builder.AddSingleton<IOverridableEnv<ITracer>>(tracerEnv);
+        }
+
+        _container = builder.Build();
         _proofRpcModule = _container.Resolve<IRpcModuleFactory<IProofRpcModule>>().Create();
     }
 
@@ -290,7 +361,7 @@ public class ProofRpcModuleTests
     public async Task Can_get_receipt(bool withHeader, string expectedResult)
     {
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
-        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data!;
         Assert.That(receiptWithProof.Receipt, Is.Not.Null);
         Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
@@ -346,7 +417,7 @@ public class ProofRpcModuleTests
         _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
         RebuildContainerWith(_receiptFinder);
-        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+        ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data!;
 
         if (withHeader)
         {
