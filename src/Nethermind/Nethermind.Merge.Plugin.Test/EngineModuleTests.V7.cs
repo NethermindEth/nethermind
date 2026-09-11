@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -673,6 +675,66 @@ public partial class EngineModuleTests
             Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(resend.Data.InclusionListSatisfied, Is.False);
             Assert.That(processed, Is.Zero, "the block must not be re-executed");
+        }
+    }
+
+    // bogota.md engine_forkchoiceUpdatedV5 (2.1-2.2): a VALID head must carry a compliance answer, derived
+    // from the retained inclusion list when newPayloadV6 could not answer it (the block was still queued).
+    [TestCase(true, TestName = "ForkchoiceUpdatedV5_answers_a_satisfied_head_left_syncing_by_newPayloadV6")]
+    [TestCase(false, TestName = "ForkchoiceUpdatedV5_answers_an_unsatisfied_head_left_syncing_by_newPayloadV6")]
+    [NonParallelizable]
+    public async Task ForkchoiceUpdatedV5_answers_compliance_for_a_head_left_syncing(bool satisfied)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 100 });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = chain.BlockTree.Head!;
+
+        Transaction inclusionListTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] inclusionList = [Rlp.Encode(inclusionListTx).Bytes];
+
+        // Build with the list only in the satisfied case; the other build censors it.
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!),
+            BuildBogotaPayloadAttributes(inclusionList: satisfied ? inclusionList : []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+        Assert.That(payload.Transactions, Has.Length.EqualTo(satisfied ? 1 : 0));
+
+        // Occupy the processor so the payload has to queue and newPayloadV6 times out before it is processed.
+        chain.ThrottleBlockProcessor(500);
+        ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+        Block occupyBlock = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(parent.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = parent.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        processingStarted.Wait(TimeSpan.FromSeconds(5));
+
+        ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(newPayload.Data.InclusionListSatisfied, Is.Null);
+        }
+
+        chain.ThrottleBlockProcessor(0);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(20));
+        while (!chain.BlockTree.WasProcessed(payload.BlockNumber, payload.BlockHash))
+        {
+            await Task.Delay(20, cts.Token);
+        }
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, parent.Hash!, parent.Hash!), payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(satisfied));
         }
     }
 
