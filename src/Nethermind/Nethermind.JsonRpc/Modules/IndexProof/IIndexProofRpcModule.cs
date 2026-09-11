@@ -20,18 +20,38 @@ namespace Nethermind.JsonRpc.Modules.IndexProof;
 [RpcModule(ModuleType.IndexProof)]
 public interface IIndexProofRpcModule : IRpcModule
 {
+    /// <summary>
+    /// Returns an SSZ Merkle proof that a transaction is included in the EIP-8304 index table of the given level covering the given block.
+    /// </summary>
+    /// <param name="txHash">The 32-byte transaction hash to prove inclusion for.</param>
+    /// <param name="blockNumber">Any block number covered by the table.</param>
+    /// <param name="level">The index table level (0–4). Defaults to 0 (single-block table).</param>
+    /// <returns>The proof result containing Merkle path, storage slot, and table parameters, or an error if not found.</returns>
     [JsonRpcMethod(
         Description = "Returns an SSZ Merkle proof that a transaction is included in the EIP-8304 index table of the given level covering the given block.",
         IsImplemented = true,
         IsSharable = false)]
     ResultWrapper<IndexProofResult?> indexProof_getTransactionProof(Hash256 txHash, long blockNumber, int level = 0);
 
+    /// <summary>
+    /// Returns SSZ Merkle proofs for all log entries matching the given address in the EIP-8304 index table of the given level covering the given block.
+    /// </summary>
+    /// <param name="address">The contract address that emitted the logs.</param>
+    /// <param name="blockNumber">Any block number covered by the table.</param>
+    /// <param name="level">The index table level (0–4). Defaults to 0 (single-block table).</param>
+    /// <returns>An array of proof results for all matching log entries up to the maximum batch limit.</returns>
     [JsonRpcMethod(
         Description = "Returns SSZ Merkle proofs for all log entries matching the given address in the EIP-8304 index table of the given level covering the given block.",
         IsImplemented = true,
         IsSharable = false)]
     ResultWrapper<IndexProofResult[]?> indexProof_getLogAddressProofs(Address address, long blockNumber, int level = 0);
 
+    /// <summary>
+    /// Returns the storage slot and table parameters for the table of the given level covering the given block, enabling eth_getProof-based verification.
+    /// </summary>
+    /// <param name="level">The index table level (0–4).</param>
+    /// <param name="firstBlock">The starting block number of the table range.</param>
+    /// <returns>The storage slot info containing the slot key and aligned table parameters.</returns>
     [JsonRpcMethod(
         Description = "Returns the storage slot and table parameters for the table of the given level covering the given block, enabling eth_getProof-based verification.",
         IsImplemented = true,

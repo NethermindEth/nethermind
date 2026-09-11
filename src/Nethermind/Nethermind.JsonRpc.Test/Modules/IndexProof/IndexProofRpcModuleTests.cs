@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.IndexProof;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.IndexProof;
@@ -19,15 +22,15 @@ public class IndexProofRpcModuleTests
     public void GetTransactionProof_table_not_found_returns_resource_not_found()
     {
         IndexTableStore store = new();
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
 
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(TestItem.KeccakA, 100);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
             Assert.That(result.Data, Is.Null);
-        });
+        }
     }
 
     [Test]
@@ -37,14 +40,14 @@ public class IndexProofRpcModuleTests
         IndexEntry entry = IndexEntry.CreateBlock(TestItem.KeccakA, 100);
         store.Store(0, 100, [entry]);
 
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(TestItem.KeccakB, 100);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
             Assert.That(result.Data, Is.Null);
-        });
+        }
     }
 
     [Test]
@@ -59,13 +62,13 @@ public class IndexProofRpcModuleTests
 
         store.Store(0, 100, entries);
 
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, 100);
 
-        Assert.Multiple(() =>
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.Not.Null);
             IndexProofResult proof = result.Data!;
             Assert.That(proof.FirstBlock, Is.EqualTo(100));
             Assert.That(proof.Level, Is.EqualTo(0));
@@ -73,22 +76,22 @@ public class IndexProofRpcModuleTests
             Assert.That(proof.ListLength, Is.EqualTo(2));
             Assert.That(proof.Proof.Length, Is.GreaterThan(0));
             Assert.That(proof.StorageSlot, Does.StartWith("0x"));
-        });
+        }
     }
 
     [Test]
     public void GetLogAddressProofs_table_not_found_returns_resource_not_found()
     {
         IndexTableStore store = new();
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
 
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(TestItem.AddressA, 100);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
             Assert.That(result.Data, Is.Null);
-        });
+        }
     }
 
     [Test]
@@ -98,15 +101,15 @@ public class IndexProofRpcModuleTests
         IndexEntry entry = IndexEntry.CreateLogAddress(TestItem.AddressA, 100, 0, 0);
         store.Store(0, 100, [entry]);
 
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(TestItem.AddressB, 100);
 
-        Assert.Multiple(() =>
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.Not.Null);
             Assert.That(result.Data!.Length, Is.EqualTo(0));
-        });
+        }
     }
 
     [Test]
@@ -122,30 +125,30 @@ public class IndexProofRpcModuleTests
 
         store.Store(0, 100, entries);
 
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(targetAddress, 100);
 
-        Assert.Multiple(() =>
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.Not.Null);
             Assert.That(result.Data!.Length, Is.EqualTo(2));
-        });
+        }
     }
 
     [Test]
     public void GetStorageSlot_invalid_level_fails()
     {
         IndexTableStore store = new();
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
 
         ResultWrapper<StorageSlotInfo> result = module.indexProof_getStorageSlot(10, 0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(result.Data, Is.Null);
-        });
+        }
     }
 
     [TestCase(0, 0, ExpectedResult = "0x400")]   // 1*1024 + 0 = 1024 = 0x400
@@ -154,7 +157,7 @@ public class IndexProofRpcModuleTests
     public string GetStorageSlot_valid_params_returns_correct_slot(int level, long firstBlock)
     {
         IndexTableStore store = new();
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
 
         ResultWrapper<StorageSlotInfo> result = module.indexProof_getStorageSlot(level, firstBlock);
 
@@ -175,46 +178,96 @@ public class IndexProofRpcModuleTests
         // Store at level 1 (table size 4), firstBlock = 4 (covers blocks 4..7)
         store.Store(1, 4, entries);
 
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
         // Query with blockNumber = 6 within the table range [4..7]
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, blockNumber: 6, level: 1);
 
-        Assert.Multiple(() =>
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.Not.Null);
             IndexProofResult proof = result.Data!;
             Assert.That(proof.FirstBlock, Is.EqualTo(4));
             Assert.That(proof.Level, Is.EqualTo(1));
             Assert.That(proof.TableSize, Is.EqualTo(4));
             Assert.That(proof.Proof.Length, Is.GreaterThan(0));
-        });
+        }
     }
 
     [Test]
     public void GetTransactionProof_negative_block_or_invalid_level_fails()
     {
         IndexTableStore store = new();
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
 
         ResultWrapper<IndexProofResult?> negativeBlock = module.indexProof_getTransactionProof(TestItem.KeccakA, -1, 0);
         ResultWrapper<IndexProofResult?> invalidLevel = module.indexProof_getTransactionProof(TestItem.KeccakA, 10, 5);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(negativeBlock.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(invalidLevel.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-        });
+        }
     }
 
     [Test]
     public void GetStorageSlot_negative_block_fails()
     {
         IndexTableStore store = new();
-        IndexProofRpcModule module = new(store);
+        IIndexProofRpcModule module = CreateModule(store);
 
         ResultWrapper<StorageSlotInfo> result = module.indexProof_getStorageSlot(0, -1);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [Test]
+    public void ProofEndpoints_resolve_against_canonical_branch_when_side_branch_was_cached_afterwards()
+    {
+        IndexTableStore store = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+
+        Hash256 canonicalHash = TestItem.KeccakA;
+        Hash256 sideBranchHash = TestItem.KeccakB;
+
+        BlockHeader canonicalHeader = Build.A.BlockHeader.WithNumber(100).WithHash(canonicalHash).TestObject;
+        blockTree.FindCanonicalBlockInfo(100).Returns(new BlockInfo(canonicalHash, 100));
+        blockTree.FindHeader(100, BlockTreeLookupOptions.RequireCanonical).Returns(canonicalHeader);
+
+        Hash256 canonicalTxHash = TestItem.KeccakC;
+        Hash256 sideBranchTxHash = TestItem.KeccakD;
+
+        IndexEntry canonicalTx = IndexEntry.CreateTransaction(canonicalTxHash, 100, 0, 0);
+        IndexEntry sideBranchTx = IndexEntry.CreateTransaction(sideBranchTxHash, 100, 0, 0);
+
+        // Store canonical table first
+        store.Store(0, 100, [canonicalTx], canonicalHash);
+        // Store side branch table afterwards with different transaction
+        store.Store(0, 100, [sideBranchTx], sideBranchHash);
+
+        IIndexProofRpcModule module = CreateModule(store, blockTree);
+
+        ResultWrapper<IndexProofResult?> canonicalResult = module.indexProof_getTransactionProof(canonicalTxHash, 100);
+        ResultWrapper<IndexProofResult?> sideBranchResult = module.indexProof_getTransactionProof(sideBranchTxHash, 100);
+
+        Assert.That(canonicalResult.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canonicalResult.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(canonicalResult.Data!.FirstBlock, Is.EqualTo(100));
+            Assert.That(sideBranchResult.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        }
+    }
+
+    private static IIndexProofRpcModule CreateModule(IIndexTableStore store, IBlockTree? blockTree = null)
+    {
+        ContainerBuilder builder = new();
+        builder.AddSingleton(store);
+        if (blockTree is not null)
+        {
+            builder.AddSingleton(blockTree);
+        }
+        builder.AddScoped<IIndexProofRpcModule, IndexProofRpcModule>();
+        return builder.Build().Resolve<IIndexProofRpcModule>();
     }
 }

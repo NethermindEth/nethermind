@@ -10,6 +10,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -68,6 +69,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
                 txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+            .AddSingleton<IIndexTableStore, IndexTableStore>()
+            .AddSingleton<IIndexTableHandlerFactory, IndexTableHandlerFactory>()
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());

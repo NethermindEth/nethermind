@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,17 +15,18 @@ namespace Nethermind.JsonRpc.Modules.IndexProof;
 /// <summary>
 /// Serves EIP-8304 index proofs from the in-memory table store.
 /// </summary>
-public class IndexProofRpcModule(IIndexTableStore store) : IIndexProofRpcModule
+public class IndexProofRpcModule(IIndexTableStore store, IBlockTree? blockTree = null) : IIndexProofRpcModule
 {
     /// <summary>Maximum number of log proofs returned in a single query to protect against DoS.</summary>
     public const int MaxLogProofs = 1024;
 
+    /// <inheritdoc />
     public ResultWrapper<IndexProofResult?> indexProof_getTransactionProof(Hash256 txHash, long blockNumber, int level = 0)
     {
         if (!TryGetTableParameters(level, blockNumber, out long firstBlock, out int tableSize))
             return ResultWrapper<IndexProofResult?>.Fail("Invalid level or block number", ErrorCodes.InvalidParams);
 
-        IReadOnlyList<IndexEntry>? entries = store.Get(level, firstBlock);
+        IReadOnlyList<IndexEntry>? entries = GetCanonicalTableEntries(level, firstBlock);
         if (entries is null)
             return ResultWrapper<IndexProofResult?>.Fail("Table not found for block", ErrorCodes.ResourceNotFound);
 
@@ -35,12 +38,13 @@ public class IndexProofRpcModule(IIndexTableStore store) : IIndexProofRpcModule
         return ResultWrapper<IndexProofResult?>.Success(BuildResult(proof, level, firstBlock, tableSize));
     }
 
+    /// <inheritdoc />
     public ResultWrapper<IndexProofResult[]?> indexProof_getLogAddressProofs(Address address, long blockNumber, int level = 0)
     {
         if (!TryGetTableParameters(level, blockNumber, out long firstBlock, out int tableSize))
             return ResultWrapper<IndexProofResult[]?>.Fail("Invalid level or block number", ErrorCodes.InvalidParams);
 
-        IReadOnlyList<IndexEntry>? entries = store.Get(level, firstBlock);
+        IReadOnlyList<IndexEntry>? entries = GetCanonicalTableEntries(level, firstBlock);
         if (entries is null)
             return ResultWrapper<IndexProofResult[]?>.Fail("Table not found for block", ErrorCodes.ResourceNotFound);
 
@@ -70,6 +74,7 @@ public class IndexProofRpcModule(IIndexTableStore store) : IIndexProofRpcModule
         return ResultWrapper<IndexProofResult[]?>.Success(results);
     }
 
+    /// <inheritdoc />
     public ResultWrapper<StorageSlotInfo> indexProof_getStorageSlot(int level, long firstBlock)
     {
         if (!TryGetTableParameters(level, firstBlock, out long alignedFirstBlock, out int tableSize))
@@ -84,6 +89,26 @@ public class IndexProofRpcModule(IIndexTableStore store) : IIndexProofRpcModule
             FirstBlock = alignedFirstBlock,
             TableSize = tableSize,
         });
+    }
+
+    private IReadOnlyList<IndexEntry>? GetCanonicalTableEntries(int level, long firstBlock)
+    {
+        if (blockTree is not null)
+        {
+            long lookupBlockNumber = level == 0
+                ? firstBlock
+                : IndexTableMergeScheduler.PublicationBlock(level, firstBlock);
+
+            Hash256? canonicalHash = blockTree.FindCanonicalBlockInfo((ulong)lookupBlockNumber)?.BlockHash
+                ?? blockTree.FindHeader((ulong)lookupBlockNumber, BlockTreeLookupOptions.RequireCanonical)?.Hash;
+
+            if (canonicalHash is not null)
+            {
+                return store.Get(level, firstBlock, canonicalHash);
+            }
+        }
+
+        return store.Get(level, firstBlock);
     }
 
     /// <summary>

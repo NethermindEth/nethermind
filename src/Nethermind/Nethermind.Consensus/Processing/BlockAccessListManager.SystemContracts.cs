@@ -59,16 +59,36 @@ public partial class BlockAccessListManager
         executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
+    private IIndexTableHandler? _indexTableHandler;
+
     public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
     {
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        IIndexTableHandler handler = (indexTableHandlerFactory ?? IndexTableHandlerFactory.Default).Create(postExecution.TxProcessor);
-        handler.CommitIndexTableRoots(block, receipts, spec, tracer);
+        _indexTableHandler = (indexTableHandlerFactory ?? IndexTableHandlerFactory.Default).Create(postExecution.TxProcessor);
+        _indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
     }
 
-    public void RollbackBlock(Block block) => indexTableHandlerFactory?.RollbackBlock(block);
+    public void RollbackBlock(Block block)
+    {
+        if (_indexTableHandler is not null)
+        {
+            _indexTableHandler.RollbackBlock(block);
+        }
+        else
+        {
+            IIndexTableStore? store = indexTableHandlerFactory?.Store;
+            if (store is not null)
+            {
+                store.Remove(0, (long)block.Number, block.Hash);
+                IndexTableMergeScheduler.GetTablesForBlock((long)block.Number, (level, firstBlock, _) =>
+                {
+                    store.Remove(level, firstBlock, block.Hash);
+                });
+            }
+        }
+    }
 
-    public void UpdateFinalBlockHash(Block block) => indexTableHandlerFactory?.UpdateFinalBlockHash(block);
+    public void UpdateFinalBlockHash(Block block) => _indexTableHandler?.UpdateFinalBlockHash(block);
 }

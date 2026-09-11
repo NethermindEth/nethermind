@@ -46,22 +46,25 @@ public class IndexEntryTests
 
         Assert.That(written, Is.EqualTo(42));
 
-        // Type ID = 0x0000
-        Assert.That(buffer[0], Is.EqualTo(0x00));
-        Assert.That(buffer[1], Is.EqualTo(0x00));
+        using (Assert.EnterMultipleScope())
+        {
+            // Type ID = 0x0000
+            Assert.That(buffer[0], Is.EqualTo(0x00));
+            Assert.That(buffer[1], Is.EqualTo(0x00));
 
-        // Content = block hash (32 bytes)
-        Assert.That(buffer.Slice(2, 32).SequenceEqual(blockHash.Bytes), Is.True);
+            // Content = block hash (32 bytes)
+            Assert.That(buffer.Slice(2, 32).SequenceEqual(blockHash.Bytes), Is.True);
 
-        // Block number = 40 (big-endian, 8 bytes)
-        Assert.That(buffer[34], Is.EqualTo(0x00));
-        Assert.That(buffer[35], Is.EqualTo(0x00));
-        Assert.That(buffer[36], Is.EqualTo(0x00));
-        Assert.That(buffer[37], Is.EqualTo(0x00));
-        Assert.That(buffer[38], Is.EqualTo(0x00));
-        Assert.That(buffer[39], Is.EqualTo(0x00));
-        Assert.That(buffer[40], Is.EqualTo(0x00));
-        Assert.That(buffer[41], Is.EqualTo(40));
+            // Block number = 40 (big-endian, 8 bytes)
+            Assert.That(buffer[34], Is.EqualTo(0x00));
+            Assert.That(buffer[35], Is.EqualTo(0x00));
+            Assert.That(buffer[36], Is.EqualTo(0x00));
+            Assert.That(buffer[37], Is.EqualTo(0x00));
+            Assert.That(buffer[38], Is.EqualTo(0x00));
+            Assert.That(buffer[39], Is.EqualTo(0x00));
+            Assert.That(buffer[40], Is.EqualTo(0x00));
+            Assert.That(buffer[41], Is.EqualTo(40));
+        }
     }
 
     [Test]
@@ -79,27 +82,30 @@ public class IndexEntryTests
 
         Assert.That(written, Is.EqualTo(50));
 
-        // Type ID = 0x0001
-        Assert.That(buffer[0], Is.EqualTo(0x00));
-        Assert.That(buffer[1], Is.EqualTo(0x01));
+        using (Assert.EnterMultipleScope())
+        {
+            // Type ID = 0x0001
+            Assert.That(buffer[0], Is.EqualTo(0x00));
+            Assert.That(buffer[1], Is.EqualTo(0x01));
 
-        // Content = tx hash (32 bytes)
-        Assert.That(buffer.Slice(2, 32).SequenceEqual(txHash.Bytes), Is.True);
+            // Content = tx hash (32 bytes)
+            Assert.That(buffer.Slice(2, 32).SequenceEqual(txHash.Bytes), Is.True);
 
-        // Block number = 43 (big-endian)
-        Assert.That(buffer[41], Is.EqualTo(43));
+            // Block number = 43 (big-endian)
+            Assert.That(buffer[41], Is.EqualTo(43));
 
-        // Tx index = 1 (big-endian, 4 bytes)
-        Assert.That(buffer[42], Is.EqualTo(0x00));
-        Assert.That(buffer[43], Is.EqualTo(0x00));
-        Assert.That(buffer[44], Is.EqualTo(0x00));
-        Assert.That(buffer[45], Is.EqualTo(0x01));
+            // Tx index = 1 (big-endian, 4 bytes)
+            Assert.That(buffer[42], Is.EqualTo(0x00));
+            Assert.That(buffer[43], Is.EqualTo(0x00));
+            Assert.That(buffer[44], Is.EqualTo(0x00));
+            Assert.That(buffer[45], Is.EqualTo(0x01));
 
-        // Cumulative log count = 2 (big-endian, 4 bytes)
-        Assert.That(buffer[46], Is.EqualTo(0x00));
-        Assert.That(buffer[47], Is.EqualTo(0x00));
-        Assert.That(buffer[48], Is.EqualTo(0x00));
-        Assert.That(buffer[49], Is.EqualTo(0x02));
+            // Cumulative log count = 2 (big-endian, 4 bytes)
+            Assert.That(buffer[46], Is.EqualTo(0x00));
+            Assert.That(buffer[47], Is.EqualTo(0x00));
+            Assert.That(buffer[48], Is.EqualTo(0x00));
+            Assert.That(buffer[49], Is.EqualTo(0x02));
+        }
     }
 
     [Test]
@@ -117,27 +123,30 @@ public class IndexEntryTests
 
         Assert.That(written, Is.EqualTo(38));
 
-        // Type ID = 0x0002
-        Assert.That(buffer[0], Is.EqualTo(0x00));
-        Assert.That(buffer[1], Is.EqualTo(0x02));
+        using (Assert.EnterMultipleScope())
+        {
+            // Type ID = 0x0002
+            Assert.That(buffer[0], Is.EqualTo(0x00));
+            Assert.That(buffer[1], Is.EqualTo(0x02));
 
-        // Content = address (20 bytes)
-        Assert.That(buffer.Slice(2, 20).SequenceEqual(address.Bytes), Is.True);
+            // Content = address (20 bytes)
+            Assert.That(buffer.Slice(2, 20).SequenceEqual(address.Bytes), Is.True);
 
-        // Block number (big-endian)
-        Assert.That(buffer[29], Is.EqualTo(42));
+            // Block number (big-endian)
+            Assert.That(buffer[29], Is.EqualTo(42));
 
-        // Tx index = 0
-        Assert.That(buffer[30], Is.EqualTo(0x00));
-        Assert.That(buffer[31], Is.EqualTo(0x00));
-        Assert.That(buffer[32], Is.EqualTo(0x00));
-        Assert.That(buffer[33], Is.EqualTo(0x00));
+            // Tx index = 0
+            Assert.That(buffer[30], Is.EqualTo(0x00));
+            Assert.That(buffer[31], Is.EqualTo(0x00));
+            Assert.That(buffer[32], Is.EqualTo(0x00));
+            Assert.That(buffer[33], Is.EqualTo(0x00));
 
-        // Log index = 1
-        Assert.That(buffer[34], Is.EqualTo(0x00));
-        Assert.That(buffer[35], Is.EqualTo(0x00));
-        Assert.That(buffer[36], Is.EqualTo(0x00));
-        Assert.That(buffer[37], Is.EqualTo(0x01));
+            // Log index = 1
+            Assert.That(buffer[34], Is.EqualTo(0x00));
+            Assert.That(buffer[35], Is.EqualTo(0x00));
+            Assert.That(buffer[36], Is.EqualTo(0x00));
+            Assert.That(buffer[37], Is.EqualTo(0x01));
+        }
     }
 
     [Test]
@@ -155,12 +164,15 @@ public class IndexEntryTests
 
         Assert.That(written, Is.EqualTo(50));
 
-        // Type ID = 0x0005 (LogTopic2 = 3 + 2 = 5)
-        Assert.That(buffer[0], Is.EqualTo(0x00));
-        Assert.That(buffer[1], Is.EqualTo(0x05));
+        using (Assert.EnterMultipleScope())
+        {
+            // Type ID = 0x0005 (LogTopic2 = 3 + 2 = 5)
+            Assert.That(buffer[0], Is.EqualTo(0x00));
+            Assert.That(buffer[1], Is.EqualTo(0x05));
 
-        // Content = topic (32 bytes)
-        Assert.That(buffer.Slice(2, 32).SequenceEqual(topic.Bytes), Is.True);
+            // Content = topic (32 bytes)
+            Assert.That(buffer.Slice(2, 32).SequenceEqual(topic.Bytes), Is.True);
+        }
     }
 
     [TestCase(-1)]
@@ -225,8 +237,9 @@ public class IndexEntryTests
     }
 
     [Test]
-    public void Entry_type_roundtrip() =>
-        Assert.Multiple(() =>
+    public void Entry_type_roundtrip()
+    {
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(IndexEntry.CreateBlock(TestItem.KeccakA, 1).Type, Is.EqualTo(IndexEntryType.Block));
             Assert.That(IndexEntry.CreateTransaction(TestItem.KeccakA, 1, 0, 0).Type, Is.EqualTo(IndexEntryType.Transaction));
@@ -235,5 +248,6 @@ public class IndexEntryTests
             Assert.That(IndexEntry.CreateLogTopic(1, TestItem.KeccakA, 1, 0, 0).Type, Is.EqualTo(IndexEntryType.LogTopic1));
             Assert.That(IndexEntry.CreateLogTopic(2, TestItem.KeccakA, 1, 0, 0).Type, Is.EqualTo(IndexEntryType.LogTopic2));
             Assert.That(IndexEntry.CreateLogTopic(3, TestItem.KeccakA, 1, 0, 0).Type, Is.EqualTo(IndexEntryType.LogTopic3));
-        });
+        }
+    }
 }

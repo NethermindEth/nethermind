@@ -76,8 +76,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddSingleton<IIndexTableStore, IndexTableStore>()
-            .AddScoped<IIndexTableHandler, IndexTableHandler>()
             .AddSingleton<IIndexTableHandlerFactory, IndexTableHandlerFactory>()
+            .AddScoped<IIndexTableHandler, IIndexTableHandlerFactory, ITransactionProcessor>(
+                static (factory, txProcessor) => factory.Create(txProcessor))
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))

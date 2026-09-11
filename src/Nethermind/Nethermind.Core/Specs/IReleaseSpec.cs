@@ -465,6 +465,10 @@ namespace Nethermind.Core.Specs
         /// EIP-8304: Trustless log and transaction index
         /// </summary>
         bool IsEip8304Enabled => false;
+
+        /// <summary>
+        /// System contract address for EIP-8304 index tables.
+        /// </summary>
         Address? Eip8304ContractAddress => null;
 
         /// <summary>

@@ -17,19 +17,19 @@ public class IndexTableMergeSchedulerTests
     public long PublicationBlock_matches_spec(int level, long firstBlock) =>
         IndexTableMergeScheduler.PublicationBlock(level, firstBlock);
 
-    [Test]
-    public void GetTablesForBlock_returns_level1_at_block_4()
+    [TestCase(4, 0)]
+    [TestCase(8, 4)]
+    public void GetTablesForBlock_returns_level1_at_expected_block(long blockNumber, long expectedFirstBlock)
     {
-        // Level 1 table for firstBlock=0 publishes at block 4
         int publishCount = 0;
-        IndexTableMergeScheduler.GetTablesForBlock(4, (level, firstBlock, tableSize) =>
+        IndexTableMergeScheduler.GetTablesForBlock(blockNumber, (level, firstBlock, tableSize) =>
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(level, Is.EqualTo(1));
-                Assert.That(firstBlock, Is.EqualTo(0));
+                Assert.That(firstBlock, Is.EqualTo(expectedFirstBlock));
                 Assert.That(tableSize, Is.EqualTo(4));
-            });
+            }
             publishCount++;
         });
 
@@ -42,25 +42,6 @@ public class IndexTableMergeSchedulerTests
         int publishCount = 0;
         IndexTableMergeScheduler.GetTablesForBlock(3, (_, _, _) => publishCount++);
         Assert.That(publishCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void GetTablesForBlock_returns_level1_at_block_8()
-    {
-        // Level 1 table for firstBlock=4 publishes at block 8
-        int publishCount = 0;
-        IndexTableMergeScheduler.GetTablesForBlock(8, (level, firstBlock, tableSize) =>
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(level, Is.EqualTo(1));
-                Assert.That(firstBlock, Is.EqualTo(4));
-                Assert.That(tableSize, Is.EqualTo(4));
-            });
-            publishCount++;
-        });
-
-        Assert.That(publishCount, Is.EqualTo(1));
     }
 
     [Test]

@@ -36,12 +36,12 @@ public class IndexTableHandler(
     IBlockTree? blockTree = null,
     IReceiptStorage? receiptStorage = null) : IIndexTableHandler
 {
-    /// <inheritdoc />
     private Hash256? _lastCommittedBlockHash;
     private long _lastCommittedBlockNumber;
     private List<IndexEntry>? _lastCommittedEntries;
     private readonly List<(int Level, long FirstBlock, List<IndexEntry> Merged)> _lastCommittedHigherTables = [];
 
+    /// <inheritdoc />
     public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
     {
         if (!spec.IsEip8304Enabled)
@@ -68,11 +68,12 @@ public class IndexTableHandler(
         ExecuteSystemCall(block, spec, tracer, (long)block.Number, tableSize: 1, tableRoot);
 
         // Phase 4: Check and publish higher-level tables
+        Dictionary<long, BlockHeader> ancestorCache = [];
         IndexTableMergeScheduler.GetTablesForBlock((long)block.Number, (level, firstBlock, tableSize) =>
         {
             // The system call mutates contract storage, so skipping it would silently produce a
             // state root that diverges from nodes holding the table. Fail loudly instead.
-            List<IndexEntry> merged = BuildTable(level, firstBlock, block.Header)
+            List<IndexEntry> merged = BuildTable(level, firstBlock, block.Header, ancestorCache)
                 ?? throw new InvalidOperationException(
                     $"Cannot build the EIP-8304 level-{level} index table for blocks {firstBlock}-{firstBlock + tableSize - 1}: " +
                     $"index entries are missing. At least {Eip8304Constants.SyncRecoveryBlocks} blocks of index history must be retained.");
@@ -82,7 +83,7 @@ public class IndexTableHandler(
 
             UInt256 higherRoot = IndexTableRootCalculator.ComputeRoot(merged);
             ExecuteSystemCall(block, spec, tracer, firstBlock, tableSize, higherRoot);
-        }, IsForkActiveAt);
+        }, firstBlock => IsForkActiveAt(firstBlock, block.Header, ancestorCache));
     }
 
     /// <inheritdoc />
@@ -131,7 +132,10 @@ public class IndexTableHandler(
         });
     }
 
-    private bool IsForkActiveAt(long firstBlock)
+    private bool IsForkActiveAt(
+        long firstBlock,
+        BlockHeader currentHeader,
+        Dictionary<long, BlockHeader>? ancestorCache = null)
     {
         if (firstBlock < 0)
             return false;
@@ -139,7 +143,7 @@ public class IndexTableHandler(
         if (specProvider is null)
             return true;
 
-        BlockHeader? header = blockTree?.FindHeader((ulong)firstBlock);
+        BlockHeader? header = FindAncestorHeader(currentHeader, firstBlock, ancestorCache);
         IReleaseSpec targetSpec = header is not null
             ? specProvider.GetSpec(header)
             : specProvider.GetSpec((ulong)firstBlock, null);
@@ -161,7 +165,7 @@ public class IndexTableHandler(
         int level,
         long firstBlock,
         BlockHeader currentHeader,
-        Dictionary<long, Hash256>? ancestorCache = null)
+        Dictionary<long, BlockHeader>? ancestorCache = null)
     {
         int subLevel = level - 1;
         int subTableSize = Eip8304Constants.TableSizes[subLevel];
@@ -203,15 +207,21 @@ public class IndexTableHandler(
     private Hash256? FindAncestorHash(
         BlockHeader currentHeader,
         long targetBlockNumber,
-        Dictionary<long, Hash256> ancestorCache)
+        Dictionary<long, BlockHeader> ancestorCache) =>
+        FindAncestorHeader(currentHeader, targetBlockNumber, ancestorCache)?.Hash;
+
+    private BlockHeader? FindAncestorHeader(
+        BlockHeader currentHeader,
+        long targetBlockNumber,
+        Dictionary<long, BlockHeader>? ancestorCache = null)
     {
         if ((long)currentHeader.Number == targetBlockNumber)
-            return currentHeader.Hash;
+            return currentHeader;
 
         if (targetBlockNumber > (long)currentHeader.Number)
             return null;
 
-        if (ancestorCache.TryGetValue(targetBlockNumber, out Hash256? cached))
+        if (ancestorCache is not null && ancestorCache.TryGetValue(targetBlockNumber, out BlockHeader? cached))
             return cached;
 
         if (blockTree is null)
@@ -224,19 +234,22 @@ public class IndexTableHandler(
                 return null;
 
             long parentNumber = (long)current.Number - 1;
-            ancestorCache.TryAdd(parentNumber, current.ParentHash);
-
-            if (parentNumber == targetBlockNumber)
-                return current.ParentHash;
-
-            current = blockTree.FindHeader(current.ParentHash, BlockTreeLookupOptions.None);
-            if (current is not null && current.Hash is not null)
+            if (ancestorCache is not null && ancestorCache.TryGetValue(parentNumber, out BlockHeader? parentInCache))
             {
-                ancestorCache.TryAdd((long)current.Number, current.Hash);
+                current = parentInCache;
+                continue;
             }
+
+            BlockHeader? parentHeader = blockTree.FindHeader(current.ParentHash, BlockTreeLookupOptions.None);
+            if (parentHeader is not null)
+            {
+                ancestorCache?.TryAdd((long)parentHeader.Number, parentHeader);
+            }
+
+            current = parentHeader;
         }
 
-        return current is not null && (long)current.Number == targetBlockNumber ? current.Hash : null;
+        return current is not null && (long)current.Number == targetBlockNumber ? current : null;
     }
 
     private IReadOnlyList<IndexEntry>? RecoverHistoricalEntries(long blockNumber, Hash256? branchBlockHash)

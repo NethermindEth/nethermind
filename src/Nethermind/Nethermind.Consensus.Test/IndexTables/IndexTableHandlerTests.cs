@@ -216,9 +216,9 @@ public class IndexTableHandlerTests
         handler.CommitIndexTableRoots(block4, [], BuildSpec(), NullTxTracer.Instance);
 
         IReadOnlyList<IndexEntry>? level1Table = store.Get(1, 0, block4.Hash);
+        Assert.That(level1Table, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(level1Table, Is.Not.Null);
             bool containsSibling = false;
             bool containsCanonical = false;
             foreach (IndexEntry entry in level1Table!)

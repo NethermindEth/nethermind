@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core.Crypto;
@@ -221,6 +222,44 @@ public class IndexTableStoreTests
             Assert.That(store.Get(0, 0, TestItem.KeccakA), Is.Null);
             Assert.That(store.Get(0, 0, TestItem.KeccakB), Is.Null);
             Assert.That(store.Get(0, 0), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Store_bounds_number_of_hash_variants_at_single_height()
+    {
+        IndexTableStore store = new();
+        const long height = 100;
+        List<Hash256> storedHashes = [];
+
+        // Insert 100 distinct hashes at the same height
+        for (int i = 0; i < 100; i++)
+        {
+            byte[] hashBytes = new byte[32];
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(hashBytes.AsSpan(28), i);
+            Hash256 hash = new(hashBytes);
+            storedHashes.Add(hash);
+
+            store.Store(0, height, [IndexEntry.CreateBlock(hash, (ulong)height)], hash);
+        }
+
+        // At most MaxVariantsPerHeight (16) variants should remain
+        int retainedCount = 0;
+        for (int i = 0; i < storedHashes.Count; i++)
+        {
+            if (store.Get(0, height, storedHashes[i]) is not null)
+            {
+                retainedCount++;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retainedCount, Is.LessThanOrEqualTo(IndexTableStore.MaxVariantsPerHeight));
+            // The very first hash should have been evicted
+            Assert.That(store.Get(0, height, storedHashes[0]), Is.Null);
+            // The latest hash should be present
+            Assert.That(store.Get(0, height, storedHashes[^1]), Is.Not.Null);
         }
     }
 }

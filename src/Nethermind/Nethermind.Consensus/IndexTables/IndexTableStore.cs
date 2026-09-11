@@ -20,18 +20,27 @@ namespace Nethermind.Consensus.IndexTables;
 /// </remarks>
 public class IndexTableStore : IIndexTableStore
 {
+    /// <summary>
+    /// Maximum number of distinct block hash variants retained at any single (level, firstBlock) height.
+    /// Protects against unbounded cache growth from repeated simulations or competing side chains.
+    /// </summary>
+    public const int MaxVariantsPerHeight = 16;
+
     private readonly ConcurrentDictionary<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>>[] _entries;
     private readonly ConcurrentDictionary<(int Level, long FirstBlock), Hash256?>[] _latestByBlock;
+    private readonly ConcurrentDictionary<(int Level, long FirstBlock), ConcurrentQueue<Hash256?>>[] _variantsByHeight;
 
     public IndexTableStore()
     {
         int numLevels = Eip8304Constants.TableSizes.Length;
         _entries = new ConcurrentDictionary<(int, long, Hash256?), IReadOnlyList<IndexEntry>>[numLevels];
         _latestByBlock = new ConcurrentDictionary<(int, long), Hash256?>[numLevels];
+        _variantsByHeight = new ConcurrentDictionary<(int, long), ConcurrentQueue<Hash256?>>[numLevels];
         for (int i = 0; i < numLevels; i++)
         {
             _entries[i] = new ConcurrentDictionary<(int, long, Hash256?), IReadOnlyList<IndexEntry>>();
             _latestByBlock[i] = new ConcurrentDictionary<(int, long), Hash256?>();
+            _variantsByHeight[i] = new ConcurrentDictionary<(int, long), ConcurrentQueue<Hash256?>>();
         }
     }
 
@@ -40,9 +49,29 @@ public class IndexTableStore : IIndexTableStore
     {
         ConcurrentDictionary<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> dict = _entries[level];
         ConcurrentDictionary<(int Level, long FirstBlock), Hash256?> latestDict = _latestByBlock[level];
+        ConcurrentDictionary<(int Level, long FirstBlock), ConcurrentQueue<Hash256?>> variantsDict = _variantsByHeight[level];
 
-        dict[(level, firstBlock, blockHash)] = sortedEntries;
+        bool isNewVariant = dict.TryAdd((level, firstBlock, blockHash), sortedEntries);
+        if (!isNewVariant)
+        {
+            dict[(level, firstBlock, blockHash)] = sortedEntries;
+        }
+
         latestDict[(level, firstBlock)] = blockHash;
+
+        if (isNewVariant)
+        {
+            ConcurrentQueue<Hash256?> queue = variantsDict.GetOrAdd((level, firstBlock), static _ => new ConcurrentQueue<Hash256?>());
+            queue.Enqueue(blockHash);
+
+            while (queue.Count > MaxVariantsPerHeight && queue.TryDequeue(out Hash256? oldestVariant))
+            {
+                if (oldestVariant != blockHash)
+                {
+                    dict.TryRemove((level, firstBlock, oldestVariant), out _);
+                }
+            }
+        }
 
         // Evict oldest if ring buffer full
         if (latestDict.Count > Eip8304Constants.TablesPerLevel)
@@ -56,6 +85,7 @@ public class IndexTableStore : IIndexTableStore
 
             if (latestDict.TryRemove((level, minBlock), out _))
             {
+                variantsDict.TryRemove((level, minBlock), out _);
                 foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
                 {
                     if (kvp.Key.Level == level && kvp.Key.FirstBlock == minBlock)
@@ -105,6 +135,7 @@ public class IndexTableStore : IIndexTableStore
         }
 
         _latestByBlock[level].TryRemove((level, firstBlock), out _);
+        _variantsByHeight[level].TryRemove((level, firstBlock), out _);
         foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
         {
             if (kvp.Key.Level == level && kvp.Key.FirstBlock == firstBlock)
@@ -135,11 +166,13 @@ public class IndexTableStore : IIndexTableStore
             }
 
             ConcurrentDictionary<(int Level, long FirstBlock), Hash256?> latestDict = _latestByBlock[level];
+            ConcurrentDictionary<(int Level, long FirstBlock), ConcurrentQueue<Hash256?>> variantsDict = _variantsByHeight[level];
             foreach (KeyValuePair<(int Level, long FirstBlock), Hash256?> kvp in latestDict)
             {
                 if (kvp.Key.FirstBlock + lastBlockOffset > blockNumber)
                 {
                     latestDict.TryRemove(kvp.Key, out _);
+                    variantsDict.TryRemove(kvp.Key, out _);
                 }
             }
         }

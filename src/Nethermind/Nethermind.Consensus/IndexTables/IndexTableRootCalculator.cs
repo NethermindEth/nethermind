@@ -44,10 +44,8 @@ public static class IndexTableRootCalculator
             return emptyRoot;
         }
 
-        // Sort entries lexicographically by binary encoding
         entries.Sort();
 
-        // SHA-256 hash each entry to produce 32-byte leaf chunks
         UInt256[] leafHashes = new UInt256[entries.Count];
         Span<byte> entryBuffer = stackalloc byte[IndexEntry.MaxEncodedLength];
         Span<byte> hashBuffer = stackalloc byte[SHA256.HashSizeInBytes];

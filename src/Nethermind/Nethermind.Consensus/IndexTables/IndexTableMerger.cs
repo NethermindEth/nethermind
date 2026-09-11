@@ -23,7 +23,6 @@ public static class IndexTableMerger
     /// <returns>A new list containing all entries from all sources in sorted order.</returns>
     public static List<IndexEntry> Merge(IReadOnlyList<IReadOnlyList<IndexEntry>> sources)
     {
-        // Total entry count across all sources
         int totalCount = 0;
         for (int i = 0; i < sources.Count; i++)
         {

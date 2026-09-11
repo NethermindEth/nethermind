@@ -60,9 +60,34 @@ public interface IBlockAccessListManager
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
-    void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer);
-    void RollbackBlock(Block block);
-    void UpdateFinalBlockHash(Block block);
+    /// <summary>
+    /// Commits EIP-8304 index table roots and executes system contract transactions.
+    /// </summary>
+    /// <remarks>
+    /// Implementations that support EIP-8304 must override this method to route the system contract
+    /// call through post-execution transaction processing so access lists capture index storage slots.
+    /// The default implementation throws <see cref="System.NotSupportedException"/> if EIP-8304 is enabled,
+    /// preventing silent consensus divergence from missing index contract commitments.
+    /// </remarks>
+    void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+    {
+        if (spec.IsEip8304Enabled)
+        {
+            throw new System.NotSupportedException(
+                $"{GetType().Name} does not implement {nameof(CommitIndexTableRoots)}. " +
+                "EIP-8304 is active on this block; custom IBlockAccessListManager implementations must support index table commitments to prevent consensus divergence.");
+        }
+    }
+
+    /// <summary>
+    /// Rolls back provisional index table changes if block execution or validation fails.
+    /// </summary>
+    void RollbackBlock(Block block) { }
+
+    /// <summary>
+    /// Updates index table store keys when the block hash is recalculated after state root computation.
+    /// </summary>
+    void UpdateFinalBlockHash(Block block) { }
 }
 
 /// <summary>
