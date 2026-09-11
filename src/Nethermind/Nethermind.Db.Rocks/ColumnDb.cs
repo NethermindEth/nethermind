@@ -172,7 +172,20 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
         catch (RocksDbException x)
         {
-            _mainDb.HandleFatalDbError(x, scheduleRepairMarker: false);
+            // Ingestion also flushes this column's memtable and reads live SST metadata to pick a target level, so
+            // corruption reported here is only the staged file's when the message names one; otherwise it is the
+            // live DB's and must still schedule the repair marker.
+            bool stagedFileCorruption = false;
+            foreach (string file in files)
+            {
+                if (x.Message.Contains(Path.GetFileName(file), StringComparison.Ordinal))
+                {
+                    stagedFileCorruption = true;
+                    break;
+                }
+            }
+
+            _mainDb.HandleFatalDbError(x, scheduleRepairMarker: !stagedFileCorruption);
             throw;
         }
     }

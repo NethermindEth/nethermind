@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -61,7 +62,11 @@ public class SnapFlatStateServerTests
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
+    public void TearDown()
+    {
+        (_persistence as IDisposable)?.Dispose();
+        _columnsDb.Dispose();
+    }
 
     [Test]
     public void GetTrieNodes_RespectsHardResponseByteLimit()

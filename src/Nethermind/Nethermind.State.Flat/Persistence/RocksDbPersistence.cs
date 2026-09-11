@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.ExceptionServices;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -8,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RocksDbPersistence : IPersistence
+public class RocksDbPersistence : IPersistence, IDisposable
 {
     private static readonly FlatDbColumns[] IngestColumns =
     [
@@ -31,14 +32,16 @@ public class RocksDbPersistence : IPersistence
     // not a single RocksDB sequence number the way a normal WriteBatch commit is.
     private readonly ReaderWriterLockSlim _ingestGate = new();
     private readonly string? _stagingDir;
+    private readonly CancellationToken _exitToken;
 
     // Total budget for post-commit L0 backpressure across all ingest columns, so a graceful shutdown is not held
     // for minutes when compaction is behind.
     private static readonly TimeSpan IngestBackpressureBudget = TimeSpan.FromSeconds(30);
 
-    public RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null)
+    public RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null, IProcessExitSource? exitSource = null)
     {
         _db = db;
+        _exitToken = exitSource?.Token ?? CancellationToken.None;
         _logger = logManager.GetClassLogger<RocksDbPersistence>();
         _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
         _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
@@ -127,7 +130,7 @@ public class RocksDbPersistence : IPersistence
         }
     }
 
-    private IPersistence.IWriteBatch CreateIngestWriteBatch(IColumnDbSnapshot<FlatDbColumns> dbSnap, StateId to)
+    private IPersistence.IWriteBatch CreateIngestWriteBatch(IColumnDbSnapshot<FlatDbColumns> dbSnap, StateId to, WriteFlags flags)
     {
         ISstIngestWriteBatch[] batches = new ISstIngestWriteBatch[IngestColumns.Length];
         for (int i = 0; i < IngestColumns.Length; i++)
@@ -144,7 +147,7 @@ public class RocksDbPersistence : IPersistence
             BatchFor(FlatDbColumns.StateNodes),
             BatchFor(FlatDbColumns.StorageNodes),
             BatchFor(FlatDbColumns.FallbackNodes),
-            WriteFlags.None);
+            flags);
 
         StateId toCopy = to;
 
@@ -155,7 +158,7 @@ public class RocksDbPersistence : IPersistence
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
                     BatchFor(FlatDbColumns.Account),
                     BatchFor(FlatDbColumns.Storage),
-                    WriteFlags.None,
+                    flags,
                     rlpWrapSlots: _rlpWrapSlots
                 )
             ),
@@ -194,6 +197,12 @@ public class RocksDbPersistence : IPersistence
             List<string> stagedFiles = [];
             foreach (ISstIngestWriteBatch batch in batches)
                 stagedFiles.AddRange(batch.SealToStagedFiles());
+
+            // The staged files are the marker's redo log, and roll-forward reads a missing one as move-ingested.
+            // Their contents are already synced by SstFileWriter.Finish, but the directory entries naming them are
+            // not: without this a power loss could drop a file the marker lists, and the reopen would advance the
+            // pointer over rows nothing ever wrote.
+            if (stagedFiles.Count > 0) DirectorySync.Fsync(_stagingDir!);
 
             // Redo marker: durable before the first ingest so a crash anywhere below rolls forward to `to`
             // on reopen; the pointer therefore never claims a state some column lacks.
@@ -249,7 +258,9 @@ public class RocksDbPersistence : IPersistence
                         }
 
                         FatalShutdown();
-                        throw;
+
+                        // Surface what tore the base rather than what failed to repair it; the log above carries both.
+                        ExceptionDispatchInfo.Capture(commitFailure).Throw();
                     }
                 }
             }
@@ -287,8 +298,10 @@ public class RocksDbPersistence : IPersistence
         {
             // Best-effort L0 backpressure, bounded as a whole: without a single deadline six columns each polling
             // up to the per-column cap could hold a graceful shutdown for minutes. The state is already durable, so
-            // a shared budget just trades a little compaction headroom for a bounded stop.
-            using CancellationTokenSource backpressure = new(IngestBackpressureBudget);
+            // a shared budget just trades a little compaction headroom for a bounded stop, and a shutdown request
+            // drops the remaining headroom wait immediately rather than after the budget.
+            using CancellationTokenSource backpressure = CancellationTokenSource.CreateLinkedTokenSource(_exitToken);
+            backpressure.CancelAfter(IngestBackpressureBudget);
             foreach (FlatDbColumns column in IngestColumns)
                 ((ISstIngestible)_db.GetColumnDb(column)).WaitForIngestCompactionHeadroom(backpressure.Token);
         }
@@ -297,6 +310,8 @@ public class RocksDbPersistence : IPersistence
             if (_logger.IsWarn) _logger.Warn($"Ingest compaction backpressure after persisting {to} failed; the state is already durable, continuing. {e}");
         }
     }
+
+    public void Dispose() => _ingestGate.Dispose();
 
     /// <summary>Finishes a commit that tore the flat base, the way startup recovery would.</summary>
     /// <remarks>
@@ -404,7 +419,8 @@ public class RocksDbPersistence : IPersistence
                 throw new InvalidOperationException($"Flat DB SST ingest marker references unrecognized staged file '{name}'");
 
             string path = Path.Combine(stagingDir, name);
-            // A missing file was already ingested: move-ingest deletes its source on success.
+            // A missing file was already ingested: move-ingest deletes its source on success, and the staging
+            // directory is fsynced before the marker, so a listed file cannot be absent for any other reason.
             if (!File.Exists(path)) continue;
 
             if (!byColumn.TryGetValue(column, out List<string>? files)) byColumn[column] = files = [];
@@ -432,7 +448,9 @@ public class RocksDbPersistence : IPersistence
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
-        IColumnDbSnapshot<FlatDbColumns> dbSnap = _db.CreateSnapshot();
+        // Gated like a reader's: the batch decides its tombstones by scanning this snapshot, so one taken inside
+        // an ingest window would delete against a base whose columns are at different states.
+        IColumnDbSnapshot<FlatDbColumns> dbSnap = CreateGatedSnapshot();
         StateId currentState = BasePersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
         if (from != StateId.Sync && to != StateId.Sync && currentState != from)
         {
@@ -442,7 +460,7 @@ public class RocksDbPersistence : IPersistence
 
         if (_useSstIngestion && _storeSupportsIngest && from != StateId.Sync && to != StateId.Sync && from != to && !flags.HasFlag(WriteFlags.DisableWAL))
         {
-            return CreateIngestWriteBatch(dbSnap, to);
+            return CreateIngestWriteBatch(dbSnap, to, flags);
         }
 
         IColumnsWriteBatch<FlatDbColumns> batch = _db.StartWriteBatch();

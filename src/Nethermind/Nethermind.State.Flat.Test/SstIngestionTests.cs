@@ -51,8 +51,10 @@ public class SstIngestionTests
     [TearDown]
     public void TearDown()
     {
+        _persistence.Dispose();
         _db.Dispose();
-        try { Directory.Delete(_dbPath, true); } catch { }
+        try { Directory.Delete(_dbPath, true); }
+        catch (Exception e) { TestContext.Out.WriteLine($"Failed to delete {_dbPath}: {e}"); }
     }
 
     [Test]
@@ -371,6 +373,7 @@ public class SstIngestionTests
 
     private void Reopen(bool persistViaSstIngestion = true)
     {
+        _persistence.Dispose();
         _db.Dispose();
         _db = new ColumnsDb<FlatDbColumns>(
             _dbPath,
@@ -916,7 +919,8 @@ public class SstIngestionTests
     }
 
     [Test]
-    public void Ingest_corruption_fast_shuts_down_without_scheduling_a_repair_of_the_live_db()
+    public void Ingest_corruption_fast_shuts_down_and_schedules_a_repair_only_for_the_live_db(
+        [Values] bool corruptionNamesStagedFile)
     {
         _db.Dispose();
         ObservableColumnsDb observable = new(
@@ -937,7 +941,10 @@ public class SstIngestionTests
         }
 
         ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
-        accountColumn._testIngestFailureHook = () => throw new RocksDbException("Corruption: injected external SST corruption");
+        accountColumn._testIngestFailureHook = () => throw new RocksDbException(
+            corruptionNamesStagedFile
+                ? $"Corruption: injected external SST corruption in {StagedFileName(FlatDbColumns.Account)}"
+                : "Corruption: injected corruption of the live DB");
 
         Assert.That(() =>
         {
@@ -947,8 +954,27 @@ public class SstIngestionTests
         }, Throws.InstanceOf<RocksDbException>());
 
         accountColumn._testIngestFailureHook = null;
-        Assert.That(observable.FatalShutdownCount, Is.EqualTo(1));
-        Assert.That(Directory.GetFiles(_dbPath, "corrupt.marker", SearchOption.AllDirectories), Is.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observable.FatalShutdownCount, Is.EqualTo(1));
+            // Ingestion also flushes the memtable and reads live SST metadata, so corruption raised there is the
+            // live DB's unless the message names a staged file - and only the live DB's is worth repairing.
+            Assert.That(
+                Directory.GetFiles(_dbPath, "corrupt.marker", SearchOption.AllDirectories),
+                corruptionNamesStagedFile ? Is.Empty : Is.Not.Empty);
+        }
+    }
+
+    private string StagedFileName(FlatDbColumns column)
+    {
+        foreach (string path in StagedSstFiles())
+        {
+            string name = Path.GetFileName(path);
+            if (name.StartsWith($"{column}_", StringComparison.Ordinal)) return name;
+        }
+
+        throw new InvalidOperationException($"No staged SST file for column {column}");
     }
 
     private sealed class ObservableColumnsDb(
