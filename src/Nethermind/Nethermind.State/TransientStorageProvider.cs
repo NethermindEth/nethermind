@@ -77,6 +77,13 @@ namespace Nethermind.State
         private void Set(in StorageCell storageCell, in Entry entry)
         {
             ref Entry slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_values, storageCell, out bool exists);
+
+            // A write that changes nothing has nothing to roll back, and skipping it keeps the undo log
+            // from growing: a block that rewrites one transient slot would otherwise add an entry per
+            // write for a revert that could only restore what is already there. revm applies the same
+            // rule. The time saved is under a nanosecond — this is about the log, not the write.
+            if (exists && slot.Length == entry.Length && slot.Value == entry.Value) return;
+
             _undo.Add(new Undo(in storageCell, exists ? slot : default, exists));
             slot = entry;
         }
