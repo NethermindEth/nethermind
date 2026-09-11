@@ -40,7 +40,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingReceipt = value;
     }
 
-    public bool IsTracingReceiptLogs => _isTracingReceipt || innerTracer.IsTracingReceiptLogs;
+    public bool IsCollectingLogs => _isTracingReceipt || innerTracer.IsCollectingLogs;
 
     public bool IsTracingActions
     {

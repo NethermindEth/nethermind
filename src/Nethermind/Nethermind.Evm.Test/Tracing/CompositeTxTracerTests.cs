@@ -18,12 +18,12 @@ public class CompositeTxTracerTests
     public void Aggregates_receipt_log_requirements([Values] bool firstRequiresLogs, [Values] bool secondRequiresLogs)
     {
         ITxTracer first = Substitute.For<ITxTracer>();
-        first.IsTracingReceiptLogs.Returns(firstRequiresLogs);
+        first.IsCollectingLogs.Returns(firstRequiresLogs);
         ITxTracer second = Substitute.For<ITxTracer>();
-        second.IsTracingReceiptLogs.Returns(secondRequiresLogs);
+        second.IsCollectingLogs.Returns(secondRequiresLogs);
         using CompositeTxTracer tracer = new(first, second);
 
-        Assert.That(tracer.IsTracingReceiptLogs, Is.EqualTo(firstRequiresLogs || secondRequiresLogs));
+        Assert.That(tracer.IsCollectingLogs, Is.EqualTo(firstRequiresLogs || secondRequiresLogs));
     }
 
     [Test]
@@ -31,10 +31,10 @@ public class CompositeTxTracerTests
     {
         ITxTracer inner = Substitute.For<ITxTracer>();
         inner.IsTracingReceipt.Returns(true);
-        inner.IsTracingReceiptLogs.Returns(innerRequiresLogs);
+        inner.IsCollectingLogs.Returns(innerRequiresLogs);
         using CancellationTxTracer tracer = new(inner) { IsTracingReceipt = forceReceipts };
 
-        Assert.That(tracer.IsTracingReceiptLogs, Is.EqualTo(innerRequiresLogs || forceReceipts));
+        Assert.That(tracer.IsCollectingLogs, Is.EqualTo(innerRequiresLogs || forceReceipts));
     }
 
     [Test]

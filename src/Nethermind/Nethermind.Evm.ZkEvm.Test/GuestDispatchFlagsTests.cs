@@ -33,7 +33,7 @@ public class GuestDispatchFlagsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.DoesNotThrow(() => DispatchFlags.Validate(tracer));
-            Assert.That(tracer.IsTracingReceiptLogs, Is.EqualTo(capability == nameof(ITxTracer.IsTracingReceipt)));
+            Assert.That(tracer.IsCollectingLogs, Is.EqualTo(capability == nameof(ITxTracer.IsTracingReceipt)));
         }
     }
 

@@ -227,12 +227,12 @@ public class TransactionProcessorWarmupTests
         public List<LogEntry> Logs { get; } = [];
         public bool Failed { get; private set; }
         public ulong GasSpent { get; private set; }
-        public override bool IsTracingReceiptLogs { get; }
+        public override bool IsCollectingLogs { get; }
 
         public LogCaptureTracer(bool receiptTracer, bool? receiptLogs = null)
         {
             IsTracingReceipt = receiptTracer;
-            IsTracingReceiptLogs = receiptLogs ?? receiptTracer;
+            IsCollectingLogs = receiptLogs ?? receiptTracer;
             IsTracingLogs = !receiptTracer;
         }
 

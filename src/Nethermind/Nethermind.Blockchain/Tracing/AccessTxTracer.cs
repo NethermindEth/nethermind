@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Tracing;
 public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 {
     public override bool IsTracingReceipt => true;
-    public override bool IsTracingReceiptLogs => false;
+    public override bool IsCollectingLogs => false;
     public override bool IsTracingAccess => true;
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,

@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Tracing;
 public class CallOutputTracer : TxTracer
 {
     public override bool IsTracingReceipt => true;
-    public override bool IsTracingReceiptLogs => false;
+    public override bool IsCollectingLogs => false;
     public byte[]? ReturnValue { get; set; }
 
     public ulong GasSpent { get; set; }

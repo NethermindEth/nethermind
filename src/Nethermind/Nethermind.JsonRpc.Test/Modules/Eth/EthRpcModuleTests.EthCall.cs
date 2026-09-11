@@ -109,7 +109,7 @@ public partial class EthRpcModuleTests
     private sealed class RpcLogObserver : TxTracer
     {
         public override bool IsTracingReceipt => true;
-        public override bool IsTracingReceiptLogs => !SuppressLogs;
+        public override bool IsCollectingLogs => !SuppressLogs;
         public bool SuppressLogs { get; set; }
         public int LogCount { get; set; }
         public int ExecutionCount { get; set; }
