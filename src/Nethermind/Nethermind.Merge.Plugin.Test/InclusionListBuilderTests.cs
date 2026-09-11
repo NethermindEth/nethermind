@@ -76,12 +76,27 @@ public class InclusionListBuilderTests
         Assert.That(il, Is.Not.Empty);
     }
 
-    [Test]
-    public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit()
+    // An entry too big for the remaining budget is skipped rather than ending the encoding, so another
+    // sender's smaller transaction can still take the space. The skipped sender's own later nonces cannot:
+    // their predecessor is missing, so they would spend the scarce byte budget on an unappendable entry.
+    [TestCase(true, TestName = "Sender_run_ends_at_a_tx_skipped_for_size")]
+    [TestCase(false, TestName = "Tx_skipped_for_size_leaves_other_senders_alone")]
+    public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit(bool sameSender)
     {
-        using InclusionListBytes il = BuildBuilder(PoolOf(TxOfSize(8000), TxOfSize(50, 1))).GetInclusionList();
+        // Larger than the whole list, so it is skipped whichever order the sample draws it in.
+        Transaction oversized = TxOfSize(Eip7805Constants.MaxBytesPerInclusionList, 0, TestItem.PrivateKeyA);
+        Transaction small = sameSender
+            ? TxOfSize(50, 1, TestItem.PrivateKeyA)
+            : TxOfSize(50, 0, TestItem.PrivateKeyB);
 
-        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        using InclusionListBytes il = BuildBuilder(PoolOf(oversized, small)).GetInclusionList();
+
+        Hash256?[] expected = sameSender ? [] : [small.Hash];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(expected));
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     // Only what the next block could append belongs in the list, so the pool must do the readiness and

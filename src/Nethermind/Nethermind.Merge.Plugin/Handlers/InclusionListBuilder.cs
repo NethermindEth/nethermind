@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
@@ -97,13 +98,19 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         try
         {
             int size = 0;
+            // The sample orders each sender's run by ascending nonce, so once one entry is dropped for size
+            // the rest of that sender's run is unappendable and would only waste the list's scarce budget.
+            HashSet<AddressAsKey>? droppedSenders = null;
             foreach (Transaction tx in txs)
             {
+                if (droppedSenders is not null && droppedSenders.Contains(tx.SenderAddress!)) continue;
+
                 ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
                 if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
                 {
                     txBytes.Dispose();
+                    (droppedSenders ??= []).Add(tx.SenderAddress!);
                     continue;
                 }
 
