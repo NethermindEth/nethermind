@@ -7,7 +7,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -16,36 +15,45 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Proofs;
 
-public sealed partial class ReceiptTrie
+// The indexed tries from Yellow Paper section 4.4 have prefix-free RLP integer keys,
+// ordered 1..127, 0, 128..N, so each subtree can be hashed before encoding its sibling.
+internal static class IndexedTrieRoot
 {
-    // The indexed trie from Yellow Paper section 4.4.2 has prefix-free RLP integer keys,
-    // ordered 1..127, 0, 128..N, so each subtree can be hashed before encoding its sibling.
-    private readonly ref struct RootCalculator(ReadOnlySpan<TxReceipt> receipts, ReceiptMessageDecoder decoder, RlpBehaviors behavior,
-        ReadOnlySpan<RootCalculator.NodeReference> leaves = default)
+    internal const int MinItemsForParallelRootHash = 64;
+
+    internal interface IValueEncoder<T>
+    {
+        ReadOnlySpan<byte> GetEncodedValue(T item);
+        int GetLength(T item);
+        void Encode<TWriter>(ref TWriter writer, T item) where TWriter : struct, IRlpWriteBackend, allows ref struct;
+    }
+
+    internal readonly ref struct Calculator<T, TEncoder>(ReadOnlySpan<T> items, TEncoder encoder,
+        ReadOnlySpan<NodeReference> leaves = default) where TEncoder : struct, IValueEncoder<T>
     {
         private const int LeafBatchSize = 16;
         private const int BranchPrefixLength = 3;
-        // Prefix-free keys leave the branch value empty; each child reference occupies at most 33 bytes.
         private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
-        private readonly ReadOnlySpan<TxReceipt> _receipts = receipts;
+        private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
-        public Hash256 Calculate()
-            => RuntimeInformation.IsSingleProcessor || _receipts.Length <= MinItemsForParallelRootHash
+        public Hash256 Calculate(bool canBeParallel = true)
+            => _items.IsEmpty ? Keccak.EmptyTreeHash
+                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= MinItemsForParallelRootHash
                 ? CalculateSequential()
                 : CalculateParallel();
 
         private Hash256 CalculateParallel()
         {
-            using ArrayPoolList<TxReceipt> inputs = new(_receipts);
-            using ArrayPoolList<NodeReference> references = new(_receipts.Length, _receipts.Length);
-            ReceiptMessageDecoder leafDecoder = decoder;
-            RlpBehaviors leafBehavior = behavior;
+            Debug.Assert(_items.Length > 1);
+            using ArrayPoolList<T> inputs = new(_items);
+            using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
+            TEncoder leafEncoder = encoder;
             try
             {
-                Parallel.For(0, (_receipts.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, batch =>
+                Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, batch =>
                 {
-                    RootCalculator calculator = new(inputs.AsSpan(), leafDecoder, leafBehavior);
+                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
                     int start = batch * LeafBatchSize;
                     int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
                     for (int position = start; position < end; position++)
@@ -62,12 +70,12 @@ public sealed partial class ReceiptTrie
             {
                 ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
             }
-            return new RootCalculator(_receipts, decoder, behavior, references.AsSpan()).CalculateSequential();
+            return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
         private Hash256 CalculateSequential()
         {
-            NodeReference root = Build(0, _receipts.Length, 0);
+            NodeReference root = Build(0, _items.Length, 0);
             return root.Length == 32 ? new Hash256(root.Value) : Keccak.Compute(root.Value.Bytes[..root.Length]);
         }
 
@@ -76,7 +84,7 @@ public sealed partial class ReceiptTrie
         {
             Key first = GetKey(start);
             if (end - start == 1)
-                return _leaves.IsEmpty ? Leaf(first, depth, _receipts[GetIndex(start)]) : _leaves[start];
+                return _leaves.IsEmpty ? Leaf(first, depth, _items[GetIndex(start)]) : _leaves[start];
 
             Key last = GetKey(end - 1);
             int commonDepth = CommonPrefix(first, last, depth);
@@ -112,25 +120,27 @@ public sealed partial class ReceiptTrie
             }
             encoded[offset++] = Rlp.EmptyByteArrayByte;
             int branchLength = offset - BranchPrefixLength;
-            Debug.Assert(branchLength <= MaxBranchContentLength);
             int prefixLength = Rlp.StartSequence(encoded, 0, branchLength);
+            Debug.Assert(branchLength <= MaxBranchContentLength);
             Debug.Assert(prefixLength <= BranchPrefixLength);
             encoded.Slice(BranchPrefixLength, branchLength).CopyTo(encoded[prefixLength..]);
             return NodeReference.FromRlp(encoded[..(prefixLength + branchLength)]);
         }
 
         [SkipLocalsInit]
-        private NodeReference Leaf(Key key, int depth, TxReceipt receipt)
+        private NodeReference Leaf(Key key, int depth, T item)
         {
             Span<byte> path = stackalloc byte[6];
             int pathLength = EncodePath(key, depth, key.Length - depth, isLeaf: true, path);
-            int valueLength = decoder.GetLength(receipt, behavior);
+            ReadOnlySpan<byte> encodedValue = encoder.GetEncodedValue(item);
+            int valueLength = encodedValue.IsEmpty ? encoder.GetLength(item) : encodedValue.Length;
             Debug.Assert(valueLength > 0, "Empty encodings require trie deletion semantics.");
             Span<byte> shortValue = stackalloc byte[1];
             if (valueLength == 1)
             {
                 RlpWriter shortWriter = new(shortValue);
-                decoder.Encode(ref shortWriter, receipt, behavior);
+                if (encodedValue.IsEmpty) encoder.Encode(ref shortWriter, item);
+                else shortValue[0] = encodedValue[0];
             }
 
             bool unprefixedByte = valueLength == 1 && shortValue[0] < 128;
@@ -147,22 +157,21 @@ public sealed partial class ReceiptTrie
             }
             else
             {
-                writer.StartByteArray(valueLength, false);
-                decoder.Encode(ref writer, receipt, behavior);
+                if (encodedValue.IsEmpty)
+                {
+                    writer.StartByteArray(valueLength, false);
+                    encoder.Encode(ref writer, item);
+                }
+                else writer.Encode(encodedValue);
             }
+            Debug.Assert(writer.Position == totalLength);
             return NodeReference.FromRlp(buffer.AsSpan(0, writer.Position));
         }
 
         private int GetIndex(int position)
         {
-            int zeroPosition = Math.Min(_receipts.Length - 1, 127);
+            int zeroPosition = Math.Min(_items.Length - 1, 127);
             return position < zeroPosition ? position + 1 : position == zeroPosition ? 0 : position;
-        }
-
-        private static int CommonPrefix(Key first, Key last, int depth)
-        {
-            while (depth < Math.Min(first.Length, last.Length) && first.Nibble(depth) == last.Nibble(depth)) depth++;
-            return depth;
         }
 
         private Key GetKey(int position)
@@ -172,53 +181,59 @@ public sealed partial class ReceiptTrie
             int byteCount = (32 - BitOperations.LeadingZeroCount(index) + 7) / 8;
             return new(((ulong)(128 + byteCount) << (byteCount * 8)) | index, (byteCount + 1) * 2);
         }
+    }
 
-        private static int EncodePath(Key key, int depth, int length, bool isLeaf, Span<byte> output)
+    private static int CommonPrefix(Key first, Key last, int depth)
+    {
+        while (depth < Math.Min(first.Length, last.Length) && first.Nibble(depth) == last.Nibble(depth)) depth++;
+        return depth;
+    }
+
+    private static int EncodePath(Key key, int depth, int length, bool isLeaf, Span<byte> output)
+    {
+        int end = depth + length;
+        byte flags = isLeaf ? (byte)32 : (byte)0;
+        output[0] = (length & 1) != 0 ? (byte)(flags | 16 | key.Nibble(depth++)) : flags;
+        int position = 1;
+        while (depth < end)
         {
-            int end = depth + length;
-            byte flags = isLeaf ? (byte)32 : (byte)0;
-            output[0] = (length & 1) != 0 ? (byte)(flags | 16 | key.Nibble(depth++)) : flags;
-            int position = 1;
-            while (depth < end)
+            output[position++] = (byte)((key.Nibble(depth) << 4) | key.Nibble(depth + 1));
+            depth += 2;
+        }
+        return position;
+    }
+
+    private readonly record struct Key(ulong Value, int Length)
+    {
+        public int Nibble(int depth) => (int)(Value >> ((Length - depth - 1) * 4)) & 15;
+    }
+
+    internal readonly record struct NodeReference(ValueHash256 Value, int Length)
+    {
+        public int EncodedLength => Length == 32 ? 33 : Length;
+
+        public int WriteTo(Span<byte> output)
+        {
+            if (Length == 32)
             {
-                output[position++] = (byte)((key.Nibble(depth) << 4) | key.Nibble(depth + 1));
-                depth += 2;
+                output[0] = 160;
+                Value.Bytes.CopyTo(output[1..]);
+                return 33;
             }
-            return position;
+            Value.Bytes[..Length].CopyTo(output);
+            return Length;
         }
 
-        private readonly record struct Key(ulong Value, int Length)
+        public static NodeReference FromRlp(ReadOnlySpan<byte> encoded)
         {
-            public int Nibble(int depth) => (int)(Value >> ((Length - depth - 1) * 4)) & 15;
-        }
-
-        public readonly record struct NodeReference(ValueHash256 Value, int Length)
-        {
-            public int EncodedLength => Length == 32 ? 33 : Length;
-
-            public int WriteTo(Span<byte> output)
+            ValueHash256 value = default;
+            if (encoded.Length < 32)
             {
-                if (Length == 32)
-                {
-                    output[0] = 160;
-                    Value.Bytes.CopyTo(output[1..]);
-                    return 33;
-                }
-                Value.Bytes[..Length].CopyTo(output);
-                return Length;
+                encoded.CopyTo(value.BytesAsSpan);
+                return new(value, encoded.Length);
             }
-
-            public static NodeReference FromRlp(ReadOnlySpan<byte> encoded)
-            {
-                ValueHash256 value = default;
-                if (encoded.Length < 32)
-                {
-                    encoded.CopyTo(value.BytesAsSpan);
-                    return new(value, encoded.Length);
-                }
-                KeccakHash.ComputeHash(encoded, value.BytesAsSpan);
-                return new(value, 32);
-            }
+            KeccakHash.ComputeHash(encoded, value.BytesAsSpan);
+            return new(value, 32);
         }
     }
 }

@@ -39,6 +39,7 @@ jobs:
       fail-fast: false
       matrix:
         project:
+          - Nethermind.Blockchain.Test
           - Nethermind.Evm.Test
           - Nethermind.Merge.Plugin.Test
           - Nethermind.State.Test
