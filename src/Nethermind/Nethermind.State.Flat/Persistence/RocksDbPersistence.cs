@@ -197,6 +197,9 @@ public class RocksDbPersistence : IPersistence
 
             // Redo marker: durable before the first ingest so a crash anywhere below rolls forward to `to`
             // on reopen; the pointer therefore never claims a state some column lacks.
+            // Claimed before the batch commits: a throw inside the block below can still leave the marker durable,
+            // and deleting staged files a durable marker references strands the pointer past missing data.
+            markerWritten = true;
             using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
             {
                 IWriteBatch metadata = markerBatch.GetColumnBatch(FlatDbColumns.Metadata);
@@ -204,13 +207,11 @@ public class RocksDbPersistence : IPersistence
                 if (_rlpWrapSlots)
                     BasePersistence.RecordLayoutOnFirstBatch(metadata, ref _layoutPersisted, FlatLayout.Flat);
             }
-            markerWritten = true;
             _db.SyncWal();
 
             _ingestGate.EnterWriteLock();
             try
             {
-                bool completedInline = false;
                 try
                 {
                     foreach (ISstIngestWriteBatch batch in batches)
@@ -218,24 +219,21 @@ public class RocksDbPersistence : IPersistence
                         batch.IngestStagedFiles();
                         columnsIngested++;
                     }
+
+                    using IColumnsWriteBatch<FlatDbColumns> pointerBatch = _db.StartWriteBatch();
+                    IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
+                    BasePersistence.SetCurrentState(metadata, to);
+                    BasePersistence.ClearIngestMarker(metadata);
                 }
-                catch (Exception ingestFailure) when (columnsIngested > 0)
+                catch (Exception commitFailure) when (columnsIngested > 0)
                 {
-                    // A later column ingest threw after an earlier one already went live: the flat base is now torn
-                    // (some columns at `to`, the pointer and the rest at `from`). Complete the commit inline, still
-                    // holding the write lock, so no snapshot ever observes that torn base - roll the durable marker
-                    // forward exactly as startup recovery does (re-ingest the staged files the failed and remaining
-                    // columns still have, then advance the pointer).
+                    // A later column ingest, or the pointer advance itself, threw after an earlier ingest already
+                    // went live: the flat base is now torn (some columns at `to`, the pointer and the rest at
+                    // `from`). Complete the commit inline, still holding the write lock, so no snapshot ever
+                    // observes that torn base.
                     try
                     {
-                        if (BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is not { } pending)
-                        {
-                            throw new InvalidOperationException(
-                                $"The flat DB SST ingest marker for {to} is gone after {columnsIngested} column ingest(s)");
-                        }
-
-                        RollForwardPendingIngest(_db, _stagingDir!, pending, _logger);
-                        completedInline = true;
+                        CompleteTornCommit(to, columnsIngested);
                     }
                     catch (Exception repairFailure)
                     {
@@ -247,20 +245,12 @@ public class RocksDbPersistence : IPersistence
                         {
                             _logger.Error(
                                 $"Flat DB persist to {to} tore the base after {columnsIngested} of {batches.Length} column ingests and could not be completed in place. Shutting down; the pending ingest marker rolls forward on restart.",
-                                new AggregateException(ingestFailure, repairFailure));
+                                new AggregateException(commitFailure, repairFailure));
                         }
 
                         FatalShutdown();
                         throw;
                     }
-                }
-
-                if (!completedInline)
-                {
-                    using IColumnsWriteBatch<FlatDbColumns> pointerBatch = _db.StartWriteBatch();
-                    IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
-                    BasePersistence.SetCurrentState(metadata, to);
-                    BasePersistence.ClearIngestMarker(metadata);
                 }
             }
             finally
@@ -308,6 +298,29 @@ public class RocksDbPersistence : IPersistence
         }
     }
 
+    /// <summary>Finishes a commit that tore the flat base, the way startup recovery would.</summary>
+    /// <remarks>
+    /// Re-ingests the staged files the failed and remaining columns still have (move-ingest consumed the rest) and
+    /// advances the pointer. Called while the reader gate is held, so the torn base is never observable.
+    /// </remarks>
+    private void CompleteTornCommit(in StateId to, int columnsIngested)
+    {
+        IDb metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
+        if (BasePersistence.ReadIngestMarker(metadata) is { } pending)
+        {
+            RollForwardPendingIngest(_db, _stagingDir!, pending, _logger);
+        }
+        else if (BasePersistence.ReadCurrentState(metadata) != to)
+        {
+            // Neither a marker to roll forward nor a pointer at `to`: nothing is left to carry the live columns
+            // forward, so the base cannot be made whole here.
+            throw new InvalidOperationException(
+                $"The flat DB SST ingest marker for {to} is gone after {columnsIngested} column ingest(s)");
+        }
+
+        // Marker cleared and pointer already at `to`: the commit did complete and only reporting it failed.
+    }
+
     /// <summary>Stops the process when the flat base is torn and cannot be repaired in place.</summary>
     /// <remarks>
     /// Mirrors <c>DbOnTheRocks.FatalShutdown</c>: the torn columns are already visible to reader snapshots and only a
@@ -331,7 +344,10 @@ public class RocksDbPersistence : IPersistence
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; keeping staged files for startup roll-forward", e);
+            // The marker outlives this persist and `CommitIngest` refuses to start while one is pending, so the node
+            // would keep processing blocks it can never persist. The staged files stay, so a restart loses nothing.
+            if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; shutting down, the staged files roll forward on restart", e);
+            FatalShutdown();
             return;
         }
 

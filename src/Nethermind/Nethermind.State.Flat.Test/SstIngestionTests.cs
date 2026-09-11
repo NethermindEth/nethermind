@@ -182,6 +182,120 @@ public class SstIngestionTests
         Assert.That(reader.CurrentState, Is.EqualTo(s2));
     }
 
+    [Test]
+    public void Marker_committed_by_a_failing_batch_is_cleared_with_its_staged_files()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        // The marker batch commits on Dispose and only then reports a failure, so the marker is durable even
+        // though the persist threw: the rollback must clear it, not delete the files it still references.
+        WrapWithWriteBatchFaults().FailWriteBatchAfter(0, commitBeforeFailing: true);
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+        }, Throws.InstanceOf<IOException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+            Assert.That(StagedSstFiles(), Is.Empty);
+        }
+
+        Reopen();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            // A marker outliving its deleted files would advance the pointer here over data never ingested.
+            Assert.That(reader.CurrentState, Is.EqualTo(s1));
+            Assert.That(reader.GetAccount(Addr)!.Balance, Is.EqualTo((UInt256)100));
+        }
+    }
+
+    [Test]
+    public void Failed_pointer_advance_after_every_ingest_is_completed_inline()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        // Every column goes live at s2 and only the pointer write fails. Releasing the gate there would publish a
+        // base ahead of its pointer, so the commit must be rolled forward inline instead.
+        WrapWithWriteBatchFaults().FailWriteBatchAfter(1);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot1, Slot(0x11));
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_persistence.FatalShutdownCount, Is.Zero);
+            Assert.That(reader.CurrentState, Is.EqualTo(s2));
+            Assert.That(reader.GetAccount(Addr)!.Balance, Is.EqualTo((UInt256)200));
+            AssertSlot(reader, Slot1, Slot(0x11));
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+            Assert.That(StagedSstFiles(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Unclearable_marker_after_a_failed_persist_is_fatal_and_rolls_forward()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
+        accountColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+
+        // Nothing is ingested, so the rollback owns the marker - but its clearing batch fails too. The marker then
+        // outlives the persist and every later one refuses to start, so the node must stop instead of stalling.
+        WrapWithWriteBatchFaults().FailWriteBatchAfter(1);
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+        }, Throws.InstanceOf<IOException>());
+
+        accountColumn._testIngestFailureHook = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_persistence.FatalShutdownCount, Is.EqualTo(1));
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata))?.To, Is.EqualTo(s2));
+            Assert.That(StagedSstFiles(), Is.Not.Empty);
+        }
+
+        Reopen();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(s2));
+            Assert.That(reader.GetAccount(Addr)!.Balance, Is.EqualTo((UInt256)200));
+        }
+    }
+
     /// <summary>Observes the fatal-exit decision instead of taking it, which a test process cannot survive.</summary>
     private sealed class ObservablePersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig config)
         : RocksDbPersistence(db, logManager, config)
@@ -189,6 +303,67 @@ public class SstIngestionTests
         public int FatalShutdownCount { get; private set; }
 
         protected override void FatalShutdown() => FatalShutdownCount++;
+    }
+
+    /// <summary>Re-points <see cref="_persistence"/> at the same DB through a write-batch fault injector.</summary>
+    private WriteBatchFaultingColumnsDb WrapWithWriteBatchFaults()
+    {
+        WriteBatchFaultingColumnsDb faulting = new(_db);
+        _persistence = new ObservablePersistence(faulting, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        return faulting;
+    }
+
+    /// <summary>Fails one chosen write batch of the real DB, optionally after it has already committed.</summary>
+    /// <remarks>Forwards only what the SST-ingest persist path uses.</remarks>
+    private sealed class WriteBatchFaultingColumnsDb(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
+    {
+        private int _skipBatches = -1;
+        private bool _commitBeforeFailing;
+
+        /// <summary>Fails the write batch started after <paramref name="skip"/> further ones, once.</summary>
+        /// <param name="commitBeforeFailing">Whether the failing batch commits before throwing, the shape a
+        /// throw from <c>Dispose</c> leaves behind.</param>
+        public void FailWriteBatchAfter(int skip, bool commitBeforeFailing = false)
+        {
+            _skipBatches = skip;
+            _commitBeforeFailing = commitBeforeFailing;
+        }
+
+        public IColumnsWriteBatch<FlatDbColumns> StartWriteBatch()
+        {
+            IColumnsWriteBatch<FlatDbColumns> batch = inner.StartWriteBatch();
+            if (_skipBatches < 0) return batch;
+            if (_skipBatches > 0)
+            {
+                _skipBatches--;
+                return batch;
+            }
+
+            _skipBatches = -1;
+            return new FaultingWriteBatch(batch, _commitBeforeFailing);
+        }
+
+        public IDb GetColumnDb(FlatDbColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatDbColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatDbColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+        public void Dispose() => inner.Dispose();
+
+        private sealed class FaultingWriteBatch(IColumnsWriteBatch<FlatDbColumns> inner, bool commitBeforeFailing)
+            : IColumnsWriteBatch<FlatDbColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatDbColumns key) => inner.GetColumnBatch(key);
+            public void Clear() => inner.Clear();
+
+            public void Dispose()
+            {
+                // Disposing the batch is what commits it, so dropping the writes means clearing them first.
+                if (!commitBeforeFailing) inner.Clear();
+                inner.Dispose();
+                throw new IOException("injected write batch failure");
+            }
+        }
     }
 
     private static SlotValue Slot(byte v) => SlotValue.FromSpanWithoutLeadingZero(new byte[] { v });
