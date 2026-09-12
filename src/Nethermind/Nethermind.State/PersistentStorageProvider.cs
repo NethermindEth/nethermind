@@ -48,6 +48,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
+    /// <summary>Memoizes the last <see cref="_originalValues"/> probe.</summary>
+    /// <remarks>An SSTORE probes the same cell its preceding read just captured. Keyed on the originals
+    /// round because <see cref="EndOriginalsRound"/> is the only routine clearing the map, and it always
+    /// bumps the round; within a round the map only grows, except in <see cref="RestoreStorageClear"/>,
+    /// which forgets the memo explicitly. Round 0 is never issued, so it doubles as "no memo".</remarks>
+    private StorageCell _lastOriginalCell;
+    private byte[]? _lastOriginalValue;
+    private uint _lastOriginalRound;
+
     private void EndOriginalsRound()
     {
         _originalValues.ClearAndTrim();
@@ -130,9 +139,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out byte[]? value))
+        byte[]? value;
+        if (_lastOriginalRound == _originalsRound && _lastOriginalCell.Equals(in storageCell))
         {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            value = _lastOriginalValue;
+        }
+        else
+        {
+            if (!_originalValues.TryGetValue(storageCell, out value))
+            {
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+
+            _lastOriginalCell = storageCell;
+            _lastOriginalValue = value;
+            _lastOriginalRound = _originalsRound;
         }
 
         if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
@@ -664,6 +685,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             throw new InvalidOperationException($"Expected storage clear journal entry {lastIndex}, got {journalIndex}");
         }
+
+        _lastOriginalRound = 0;
 
         StorageClearChange change = _storageClearJournal[journalIndex];
         _storageClearJournal.RemoveAt(journalIndex);
