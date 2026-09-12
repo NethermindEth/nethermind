@@ -12,11 +12,15 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -25,6 +29,50 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
+        [Values("debug_traceTransaction", "trace_transaction", "trace_replayTransaction")] string method,
+        [Values(0, 1, 2)] int targetIndex, [Values] bool stream, [Values] bool isAura)
+    {
+        List<Hash256?> executed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed)));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: all three test transactions must be mined");
+        if (isAura)
+            Assert.That(chain.BlockProcessor, Is.InstanceOf<Nethermind.Consensus.AuRa.AuRaBlockProcessor>(),
+                "precondition: the compatibility control must use a chain-specific processor");
+        executed.Clear();
+        string hash = block.Transactions[targetIndex].Hash!.ToString();
+        string response = method switch
+        {
+            "debug_traceTransaction" => await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, hash, new { tracer = "callTracer" }),
+            "trace_replayTransaction" => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, hash, new[] { "trace", "stateDiff" }),
+            _ => await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, hash)
+        };
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, "the prefix must produce a successful RPC response");
+            Assert.That(json["result"], Is.Not.Null, "the selected transaction must have a trace result");
+            Assert.That(executed.Count, Is.EqualTo(isAura ? 3 : targetIndex + 1),
+                "standard replay must skip the suffix while chain-specific finalization retains the full block");
+        }
+        for (int i = 0; i < executed.Count; i++)
+            Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
+    }
+
     private class Context : IDisposable
     {
         public IDebugRpcModule DebugRpcModule { get; }
@@ -434,5 +482,17 @@ public partial class DebugRpcModuleTests
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
         });
+    }
+
+    private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            executed.Add(transaction.Hash);
+            return inner.Execute(transaction, txTracer);
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(blockExecutionContext);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 }

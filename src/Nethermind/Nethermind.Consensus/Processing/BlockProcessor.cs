@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -75,6 +76,16 @@ public partial class BlockProcessor(
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
+        // Chain-specific processors and custom executors may require complete receipts in finalization hooks.
+        if (blockTracer is TransactionTraceBoundary boundary
+            && (GetType() != typeof(BlockProcessor)
+                || !(_blockTransactionsExecutor.GetType() == typeof(BlockValidationTransactionsExecutor)
+                    || (_blockTransactionsExecutor.GetType() == typeof(ParallelBlockValidationTransactionsExecutor)
+                        && ((ParallelBlockValidationTransactionsExecutor)_blockTransactionsExecutor).SupportsTransactionTraceBoundary))))
+        {
+            blockTracer = boundary.Inner;
+        }
+
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
@@ -168,6 +179,13 @@ public partial class BlockProcessor(
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
+
+        if (TransactionTraceBoundary.Get(blockTracer, options)?.IsComplete == true)
+        {
+            // A transaction-only replay must not apply block-final state changes to its partial state.
+            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: false);
+            return receipts;
+        }
 
         CommitState(spec);
 

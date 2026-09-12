@@ -6,6 +6,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,8 @@ public partial class BlockProcessor
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
         private int _pooledSlotsInUse;
 
+        internal bool SupportsTransactionTraceBoundary => inner.GetType() == typeof(BlockValidationTransactionsExecutor);
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             balManager.SetBlockExecutionContext(blockExecutionContext);
@@ -70,6 +73,7 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            TransactionTraceBoundary? traceBoundary = TransactionTraceBoundary.Get(receiptsTracer.OtherTracer, processingOptions);
             bool shouldValidateBal = shouldValidate
                 && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock)
                 && !processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
@@ -110,6 +114,7 @@ public partial class BlockProcessor
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
+                if (traceBoundary?.IsComplete == true) break;
             }
 
             return [.. receiptsTracer.TxReceipts];

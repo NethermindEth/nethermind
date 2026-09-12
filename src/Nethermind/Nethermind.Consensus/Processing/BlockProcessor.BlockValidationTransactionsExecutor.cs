@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
@@ -41,6 +42,7 @@ public partial class BlockProcessor
             SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            TransactionTraceBoundary? traceBoundary = TransactionTraceBoundary.Get(receiptsTracer.OtherTracer, processingOptions);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -52,6 +54,8 @@ public partial class BlockProcessor
                 {
                     ThrowInvalidBlockForGasLimit(block);
                 }
+
+                if (traceBoundary?.IsComplete == true) break;
             }
 
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
