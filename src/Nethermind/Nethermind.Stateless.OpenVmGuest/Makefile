@@ -27,7 +27,7 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13
 # a harness that transpiles the ELF and executes it. Published by
 # .github/workflows/release-zkvm-runners.yml, pinned by digest here.
 # OPENVM_RUNNER overrides it with a host binary when iterating locally.
-OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64
+OPENVM_IMAGE ?= ghcr.io/nethermindeth/openvm-runner:v2.1.0-rv64
 OPENVM_RUNNER ?=
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back

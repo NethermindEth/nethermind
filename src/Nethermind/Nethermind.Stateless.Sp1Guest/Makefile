@@ -26,7 +26,7 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13
 # nothing that runs one - so this is our own, built from runner/ by
 # .github/workflows/release-zkvm-runners.yml and pinned by digest here.
 # SP1_RUNNER overrides it with a host binary when iterating locally.
-SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0
+SP1_IMAGE ?= ghcr.io/nethermindeth/sp1-runner:v6.5.0
 # The native executor maps guest memory through /dev/shm. Docker's default of
 # 64 MB fails, and so does 1g; 4g is the smallest tested value that works on a
 # mainnet block (actual usage is ~2.7 GB). This is a ceiling, not a
