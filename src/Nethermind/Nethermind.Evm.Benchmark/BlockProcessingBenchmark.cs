@@ -103,7 +103,12 @@ public class BlockProcessingBenchmark
     [Params("Osaka", "Amsterdam")]
     public string Fork { get; set; } = "Osaka";
 
-    private IReleaseSpec Spec => Fork == "Amsterdam" ? Amsterdam.Instance : Osaka.Instance;
+    private IReleaseSpec Spec => Fork switch
+    {
+        "Osaka" => Osaka.Instance,
+        "Amsterdam" => Amsterdam.Instance,
+        _ => throw new ArgumentOutOfRangeException(nameof(Fork), Fork, "Unmapped fork - BDN would silently label a wrong spec."),
+    };
 
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
@@ -115,6 +120,11 @@ public class BlockProcessingBenchmark
 
     /// <summary>How many times the SLOAD scenario reads the same slot per call.</summary>
     private const int SloadsPerCall = 2000;
+
+    /// <summary>Home of the SLOAD loop. Deliberately not a <see cref="TestItem"/> address:
+    /// <see cref="SampleAccessList"/> carries those, and giving one of them code and storage would
+    /// change what the pre-warmer does for the pre-existing access-list scenarios.</summary>
+    private static readonly Address SloadCallerAddress = new("0x00000000000000000000000000000000000000ad");
 
     /// <summary>Reads one warm slot over and over, the shape of the sload_same_key benchmark.</summary>
     private static readonly byte[] SloadSameKeyCode = BuildSloadSameKeyCode();
@@ -194,8 +204,9 @@ public class BlockProcessingBenchmark
     private static readonly Address CallCallerAddress = new("0x00000000000000000000000000000000000000dd");
 
     /// <summary>STATICCALL to one account repeatedly, the CALL half of ext_account_query_warm.</summary>
-    /// <remarks>Fewer iterations than the single-opcode loops: a call frame is far more code per step,
-    /// and the contract would otherwise exceed the EIP-170 size limit.</remarks>
+    /// <remarks>Fewer iterations than the single-opcode loops, since a call frame is far more code and
+    /// gas per step. (Code size is no constraint here: seeding goes through <c>InsertCode</c>, which
+    /// bypasses the deploy-time EIP-170 limit — the single-opcode loops already exceed it.)</remarks>
     private const int CallsPerCall = 400;
 
     private static readonly byte[] StaticCallSameAddressCode = BuildStaticCallCode();
@@ -291,8 +302,11 @@ public class BlockProcessingBenchmark
     private static readonly Address Create2CallerAddress = new("0x00000000000000000000000000000000000000ac");
 
     /// <summary>How many CREATE2s the create scenario performs per call.</summary>
-    /// <remarks>Each is ~32k gas, so one 2M-gas transaction fits 50; distinct salts keep the addresses
-    /// collision-free within the block, and every processed block starts from the same parent state.</remarks>
+    /// <remarks>One transaction of 50: distinct salts keep the addresses collision-free within the block
+    /// (a second tx would recompute the same addresses and every create would collide), and one tx is
+    /// below the pre-warmer's 3-transaction trigger, so this scenario deliberately runs unwarmed. The
+    /// 25M gas limit is sized for Amsterdam, where EIP-8037 state gas makes an empty-initcode CREATE2
+    /// ~183k gas against Osaka's ~32k — a smaller budget OOGs silently under NoValidation.</remarks>
     private const int CreatesPerCall = 50;
 
     /// <summary>CREATE2 of an empty contract followed by an immediate query of the created address,
@@ -458,9 +472,9 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
 
-            stateProvider.CreateAccount(TestItem.AddressD, UInt256.Zero);
-            stateProvider.InsertCode(TestItem.AddressD, SloadSameKeyCode, Spec);
-            stateProvider.Set(new StorageCell(TestItem.AddressD, UInt256.Zero), [0x07]);
+            stateProvider.CreateAccount(SloadCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(SloadCallerAddress, SloadSameKeyCode, Spec);
+            stateProvider.Set(new StorageCell(SloadCallerAddress, UInt256.Zero), [0x07]);
 
             stateProvider.CreateAccount(TestItem.AddressE, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressE, PushPopOnlyCode, Spec);
@@ -516,6 +530,37 @@ public class BlockProcessingBenchmark
         }
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
+
+        VerifyScenariosExecute();
+    }
+
+    /// <summary>Refuses to benchmark a truncated execution.</summary>
+    /// <remarks>Everything runs under <see cref="ProcessingOptions.NoValidation"/>, where a transaction
+    /// that runs out of gas burns its whole limit and still produces a number — silently, as fork
+    /// repricing has already demonstrated on the create scenario. Every code-executing scenario is
+    /// sized with headroom, so a full burn there always means truncation. The pure-transfer blocks are
+    /// exempt: a 21k transfer burns exactly its limit when it succeeds.</remarks>
+    private void VerifyScenariosExecute()
+    {
+        foreach (Block block in (Block[])[
+            _accessList50Block, _contractDeploy10Block, _contractCall200Block,
+            _sloadSameKeyBlock, _sloadSameKeyNoPrewarmBlock, _pushPopOnlyBlock, _tloadSameKeyBlock,
+            _balanceSameAddressBlock, _extCodeSizeBlock, _extCodeHashBlock,
+            _staticCallBlock, _staticCallEoaBlock, _staticCallPrecompileBlock,
+            _sstoreDirtyBlock, _create2Block])
+        {
+            Block processed = _branchProcessor.Process(_parentHeader, [block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance)[0];
+
+            ulong limitSum = 0;
+            foreach (Transaction tx in block.Transactions) limitSum += tx.GasLimit;
+
+            if (processed.GasUsed == 0 || (ulong)processed.GasUsed >= limitSum)
+            {
+                throw new InvalidOperationException(
+                    $"Scenario block used {processed.GasUsed} of {limitSum} gas under {Fork} - a zero or full burn means a transaction failed and the number would be meaningless.");
+            }
+        }
     }
 
     [GlobalCleanup]
@@ -609,8 +654,7 @@ public class BlockProcessingBenchmark
     }
 
     /// <summary>The same reads in two transactions, which is under the pre-warmer's 3-transaction trigger.</summary>
-    /// <remarks>Per-SLOAD cost is comparable to <see cref="Sload_SameKey"/> even though the block is
-    /// smaller, because both are normalised by their own read count — and the fixed per-block cost is
+    /// <remarks>Both variants are normalised by their own read count, and the fixed per-block cost is
     /// amortised over fewer reads here, which biases against this one.</remarks>
     [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] Sload_SameKey_NoPrewarm()
@@ -799,7 +843,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(100_000) // Amsterdam prices access-list intrinsic gas above the old 50k
+                .WithGasLimit(600_000) // Amsterdam's EIP-8037 state-gas reservoir scales with the limit: at 200k these OOG despite using ~54k; the setup guard keeps this honest
                 .WithGasPrice(2.GWei)
                 .WithAccessList(SampleAccessList)
                 .SignedAndResolved(_senderKey)
@@ -817,7 +861,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(null)
                 .WithData(ContractCode)
-                .WithGasLimit(100_000)
+                .WithGasLimit(300_000) // an Amsterdam create is ~183k before the deposit (EIP-8037)
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
@@ -825,9 +869,9 @@ public class BlockProcessingBenchmark
         return txs;
     }
 
-    private Transaction[] BuildSloadCalls(int count, ulong startNonce) => BuildCallsTo(TestItem.AddressD, count, startNonce);
+    private Transaction[] BuildSloadCalls(int count, ulong startNonce) => BuildCallsTo(SloadCallerAddress, count, startNonce);
 
-    private Transaction[] BuildCallsTo(Address to, int count, ulong startNonce, ulong gasLimit = 300_000)
+    private Transaction[] BuildCallsTo(Address to, int count, ulong startNonce, ulong gasLimit = 500_000)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
