@@ -398,8 +398,8 @@ public class ScopeProviderTests(bool useFlat)
 
     private static byte[] CachedSlot(PreBlockCaches caches, in StorageCell cell)
     {
-        Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] value), Is.True, $"{cell} is cached");
-        return value;
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out UInt256 value), Is.True, $"{cell} is cached");
+        return value.ToMinimalBigEndian();
     }
 
     [Test]
@@ -517,9 +517,9 @@ public class ScopeProviderTests(bool useFlat)
                 "unrelated slots survive only when the cleared account had no storage to begin with");
             Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage),
                 "the cleared account's pre-block slots must not survive the clear");
-            Assert.That(caches.StorageCache.TryGetValue(in written, out byte[] writtenValue), Is.EqualTo(!preExistingStorage),
+            Assert.That(caches.StorageCache.TryGetValue(in written, out UInt256 writtenValue), Is.EqualTo(!preExistingStorage),
                 "a clear abandons the rest of the block, which would refill the cache with one block's writes");
-            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new byte[] { 9 }));
+            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new UInt256(9)));
         }
     }
 
@@ -1448,7 +1448,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_NullStorageCacheEntry_FallsBackToBackingTree()
+    public void Test_ZeroStorageCacheEntry_DoesNotReadBackingTree()
     {
         using Context ctx = new(useFlat);
 
@@ -1468,20 +1468,19 @@ public class ScopeProviderTests(bool useFlat)
 
         PreBlockCaches caches = NewCaches();
         StorageCell cell = new(TestItem.AddressA, 1);
-        caches.StorageCache.Set(in cell, null);
         LocalMetrics metrics = new();
         PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
 
         using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, metrics);
+        caches.StorageCache.Set(in cell, UInt256.Zero);
         readScope.CreateStorageTree(TestItem.AddressA).Get(1, out UInt256 slotRead1472);
-        byte[] value = slotRead1472.ToMinimalBigEndian();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(value, Is.EqualTo(new byte[] { 10, 20 }));
-            Assert.That(metrics.PreBlockStorageHits, Is.Zero);
-            Assert.That(metrics.PreBlockStorageMisses, Is.EqualTo(1));
+            Assert.That(slotRead1472, Is.EqualTo(UInt256.Zero));
+            Assert.That(metrics.PreBlockStorageHits, Is.EqualTo(1));
+            Assert.That(metrics.PreBlockStorageMisses, Is.Zero);
         }
     }
 
@@ -1523,8 +1522,8 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
         uncapturedStorageTree.Get(1, out UInt256 slotRead1517);
         Assert.That(slotRead1517.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 10, 20 }));
-        Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] cached), Is.True);
-        Assert.That(cached, Is.EqualTo(new byte[] { 10, 20 }));
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out UInt256 cached), Is.True);
+        Assert.That(cached, Is.EqualTo(new UInt256([10, 20], isBigEndian: true)));
     }
 
     [Test]
@@ -1585,8 +1584,8 @@ public class ScopeProviderTests(bool useFlat)
                 Accounts[address] = account;
         }
 
-        public void OnStorageRead(in StorageCell storageCell, byte[] value)
-            => Storage[storageCell] = value;
+        public void OnStorageRead(in StorageCell storageCell, in UInt256 value)
+            => Storage[storageCell] = value.ToMinimalBigEndian();
     }
 #nullable disable
 }

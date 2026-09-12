@@ -3,13 +3,11 @@
 
 using System;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -99,7 +97,7 @@ public class PrewarmerScopeProvider(
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
+        private readonly SeqlockCache<StorageCell, UInt256> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
         private readonly LocalMetrics _metrics = metrics;
@@ -266,7 +264,7 @@ public class PrewarmerScopeProvider(
 
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,
-            SeqlockCache<StorageCell, byte[]> storageCache
+            SeqlockCache<StorageCell, UInt256> storageCache
         ) : IWorldStateScopeProvider.IAsyncBalReaderSink
         {
             public void OnAccountRead(Address address, Account? account)
@@ -275,8 +273,8 @@ public class PrewarmerScopeProvider(
                 stateCache.Set(in key, account);
             }
 
-            public void OnStorageRead(in StorageCell storageCell, byte[] value)
-                => storageCache.Set(in storageCell, value);
+            public void OnStorageRead(in StorageCell storageCell, in UInt256 value)
+                => storageCache.Set(in storageCell, in value);
 
             public bool StillNeeded(Address address, out Account? account)
             {
@@ -293,13 +291,13 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, byte[]> preBlockCache,
+        SeqlockCache<StorageCell, UInt256> preBlockCache,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
+        private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly LocalMetrics _metrics = metrics;
@@ -313,9 +311,8 @@ public class PrewarmerScopeProvider(
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached) && cached is not null)
+            if (preBlockCache.TryGetValue(in storageCell, out value))
             {
-                value = new UInt256(cached, isBigEndian: true);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
                 if (!isPrewarmer) _metrics.IncrementPreBlockStorageHits();
@@ -324,8 +321,7 @@ public class PrewarmerScopeProvider(
             {
                 LoadFromTreeStorage(in storageCell, out value);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                EvmWord word = value.ToBigEndianWord();
-                preBlockCache.Set(in storageCell, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1)).WithoutLeadingZeros().ToArrayWithSingleByteCache());
+                preBlockCache.Set(in storageCell, in value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
         }
@@ -346,7 +342,7 @@ public class PrewarmerScopeProvider(
     private sealed class CapturingStorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         PreBlockCaches.StorageReadCapture storageReadCapture,
-        SeqlockCache<StorageCell, byte[]> preBlockCache,
+        SeqlockCache<StorageCell, UInt256> preBlockCache,
         Address address) : IWorldStateScopeProvider.IStorageTree
     {
         public Hash256 RootHash => baseStorageTree.RootHash;
@@ -354,9 +350,8 @@ public class PrewarmerScopeProvider(
         public void Get(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index);
-            if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached) && cached is not null)
+            if (preBlockCache.TryGetValue(in storageCell, out value))
             {
-                value = new UInt256(cached, isBigEndian: true);
                 return;
             }
 

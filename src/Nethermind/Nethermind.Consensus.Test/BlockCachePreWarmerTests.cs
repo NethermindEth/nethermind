@@ -510,7 +510,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
         preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
-        preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
+        preBlockCaches.StorageCache.Set(in warmedCell, (UInt256)0x24);
 
         AddressAsKey missedAddress = TestItem.AddressB;
         StorageCell missedCell = new(TestItem.AddressB, 10);
@@ -532,8 +532,8 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True,
             "parallel validation parent readers must populate cache misses");
         Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
-        Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out UInt256 populatedStorage), Is.True);
+        Assert.That(populatedStorage, Is.EqualTo((UInt256)0x99));
     }
 
     [TestCase(false, true, false, TestName = "PreWarmCaches_TinyBlockWithoutSpeculativePass_Clears")]
@@ -995,12 +995,12 @@ public class BlockCachePreWarmerTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out byte[]? slot0), Is.True,
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out UInt256 slot0), Is.True,
                     "the directly-read slot is warmed");
-                Assert.That(slot0, Is.EqualTo(new byte[] { 5 }), "the warmed value must be the real one, never the speculative placeholder");
-                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out byte[]? slot5), Is.True,
+                Assert.That(slot0, Is.EqualTo((UInt256)5), "the warmed value must be the real one, never the speculative placeholder");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out UInt256 slot5), Is.True,
                     "the slot whose index is slot 0's value requires a second discovery round");
-                Assert.That(slot5, Is.EqualTo(new byte[] { 7 }), "the warmed value must be the real one, never the speculative placeholder");
+                Assert.That(slot5, Is.EqualTo((UInt256)7), "the warmed value must be the real one, never the speculative placeholder");
             }
         }
     }
@@ -1159,10 +1159,10 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(policy.DiscoveryBuilds, Is.GreaterThan(0),
                 "the heavy transaction must be routed through storage discovery");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out byte[]? slot0), Is.True);
-            Assert.That(slot0, Is.EqualTo(new byte[] { 5 }), "the warmed value must be the real one, never the speculative placeholder");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out byte[]? slot5), Is.True);
-            Assert.That(slot5, Is.EqualTo(new byte[] { 7 }), "the warmed value must be the real one, never the speculative placeholder");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out UInt256 slot0), Is.True);
+            Assert.That(slot0, Is.EqualTo((UInt256)5), "the warmed value must be the real one, never the speculative placeholder");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out UInt256 slot5), Is.True);
+            Assert.That(slot5, Is.EqualTo((UInt256)7), "the warmed value must be the real one, never the speculative placeholder");
         }
     }
 

@@ -129,7 +129,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="storageCell">The storage cell (address + slot index).</param>
         /// <param name="value">The storage value bytes.</param>
-        void OnStorageRead(in StorageCell storageCell, byte[] value);
+        void OnStorageRead(in StorageCell storageCell, in UInt256 value);
 
         /// <summary>
         /// Returns whether the BAL reader should still fetch the given account.

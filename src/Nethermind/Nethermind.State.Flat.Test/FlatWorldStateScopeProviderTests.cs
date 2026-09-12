@@ -1206,7 +1206,7 @@ public class FlatWorldStateScopeProviderTests
             lock (_lock) _accountReads.Add(address);
         }
 
-        public void OnStorageRead(in StorageCell storageCell, byte[] value) { }
+        public void OnStorageRead(in StorageCell storageCell, in UInt256 value) { }
 
         public bool StillNeeded(Address address, out Account? account)
         {

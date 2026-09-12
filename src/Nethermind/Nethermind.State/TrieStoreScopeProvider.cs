@@ -217,7 +217,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     }
                     StorageCell cell = new(address, in slot);
                     if (!sink.StillNeeded(in cell)) continue;
-                    sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                    storageTree.Get(in slot, out UInt256 value);
+                    sink.OnStorageRead(in cell, in value);
                 }
             }
             catch (MissingTrieNodeException) { }

@@ -56,7 +56,6 @@ public class SeqlockCacheTests
 
     private static Array Entries<TKey, TValue>(SeqlockCache<TKey, TValue> cache)
         where TKey : struct, IHash64bit<TKey>
-        where TValue : class?
         => (Array)typeof(SeqlockCache<TKey, TValue>)
             .GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(cache)!;
@@ -79,6 +78,114 @@ public class SeqlockCacheTests
     {
         object entry = entries.GetValue(index)!;
         return (long)entry.GetType().GetField("HashEpochSeqLock")!.GetValue(entry)!;
+    }
+
+    [Test]
+    public void Numeric_values_preserve_all_limbs_and_zero([Values] bool exclusive)
+    {
+        SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
+        ZeroHashKey key = new(1);
+        UInt256[] values = [UInt256.Zero, UInt256.One, new(1_000_000_000_000_000_000UL), new(1, 2, 3, 4), UInt256.MaxValue];
+        foreach (UInt256 expected in values)
+        {
+            if (exclusive) Assert.That(cache.TrySetExclusive(in key, in expected), Is.True);
+            else cache.Set(in key, in expected);
+            Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(expected));
+            long header = EntryHeader(Entries(cache), 0);
+            if (exclusive) Assert.That(cache.TrySetExclusive(in key, in expected), Is.True);
+            else cache.Set(in key, in expected);
+            Assert.That(EntryHeader(Entries(cache), 0), Is.EqualTo(header));
+        }
+        cache.Clear();
+        Assert.That(cache.TryGetValue(in key, out _), Is.False);
+    }
+
+    [Test]
+    public void Exhausted_sequence_cannot_reuse_a_readers_header([Values] bool exclusive)
+    {
+        SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
+        ZeroHashKey key = new(1);
+        cache.Set(in key, UInt256.One);
+        Array entries = Entries(cache);
+        long initialHeader = EntryHeader(entries, 0);
+        object entry = entries.GetValue(0)!;
+        entry.GetType().GetField("HashEpochSeqLock")!.SetValue(entry, initialHeader | 0x1FFFEL);
+        entries.SetValue(entry, 0);
+
+        if (exclusive) Assert.That(cache.TrySetExclusive(in key, UInt256.MaxValue), Is.False);
+        else cache.Set(in key, UInt256.MaxValue);
+        Assert.That(cache.TryGetValue(in key, out _), Is.False);
+        cache.Set(in key, UInt256.MaxValue);
+        cache.Set(in key, UInt256.One);
+        Assert.That(EntryHeader(entries, 0), Is.Not.EqualTo(initialHeader));
+        Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
+        Assert.That(actual, Is.EqualTo(UInt256.One));
+    }
+
+    [Test]
+    public void Exhausted_epoch_disables_the_cache_without_reusing_tags()
+    {
+        SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
+        ZeroHashKey key = new(1);
+        cache.Set(in key, UInt256.One);
+        typeof(SeqlockCache<ZeroHashKey, UInt256>).GetField("_shiftedEpoch", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(cache, 0x7FFF_FFE0_0000_0000L);
+        cache.Clear();
+        cache.Set(in key, UInt256.MaxValue);
+        cache.Clear();
+        Assert.That(cache.TryGetValue(in key, out _), Is.False);
+        Assert.That(cache.TrySetExclusive(in key, UInt256.MaxValue), Is.False);
+    }
+
+    [Test]
+    public void Delayed_writer_cannot_restore_an_older_epoch()
+    {
+        SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
+        ZeroHashKey key = new(1);
+        cache.Set(in key, UInt256.One);
+        long oldTag = EntryHeader(Entries(cache), 0) & ~0x1FFFEL;
+        cache.Clear();
+        cache.Set(in key, UInt256.MaxValue);
+
+        Array entries = Entries(cache);
+        object?[] arguments = [entries.GetValue(0), EntryHeader(entries, 0), key, UInt256.One, oldTag, false];
+        MethodInfo write = cache.GetType().GetMethod("WriteEntry", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        Assert.That(write.Invoke(cache, arguments), Is.False);
+    }
+
+    [Test]
+    public async Task Concurrent_numeric_values_do_not_tear_or_cross_keys([Values] bool clear)
+    {
+        SeqlockCache<SameHashKey, UInt256> cache = new(2);
+        using Barrier start = new(4);
+        Task[] tasks = new Task[4];
+        for (int worker = 0; worker < tasks.Length; worker++)
+        {
+            int workerId = worker;
+            tasks[worker] = Task.Run(() =>
+            {
+                start.SignalAndWait();
+                int hits = 0;
+                for (int i = 1; i <= 100_000; i++)
+                {
+                    int id = (i + workerId) % 3;
+                    SameHashKey key = new(id);
+                    ulong stamp = (ulong)i;
+                    UInt256 written = new(stamp, ~stamp, (ulong)id, stamp);
+                    cache.Set(in key, in written);
+                    if (cache.TryGetValue(in key, out UInt256 read))
+                    {
+                        hits++;
+                        UInt256 expected = new(read.u0, ~read.u0, (ulong)id, read.u0);
+                        if (read != expected) Assert.Fail($"Torn value or wrong key: {read}");
+                    }
+                    if (clear && (i & 1023) == 0) cache.Clear();
+                }
+                Assert.That(hits, Is.GreaterThan(0));
+            });
+        }
+        await Task.WhenAll(tasks);
     }
 
     [Test]

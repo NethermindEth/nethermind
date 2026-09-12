@@ -785,7 +785,7 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, new UInt256([1, 2, 3], isBigEndian: true));
         provider.Get(accessedStorageCell, out _);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
@@ -1269,7 +1269,7 @@ public class StorageProviderTests(bool useFlat)
         PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, new UInt256([1, 2, 3], isBigEndian: true));
 
         WorldState provider = BuildStorageProvider(ctx);
         provider.Get(accessedStorageCell, out UInt256 storageValue43);
