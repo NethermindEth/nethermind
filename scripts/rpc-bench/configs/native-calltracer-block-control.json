@@ -1,0 +1,31 @@
+{
+  "test_name": "Native block tracing and action-tracer controls",
+  "description": "Whole-block native call tracing with unchanged trace namespace controls at the same snapshot head.",
+  "clients": ["nethermind"],
+  "duration": "120s",
+  "rps": 2,
+  "vus": 16,
+  "calls": [
+    {
+      "name": "debug_traceBlockByNumber_callTracer",
+      "method": "debug_traceBlockByNumber",
+      "params": ["latest", {"tracer": "callTracer"}],
+      "weight": 1,
+      "thresholds": ["p(99)<600000"]
+    },
+    {
+      "name": "trace_block_control",
+      "method": "trace_block",
+      "params": ["latest"],
+      "weight": 1,
+      "thresholds": ["p(99)<600000"]
+    },
+    {
+      "name": "trace_replayBlockTransactions_control",
+      "method": "trace_replayBlockTransactions",
+      "params": ["latest", ["trace"]],
+      "weight": 1,
+      "thresholds": ["p(99)<600000"]
+    }
+  ]
+}
