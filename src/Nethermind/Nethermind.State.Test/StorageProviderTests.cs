@@ -669,6 +669,40 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
+    /// <summary>The originals-probe memo must not answer across caching rounds.</summary>
+    /// <remarks>tx1 memoizes (cell, v1) while writing v2; after commit the next transaction's original for
+    /// the same cell is v2. A memo without the round in its key silently returns v1, which mis-meters every
+    /// EIP-2200 SSTORE of tx2 without failing anything.</remarks>
+    [Test]
+    public void Get_original_after_commit_is_the_new_rounds_original()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, (UInt256)1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Set(in cell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(in cell);
+            provider.Set(in cell, _values[2]);
+            Assert.That(provider.GetOriginal(in cell).ToArray(), Is.EqualTo(_values[1]), "tx1 original is the committed value");
+
+            provider.Commit(Frontier.Instance);
+
+            provider.Get(in cell);
+            Assert.That(provider.GetOriginal(in cell).ToArray(), Is.EqualTo(_values[2]), "tx2 original is tx1's write");
+        }
+    }
+
     // Rolling a storage clear back drops originals first captured under the clear, so anything caching a probe
     // of them has to let go: after the rollback the cell recaptures the block value, and only a stale cache can
     // still answer with the zero the clear planted.
