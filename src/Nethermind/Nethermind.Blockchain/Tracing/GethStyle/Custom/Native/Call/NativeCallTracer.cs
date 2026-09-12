@@ -29,7 +29,8 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // root call. Its trace is rooted in one synthetic transaction frame whose children are its frames, so
 // that `calls[i]` is `tx.Frames[i]` and the result stays a single CallFrame for consumers that walk
 // `calls`. Two deliberate divergences follow: onlyTopCall still returns that root with its frames as
-// children, and a frame that never entered the VM is rendered from the transaction's frame list.
+// children, and a frame that never entered the VM is rendered from the transaction's frame list. Every
+// frame's gas and gasUsed are its declared limit and its receipt's spend, so siblings read alike.
 public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTracer
 {
     public const string CallTracer = "callTracer";
@@ -255,21 +256,30 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         if (_config.WithLog)
         {
-            // A frame transaction's committed frames keep their logs through a transaction-level failure,
-            // exactly as the receipt does; the frames that lost theirs were cleared against their receipt.
-            ClearFailedLogs(firstCallFrame, parentFailed: !_isFrameTx);
+            if (_isFrameTx)
+            {
+                // The synthetic root's error is transaction-level, so it must not propagate: the committed
+                // frames keep their logs as the receipt does, having been cleared against it already.
+                foreach (NativeCallTracerCallFrame frameCallFrame in firstCallFrame.Calls.AsSpan())
+                {
+                    ClearFailedLogs(frameCallFrame, parentFailed: false);
+                }
+            }
+            else
+            {
+                ClearFailedLogs(firstCallFrame, parentFailed: true);
+            }
         }
     }
 
     /// <inheritdoc/>
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
-        // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
-        if (frameReceipts.Length > 0)
-        {
-            _frameReceipts = frameReceipts;
-        }
+        // The validation-prefix simulation reports an empty set, which pins no frame's outcome and so
+        // must not collapse the result either.
+        if (frameReceipts.Length == 0) return;
 
+        _frameReceipts = frameReceipts;
         CollapseFrameRoots();
     }
 
@@ -321,6 +331,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
                 TxFrameReceipt frameReceipt = _frameReceipts[i];
                 NativeCallTracerCallFrame frameCallFrame = _frameRoots[i] ?? BuildUndispatchedFrame(i, frameReceipt);
 
+                // Uniform across dispatched and undispatched frames, where the VM's own figures would be the
+                // execution dimension net of the pre-dispatch charges.
+                frameCallFrame.Gas = _frames[i].GasLimit;
+                frameCallFrame.GasUsed = frameReceipt.GasUsed;
+
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {
                     // The receipt is what the frame committed: an unrolled atomic batch and a POST_TX
@@ -352,8 +367,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             Type = isStatic ? Instruction.STATICCALL : Instruction.CALL,
             From = frame.Mode == TxFrame.ModeSender ? _sender : Eip8141Constants.EntryPointAddress,
             To = frame.Target ?? _sender,
-            Gas = frame.GasLimit,
-            GasUsed = frameReceipt.GasUsed,
             Value = isStatic ? null : frame.Value,
             Input = frame.Data.Span.ToPooledList(),
             Error = UndispatchedFrameError(frameIndex, frameReceipt)

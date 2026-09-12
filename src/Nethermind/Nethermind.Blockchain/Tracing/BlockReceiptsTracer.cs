@@ -37,7 +37,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     /// <summary>The innermost tracer of <paramref name="tracer"/> that takes EIP-8141 frame reports.</summary>
     /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
-    /// the wrapper chain rather than on the outermost one.</remarks>
+    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
+    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
     private static IFrameTxReceiptTracer? FrameTxTracerOf(ITxTracer tracer)
     {
         while (true)
