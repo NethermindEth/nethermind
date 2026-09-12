@@ -1214,8 +1214,8 @@ esac
             start_node.index('mkdir -p "$STATE_DIR"'),
         )
         self.assertIn(
-            "# 6) Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
-            "#    workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
+            "# Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
+            "# workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
             start_node,
         )
         self.assertNotIn("itself rather than startup and warm-up", start_node)

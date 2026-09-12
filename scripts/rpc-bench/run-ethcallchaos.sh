@@ -2,8 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Run the EthCallChaos tool (kamilchodola/EthCallChaos, an ASP.NET app, no CLI) in a
-# .NET SDK container against a running JSON-RPC node; knobs come from ECC_* env vars.
+# Run EthCallChaos (kamilchodola/EthCallChaos, ASP.NET app) in a .NET SDK container against a running node.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,21 +13,16 @@ RPC_URL="${RPC_URL:-http://localhost:8545}"
 : "${OUT_DIR:?output directory for EthCallChaos results}"
 : "${SCRATCH_ROOT:?writable scratch root}"
 ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
-# Pin to a release tag so a push can't change results or run unreviewed code (override ECC_REF/ECC_REPO).
 ECC_REF="${ECC_REF:-v1.0.0}"
-ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
-# corpus-v2: per-category evolved corpus (seeded from v1, diverse worst-per-shape coverage).
+ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"
 ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v2/ethcallchaos.db}"
-# Optional sha256 of the downloaded corpus DB (the release URL is mutable). Empty =
-# skip (opt-in), like VEGETA_SHA256 in run-flood.sh; set it to reject a tampered corpus.
 ECC_CORPUS_SHA256="${ECC_CORPUS_SHA256:-}"
-ECC_RATE="${ECC_RATE:-50}"                  # -> Rpc__MaxCallsPerSecond
-ECC_PARALLEL="${ECC_PARALLEL:-8}"           # -> Rpc__MaxParallelCalls
-ECC_DURATION="${ECC_DURATION:-300}"         # seconds of load
+ECC_RATE="${ECC_RATE:-50}"
+ECC_PARALLEL="${ECC_PARALLEL:-8}"
+ECC_DURATION="${ECC_DURATION:-300}"
 ECC_API_PORT="${ECC_API_PORT:-5000}"
 ECC_LEADERBOARD_TOP="${ECC_LEADERBOARD_TOP:-50}"
-# Default gates (mean>200ms, cv<0.3) target remote nodes; a fast local snapshot
-# qualifies nothing, so CI ranks slowest cases regardless (mean>1ms, cv gate off).
+# Tool defaults (mean>200ms, cv<0.3) qualify nothing against a fast local node.
 ECC_MIN_MEAN_MS="${ECC_MIN_MEAN_MS:-1}"
 ECC_MAX_CV="${ECC_MAX_CV:-10}"
 SDK_IMAGE="${SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}"
@@ -38,32 +32,23 @@ mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 work="$SCRATCH_ROOT/ethcallchaos"
-# The SDK container may have left root-owned files in scratch on a prior run.
 as_root rm -rf "$work"
 mkdir -p "$work"
 
-# Fetch the tool source.
 log "Cloning $ECC_REPO@$ECC_REF..."
-# Shallow-fetch a single ref: accepts a sha/tag/branch, unlike 'git clone --branch'
-# which rejects a bare sha — needed so ECC_REF can default to a pinned commit.
 git init -q "$work/src"
 git -C "$work/src" remote add origin "$ECC_REPO"
-git -C "$work/src" fetch -q --depth 1 origin "$ECC_REF" \
-  || die "failed to fetch $ECC_REF from $ECC_REPO"
+git -C "$work/src" fetch -q --depth 1 origin "$ECC_REF" || die "failed to fetch $ECC_REF from $ECC_REPO"
 git -C "$work/src" checkout -q FETCH_HEAD
-
 proj_dir="$work/src/src/EthCallChaos"
 [[ -d "$proj_dir" ]] || die "EthCallChaos project not found at $proj_dir"
 
-# Resolve the corpus DB (copied so the source stays pristine).
-# Precedence: runner-local path > release URL > repo-committed > fresh.
 if [[ -n "$ECC_CORPUS_DB" && -f "$ECC_CORPUS_DB" ]]; then
   cp "$ECC_CORPUS_DB" "$work/bench.db"
   log "Using provided corpus DB (copied): $ECC_CORPUS_DB"
 elif [[ -n "$ECC_CORPUS_URL" ]] && curl -sfL --retry 3 -o "$work/bench.db" "$ECC_CORPUS_URL"; then
   if [[ -n "$ECC_CORPUS_SHA256" ]]; then
-    echo "${ECC_CORPUS_SHA256}  $work/bench.db" | sha256sum -c - \
-      || die "corpus DB sha256 mismatch (expected ${ECC_CORPUS_SHA256}) — refusing to use an unverified corpus"
+    echo "${ECC_CORPUS_SHA256}  $work/bench.db" | sha256sum -c - || die "corpus DB sha256 mismatch"
   fi
   log "Using corpus DB downloaded from $ECC_CORPUS_URL ($(du -h "$work/bench.db" | cut -f1))."
 elif [[ -f "$proj_dir/ethcallchaos.db" ]]; then
@@ -71,12 +56,9 @@ elif [[ -f "$proj_dir/ethcallchaos.db" ]]; then
   log "Using corpus DB committed in the repo (copied)."
 else
   : > "$work/bench.db"
-  log "::warning::No corpus DB found — EthCallChaos will start from a fresh corpus (slower warmup, less representative)."
+  log "::warning::No corpus DB found — EthCallChaos starts from a fresh corpus."
 fi
 
-# Launch in a .NET SDK container (host network to reach the node on localhost).
-# Bind the control API to 127.0.0.1 only: under --network host that shares the host
-# loopback, so the scrape below still works but /api/* is not on other interfaces.
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Launching EthCallChaos via $SDK_IMAGE (rate=$ECC_RATE/s, parallel=$ECC_PARALLEL, duration=${ECC_DURATION}s)..."
 docker run -d --name "$CONTAINER_NAME" \
@@ -95,11 +77,9 @@ docker run -d --name "$CONTAINER_NAME" \
   -e "Validation__MaxCoefficientOfVariation=${ECC_MAX_CV}" \
   -e "ConnectionStrings__Sqlite=Data Source=/work/bench.db" \
   -e "Storage__ConnectionString=Data Source=/work/bench.db" \
-  "$SDK_IMAGE" \
-  bash -lc "dotnet run -c Release" \
+  "$SDK_IMAGE" bash -lc "dotnet run -c Release" \
   || die "failed to launch EthCallChaos container"
 
-# Wait for the API, run for the configured duration, scrape results.
 api="http://localhost:${ECC_API_PORT}"
 log "Waiting for EthCallChaos API at $api/api/stats (build + start can take a few minutes)..."
 elapsed=0
@@ -118,19 +98,12 @@ done
 log "API up after ${elapsed}s. Generating load for ${ECC_DURATION}s..."
 sleep "$ECC_DURATION"
 
-log "Scraping results..."
-# Only warn on scrape failure here so logs/summary are still collected; the script
-# fails at the end (a run without usable stats must not publish as success).
 scrape_failed=0
-curl -sf "$api/api/stats" -o "$OUT_DIR/stats.json" \
-  || { log "::warning::failed to scrape /api/stats"; scrape_failed=1; }
+curl -sf "$api/api/stats" -o "$OUT_DIR/stats.json" || { log "::warning::failed to scrape /api/stats"; scrape_failed=1; }
 curl -sf "$api/api/leaderboard?top=${ECC_LEADERBOARD_TOP}&sortBy=mean_ms" -o "$OUT_DIR/leaderboard.json" \
   || { log "::warning::failed to scrape /api/leaderboard"; scrape_failed=1; }
-
 docker logs "$CONTAINER_NAME" > "$OUT_DIR/ethcallchaos.log" 2>&1 || true
 
-# Persist the evolved corpus so a long run's DB can become the next release. Stop
-# the container first to quiesce SQLite, then copy before teardown wipes scratch.
 docker stop -t 20 "$CONTAINER_NAME" >/dev/null 2>&1 || true
 if [[ -s "$work/bench.db" ]]; then
   cp "$work/bench.db" "$OUT_DIR/ethcallchaos.db" 2>/dev/null \
@@ -139,7 +112,6 @@ if [[ -s "$work/bench.db" ]]; then
 fi
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
-# Build a markdown summary.
 summary="$OUT_DIR/ethcallchaos-summary.md"
 {
   echo "## RPC Benchmark — EthCallChaos"
@@ -158,20 +130,12 @@ summary="$OUT_DIR/ethcallchaos-summary.md"
     echo
     echo "| Rank | mean ms | p99 ms | to | calldata |"
     echo "|---:|---:|---:|---|---|"
-    # ASP.NET minimal APIs serialize with camelCase; keep PascalCase fallback.
     jq -r '.[] | "| \(.rankPosition // .RankPosition // "-") | \(.meanMs // .MeanMs // "-") | \(.p99Ms // .P99Ms // "-") | \(.toAddress // .ToAddress // "-") | \(.calldataPreview // .CalldataPreview // "-") |"' \
       "$OUT_DIR/leaderboard.json" 2>/dev/null | head -n "$ECC_LEADERBOARD_TOP" || true
   fi
 } > "$summary"
-
 log "EthCallChaos summary written to $summary"
 
-# Enforce usable results only after logs/summary are collected: the gate must not
-# pass on a run whose stats never materialized (container died / API stopped).
-if [[ "$scrape_failed" == "1" ]]; then
-  die "EthCallChaos results could not be scraped — failing the benchmark step (container log is in the artifact)"
-fi
-jq -e . "$OUT_DIR/stats.json" >/dev/null 2>&1 \
-  || die "EthCallChaos /api/stats response is empty or not valid JSON — failing the benchmark step"
-jq -e . "$OUT_DIR/leaderboard.json" >/dev/null 2>&1 \
-  || die "EthCallChaos /api/leaderboard response is empty or not valid JSON — failing the benchmark step"
+[[ "$scrape_failed" == "0" ]] || die "EthCallChaos results could not be scraped (container log is in the artifact)"
+jq -e . "$OUT_DIR/stats.json" >/dev/null 2>&1 || die "EthCallChaos /api/stats response is empty or not valid JSON"
+jq -e . "$OUT_DIR/leaderboard.json" >/dev/null 2>&1 || die "EthCallChaos /api/leaderboard response is empty or not valid JSON"

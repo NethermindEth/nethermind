@@ -4,9 +4,9 @@
 
 """Replay a private eth_call corpus against a node and compare clients by response bytes.
 
-Privacy contract: request and response contents never appear in output — errors and
-reports carry only record indexes, counts, and category names. The baseline state file
-(response hex strings) is written to VM-local scratch and must not be artifacted.
+Privacy contract: request and response contents never appear in output — errors and reports carry
+only record indexes, counts, and category names. The baseline state file (response hex strings) is
+written to VM-local scratch and must not be artifacted.
 """
 
 from __future__ import annotations
@@ -30,11 +30,6 @@ from typing import Sequence
 
 
 def _env_int(name: str, default: int) -> int:
-    """Positive-integer override from the environment, falling back on anything malformed.
-
-    These are read at import, so a typo such as `250k` must not abort the sweep with a traceback
-    before any node has started.
-    """
     try:
         value = int(os.environ.get(name, ""))
     except ValueError:
@@ -42,44 +37,27 @@ def _env_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-# Guard rail, not a hard limit: the replay holds every record's params in memory, so a large
-# capture needs a deliberate raise (and a runner with the RAM for it) rather than discovering the
-# cost mid-sweep. Override with RPC_BENCH_MAX_CORPUS_RECORDS.
 MAX_CORPUS_RECORDS = _env_int("RPC_BENCH_MAX_CORPUS_RECORDS", 10000)
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 120
+MAX_DIVERGENCE_INDEXES = _env_int("RPC_BENCH_MAX_DIVERGENCE_INDEXES", 200)
+REPLAY_CONCURRENCY = _env_int("RPC_BENCH_PARITY_CONCURRENCY", 16)
+RETRYABLE_CATEGORIES = frozenset({"transport_failure", "invalid_response"})
+MAX_DIFF_WORDS = 8
+PROGRESS_EVERY = 2000
+ERROR_MARKER = "!rpc_error"  # not valid hex, so it can never collide with a result
 
-# Fixed numeric report schema; corpus_results.stage validates staged reports against this.
-# "matched" = identical result bytes; "both_rpc_errors" = both clients reject the call (also
-# agreement — captured corpora legitimately contain calls that fail at the pinned head, e.g.
-# explicit gasPrice with an underfunded sender). Everything else is a defect or divergence.
+# "matched" = identical result bytes; "both_rpc_errors" = both clients reject the call (also agreement).
 PARITY_COUNTER_FIELDS = (
-    "total",
-    "matched",
-    "both_rpc_errors",
-    "baseline_rpc_errors",
-    "candidate_rpc_errors",
-    "candidate_transport_failures",
-    "candidate_invalid_responses",
-    "baseline_shorter",
-    "candidate_shorter",
-    "length_mismatches",
-    "content_mismatches",
+    "total", "matched", "both_rpc_errors", "baseline_rpc_errors", "candidate_rpc_errors",
+    "candidate_transport_failures", "candidate_invalid_responses", "baseline_shorter",
+    "candidate_shorter", "length_mismatches", "content_mismatches",
 )
 PARITY_LABEL_FIELDS = ("baseline_client", "candidate_client")
 
-# Reports also carry the 1-based corpus indexes of divergent records (capped) so the corpus
-# OWNER can look the calls up in their copy — an index is positional metadata, not content.
-MAX_DIVERGENCE_INDEXES = _env_int("RPC_BENCH_MAX_DIVERGENCE_INDEXES", 200)
-
-# Baseline outcome marker for a call the baseline client rejected with a JSON-RPC error.
-# Deliberately not valid hex so it can never collide with a result string; the error
-# content itself is never stored.
-ERROR_MARKER = "!rpc_error"
-
 
 class CorpusParityError(Exception):
-    """Raised with a content-free message when a replay cannot produce a trustworthy result."""
+    """Content-free failure of a replay."""
 
 
 def _reject_non_json_constant(value: str) -> None:
@@ -90,9 +68,6 @@ def load_corpus(path: str | Path) -> list[list]:
     """Return the params of each corpus record, in file order."""
     path = Path(path)
     load_started = time.perf_counter()
-    # The latency cells convert the same file with prepare-eth-call-corpus.py, which requires one
-    # of these suffixes. Enforcing it here too keeps both readers agreeing on what a legal corpus
-    # is, so a bad corpus_glob fails at validation rather than inside the first cell.
     if not (path.name.endswith(".jsonl") or path.name.endswith(".jsonl.gz")):
         raise CorpusParityError("corpus must have a .jsonl or .jsonl.gz extension")
     opener = gzip.open if path.name.endswith(".gz") else open
@@ -105,24 +80,17 @@ def load_corpus(path: str | Path) -> list[list]:
                 if len(params) >= MAX_CORPUS_RECORDS:
                     raise CorpusParityError(f"corpus exceeds {MAX_CORPUS_RECORDS} records")
                 try:
-                    # Match the converter: NaN/Infinity are not JSON, and accepting them here
-                    # would validate a corpus that then fails conversion in the first cell.
                     record = json.loads(line, parse_constant=_reject_non_json_constant)
-                # JSONDecodeError is a ValueError; so is the rejection above. Catch both so a
-                # malformed corpus reports a line number instead of a traceback.
                 except (ValueError, RecursionError):
                     raise CorpusParityError(f"corpus line {number}: invalid JSON") from None
                 if not isinstance(record, dict) or record.get("method") != "eth_call" \
                         or not isinstance(record.get("params"), list):
                     raise CorpusParityError(f"corpus line {number}: not an eth_call record")
                 params.append(record["params"])
-    # EOFError/zlib.error (truncated or corrupt gzip) and UnicodeError (invalid UTF-8) are not
-    # OSError, so they previously escaped as tracebacks — which print the offending corpus bytes.
     except (OSError, EOFError, UnicodeError, zlib.error) as error:
         raise CorpusParityError(f"cannot read corpus: {error.__class__.__name__}") from None
     if not params:
         raise CorpusParityError("corpus contains no records")
-    # Decompressing and parsing a large corpus takes minutes; say so rather than looking hung.
     took = time.perf_counter() - load_started
     if took > 5:
         print(f"  loaded {len(params)} records in {took:.0f}s", flush=True)
@@ -140,12 +108,7 @@ def _rpc(url: str, method: str, params: list):
 
 
 def _node_identity(url: str) -> tuple[int, int, str]:
-    """Return (head block number, chain id, head block hash).
-
-    Height and chain id alone do not identify a chain segment: a same-height reorg or a
-    mislabelled snapshot passes that check and every record then reads as client divergence. The
-    block hash pins the actual state the replay ran against.
-    """
+    """(head number, chain id, head hash) — the hash pins the exact state a replay ran against."""
     chain_id = _rpc(url, "eth_chainId", [])
     header = _rpc(url, "eth_getBlockByNumber", ["latest", False])
     try:
@@ -157,9 +120,7 @@ def _node_identity(url: str) -> tuple[int, int, str]:
     return head, int(chain_id, 16), block_hash
 
 
-# One keep-alive connection per worker thread. A fresh TCP connection per call folds connect
-# cost into every measurement and churns ephemeral ports across a 100k-request replay.
-_CONNECTIONS = threading.local()
+_CONNECTIONS = threading.local()  # one keep-alive connection per worker thread
 
 
 def _release_connection() -> None:
@@ -167,17 +128,13 @@ def _release_connection() -> None:
     if entry is not None:
         try:
             entry[1].close()
-        except Exception:  # noqa: BLE001 — a failed close must not mask the caller's outcome
+        except Exception:  # noqa: BLE001
             pass
         _CONNECTIONS.entry = None
 
 
 def _fetch(url: str, body: bytes) -> tuple[int, bytes] | None:
-    """POST body and return (status, raw), or None on transport failure.
-
-    Retries once: a pooled connection can be closed by the peer between requests, which is
-    indistinguishable from a real failure on the first attempt.
-    """
+    """POST body and return (status, raw), or None on transport failure. Retries once for a closed pooled connection."""
     parsed = urllib.parse.urlsplit(url)
     key = (parsed.scheme, parsed.hostname, parsed.port)
     path = parsed.path or "/"
@@ -185,19 +142,15 @@ def _fetch(url: str, body: bytes) -> tuple[int, bytes] | None:
         entry = getattr(_CONNECTIONS, "entry", None)
         if entry is None or entry[0] != key:
             _release_connection()
-            factory = (http.client.HTTPSConnection if parsed.scheme == "https"
-                       else http.client.HTTPConnection)
-            _CONNECTIONS.entry = (key, factory(parsed.hostname, parsed.port,
-                                               timeout=REQUEST_TIMEOUT_SECONDS))
+            factory = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+            _CONNECTIONS.entry = (key, factory(parsed.hostname, parsed.port, timeout=REQUEST_TIMEOUT_SECONDS))
         conn = _CONNECTIONS.entry[1]
         try:
             conn.request("POST", path, body=body, headers={"Content-Type": "application/json"})
             response = conn.getresponse()
             raw = response.read(MAX_RESPONSE_BYTES + 1)
-            # An over-long body leaves unread bytes on the socket, so the connection cannot be
-            # reused; drop it rather than corrupting the next request on this thread.
             if len(raw) > MAX_RESPONSE_BYTES:
-                _release_connection()
+                _release_connection()  # unread bytes would corrupt the next request on this connection
             return response.status, raw
         except (http.client.HTTPException, OSError, ValueError):
             _release_connection()
@@ -208,17 +161,13 @@ def _fetch(url: str, body: bytes) -> tuple[int, bytes] | None:
 
 def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     """POST one eth_call; return (category, result_hex). category is None on success."""
-    body = json.dumps(
-        {"jsonrpc": "2.0", "id": index, "method": "eth_call", "params": params},
-        separators=(",", ":"),
-    ).encode()
+    body = json.dumps({"jsonrpc": "2.0", "id": index, "method": "eth_call", "params": params},
+                      separators=(",", ":")).encode()
     fetched = _fetch(url, body)
     if fetched is None:
         return "transport_failure", ""
     status, raw = fetched
     if status >= 400:
-        # Some clients/proxies answer JSON-RPC errors with a non-200 status — that is a
-        # response, not a transport failure. The body is parsed but never stored.
         try:
             envelope = json.loads(raw)
         except ValueError:
@@ -237,8 +186,6 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     if "error" in envelope:
         error = envelope["error"]
         code = error.get("code") if isinstance(error, dict) else None
-        # The code is a protocol-level integer, never call content — recording it is what
-        # distinguishes "this call legitimately reverts" from "the node is shedding load".
         return (f"rpc_error:{code}" if isinstance(code, int) else "rpc_error"), ""
     result = envelope.get("result")
     if not isinstance(result, str) or not result.startswith("0x") or len(result) % 2 != 0:
@@ -250,18 +197,21 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     return None, result.lower()
 
 
-# eth_call is read-only and deterministic against a parked head, so replaying concurrently cannot
-# change what any record returns - only how fast the whole set is collected. Results are stored by
-# index, so completion order is irrelevant. Serial replay left the node ~99% idle: at 50k records
-# that is ~17 minutes of wall clock to do a few seconds of work.
-REPLAY_CONCURRENCY = _env_int("RPC_BENCH_PARITY_CONCURRENCY", 16)
-# Outcomes that indicate the transport or the node struggled, not that the call has an answer.
-# rpc_error is excluded: a captured corpus legitimately contains calls that fail at the head.
-RETRYABLE_CATEGORIES = frozenset({"transport_failure", "invalid_response"})
+def _base_category(category: str | None) -> str | None:
+    return category.split(":", 1)[0] if category else category
+
+
+def _progress(done: int, total: int, started: float, what: str) -> None:
+    if done % PROGRESS_EVERY and done != total:
+        return
+    elapsed = time.perf_counter() - started
+    rate = done / elapsed if elapsed > 0 else 0.0
+    eta = (total - done) / rate if rate > 0 else 0.0
+    print(f"  {what} {done}/{total} ({done / total * 100:.0f}%) {rate:.0f} req/s, ~{eta / 60:.1f} min left", flush=True)
 
 
 def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str | None, str]]:
-    """Replay every record and return (category, result) per record, in corpus order."""
+    """Replay every record concurrently; re-run transport/invalid outcomes serially so load artifacts are not counted as defects."""
     outcomes: list[tuple[str | None, str] | None] = [None] * len(params_list)
     started = time.perf_counter()
     done = 0
@@ -279,10 +229,6 @@ def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str 
         for _ in pool.map(one, range(len(params_list))):
             pass
     settled = [o if o is not None else ("transport_failure", "") for o in outcomes]
-
-    # A node under concurrent load can drop or truncate a response, which would otherwise be
-    # indistinguishable from a real defect. Re-run those records one at a time, unloaded: a
-    # record that only fails under concurrency is a load artifact, not a divergence.
     suspect = [i for i, (category, _) in enumerate(settled) if _base_category(category) in RETRYABLE_CATEGORIES]
     if suspect:
         print(f"  {what}: re-running {len(suspect)} non-clean record(s) serially", flush=True)
@@ -298,12 +244,7 @@ def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str 
 
 
 def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
-    """Replay the whole corpus and store each outcome: result hex, or an error marker.
-
-    JSON-RPC errors are recorded (not fatal) — a captured corpus legitimately contains
-    calls that fail at the pinned head, and both clients rejecting a call is agreement.
-    Transport/invalid responses still abort: they indicate node trouble, not call content.
-    """
+    """Replay the corpus and store each outcome (result hex or ERROR_MARKER); transport/invalid outcomes abort."""
     params_list = load_corpus(corpus)
     head, chain_id, block_hash = _node_identity(rpc_url)
     results: list[str] = []
@@ -319,9 +260,7 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
         results.append(result)
     if failures:
         summary = " ".join(f"{key}={value}" for key, value in sorted(failures.items()))
-        raise CorpusParityError(
-            f"baseline replay had failures over {len(params_list)} records: {summary}"
-        )
+        raise CorpusParityError(f"baseline replay had failures over {len(params_list)} records: {summary}")
     state = Path(state_path)
     state.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(state, "wt", encoding="utf-8") as output:
@@ -333,14 +272,8 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
         print(f"baseline rpc_error indexes (first {min(len(error_indexes), 40)}): {' '.join(error_indexes[:40])}")
 
 
-# Opt-in: characterise each divergence word by word. This derives from response bytes, so it is
-# off unless a path is given, and it stores a bounded structural summary (lengths, which 32-byte
-# words differ, their values) rather than whole responses.
-MAX_DIFF_WORDS = 8
-
-
 def _describe_divergence(index: int, expected: str, actual: str) -> dict:
-    """Word-level characterisation of one baseline/candidate disagreement."""
+    """Word positions and direction only — a magnitude with a zero operand would be the other operand."""
     exp = expected[2:] if expected.startswith("0x") else expected
     act = actual[2:] if actual.startswith("0x") else actual
     entry: dict = {
@@ -358,10 +291,7 @@ def _describe_divergence(index: int, expected: str, actual: str) -> dict:
             continue
         differing += 1
         if len(words) >= MAX_DIFF_WORDS:
-            continue  # keep counting; only the first few are described
-        # Position and direction only. A signed magnitude is not safe to publish: whenever one
-        # operand is zero the difference IS the other operand, so the artifact would carry a
-        # complete response word despite the counts-only contract.
+            continue
         item: dict = {"word": word}
         try:
             if a and b:
@@ -370,7 +300,6 @@ def _describe_divergence(index: int, expected: str, actual: str) -> dict:
             pass
         words.append(item)
     entry["differing_words"] = words
-    # Count every differing word, not just the described preview.
     entry["total_differing_words"] = differing
     return entry
 
@@ -389,23 +318,16 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         raise CorpusParityError("baseline state is missing or unreadable") from None
     if not isinstance(baseline_results, list) or len(baseline_results) != len(params_list):
         raise CorpusParityError(
-            f"baseline state has {len(baseline_results)} results but the corpus has {len(params_list)}"
-        )
-    # A snapshot at a different head/chain would mismatch on every record — report it as the
-    # fixture problem it is, not as client divergence.
+            f"baseline state has {len(baseline_results)} results but the corpus has {len(params_list)}")
     head, chain_id, block_hash = _node_identity(rpc_url)
-    if (head, chain_id) != (baseline_head, baseline_chain) or (
-            baseline_hash is not None and block_hash != baseline_hash):
+    if (head, chain_id) != (baseline_head, baseline_chain) or (baseline_hash is not None and block_hash != baseline_hash):
         raise CorpusParityError(
-            f"node identity mismatch: baseline head={baseline_head} chain={baseline_chain} "
-            f"hash={baseline_hash} vs candidate head={head} chain={chain_id} hash={block_hash} "
-            f"— align the snapshots before comparing"
-        )
+            f"node identity mismatch: baseline head={baseline_head} chain={baseline_chain} hash={baseline_hash} "
+            f"vs candidate head={head} chain={chain_id} hash={block_hash} — align the snapshots before comparing")
 
     report = {field: 0 for field in PARITY_COUNTER_FIELDS}
     report["total"] = len(params_list)
     divergences: list[dict[str, int | str]] = []
-
     diff_records: list[dict] = []
 
     def diverge(index: int, kind: str) -> None:
@@ -413,10 +335,6 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
             divergences.append({"index": index, "kind": kind})
 
     replayed = _replay(rpc_url, params_list, "compare")
-
-    # Second gate: anything that disagrees with the baseline is re-run unloaded before it is
-    # counted. A real semantic divergence reproduces; a load artifact does not. Cheap because
-    # disagreements are rare, and it keeps the concurrent replay from inventing defects.
     disputed = [
         i for i, (category, actual) in enumerate(replayed)
         if not (category is None and actual == baseline_results[i])
@@ -435,13 +353,14 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
 
     for index, (category, actual) in enumerate(replayed, start=1):
         expected = baseline_results[index - 1]
-        if _base_category(category) == "transport_failure":
+        base = _base_category(category)
+        if base == "transport_failure":
             report["candidate_transport_failures"] += 1
             diverge(index, "candidate_transport_failure")
-        elif _base_category(category) == "invalid_response":
+        elif base == "invalid_response":
             report["candidate_invalid_responses"] += 1
             diverge(index, "candidate_invalid_response")
-        elif _base_category(category) == "rpc_error":
+        elif base == "rpc_error":
             if expected == ERROR_MARKER:
                 report["both_rpc_errors"] += 1
             else:
@@ -485,59 +404,30 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         json.dump(document, output, sort_keys=True, separators=(",", ":"))
         output.write("\n")
     clean = report["matched"] + report["both_rpc_errors"] == report["total"]
-    defects = " ".join(
-        f"{key}={value}" for key, value in report.items()
-        if value and key not in ("total", "matched", "both_rpc_errors")
-    )
+    defects = " ".join(f"{key}={value}" for key, value in report.items()
+                       if value and key not in ("total", "matched", "both_rpc_errors"))
     agreement = f"{report['matched']}/{report['total']} matched"
     if report["both_rpc_errors"]:
         agreement += f" + {report['both_rpc_errors']} both-error"
-    print(f"parity {candidate_client} vs {baseline_client}: {agreement}"
-          + (f" ({defects})" if defects else ""))
+    print(f"parity {candidate_client} vs {baseline_client}: {agreement}" + (f" ({defects})" if defects else ""))
     if divergences:
         preview = " ".join(str(d["index"]) for d in divergences[:40])
         print(f"divergent corpus indexes (first {min(len(divergences), 40)}): {preview}")
     return clean
 
 
-# A 50k-record replay is a long silent stretch; emit progress often enough that an operator can
-# tell a slow node from a hung one, but rarely enough not to flood the job log.
-PROGRESS_EVERY = 2000
-
-
-def _progress(done: int, total: int, started: float, what: str) -> None:
-    if done % PROGRESS_EVERY and done != total:
-        return
-    elapsed = time.perf_counter() - started
-    rate = done / elapsed if elapsed > 0 else 0.0
-    eta = (total - done) / rate if rate > 0 else 0.0
-    print(f"  {what} {done}/{total} ({done / total * 100:.0f}%) "
-          f"{rate:.0f} req/s, ~{eta / 60:.1f} min left", flush=True)
-
-
-def _base_category(category: str | None) -> str | None:
-    """Strip the ':code' suffix so existing outcome comparisons stay exact."""
-    return category.split(":", 1)[0] if category else category
-
-
 def _timed_post(url: str, index: int, params: list) -> tuple[float, str]:
-    """POST one eth_call and return (elapsed_ms, outcome). Never raises."""
     started = time.perf_counter()
     try:
         category, _ = _post(url, index, params)
-    except Exception:  # a replay must never lose the whole matrix to one bad record
+    except Exception:  # noqa: BLE001 — one bad record must not lose the matrix
         category = "transport_failure"
     return (time.perf_counter() - started) * 1000.0, category or "ok"
 
 
 def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, concurrency: int,
             warmup_seconds: int = 0, warmup_rps: float = 0.0) -> None:
-    """Replay every record `passes` times and write a record x pass matrix of latencies.
-
-    Unlike the k6 cells, which sample the corpus uniformly with replacement and tag every request
-    identically, this walks the corpus in order so each row is attributable to one record. Output
-    carries record indexes and milliseconds only — no request or response content.
-    """
+    """Replay every record `passes` times in corpus order; write a record x pass matrix of ms + outcome, and a meta sidecar."""
     params_list = load_corpus(corpus)
     total_records = len(params_list)
     if passes < 1:
@@ -551,10 +441,8 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
     started_at = time.perf_counter()
 
     def run_one(order: int, record: int, current_pass: int) -> None:
-        # Pace by submission order so the achieved rate matches --rps regardless of latency.
         if rps > 0:
-            due = started_at + order / rps
-            delay = due - time.perf_counter()
+            delay = started_at + order / rps - time.perf_counter()
             if delay > 0:
                 time.sleep(delay)
         elapsed, outcome = _timed_post(rpc_url, record + 1, params_list[record])
@@ -586,33 +474,22 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
             writer.writerow(row)
 
     achieved = issued / wall if wall > 0 else 0.0
-    # A matrix compared against one taken at a different head, rate or concurrency is meaningless,
-    # and nothing in the CSV records those. Emit them beside it.
     meta = {
         "head": head, "chain_id": chain_id, "block_hash": block_hash,
         "records": total_records, "passes": passes, "requests": issued,
         "target_rps": rps, "achieved_rps": round(achieved, 2), "concurrency": concurrency,
-        # Discarded warm-up load applied before this matrix. 0 seconds = measured cold; a cold
-        # matrix is otherwise indistinguishable from a warm one, and the difference is ~60% on p99.
-        # The rate is recorded too: the same seconds at a different rate is a different warm state.
         "warmup_seconds": warmup_seconds, "warmup_rps": warmup_rps,
         "outcomes": {k: v for k, v in sorted(outcomes.items())},
     }
-    meta_target = target.with_name("timings.meta.json")
-    with meta_target.open("w", encoding="utf-8") as handle:
+    with target.with_name("timings.meta.json").open("w", encoding="utf-8") as handle:
         json.dump(meta, handle, sort_keys=True, separators=(",", ":"))
-    summary = ", ".join(f"{k}={v}" for k, v in sorted(outcomes.items()))
-    print(f"timings: {total_records} records x {passes} passes = {issued} requests "
-          f"at head {head} chain {chain_id}")
-    print(f"  wall {wall:.1f}s, achieved {achieved:.1f} rps"
-          + (f" (target {rps:g})" if rps > 0 else " (unpaced)"))
-    print(f"  outcomes: {summary}")
+    print(f"timings: {total_records} records x {passes} passes = {issued} requests at head {head} chain {chain_id}")
+    print(f"  wall {wall:.1f}s, achieved {achieved:.1f} rps" + (f" (target {rps:g})" if rps > 0 else " (unpaced)"))
+    print(f"  outcomes: {', '.join(f'{k}={v}' for k, v in sorted(outcomes.items()))}")
     failed = sum(v for k, v in outcomes.items() if k != "ok")
     if failed:
-        share = failed / issued * 100
-        print(f"  WARNING: {failed}/{issued} ({share:.1f}%) did not return a result — "
-              f"latency percentiles over this matrix are NOT comparable to a clean run, "
-              f"because failures return early and pull every percentile down", flush=True)
+        print(f"  WARNING: {failed}/{issued} ({failed / issued * 100:.1f}%) did not return a result — "
+              f"failures return early, so percentiles over this matrix are NOT comparable to a clean run", flush=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -634,22 +511,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     compare_parser.add_argument("--report", required=True, help="counts-only report destination (safe to publish)")
     compare_parser.add_argument("--baseline-client", required=True)
     compare_parser.add_argument("--candidate-client", required=True)
-    compare_parser.add_argument("--diffs", default=None,
-                                help="optional: characterise each content mismatch word by word "
-                                     "(derived from response bytes — opt in deliberately)")
+    compare_parser.add_argument("--diffs", default=None, help="optional: characterise each content mismatch word by word")
 
-    timings_parser = subparsers.add_parser(
-        "timings", help="replay the corpus N times and write a record x pass latency matrix")
+    timings_parser = subparsers.add_parser("timings", help="replay the corpus N times and write a record x pass latency matrix")
     timings_parser.add_argument("--corpus", required=True)
     timings_parser.add_argument("--rpc-url", required=True)
     timings_parser.add_argument("--out", required=True, help="CSV destination (indexes + ms only)")
-    timings_parser.add_argument("--passes", type=int, default=1, help="times to replay the whole corpus")
+    timings_parser.add_argument("--passes", type=int, default=1)
     timings_parser.add_argument("--rps", type=float, default=0.0, help="target request rate; 0 = unpaced")
-    timings_parser.add_argument("--concurrency", type=int, default=16, help="in-flight requests")
-    timings_parser.add_argument("--warmup-seconds", type=int, default=0,
-                                help="discarded warm-up seconds applied before the matrix (recorded in meta)")
-    timings_parser.add_argument("--warmup-rps", type=float, default=0.0,
-                                help="rate the warm-up actually delivered (recorded in meta)")
+    timings_parser.add_argument("--concurrency", type=int, default=16)
+    timings_parser.add_argument("--warmup-seconds", type=int, default=0, help="discarded warm-up applied before the matrix")
+    timings_parser.add_argument("--warmup-rps", type=float, default=0.0, help="rate the warm-up actually delivered")
 
     arguments = parser.parse_args(argv)
     try:
@@ -657,17 +529,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"corpus OK: {len(load_corpus(arguments.corpus))} records")
             return 0
         if arguments.command == "timings":
-            timings(arguments.corpus, arguments.rpc_url, arguments.out,
-                    arguments.passes, arguments.rps, arguments.concurrency,
-                    arguments.warmup_seconds, arguments.warmup_rps)
+            timings(arguments.corpus, arguments.rpc_url, arguments.out, arguments.passes, arguments.rps,
+                    arguments.concurrency, arguments.warmup_seconds, arguments.warmup_rps)
             return 0
         if arguments.command == "baseline":
             baseline(arguments.corpus, arguments.rpc_url, arguments.state)
             return 0
-        clean = compare(
-            arguments.corpus, arguments.rpc_url, arguments.state, arguments.report,
-            arguments.baseline_client, arguments.candidate_client, arguments.diffs,
-        )
+        clean = compare(arguments.corpus, arguments.rpc_url, arguments.state, arguments.report,
+                        arguments.baseline_client, arguments.candidate_client, arguments.diffs)
         return 0 if clean else 1
     except CorpusParityError as error:
         print(f"error: {error}", file=sys.stderr)

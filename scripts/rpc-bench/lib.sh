@@ -2,17 +2,25 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Shared helpers sourced by the RPC benchmark scripts (start/stop-node, run-flood, etc.).
+# Shared helpers sourced by the RPC benchmark scripts.
 
 log() { printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-# Record the machine state a benchmark ran on, so a step change in results can be attributed to
-# the host rather than to code. A reboot or kernel upgrade shifts results persistently and is
-# otherwise invisible: on 2026-08-13 a 38% step in one payload set was traced to a restart only by
-# noticing that /proc/stat's monotonic interrupt counter had gone backwards between two runs.
-# boot_id changes on every boot, so it identifies the reboot directly; the rest covers the settings
-# that most often move a benchmark across a kernel upgrade.
+# Sweep arm label for a client entry with an image: <ctype>_<image tag, non-alphanumerics as _>. Shared with the
+# workflow's comment step so both sides derive the same label from the same image ref.
+arm_label() { printf '%s_%s' "$1" "$(printf '%s' "${2##*:}" | tr -c 'a-zA-Z0-9' '_')"; }
+
+# Image ref docker is given for a sweep `clients` entry (`ctype[@image][#K=V[,K=V]]`); empty when the entry names no
+# image and the sweep therefore uses NM_IMAGE. The per-arm options are stripped before the split, and the split is on
+# the first '@', so an '@' inside an option value or a digest ref survives. Shared with the ARM runner's disk reclaim,
+# whose keep-list has to hold exactly the refs this sweep will pull.
+arm_image() {
+  local spec="${1%%#*}"
+  [[ "$spec" == *@* ]] || return 0
+  printf '%s\n' "${spec#*@}"
+}
+
 log_system_provenance() {
   log "=== host provenance ==="
   log "  kernel:      $(uname -r 2>/dev/null || echo unknown)"
@@ -29,14 +37,26 @@ log_system_provenance() {
   done
 }
 
-# Run a command as root, using sudo only when not already root.
 as_root() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    "$@"
-  else
-    sudo "$@"
-  fi
+  if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi
 }
+
+# Numeric field of a JSON file via jq path; prints the default when absent or non-numeric.
+json_number() {
+  local file="$1" path="$2" default="${3-0}" value
+  [[ -s "$file" ]] || { printf '%s' "$default"; return 0; }
+  value="$(jq -r "$path | if type == \"number\" then . else empty end" "$file" 2>/dev/null)"
+  printf '%s' "${value:-$default}"
+}
+
+need_pyyaml() {
+  python3 -c 'import yaml' 2>/dev/null \
+    || python3 -m pip install --user pyyaml 2>/dev/null \
+    || python3 -m pip install --user --break-system-packages pyyaml \
+    || die "PyYAML is required and could not be installed"
+}
+
+strip_ansi() { sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "$@"; }
 
 # perf record must be launched directly as root so its PID is the recorder PID
 # persisted for safe teardown, rather than a short-lived sudo wrapper.
@@ -374,8 +394,7 @@ start_profilers() {
   printf 'PROFILERS_STARTED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$env_file"
 }
 
-# Reject paths unsafe for recursive deletion (absolute, no '..', not '/', >=2 deep).
-#   $1 = path, $2 = label for error messages.
+# Absolute, no '..', not '/', at least two components — the shape every recursively deleted path must have.
 assert_sane_dir() {
   local p="$1" label="$2"
   [[ "$p" == /* ]] || die "$label '$p' must be an absolute path"
@@ -385,37 +404,24 @@ assert_sane_dir() {
   [[ "$trimmed" == */* ]] || die "$label '$p' is too shallow (need at least two path components)"
 }
 
-# Canonicalize DB_SOURCE and SCRATCH_ROOT (resolving symlinks so aliased paths can't
-# defeat the check), enforce they are disjoint, and re-export the canonical values.
+# Canonicalize DB_SOURCE and SCRATCH_ROOT and enforce that they are disjoint.
 guard_paths() {
-  # Precondition: caller verified DB_SOURCE exists. Fail hard rather than silently
-  # skip the security invariants below if that precondition is ever violated.
-  [[ -d "$DB_SOURCE" ]] || die "guard_paths: DB_SOURCE '$DB_SOURCE' is not a directory (caller must verify it exists first)"
+  [[ -d "$DB_SOURCE" ]] || die "guard_paths: DB_SOURCE '$DB_SOURCE' is not a directory"
   DB_SOURCE="$(realpath -e -- "$DB_SOURCE")" || die "cannot canonicalize DB_SOURCE"
   SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || die "cannot canonicalize SCRATCH_ROOT"
   assert_sane_dir "$DB_SOURCE" "DB_SOURCE"
   assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
-  case "$DB_SOURCE/" in
-    "$SCRATCH_ROOT"/*) die "DB_SOURCE must not be inside SCRATCH_ROOT — scratch is wiped on teardown" ;;
-  esac
-  case "$SCRATCH_ROOT/" in
-    "$DB_SOURCE"/*) die "SCRATCH_ROOT must not be inside DB_SOURCE" ;;
-  esac
+  case "$DB_SOURCE/" in "$SCRATCH_ROOT"/*) die "DB_SOURCE must not be inside SCRATCH_ROOT" ;; esac
+  case "$SCRATCH_ROOT/" in "$DB_SOURCE"/*) die "SCRATCH_ROOT must not be inside DB_SOURCE" ;; esac
 }
 
-# Fail if anything is still mounted at/below $1 — must precede every recursive
-# delete of scratch so an rm -rf never runs through a live overlay/bind mount.
 assert_no_mounts_under() {
   local dir mounts
   dir="$(realpath -m -- "$1")"
   mounts="$(awk -v d="$dir" '$2 == d || index($2, d "/") == 1 { print $2 }' /proc/self/mounts 2>/dev/null || true)"
-  if [[ -n "$mounts" ]]; then
-    die "refusing to delete '$dir' — still mounted: $mounts"
-  fi
+  [[ -z "$mounts" ]] || die "refusing to delete '$dir' — still mounted: $mounts"
 }
 
-# Remove benchmark containers from ANY run — a hard-interrupted run leaves stale
-# containers holding port 8545 and the old overlay mount ns. $@ = name prefixes.
 reap_stale_containers() {
   local prefix ids
   for prefix in "$@"; do
@@ -428,75 +434,51 @@ reap_stale_containers() {
   done
 }
 
-# POST a JSON-RPC request.
-#   $1 = url, $2 = JSON body. Echoes the response body.
 rpc_post() {
-  local url="$1" body="$2"
-  curl -sS -m 30 --connect-timeout 5 \
-    -H 'Content-Type: application/json' \
-    -X POST --data "$body" "$url"
+  curl -sS -m 30 --connect-timeout 5 -H 'Content-Type: application/json' -X POST --data "$2" "$1"
 }
 
-# Block until the node answers eth_blockNumber with a non-genesis head, or fail
-# (dies early with logs if the container exits). $1=url, $2=timeout s (def 1800), $3=container.
+rpc_head() {
+  rpc_post "$1" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null | jq -r '.result // empty' 2>/dev/null || true
+}
+
+# Block until the node serves a non-genesis eth_blockNumber. $1=url, $2=timeout s, $3=container.
 wait_for_rpc() {
-  local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 resp head head_digits
+  local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 head
   log "Waiting for JSON-RPC at $url (timeout ${timeout}s)..."
   while true; do
     if [[ -n "$container" ]] && ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
-      log "Container '$container' exited while waiting for RPC. Last 100 log lines:"
       docker logs "$container" 2>&1 | tail -n 100 || true
       die "node container died before serving JSON-RPC"
     fi
-    resp="$(rpc_post "$url" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)"
-    head="$(printf '%s' "$resp" | jq -r '.result // empty' 2>/dev/null || true)"
+    head="$(rpc_head "$url")"
     if [[ "$head" =~ ^0x[0-9a-fA-F]{1,15}$ ]]; then
-      head_digits="${head#0x}"
-      if [[ "$((16#$head_digits))" -eq 0 ]]; then
-        # A snapshot-backed node must report its snapshot head immediately; 0x0
-        # means the datadir is wrong/empty and a fresh DB was initialized.
-        die "node reports head block 0 — datadir mismatch (snapshot not picked up); refusing to benchmark genesis"
-      fi
-      log "JSON-RPC is up. Head block: $((16#$head_digits)) ($head)"
+      (( 16#${head#0x} > 0 )) || die "node reports head block 0 — datadir mismatch; refusing to benchmark genesis"
+      log "JSON-RPC is up. Head block: $((16#${head#0x})) ($head)"
       return 0
     fi
     sleep "$interval"
     elapsed=$((elapsed + interval))
-    if (( elapsed >= timeout )); then
-      die "JSON-RPC did not become ready within ${timeout}s (last response: ${resp:-<none>})"
-    fi
-    if (( elapsed % 30 == 0 )); then
-      log "  still waiting for RPC... (${elapsed}/${timeout}s)"
-    fi
+    (( elapsed < timeout )) || die "JSON-RPC did not become ready within ${timeout}s"
+    (( elapsed % 30 )) || log "  still waiting for RPC... (${elapsed}/${timeout}s)"
   done
 }
 
-# Fail unless both nodes report the same eth_blockNumber head — cross-node diffs at
-# different heads are meaningless ('latest' differs). $1 = primary url, $2 = reference url.
 assert_same_head() {
-  local body='{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' a b
-  a="$(rpc_post "$1" "$body" 2>/dev/null | jq -r '.result // empty')"
-  b="$(rpc_post "$2" "$body" 2>/dev/null | jq -r '.result // empty')"
-  [[ -n "$a" && -n "$b" ]] || die "assert_same_head: could not read eth_blockNumber from both nodes ($1 -> '${a:-<none>}', $2 -> '${b:-<none>}')"
-  if (( 16#${a#0x} != 16#${b#0x} )); then
-    die "head mismatch: $1 is at block $((16#${a#0x})) but $2 is at $((16#${b#0x})) — both nodes must use snapshots taken at the same block"
-  fi
+  local a b
+  a="$(rpc_head "$1")"; b="$(rpc_head "$2")"
+  [[ -n "$a" && -n "$b" ]] || die "assert_same_head: could not read eth_blockNumber from both nodes"
+  (( 16#${a#0x} == 16#${b#0x} )) || die "head mismatch: $1 is at $((16#${a#0x})) but $2 is at $((16#${b#0x}))"
   log "Both nodes report head block $((16#${a#0x})) ($a)."
 }
 
-# Tamper tripwire over a snapshot dir (recursive listing + sha256 of DB control files);
-# baseline-vs-final catches mutation. Listing errors fatal (no partial fingerprint). $1=dir, $2=out.
+# Recursive listing plus sha256 of the RocksDB control files; any difference between two fingerprints means the snapshot changed.
 db_fingerprint() {
   local dir="$1" out="$2" listing
   listing="$(mktemp)"
-  if ! find "$dir" \( -type f -o -type d -o -type l \) \
-        -printf '%P\t%y\t%s\t%T@\t%m\t%U:%G\t%l\n' > "$listing" 2>"$listing.err"; then
+  if ! find "$dir" \( -type f -o -type d -o -type l \) -printf '%P\t%y\t%s\t%T@\t%m\t%U:%G\t%l\n' > "$listing" 2>"$listing.err" \
+      || [[ -s "$listing.err" ]]; then
     cat "$listing.err" >&2 || true
-    rm -f "$listing" "$listing.err"
-    die "db_fingerprint: find failed for '$dir' (see errors above)"
-  fi
-  if [[ -s "$listing.err" ]]; then
-    cat "$listing.err" >&2
     rm -f "$listing" "$listing.err"
     die "db_fingerprint: find reported errors for '$dir' — refusing to produce a partial fingerprint"
   fi
@@ -507,9 +489,7 @@ db_fingerprint() {
     echo "# control-file-hashes"
     while IFS= read -r -d '' f; do
       sha256sum "$f" | { read -r hash _; printf '%s  %s\n' "$hash" "${f#"$dir"/}"; }
-    done < <(find "$dir" -type f \
-        \( -name 'CURRENT' -o -name 'IDENTITY' -o -name 'MANIFEST-*' -o -name 'OPTIONS-*' \) \
-        -print0 | LC_ALL=C sort -z)
+    done < <(find "$dir" -type f \( -name 'CURRENT' -o -name 'IDENTITY' -o -name 'MANIFEST-*' -o -name 'OPTIONS-*' \) -print0 | LC_ALL=C sort -z)
   } > "$out"
   rm -f "$listing" "$listing.err"
 }
