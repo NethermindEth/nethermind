@@ -34,7 +34,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
 
     private (TracedAccessWorldState tws, IDisposable scope) CreateTracingState(
-        Action<IWorldState>? genesisSetup = null)
+        Action<IWorldState>? genesisSetup = null, Func<IWorldState, IWorldState>? decorate = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -47,7 +47,7 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        TracedAccessWorldState tws = new(inner, parallel: parallel);
+        TracedAccessWorldState tws = new(decorate?.Invoke(inner) ?? inner, parallel: parallel);
         tws.SetGeneratingBlockAccessList(new());
         IDisposable scope = tws.BeginScope(baseBlock);
         tws.SetIndex(0);
@@ -202,14 +202,20 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [Test]
-    public void Set_RecordsStorageChange()
+    public void Set_RecordsStorageChange([Values] bool supplyCurrentValue)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
+        StorageWriteDecorator decorator = null!;
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-            ws.CreateAccount(TestItem.AddressA, 0));
+            ws.CreateAccount(TestItem.AddressA, 0), ws => decorator = new(ws));
         using (scope)
         {
-            tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
+            tws.Get(in cell, out UInt256 currentValue);
+            int reads = decorator.Reads;
+            if (supplyCurrentValue)
+                tws.Set(in cell, UInt256.One, in currentValue);
+            else
+                tws.Set(in cell, UInt256.One);
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -217,7 +223,58 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
                 Assert.That(ac.ChangedSlots, Does.Contain((UInt256)1));
+                Assert.That(decorator.Writes, Is.EqualTo(1));
+                Assert.That(decorator.Reads - reads, Is.EqualTo(supplyCurrentValue ? 0 : 1));
             }
+        }
+    }
+
+    [Test]
+    public void Set_WithCurrentValue_PreservesOriginalAndRollback([Values(0ul, 1ul, 2ul, ulong.MaxValue)] ulong next)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+        {
+            ws.CreateAccount(TestItem.AddressA, 0);
+            ws.Set(in cell, UInt256.One);
+        });
+        using (scope)
+        {
+            Snapshot snapshot = tws.TakeSnapshot();
+            tws.Get(in cell, out UInt256 currentValue);
+            tws.Set(in cell, (UInt256)next, in currentValue);
+            tws.GetOriginal(in cell, out UInt256 original);
+            tws.Get(in cell, out UInt256 actual);
+            AccountChangesAtIndex changes = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original, Is.EqualTo(UInt256.One));
+                Assert.That(actual, Is.EqualTo((UInt256)next));
+                Assert.That(changes.StorageChangeCount, Is.EqualTo(next == 1 ? 0 : 1));
+            }
+
+            tws.Restore(snapshot);
+            tws.Get(in cell, out actual);
+            Assert.That(actual, Is.EqualTo(UInt256.One));
+            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
+        }
+    }
+
+    private sealed class StorageWriteDecorator(IWorldState state) : WorldStateDecorator(state)
+    {
+        public int Reads { get; private set; }
+        public int Writes { get; private set; }
+
+        public override void Get(in StorageCell cell, out UInt256 value)
+        {
+            Reads++;
+            base.Get(in cell, out value);
+        }
+
+        public override void Set(in StorageCell cell, in UInt256 value)
+        {
+            Writes++;
+            base.Set(in cell, in value);
         }
     }
 
@@ -551,7 +608,6 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
                 Assert.That(ac.TryGetStorageChange((UInt256)1, out StorageChange? change), Is.True);
-                // StorageChange.Value is EvmWord (BE wire form) — compare via the ctor's round-trip.
                 Assert.That(change!.Value.Value, Is.EqualTo(new StorageChange(0, (UInt256)2).Value));
             }
         }

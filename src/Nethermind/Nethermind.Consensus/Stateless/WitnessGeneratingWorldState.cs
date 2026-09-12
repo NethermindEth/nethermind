@@ -243,6 +243,12 @@ public class WitnessGeneratingWorldState(
         base.Set(in storageCell, newValue);
     }
 
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        RecordSlot(storageCell);
+        State.Set(in storageCell, in newValue, in currentValue);
+    }
+
     public override void ClearStorage(Address address)
     {
         RecordEmptySlots(address);

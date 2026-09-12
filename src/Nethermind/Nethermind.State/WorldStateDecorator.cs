@@ -69,6 +69,11 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Set(in StorageCell storageCell, in UInt256 newValue)
         => State.Set(in storageCell, newValue);
 
+    /// <inheritdoc/>
+    /// <remarks>Preserves interception by decorators that only override the ordinary write.</remarks>
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
+
     public virtual void GetTransientState(in StorageCell storageCell, out UInt256 value)
         => State.GetTransientState(in storageCell, out value);
 

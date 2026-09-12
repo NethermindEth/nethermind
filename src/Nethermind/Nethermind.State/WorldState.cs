@@ -124,6 +124,9 @@ namespace Nethermind.State
             _persistentStorageProvider.Set(storageCell, newValue);
         }
 
+        public void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+            => Set(in storageCell, in newValue);
+
         /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
         /// <remarks>Only for immutable BAL parent readers.</remarks>
         internal void GetPureReadStorage(in StorageCell cell, out UInt256 value)

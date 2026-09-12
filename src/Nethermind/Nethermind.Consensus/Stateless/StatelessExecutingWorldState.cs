@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
@@ -13,6 +14,9 @@ namespace Nethermind.Consensus.Stateless;
 /// </summary>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => State.Set(in storageCell, in newValue, in currentValue);
+
     /// <remarks>
     /// Forces a witness-backed code lookup that throws when the bytecode is absent from the witness.
     /// </remarks>

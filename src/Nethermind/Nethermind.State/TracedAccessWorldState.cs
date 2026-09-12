@@ -126,8 +126,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         GetInternal(in storageCell, out UInt256 oldValue);
-        GeneratingBlockAccessList.AddStorageChange(storageCell, oldValue, newValue);
-        base.Set(storageCell, newValue);
+        Set(in storageCell, in newValue, in oldValue);
+    }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        GeneratingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
+        State.Set(in storageCell, in newValue, in currentValue);
     }
 
     public override ref readonly UInt256 GetBalance(Address address)

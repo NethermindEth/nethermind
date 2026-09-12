@@ -410,7 +410,7 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, in newValue);
+            vm.WorldState.Set(in storageCell, in newValue, in currentValue);
             if (newIsZero)
             {
                 vm.MetricsCounters.IncrementStorageDeleted();
@@ -582,7 +582,7 @@ public static partial class EvmInstructions
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
-            vm.WorldState.Set(in storageCell, in newValue);
+            vm.WorldState.Set(in storageCell, in newValue, in currentValue);
             if (newIsZero)
             {
                 vm.MetricsCounters.IncrementStorageDeleted();

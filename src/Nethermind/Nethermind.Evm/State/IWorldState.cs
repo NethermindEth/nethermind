@@ -54,6 +54,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="newValue">Value to store</param>
     void Set(in StorageCell storageCell, in UInt256 newValue);
 
+    /// <summary>Sets a storage value using the caller's current value for change recording.</summary>
+    /// <remarks>The cell must not have changed since the caller read <paramref name="currentValue"/>.</remarks>
+    void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
+
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>

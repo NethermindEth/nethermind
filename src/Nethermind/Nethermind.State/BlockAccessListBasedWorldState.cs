@@ -189,6 +189,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue) { }
 
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }
+
     public override ref readonly UInt256 GetBalance(Address address)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
