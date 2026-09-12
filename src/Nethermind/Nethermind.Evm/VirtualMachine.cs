@@ -1291,8 +1291,7 @@ public partial class VirtualMachine<TGasPolicy>(
             IReleaseSpec spec = Spec;
             if (env.CodeInfo.Template.MinimalProxy is { } proxy)
             {
-                // The forwarding preamble is built from RETURNDATASIZE, and bubbles failure with REVERT.
-                if (spec.ReturnDataOpcodesEnabled)
+                if (proxy.IsEnabled(spec))
                 {
                     if (vmState.IsContinuation)
                         return CompleteMinimalProxy(vmState, proxy, previousCallResult.Success.GetValueOrDefault(), ref gas);
@@ -1435,7 +1434,7 @@ public partial class VirtualMachine<TGasPolicy>(
             !TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Zero, in returnDataLength, ref vmState.Memory))
             goto OutOfGas;
 
-        if (!TGasPolicy.UpdateGas(ref gas, success ? MinimalProxy.GasOnSuccess : MinimalProxy.GasOnFailure))
+        if (!TGasPolicy.UpdateGas(ref gas, success ? proxy.GasOnSuccess : proxy.GasOnFailure))
             goto OutOfGas;
 
         return success

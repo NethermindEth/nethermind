@@ -114,6 +114,36 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// The PUSH0 forwarders, whose opcodes exist only from Shanghai. Running them on Paris pins the fork
+    /// gate: the dispatch loop must halt on PUSH0 there, and the fast path must decline to skip it.
+    /// </summary>
+    [TestCase(true, TestName = "ERC-7511 runtime")]
+    [TestCase(false, TestName = "Solady runtime")]
+    public void Matches_the_dispatch_loop_for_a_push0_forwarder(bool erc7511) =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.StoreDataInMemory(0, TestItem.KeccakA.BytesToArray()).Return(32, 0).Done),
+            Push0Proxy(erc7511), new byte[4], UInt256.Zero);
+
+    [TestCase(true, TestName = "ERC-7511 runtime")]
+    [TestCase(false, TestName = "Solady runtime")]
+    public void Matches_the_dispatch_loop_for_a_push0_forwarder_that_reverts(bool erc7511) =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.StoreDataInMemory(0, TestItem.KeccakA.BytesToArray()).Revert(32, 0).Done),
+            Push0Proxy(erc7511), new byte[4], UInt256.Zero);
+
+    [TestCase(true, TestName = "ERC-7511 runtime")]
+    [TestCase(false, TestName = "Solady runtime")]
+    public void Matches_the_dispatch_loop_for_a_push0_forwarder_before_push0_exists(bool erc7511) =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.Op(Instruction.STOP).Done),
+            Push0Proxy(erc7511), new byte[4], UInt256.Zero,
+            MainnetSpecProvider.ParisBlockNumber);
+
+    private static byte[] Push0Proxy(bool erc7511) => erc7511
+        ? TemplateCode.Erc7511MinimalProxy(Implementation)
+        : TemplateCode.SoladyMinimalProxy(Implementation);
+
     /// <summary>The shorter "0age" forwarder, which leaves a different stack and costs different gas.</summary>
     [Test]
     public void Matches_the_dispatch_loop_for_an_age_proxy_returning_data() =>

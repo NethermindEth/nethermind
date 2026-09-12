@@ -56,15 +56,17 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
         Assert.That(gasAtEntry - gasAtBody, Is.EqualTo(reportedGas));
     }
 
-    [TestCase(false, 31, 44, TestName = "Canonical EIP-1167 runtime")]
-    [TestCase(true, 32, 43, TestName = "The shorter 0age runtime")]
+    [TestCase(ProxyVariant.Eip1167, 31, 44, TestName = "Canonical EIP-1167 runtime")]
+    [TestCase(ProxyVariant.Age, 32, 43, TestName = "The shorter 0age runtime")]
+    [TestCase(ProxyVariant.Erc7511, 30, 43, TestName = "ERC-7511 PUSH0 runtime")]
+    [TestCase(ProxyVariant.Solady, 30, 44, TestName = "Solady PUSH0 runtime")]
     public void Minimal_proxy_reports_the_gas_the_interpreter_charges_around_the_delegate_call(
-        bool age, int delegateCallProgramCounter, int returnProgramCounter)
+        ProxyVariant variant, int delegateCallProgramCounter, int returnProgramCounter)
     {
         byte[] implementation = Prepare.EvmCode.Op(Instruction.STOP).Done;
         TestState.CreateAccount(Implementation, UInt256.Zero);
         TestState.InsertCode(Implementation, implementation, SpecProvider.GenesisSpec);
-        byte[] code = age ? TemplateCode.AgeMinimalProxy(Implementation) : TemplateCode.MinimalProxy(Implementation);
+        byte[] code = ProxyCode(variant, Implementation);
 
         MinimalProxy proxy = new CodeInfo(code).Template.MinimalProxy!;
         Assert.That(proxy.DelegateCallProgramCounter, Is.EqualTo(delegateCallProgramCounter));
@@ -76,9 +78,24 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
         ulong beforeCall = GasAt(trace, programCounter: 0) - GasAt(trace, delegateCallProgramCounter);
         Assert.That(beforeCall, Is.EqualTo(proxy.GasBeforeCall + SelectorOnlyCallDataCopyCost));
 
+        // Measured up to the RETURN, which is itself free once memory has been charged, so the whole of
+        // the success tail is covered even for the variants that rebuild the RETURN's operands first.
         ulong afterCall = GasAt(trace, delegateCallProgramCounter + 1) - GasAt(trace, returnProgramCounter);
-        Assert.That(afterCall, Is.EqualTo(proxy.GasAfterCall + EmptyReturnDataCopyCost + MinimalProxy.GasOnSuccess));
+        Assert.That(afterCall, Is.EqualTo(proxy.GasAfterCall + EmptyReturnDataCopyCost + proxy.GasOnSuccess));
     }
+
+    /// <summary>Which forwarder runtime a case exercises.</summary>
+    public enum ProxyVariant { Eip1167, Age, Erc7511, Solady }
+
+    private static byte[] ProxyCode(ProxyVariant variant, Address target) => variant switch
+    {
+        ProxyVariant.Eip1167 => TemplateCode.MinimalProxy(target),
+        ProxyVariant.Age => TemplateCode.AgeMinimalProxy(target),
+        ProxyVariant.Erc7511 => TemplateCode.Erc7511MinimalProxy(target),
+        ProxyVariant.Solady => TemplateCode.SoladyMinimalProxy(target),
+        _ => throw new System.ArgumentOutOfRangeException(nameof(variant), variant, "Unknown forwarder."),
+    };
+
 
     private static byte[] SelectorBytes(uint selector) =>
         [(byte)(selector >> 24), (byte)(selector >> 16), (byte)(selector >> 8), (byte)selector];
