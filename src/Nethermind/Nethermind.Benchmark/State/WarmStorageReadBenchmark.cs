@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -16,68 +19,121 @@ namespace Nethermind.Benchmarks.State;
 /// <summary>A warm SLOAD through the world state, which is what the storage_access_warm benchmarks hit.</summary>
 /// <remarks>Reads consult the write journal before the per-contract read cache, so a slot that was never
 /// written pays a lookup that cannot hit whenever the contract has written anything at all. The two
-/// <c>Unwritten</c> cases differ only in whether that journal is empty.</remarks>
+/// <c>Unwritten</c> cases differ only in whether that journal is empty; compare rows to the
+/// <c>Unwritten_CleanJournal</c> baseline within a run rather than across runs. The read targets are
+/// seeded in a committed block and the measurement scope reopens that root, so the contracts' journal
+/// flags start genuinely clear — a same-scope seed would mark them and measure the wrong branch.</remarks>
 [MemoryDiagnoser]
 public class WarmStorageReadBenchmark
 {
     private const int OperationsPerInvoke = 1000;
 
-    private IWorldState _cleanJournal = null!;
-    private IWorldState _dirtyJournal = null!;
-    private IWorldState _otherWritten = null!;
+    private sealed class Env : IDisposable
+    {
+        public required IContainer Container { get; init; }
+        public required IWorldState WorldState { get; init; }
+        public required IDisposable Scope { get; init; }
+
+        public void Dispose()
+        {
+            Scope.Dispose();
+            Container.Dispose();
+        }
+    }
+
+    private Env _cleanJournal = null!;
+    private Env _dirtyJournal = null!;
+    private Env _otherWritten = null!;
+    private Env _alternating = null!;
     private StorageCell _unwritten;
     private StorageCell _written;
+    private StorageCell _otherContractWritten;
+    private static readonly byte[] Value = [7];
 
-    private static IWorldState Create(Address address, byte[] value)
+    [Params(true, false)]
+    public bool UseFlat { get; set; }
+
+    private Env Create()
     {
-        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(
+                new BlocksConfig { PreWarming = PreWarmMode.None },
+                new FlatDbConfig { Enabled = UseFlat }))
+            .Build();
+
+        IWorldState worldState = container.Resolve<IMainProcessingContext>().WorldState;
+        BlockHeader baseBlock;
         using (IDisposable seed = worldState.BeginScope(IWorldState.PreGenesis))
         {
-            worldState.CreateAccount(address, 1, 1);
-            for (int i = 0; i < 128; i++)
+            foreach (Address address in (Address[])[TestItem.AddressA, TestItem.AddressB])
             {
-                worldState.Set(new StorageCell(address, (UInt256)i), value);
+                worldState.CreateAccount(address, 1, 1);
+                for (int i = 0; i < 128; i++)
+                {
+                    worldState.Set(new StorageCell(address, (UInt256)i), Value);
+                }
             }
 
             worldState.Commit(Frontier.Instance);
             worldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).TestObject;
         }
 
-        worldState.BeginScope(IWorldState.PreGenesis);
-        return worldState;
+        IDisposable scope = worldState.BeginScope(baseBlock);
+        // The measurement is meaningless against an empty root, so refuse to run rather than report it.
+        if (!worldState.Get(_unwritten).SequenceEqual(Value))
+        {
+            throw new InvalidOperationException("The measurement scope does not see the seeded storage.");
+        }
+
+        return new Env { Container = container, WorldState = worldState, Scope = scope };
     }
 
     [GlobalSetup]
     public void Setup()
     {
-        Address address = TestItem.AddressA;
-        byte[] value = new byte[32];
-        value[31] = 7;
+        _unwritten = new StorageCell(TestItem.AddressA, (UInt256)5);
+        _written = new StorageCell(TestItem.AddressA, (UInt256)99);
+        _otherContractWritten = new StorageCell(TestItem.AddressB, (UInt256)1);
 
-        _unwritten = new StorageCell(address, (UInt256)5);
-        _written = new StorageCell(address, (UInt256)99);
-
-        _cleanJournal = Create(address, value);
-        _dirtyJournal = Create(address, value);
-        _otherWritten = Create(address, value);
+        _cleanJournal = Create();
+        _dirtyJournal = Create();
+        _otherWritten = Create();
+        _alternating = Create();
 
         // Same contract: the read cannot skip the journal, because this contract really has entries there.
-        _dirtyJournal.Set(_written, value);
+        _dirtyJournal.WorldState.Set(_written, Value);
 
         // Another contract entirely: the journal is non-empty, but not for the contract being read.
-        _otherWritten.Set(new StorageCell(TestItem.AddressB, (UInt256)1), value);
+        _otherWritten.WorldState.Set(_otherContractWritten, Value);
 
-        _cleanJournal.Get(_unwritten);
-        _dirtyJournal.Get(_unwritten);
-        _dirtyJournal.Get(_written);
-        _otherWritten.Get(_unwritten);
+        // Both contracts journalled: alternating journal hits defeat the last-contract memo, so every
+        // read pays the contract-map probe the gate adds in front of the journal probe.
+        _alternating.WorldState.Set(_written, Value);
+        _alternating.WorldState.Set(_otherContractWritten, Value);
+
+        _cleanJournal.WorldState.Get(_unwritten);
+        _dirtyJournal.WorldState.Get(_unwritten);
+        _dirtyJournal.WorldState.Get(_written);
+        _otherWritten.WorldState.Get(_unwritten);
+        _alternating.WorldState.Get(_written);
+        _alternating.WorldState.Get(_otherContractWritten);
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _cleanJournal.Dispose();
+        _dirtyJournal.Dispose();
+        _otherWritten.Dispose();
+        _alternating.Dispose();
     }
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
     public int Unwritten_CleanJournal()
     {
         int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _cleanJournal.Get(_unwritten).Length;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _cleanJournal.WorldState.Get(_unwritten).Length;
         return n;
     }
 
@@ -85,7 +141,7 @@ public class WarmStorageReadBenchmark
     public int Unwritten_DirtyJournal()
     {
         int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.Get(_unwritten).Length;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.WorldState.Get(_unwritten).Length;
         return n;
     }
 
@@ -94,7 +150,7 @@ public class WarmStorageReadBenchmark
     public int Unwritten_OtherContractWritten()
     {
         int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _otherWritten.Get(_unwritten).Length;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _otherWritten.WorldState.Get(_unwritten).Length;
         return n;
     }
 
@@ -102,7 +158,23 @@ public class WarmStorageReadBenchmark
     public int WrittenSlot()
     {
         int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.Get(_written).Length;
+        for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.WorldState.Get(_written).Length;
+        return n;
+    }
+
+    /// <summary>Journal hits alternating between two written contracts, the shape of a CALL reading a
+    /// slot its caller wrote: the last-contract memo misses on every read.</summary>
+    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
+    public int WrittenSlot_AlternatingContracts()
+    {
+        int n = 0;
+        IWorldState worldState = _alternating.WorldState;
+        for (int i = 0; i < OperationsPerInvoke / 2; i++)
+        {
+            n += worldState.Get(_written).Length;
+            n += worldState.Get(_otherContractWritten).Length;
+        }
+
         return n;
     }
 }
