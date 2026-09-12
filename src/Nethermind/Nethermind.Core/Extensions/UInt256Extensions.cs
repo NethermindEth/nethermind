@@ -45,6 +45,7 @@ public static class UInt256Extensions
     {
         int length = 32;
         ulong limb = value.u3;
+        if (limb >= 1UL << 56) return length;
         if (limb == 0)
         {
             length = 24;
