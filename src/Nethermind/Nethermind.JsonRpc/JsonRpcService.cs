@@ -12,6 +12,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -27,17 +28,40 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
+public sealed class JsonRpcService : IJsonRpcService, IDisposable
 {
     private const int MaxPooledParameterCount = 8;
     private const int MaxReportedExceptionChainDepth = 8;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
-    private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
-    private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
-    private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+    private readonly ILogger _logger;
+    private readonly IRpcModuleProvider _rpcModuleProvider;
+    private readonly EvmAdmissionGate _gate;
+    private readonly HashSet<string> _methodsLoggingFiltering;
+    private readonly int _maxLoggedRequestParametersCharacters;
+    private readonly bool _webSocketsQueueingEnabled;
 
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
+    /// <summary>Creates a JSON-RPC service using the supplied module provider, logger, and configuration.</summary>
+    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
+        : this(rpcModuleProvider, logManager, jsonRpcConfig, new EvmAdmissionGate(jsonRpcConfig, logManager))
+    {
+    }
+
+    // Lets tests drive the gate on a manual TimeProvider.
+    internal JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, EvmAdmissionGate gate)
+    {
+        _logger = logManager.GetClassLogger<JsonRpcService>();
+        _rpcModuleProvider = rpcModuleProvider;
+        _gate = gate;
+        _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
+        _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+        _webSocketsQueueingEnabled = jsonRpcConfig.WebSocketsProcessingConcurrency > 1;
+    }
+
+    /// <inheritdoc/>
+    public void Dispose() => _gate.Dispose();
+
+    /// <inheritdoc/>
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken = default)
     {
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
@@ -54,26 +78,36 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+                ? ExecuteGatedAsync(rpcRequest, methodName, method, context, cancellationToken)
+                : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
-                : AwaitRequestAsync(responseTask, rpcRequest);
+                : AwaitRequestAsync(responseTask, rpcRequest, this, cancellationToken);
         }
         catch (Exception ex)
         {
             return ValueTask.FromResult<JsonRpcResponse>(ReturnErrorResponse(rpcRequest, ex));
         }
+    }
 
-        async ValueTask<JsonRpcResponse> AwaitRequestAsync(ValueTask<JsonRpcResponse> responseTask, JsonRpcRequest rpcRequest)
+    private static async ValueTask<JsonRpcResponse> AwaitRequestAsync(
+        ValueTask<JsonRpcResponse> responseTask,
+        JsonRpcRequest rpcRequest,
+        JsonRpcService service,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            try
-            {
-                return await responseTask;
-            }
-            catch (Exception ex)
-            {
-                return ReturnErrorResponse(rpcRequest, ex);
-            }
+            return await responseTask;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return service.ReturnErrorResponse(rpcRequest, ex);
         }
     }
 
@@ -104,6 +138,28 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
             ? $"Id:{request.Id}, {request.Method}(params omitted)"
             : request.ToString();
+
+    private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context, CancellationToken cancellationToken)
+    {
+        // Admitted before the parameters are bound, so a shed request never pays for deserializing them; the permit is
+        // released once the invocation, including any task it returned, has completed.
+        using EvmAdmissionGate.Lease lease = await _gate.AdmitAsync(request.ParamsUtf8Length, cancellationToken, allowQueue: CanQueue(request, context));
+        cancellationToken.ThrowIfCancellationRequested();
+        JsonRpcResponse response = await ExecuteAsync(request, methodName, method, context);
+        // A streamed result executes while the response is written, after the permit is released (see JsonRpcMethodAttribute.IsEvmExecution).
+        if (response.TryGetStreamableResult(out _) && _logger.IsError) _logger.Error($"{methodName} is admission-gated but returned a streamable result; its execution while the response is written runs without a permit.");
+        return response;
+    }
+
+    private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
+        !request.IsBatchItem &&
+        !context.IsAuthenticated &&
+        context.RpcEndpoint switch
+        {
+            RpcEndpoint.Http => true,
+            RpcEndpoint.Ws => _webSocketsQueueingEnabled,
+            _ => false,
+        };
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
