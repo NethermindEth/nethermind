@@ -288,6 +288,35 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address Create2CallerAddress = new("0x00000000000000000000000000000000000000ac");
+
+    /// <summary>How many CREATE2s the create scenario performs per call.</summary>
+    /// <remarks>Each is ~32k gas, so one 2M-gas transaction fits 50; distinct salts keep the addresses
+    /// collision-free within the block, and every processed block starts from the same parent state.</remarks>
+    private const int CreatesPerCall = 50;
+
+    /// <summary>CREATE2 of an empty contract followed by an immediate query of the created address,
+    /// the create2_immediate_access shape.</summary>
+    private static readonly byte[] Create2ImmediateAccessCode = BuildCreate2ImmediateAccessCode();
+
+    private static byte[] BuildCreate2ImmediateAccessCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CreatesPerCall; i++)
+        {
+            // CREATE2 takes value, offset, length, salt; empty initcode deploys an empty contract.
+            code = code
+                .PushData(i)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.CREATE2)
+                .Op(Instruction.EXTCODESIZE)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -340,6 +369,7 @@ public class BlockProcessingBenchmark
     private Block _staticCallEoaBlock = null!;
     private Block _staticCallPrecompileBlock = null!;
     private Block _sstoreDirtyBlock = null!;
+    private Block _create2Block = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -381,6 +411,7 @@ public class BlockProcessingBenchmark
         _staticCallEoaBlock = BuildBlock(BuildCallsTo(EoaCallCallerAddress, 10, 0));
         _staticCallPrecompileBlock = BuildBlock(BuildCallsTo(PrecompileCallCallerAddress, 10, 0));
         _sstoreDirtyBlock = BuildBlock(BuildCallsTo(SstoreCallerAddress, 10, 0));
+        _create2Block = BuildBlock(BuildCallsTo(Create2CallerAddress, 1, 0, gasLimit: 25_000_000));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -443,6 +474,9 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(SstoreCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(SstoreCallerAddress, SstoreDirtyCode, Spec);
             stateProvider.Set(new StorageCell(SstoreCallerAddress, UInt256.Zero), [0x05]);
+
+            stateProvider.CreateAccount(Create2CallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(Create2CallerAddress, Create2ImmediateAccessCode, Spec);
 
             stateProvider.CreateAccount(PrecompileCallCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(PrecompileCallCallerAddress, StaticCallPrecompileCode, Spec);
@@ -680,6 +714,16 @@ public class BlockProcessingBenchmark
     }
 
     [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Create2_ImmediateAccess()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_create2Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] ContractCall_200()
     {
         Block[] result = null!;
@@ -783,7 +827,7 @@ public class BlockProcessingBenchmark
 
     private Transaction[] BuildSloadCalls(int count, ulong startNonce) => BuildCallsTo(TestItem.AddressD, count, startNonce);
 
-    private Transaction[] BuildCallsTo(Address to, int count, ulong startNonce)
+    private Transaction[] BuildCallsTo(Address to, int count, ulong startNonce, ulong gasLimit = 300_000)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++)
@@ -791,7 +835,7 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(to)
-                .WithGasLimit(300_000)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
