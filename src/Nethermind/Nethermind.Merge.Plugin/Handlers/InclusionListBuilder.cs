@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -90,26 +89,35 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         }
     }
 
-    /// <summary>The leading transactions of <paramref name="pending"/> the next block could append, in order.</summary>
-    /// <remarks>The pool vouches for its first entry alone, so the rest is re-checked here: frame transactions
-    /// removed, anchored at the account's next nonce, cut at the first nonce gap or unpayable base fee.</remarks>
+    /// <summary>The transactions of <paramref name="pending"/> the next block could append, in order.</summary>
+    /// <remarks>The pool vouches only that some bucket entry is ready, so the run is rebuilt here against the
+    /// account: frame transactions removed, spent nonces skipped, anchored at the account's next nonce, cut at the
+    /// first nonce gap or unpayable base fee.</remarks>
     private Transaction[] AppendableRun(Transaction[] pending, in UInt256 baseFee)
     {
         Transaction[] bySender = WithoutFrameTxs(pending);
-        if (bySender.Length == 0 || !IsAnchoredAtNextAccountNonce(pending, bySender)) return [];
+        if (bySender.Length == 0) return [];
 
-        ulong anchor = bySender[0].Nonce;
+        ulong anchor = headState.GetNonce(bySender[0].SenderAddress!);
+        int start = 0;
+        // The pool reads an entry under the account nonce as spent rather than blocking, so one can head the
+        // bucket while a later entry is what got it admitted.
+        while (start < bySender.Length && bySender[start].Nonce < anchor) start++;
+        if (start == bySender.Length || bySender[start].Nonce != anchor) return [];
+
         int length = 0;
         // Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a gap is appendable,
         // and nothing behind an entry the next block would price out is worth the byte cap either.
-        while (length < bySender.Length
-            && bySender[length].Nonce == anchor + (ulong)length
-            && bySender[length].CanPayBaseFee(baseFee))
+        while (start + length < bySender.Length
+            && bySender[start + length].Nonce == anchor + (ulong)length
+            && bySender[start + length].CanPayBaseFee(baseFee))
         {
             length++;
         }
 
-        return length == bySender.Length ? bySender : bySender[..length];
+        // The loop bounds length by bySender.Length - start, so a full-length run had nothing skipped and
+        // start is 0: the whole array is the run and needs no copy.
+        return length == bySender.Length ? bySender : bySender[start..(start + length)];
     }
 
     /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>
@@ -130,16 +138,6 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
             if (!tx.SupportsFrames) result[j++] = tx;
         return result;
     }
-
-    /// <summary>Whether <paramref name="bySender"/> still begins at the sender's next account nonce.</summary>
-    /// <remarks>
-    /// The pool admits a whole bucket on <paramref name="pending"/>[0] being ready, so that entry alone names the
-    /// next account nonce — unless it is an EIP-8250 keyed one, which names a per-key sequence and so needs a read.
-    /// </remarks>
-    private bool IsAnchoredAtNextAccountNonce(Transaction[] pending, Transaction[] bySender) =>
-        KeyedNonceManager.UsesKeyedNonce(pending[0])
-            ? bySender[0].Nonce == headState.GetNonce(bySender[0].SenderAddress!)
-            : bySender[0].Nonce == pending[0].Nonce;
 
     /// <summary>The base fee the next block will charge.</summary>
     /// <remarks>Approximate at a fork boundary: the next timestamp is not derivable here, so the parent's
