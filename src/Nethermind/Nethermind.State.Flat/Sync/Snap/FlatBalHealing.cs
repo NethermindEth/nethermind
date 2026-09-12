@@ -164,7 +164,7 @@ public class FlatBalHealing(
 
                 if (acc.StorageChanges.Length > 0)
                 {
-                    Dictionary<UInt256, EvmWord> slots = delta.Slots ??= [];
+                    Dictionary<UInt256, UInt256> slots = delta.Slots ??= [];
                     foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
                         if (slot.Changes.Length > 0) slots[slot.Key] = slot.Changes[^1].Value;
                 }
@@ -207,9 +207,9 @@ public class FlatBalHealing(
                     account.StorageRoot,
                     logManager);
 
-                foreach ((UInt256 slot, EvmWord word) in slots)
+                foreach ((UInt256 slot, UInt256 word) in slots)
                 {
-                    word.CopyTo(slotValue);
+                    word.ToBigEndian(slotValue);
                     ReadOnlySpan<byte> trimmed = slotValue.WithoutLeadingZeros();
                     storage.Set(slot, trimmed);
                     batch.SetStorage(address, slot, trimmed.IsZero() ? null : SlotValue.FromSpanWithoutLeadingZero(trimmed));
@@ -232,6 +232,6 @@ public class FlatBalHealing(
         public UInt256? Balance;
         public ulong? Nonce;
         public CodeChange? Code;
-        public Dictionary<UInt256, EvmWord>? Slots;
+        public Dictionary<UInt256, UInt256>? Slots;
     }
 }

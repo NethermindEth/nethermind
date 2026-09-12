@@ -4,11 +4,9 @@
 #nullable enable
 
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -239,7 +237,7 @@ public class BlockAccessListValidationIndexTests
             {
                 foreach (StorageChange ch in slot.Changes)
                 {
-                    UInt256 value = ToUInt256(ch.Value);
+                    UInt256 value = ch.Value;
                     GetSlice(slicesByIndex, ch.Index).AddStorageChange(acc.Address, slot.Key, before: value + UInt256.One, after: value);
                 }
             }
@@ -255,12 +253,6 @@ public class BlockAccessListValidationIndexTests
                 slices[index] = slice;
             }
             return slice;
-        }
-
-        static UInt256 ToUInt256(EvmWord beValue)
-        {
-            EvmWord leBytes = beValue.ByteSwap();
-            return Unsafe.As<EvmWord, UInt256>(ref leBytes);
         }
     }
 

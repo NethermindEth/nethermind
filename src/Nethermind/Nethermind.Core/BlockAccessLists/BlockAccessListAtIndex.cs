@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
@@ -408,12 +407,10 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
 
-        public ChangeValue(in EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref Unsafe.AsRef(in storage));
-
         public UInt256 Balance => _data;
 
         public ulong Nonce => _data.u0;
 
-        public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
+        public UInt256 Storage => _data;
     }
 }

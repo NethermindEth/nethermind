@@ -202,7 +202,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
         Assert.That(accountChanges!.TryGetStorageChange(key, out StorageChange? slotChange), Is.True);
-        Assert.That(slotChange!.Value.Value, Is.EqualTo(value.ToBigEndianWord()));
+        Assert.That(slotChange!.Value.Value, Is.EqualTo(value));
     }
 
     private static void AssertNonceChange(BlockAccessListAtIndex bal, Address address, ulong value)
@@ -599,7 +599,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted, Is.True);
             Assert.That(change, Is.Not.Null,
                 "EIP-7702 FastCall must succeed and propagate via SSTORE; missing slot 0 entry indicates the call failed.");
-            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One.ToBigEndianWord()),
+            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One),
                 "EIP-7702: delegation to a precompile must NOT execute the precompile - FastCall returns 1 regardless of forwarded gas.");
         }
     }

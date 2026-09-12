@@ -124,7 +124,7 @@ internal sealed partial class BlockAccessListValidationIndex
         public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, value);
         public bool TryAddNonce(int row, int ordinal, ulong value) => _nonce.Add(row, ordinal, value);
         public bool TryAddCode(int row, int ordinal, in ValueHash256 hash) => _code.Add(row, ordinal, hash);
-        public bool TryAddStorage(int row, int ordinal, in UInt256 key, in EvmWord value) => _storage.Add(row, ordinal, key, value);
+        public bool TryAddStorage(int row, int ordinal, in UInt256 key, in UInt256 value) => _storage.Add(row, ordinal, key, value);
 
         /// <summary>
         /// Walk every account in <paramref name="accounts"/>, assign it an ordinal via
@@ -368,7 +368,7 @@ internal sealed partial class BlockAccessListValidationIndex
         public int[] Order;
         public int[] Account;
         public UInt256[] Keys;
-        public EvmWord[] Values;
+        public UInt256[] Values;
 
         public StorageScratch()
         {
@@ -385,7 +385,7 @@ internal sealed partial class BlockAccessListValidationIndex
             Order = PooledArrays.Rent<int>(length);
             Account = PooledArrays.Rent<int>(length);
             Keys = PooledArrays.Rent<UInt256>(length);
-            Values = PooledArrays.Rent<EvmWord>(length);
+            Values = PooledArrays.Rent<UInt256>(length);
         }
 
         public readonly void Return()
@@ -509,12 +509,12 @@ internal sealed partial class BlockAccessListValidationIndex
     private sealed class StorageLane(
         int[] rowStarts, int rowStartsLength,
         int[] accountOrdinals, int entriesLength,
-        UInt256[] keys, EvmWord[] values,
+        UInt256[] keys, UInt256[] values,
         MutableBookkeeping? mutable)
         : LaneBase(rowStarts, rowStartsLength, accountOrdinals, entriesLength, mutable)
     {
         private readonly UInt256[] _keys = keys;
-        private readonly EvmWord[] _values = values;
+        private readonly UInt256[] _values = values;
         private StorageScratch _scratch = new();
 
         public static StorageLane CreateImmutable(ReadOnlySpan<int> counts)
@@ -523,7 +523,7 @@ internal sealed partial class BlockAccessListValidationIndex
             return new(
                 rowStarts, counts.Length + 1,
                 PooledArrays.Rent<int>(total), total,
-                PooledArrays.Rent<UInt256>(total), PooledArrays.Rent<EvmWord>(total),
+                PooledArrays.Rent<UInt256>(total), PooledArrays.Rent<UInt256>(total),
                 mutable: null);
         }
 
@@ -535,11 +535,11 @@ internal sealed partial class BlockAccessListValidationIndex
             return new(
                 CloneRowStarts(other.RowStarts, rowStartsLength), rowStartsLength,
                 PooledArrays.Rent<int>(entries), entries,
-                PooledArrays.Rent<UInt256>(entries), PooledArrays.Rent<EvmWord>(entries),
+                PooledArrays.Rent<UInt256>(entries), PooledArrays.Rent<UInt256>(entries),
                 MutableBookkeeping.ForRowCount(rowCount));
         }
 
-        public void Fill(int row, Span<int> cursors, int accountOrdinal, UInt256 key, EvmWord value)
+        public void Fill(int row, Span<int> cursors, int accountOrdinal, UInt256 key, UInt256 value)
         {
             int offset = cursors[row]++;
             AccountOrdinals[offset] = accountOrdinal;
@@ -560,7 +560,7 @@ internal sealed partial class BlockAccessListValidationIndex
                     if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, slotChanges.Key, change.Value);
         }
 
-        public bool Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
+        public bool Add(int row, int accountOrdinal, UInt256 key, UInt256 value)
         {
             int offset = ReserveNextOffset(row);
             if (offset < 0) return false;

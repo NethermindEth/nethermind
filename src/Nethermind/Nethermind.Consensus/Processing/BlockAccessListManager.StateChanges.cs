@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -66,8 +64,7 @@ public partial class BlockAccessListManager
                 int slotCount = slotChange.Changes.Length;
                 if (slotCount > 0)
                 {
-                    EvmWord value = slotChange.Changes[^1].Value.ByteSwap();
-                    stateProvider.Set(storageCell, Unsafe.As<EvmWord, UInt256>(ref value));
+                    stateProvider.Set(in storageCell, in slotChange.Changes[^1].Value);
                 }
             }
         }

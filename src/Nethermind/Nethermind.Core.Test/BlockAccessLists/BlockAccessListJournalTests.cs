@@ -297,7 +297,7 @@ public class BlockAccessListJournalTests
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(codeBeforeSnapshot));
 
             Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)11).ToBigEndianWord()));
+            Assert.That(slotChange!.Value.Value, Is.EqualTo((UInt256)11));
         }
     }
 
@@ -324,7 +324,7 @@ public class BlockAccessListJournalTests
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(new byte[] { 0x60, 0x01 }));
 
             Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)77).ToBigEndianWord()));
+            Assert.That(slotChange!.Value.Value, Is.EqualTo((UInt256)77));
         }
     }
 

@@ -12,7 +12,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -112,8 +111,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             if (slotChanges is null) _readCoverage?.TryMark(storageCell);
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
-                EvmWord word = storageChange.Value.ByteSwap();
-                value = Unsafe.As<EvmWord, UInt256>(ref word);
+                value = storageChange.Value;
                 return;
             }
 
@@ -134,8 +132,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
-                EvmWord word = storageChange.Value.ByteSwap();
-                value = Unsafe.As<EvmWord, UInt256>(ref word);
+                value = storageChange.Value;
                 return;
             }
 
