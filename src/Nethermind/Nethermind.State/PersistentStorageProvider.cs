@@ -112,7 +112,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
-        bool hintSlot = state.TakeSlotWarmHint(currentScope, in storageCell.Index);
+        bool hintSlot = state.TakeSlotWarmHint(in storageCell.Index);
         bool hintAccount = state.TakeAccountWarmHint();
         if (hintSlot || hintAccount) EmitStorageWarmHints(in storageCell, currentScope, hintSlot, hintAccount);
     }
@@ -858,7 +858,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private bool _storageRootSeen;
         private bool _wasCleared;
         private bool _accountHinted;
-        private IWorldStateScopeProvider.IScope? _lastHintScope;
+        private bool _hasSlotHint;
         private UInt256 _lastHintSlot;
         private PersistentStorageProvider? _provider;
         private Address? _address;
@@ -881,19 +881,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public bool WasWritten => _wasWritten;
 
-        /// <summary>Claims a slot hint unless the preceding hint targeted the same slot and scope.</summary>
+        /// <summary>Claims a slot hint unless the preceding hint targeted the same slot.</summary>
         /// <remarks>Hints are best-effort, like account hints: a declined hint is also considered spent.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TakeSlotWarmHint(IWorldStateScopeProvider.IScope scope, in UInt256 slot)
+        public bool TakeSlotWarmHint(in UInt256 slot)
         {
-            if (ReferenceEquals(_lastHintScope, scope))
-            {
-                if (_lastHintSlot == slot) return false;
-            }
-            else
-            {
-                _lastHintScope = scope;
-            }
+            if (_hasSlotHint && _lastHintSlot == slot) return false;
+            _hasSlotHint = true;
             _lastHintSlot = slot;
             return true;
         }
@@ -986,7 +980,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _storageRootSeen = false;
             _wasCleared = false;
             _accountHinted = false;
-            _lastHintScope = null;
+            _hasSlotHint = false;
             // A later block may never detach its changes, and would then read whatever this one left behind.
             BlockEndFate = AccountFate.Present;
             Pool.Return(this);
