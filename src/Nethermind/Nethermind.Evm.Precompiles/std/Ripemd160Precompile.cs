@@ -10,10 +10,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Ripemd160Precompile
 {
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
-    {
-        Metrics.Ripemd160Precompile++;
-
-        return Ripemd.Compute(inputData.Span);
-    }
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _) =>
+        Ripemd.Compute(inputData.Span);
 }

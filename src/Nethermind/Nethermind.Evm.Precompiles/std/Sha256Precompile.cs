@@ -12,8 +12,6 @@ public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Sha256Precompile++;
-
         byte[] output = new byte[SHA256.HashSizeInBytes];
 
         bool success = SHA256.TryHashData(inputData.Span, output, out int bytesWritten);
