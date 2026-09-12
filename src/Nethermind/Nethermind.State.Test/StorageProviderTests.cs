@@ -600,6 +600,36 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Transient_clear_is_revertible([Values] bool destroy, [Values(0UL, 7UL)] ulong initialValue)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        StorageCell otherCell = new(ctx.Address2, 1);
+        provider.SetTransientState(in cell, UInt256.One);
+        provider.SetTransientState(in cell, (UInt256)initialValue);
+        provider.SetTransientState(in otherCell, (UInt256)9);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.GetTransientState(in cell, out UInt256 cleared);
+        provider.GetTransientState(in otherCell, out UInt256 other);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero));
+            Assert.That(other, Is.EqualTo((UInt256)9));
+            Assert.That(provider.TakeSnapshot().StorageSnapshot.TransientStorageSnapshot,
+                Is.EqualTo(snapshot.StorageSnapshot.TransientStorageSnapshot + (initialValue == 0 ? 0 : 1)));
+        }
+
+        provider.Restore(snapshot);
+        provider.GetTransientState(in cell, out UInt256 restored);
+        Assert.That(restored, Is.EqualTo((UInt256)initialValue));
+    }
+
+    [Test]
     public void Transient_write_invokes_decorator_override()
     {
         using Context ctx = new(useFlat);

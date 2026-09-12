@@ -332,7 +332,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
-    /// <param name="value"></param>
+    /// <param name="value">Big-endian value: one zero byte for zero, otherwise 32 bytes.</param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 

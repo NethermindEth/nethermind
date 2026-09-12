@@ -674,14 +674,15 @@ public class SeqlockCacheTests
     }
 
     [Test]
-    public void TrySetExclusive_reports_a_locked_entry_instead_of_waiting()
+    public void Locked_entry_is_rejected([Values] bool exclusive)
     {
-        SeqlockCache<ZeroHashKey, byte[]> cache = new(setsBits: 4);
+        SeqlockCache<ZeroHashKey, UInt256> cache = new(setsBits: 4);
         ZeroHashKey key = new(1);
-        cache.Set(in key, CreateValue(1));
+        cache.Set(in key, new UInt256(1, 2, 3, 4));
         LockEntry(Entries(cache), 0);
 
-        Assert.That(cache.TrySetExclusive(in key, CreateValue(2)), Is.False);
+        bool success = exclusive ? cache.TrySetExclusive(in key, UInt256.MaxValue) : cache.TryGetValue(in key, out _);
+        Assert.That(success, Is.False);
     }
 
     [Test]

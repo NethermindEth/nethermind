@@ -152,6 +152,7 @@ internal class Eip1153Tests : VirtualMachineTestsBase
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo(value));
             Assert.That(result.GasSpent, Is.EqualTo(GasCostOf.Transaction + 2 * GasCostOf.TStore + GasCostOf.TLoad + 10 * GasCostOf.VeryLow));
+            Assert.That(result.LoadedBytes, Is.EqualTo(value.IsZero ? new byte[] { 0 } : value.ToBigEndian()));
             Assert.That(result.Writes, Is.EqualTo(2));
             Assert.That(result.NewValue, Is.EqualTo((UInt256)value));
             Assert.That(result.CurrentValue, Is.EqualTo((UInt256)value));
@@ -160,7 +161,11 @@ internal class Eip1153Tests : VirtualMachineTestsBase
 
     private sealed class TransientStoreTracer : TestAllTracerWithOutput
     {
+        public byte[]? LoadedBytes { get; private set; }
         public int Writes { get; private set; }
+
+        public override void LoadOperationTransientStorage(Address address, UInt256 storageIndex, System.ReadOnlySpan<byte> value)
+            => LoadedBytes = value.ToArray();
         public UInt256 NewValue { get; private set; }
         public UInt256 CurrentValue { get; private set; }
 
