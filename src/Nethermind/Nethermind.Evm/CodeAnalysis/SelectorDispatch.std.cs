@@ -21,7 +21,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// rather than from a formula, and the tree's routing is verified against its own pivots, so a match
 /// never depends on the compiler having laid the tree out the way it usually does.
 /// </remarks>
-internal sealed class SelectorDispatch
+internal sealed partial class SelectorDispatch
 {
     /// <summary>Free-memory-pointer slot, written with <see cref="InitialFreeMemoryPointer"/> by the preamble.</summary>
     public const int FreeMemoryPointerSlot = 0x40;

@@ -23,7 +23,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// opcodes need before the caller may use it.
 /// </para>
 /// </remarks>
-internal sealed class MinimalProxy
+internal sealed partial class MinimalProxy
 {
     private readonly byte[] _prefix;
     private readonly byte[] _suffix;

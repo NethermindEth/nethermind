@@ -15,7 +15,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// <see langword="null"/> and runs through the ordinary dispatch loop. Gas is accumulated while
 /// walking the opcodes, so the charge follows from the bytes rather than from a per-shape table.
 /// </remarks>
-internal sealed class CodeTemplate
+internal sealed partial class CodeTemplate
 {
     private CodeTemplate() { }
 

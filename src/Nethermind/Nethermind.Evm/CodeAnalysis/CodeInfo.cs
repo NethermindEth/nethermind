@@ -54,23 +54,7 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    private CodeTemplate? _template;
     public ValueHash256 CodeHash { get; set; }
-
-    /// <summary>The compiler-emitted template this code matches, recognized ahead of execution where possible.</summary>
-    /// <remarks>
-    /// Normally resolved on the analysis thread before the code first runs; a caller that arrives first
-    /// recognizes it inline instead. Racing callers may each recognize the code, which is why the result
-    /// is idempotent: the duplicate work is preferred over synchronising a lookup that runs once per
-    /// distinct code hash. Which arm a given call takes is therefore timing-dependent, and can be,
-    /// because the two produce identical gas, state and output.
-    /// </remarks>
-    internal CodeTemplate Template => CodeAnalysisFlags.Templates
-        ? _template ?? PrepareAnalysis()
-        : CodeTemplate.None;
-
-    /// <summary>Recognizes the code now, rather than waiting for the analysis thread to reach it.</summary>
-    internal CodeTemplate PrepareAnalysis() => _template ??= CodeTemplate.Recognize(CodeSpan, ValidateJump);
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
@@ -88,14 +72,17 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     /// <summary>The jump-destination bitmap of this code, built on first use.</summary>
     internal long[] JumpDestinationBitmap => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
+    /// <summary>Recognizes any template this code matches, where the build compiles template support.</summary>
+    partial void PrepareTemplateAnalysis();
+
     void IThreadPoolWorkItem.Execute()
     {
         _analyzer?.Execute();
 
         // Recognition costs a pass over the code; running it here keeps that pass off the thread that
-        // will execute the code, which is the whole reason this work item exists. Reading the property
-        // rather than calling recognition directly keeps the build that compiles templates out of this.
-        _ = Template;
+        // will execute the code, which is the whole reason this work item exists. The build that compiles
+        // no templates supplies no implementation, and the call goes with it.
+        PrepareTemplateAnalysis();
     }
 
     public void AnalyzeInBackgroundIfRequired()
