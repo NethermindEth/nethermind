@@ -70,12 +70,35 @@ namespace Nethermind.State
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
+        [SkipLocalsInit]
         public void Get(in UInt256 index, out UInt256 value) => Get(in index, out value, null);
 
+        [SkipLocalsInit]
         internal void Get(in UInt256 index, out UInt256 value, Hash256? storageRoot)
         {
-            ValueHash256 key = default;
-            ComputeKeyWithLookup(in index, ref key);
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
+            {
+                Get(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), out value, storageRoot);
+            }
+            else
+            {
+                GetWithKeyGenerate(in index, out value, storageRoot);
+            }
+        }
+
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GetWithKeyGenerate(in UInt256 index, out UInt256 value, Hash256? storageRoot)
+        {
+            ComputeKey(in index, out ValueHash256 key);
+            Get(in key, out value, storageRoot);
+        }
+
+        [SkipLocalsInit]
+        private void Get(in ValueHash256 key, out UInt256 value, Hash256? storageRoot)
+        {
             ReadOnlySpan<byte> encoded = Get(key.Bytes, storageRoot);
             if (encoded.IsEmpty)
             {

@@ -89,7 +89,10 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_CanSaveToStorage([Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries, [Values(1, 3, 32)] int valueLength)
+    public void Test_CanSaveToStorage(
+        [Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries,
+        [Values(1, 3, 32)] int valueLength,
+        [Values(1UL, 1023UL, 1024UL, ulong.MaxValue)] ulong index)
     {
         using Context ctx = new(useFlat);
 
@@ -105,7 +108,7 @@ public class ScopeProviderTests(bool useFlat)
                 using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, estimatedEntries);
                 Span<byte> value = stackalloc byte[valueLength];
                 value.Fill(0xff);
-                storageSet.Set(1, new UInt256(value, isBigEndian: true));
+                storageSet.Set(index, new UInt256(value, isBigEndian: true));
                 value.Clear();
             }
 
@@ -121,7 +124,7 @@ public class ScopeProviderTests(bool useFlat)
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
             byte[] expected = new byte[valueLength];
             expected.AsSpan().Fill(0xff);
-            storage.Get(1, out UInt256 slotRead124);
+            storage.Get(index, out UInt256 slotRead124);
             Assert.That(slotRead124.ToMinimalBigEndian(), Is.EqualTo(expected));
         }
     }
