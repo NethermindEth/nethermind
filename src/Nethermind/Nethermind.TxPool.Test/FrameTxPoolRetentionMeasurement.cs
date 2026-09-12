@@ -29,8 +29,9 @@ namespace Nethermind.TxPool.Test;
 
 /// <summary>Measures how many chain heads a pending frame transaction survives in the pool, and how an expiry
 /// deadline bounds that.</summary>
-/// <remarks>Retention only: nothing here produces a block or reaches the eviction path, and the pool is built
-/// without a validation-prefix simulator, so revalidation reaches no verdict on an opaque prefix either.
+/// <remarks>Retention only: nothing here produces a block or calls <c>ITxPool.EvictTransaction</c> — the expiry
+/// sweep is the one eviction reached — and the pool is built without a validation-prefix simulator, so
+/// revalidation reaches no verdict on an opaque prefix either.
 /// <c>FrameTxProducerRetryMeasurement</c> is where production attempts are run and the gas each one burns is
 /// counted. Results go to <c>FRAME_RETRY_OUT</c> (default <c>frame-prefix-retry.txt</c> under the temp
 /// directory), because the test runner swallows console writers.</remarks>
@@ -38,6 +39,7 @@ namespace Nethermind.TxPool.Test;
 public class FrameTxPoolRetentionMeasurement
 {
     private const int HeadAdvances = 20;
+    private const int DeadlineSlots = 3;
     private const ulong SampleFrameGas = 50_000;
     private const ulong FirstHeadNumber = 10_000_000;
     private const ulong SlotSeconds = 12;
@@ -101,9 +103,7 @@ public class FrameTxPoolRetentionMeasurement
         for (int i = 0; i < HeadAdvances; i++)
         {
             await AdvanceHead(includedTx: null);
-            // Membership in the pending set is what a producer actually reads, so assert that rather
-            // than mere presence in the pool's hash index.
-            if (Array.IndexOf(_txPool.GetPendingTransactions(), tx) >= 0) survived++;
+            if (IsPending(tx)) survived++;
         }
 
         // Both gas figures are ceilings, not observations: ValidationWorkGas is the declared bound rather than
@@ -115,11 +115,15 @@ public class FrameTxPoolRetentionMeasurement
         Assert.That(survived, Is.EqualTo(HeadAdvances), "the pool dropped a pending frame transaction on its own");
     }
 
-    /// <summary>An expiry deadline is the one thing that ends that retention without a producer.</summary>
+    /// <summary>An expiry deadline ends the retention measured above, and is the only producer-free drop this
+    /// fixture reaches.</summary>
+    /// <remarks><c>ShedNearlyExpiredFrameTransactions</c> and <c>RevalidateFrameTransactions</c> also drop pending
+    /// frame transactions on a head change with no producer involved, but need a full pool or a changed tracked
+    /// dependency, and one unchanging sample gives neither.</remarks>
     [Test]
     public async Task Expiry_deadline_bounds_how_long_it_is_retained()
     {
-        ulong deadline = _headTimestamp + SlotSeconds * 3;
+        ulong deadline = _headTimestamp + SlotSeconds * DeadlineSlots;
         Transaction tx = BuildFrameTx(nonce: 0, deadline);
         Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -127,13 +131,19 @@ public class FrameTxPoolRetentionMeasurement
         for (int i = 0; i < HeadAdvances; i++)
         {
             await AdvanceHead(includedTx: null);
-            if (!_txPool.TryGetPendingTransaction(tx.Hash!, out _)) break;
+            if (!IsPending(tx)) break;
             survived++;
         }
 
-        Emit($"case=retention_with_deadline deadline_slots=3 heads={HeadAdvances} survived_heads={survived}");
-        Assert.That(survived, Is.LessThan(HeadAdvances), "an expired frame transaction was never evicted");
+        Emit($"case=retention_with_deadline deadline_slots={DeadlineSlots} heads={HeadAdvances} survived_heads={survived}");
+        // The sweep compares strictly and runs before the awaited TxPoolHeadChanged, so the head landing on the
+        // deadline still survives and the next one drops the sample — an exact count, not just "fewer".
+        Assert.That(survived, Is.EqualTo(DeadlineSlots), "the deadline did not bound retention at its own slots");
     }
+
+    /// <summary>Membership in the pending set — what a producer reads, and the one predicate both cases count
+    /// with, so the two emitted <c>survived_heads</c> are comparable.</summary>
+    private bool IsPending(Transaction tx) => Array.IndexOf(_txPool.GetPendingTransactions(), tx) >= 0;
 
     private async Task AdvanceHead(Transaction? includedTx)
     {
