@@ -30,7 +30,12 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's gapless run from its next nonce, since nothing else could be
-    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
+    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
+    /// Deliberately not gated on pool revalidation: this reads the pool's ready-tx snapshot directly, which
+    /// applies no per-transaction spec check, so around a fork it can draw entries the new spec rejects —
+    /// whether the pool's background revalidation is still catching up, or the target block is the activation
+    /// slot itself, whose spec is not derivable from a parent hash alone. Appendability excuses the cost in
+    /// list bytes.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
