@@ -31,6 +31,10 @@ public partial class BlockAccessListManager
     // blocks could otherwise overlap on it.
     private readonly Lock _shadowRootLock = new();
 
+    // Captured by PrepareForProcessing for the block being processed; the queued shadow comparison
+    // snapshots it before the next block's Prepare can overwrite it.
+    private IReleaseSpec? _currentSpec;
+
     /// <summary>
     /// When shadow mode is enabled on the parallel BAL path, queues a background recomputation of
     /// the state root from the suggested BAL on a parent-state env, compared with
@@ -50,9 +54,10 @@ public partial class BlockAccessListManager
         }
 
         Hash256? parentStateRoot = _parentStateRoot;
+        IReleaseSpec? spec = _currentSpec;
         ThreadPool.UnsafeQueueUserWorkItem(
-            static state => state.self.RunShadowStateRootComparisonCore(state.block, state.parentStateRoot),
-            (self: this, block, parentStateRoot),
+            static state => state.self.RunShadowStateRootComparisonCore(state.block, state.parentStateRoot, state.spec),
+            (self: this, block, parentStateRoot, spec),
             preferLocal: false);
     }
 
@@ -64,7 +69,7 @@ public partial class BlockAccessListManager
             return;
         }
 
-        RunShadowStateRootComparisonCore(block, _parentStateRoot);
+        RunShadowStateRootComparisonCore(block, _parentStateRoot, _currentSpec);
     }
 
     /// <summary>
@@ -73,11 +78,11 @@ public partial class BlockAccessListManager
     /// <c>Metrics.BalShadowRootMismatches</c>, and unexpected failures bump
     /// <c>Metrics.BalShadowRootFailures</c> and are swallowed so the canonical pipeline is unaffected.
     /// </summary>
-    private void RunShadowStateRootComparisonCore(Block block, Hash256? parentStateRoot)
+    private void RunShadowStateRootComparisonCore(Block block, Hash256? parentStateRoot, IReleaseSpec? spec)
     {
         ReadOnlyBlockAccessList? bal = block.BlockAccessList;
         Hash256? canonicalRoot = block.StateRoot;
-        if (bal is null || parentStateRoot is null || canonicalRoot is null)
+        if (bal is null || parentStateRoot is null || canonicalRoot is null || spec is null)
         {
             return;
         }
@@ -95,7 +100,7 @@ public partial class BlockAccessListManager
             {
                 _shadowRootEnv ??= readOnlyTxProcessingEnvFactory.Create();
                 using IReadOnlyTxProcessingScope scope = _shadowRootEnv.Build(CreateParentStateHeader(block, parentStateRoot));
-                shadowRoot = ComputeShadowStateRoot(bal, scope.WorldState, specProvider.GetSpec(block.Header));
+                shadowRoot = ComputeShadowStateRoot(bal, scope.WorldState, spec);
             }
 
             Evm.Metrics.IncrementBalShadowRootComparisons();

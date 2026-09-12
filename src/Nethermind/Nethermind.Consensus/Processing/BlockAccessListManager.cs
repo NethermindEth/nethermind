@@ -128,6 +128,7 @@ public partial class BlockAccessListManager(
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
         DisposableExtensions.DisposeAndNull(ref _readPlan);
+        _currentSpec = spec;
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
