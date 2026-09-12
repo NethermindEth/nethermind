@@ -155,6 +155,21 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address ExtCodeSizeCallerAddress = new("0x00000000000000000000000000000000000000bb");
+
+    /// <summary>EXTCODESIZE on one account repeatedly; POP follows so the peephole path cannot fire.</summary>
+    private static readonly byte[] ExtCodeSizeSameAddressCode = BuildExtCodeSizeCode();
+
+    private static byte[] BuildExtCodeSizeCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(TestItem.AddressB).Op(Instruction.EXTCODESIZE).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -201,6 +216,7 @@ public class BlockProcessingBenchmark
     private Block _pushPopOnlyBlock = null!;
     private Block _tloadSameKeyBlock = null!;
     private Block _balanceSameAddressBlock = null!;
+    private Block _extCodeSizeBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -236,6 +252,7 @@ public class BlockProcessingBenchmark
         _pushPopOnlyBlock = BuildBlock(BuildCallsTo(TestItem.AddressE, 10, 0));
         _tloadSameKeyBlock = BuildBlock(BuildCallsTo(TestItem.AddressF, 10, 0));
         _balanceSameAddressBlock = BuildBlock(BuildCallsTo(BalanceCallerAddress, 10, 0));
+        _extCodeSizeBlock = BuildBlock(BuildCallsTo(ExtCodeSizeCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -294,6 +311,9 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(ExtCodeSizeCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(ExtCodeSizeCallerAddress, ExtCodeSizeSameAddressCode, Spec);
 
             stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
@@ -444,6 +464,16 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_balanceSameAddressBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] ExtCodeSize_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_extCodeSizeBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
