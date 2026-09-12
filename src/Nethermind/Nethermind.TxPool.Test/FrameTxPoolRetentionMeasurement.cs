@@ -33,8 +33,9 @@ namespace Nethermind.TxPool.Test;
 /// sweep is the one eviction reached — and the pool is built without a validation-prefix simulator, so
 /// revalidation reaches no verdict on an opaque prefix either.
 /// <c>FrameTxProducerRetryMeasurement</c> is where production attempts are run and the gas each one burns is
-/// counted. Results go to <c>FRAME_RETRY_OUT</c> (default <c>frame-prefix-retry.txt</c> under the temp
-/// directory), because the test runner swallows console writers.</remarks>
+/// counted. Results go to <c>FRAME_POOL_RETENTION_OUT</c>, then <c>FRAME_RETRY_OUT</c>, or
+/// <c>frame-pool-retention.txt</c> in the temp directory, because the test runner swallows console
+/// writers.</remarks>
 [Explicit("measurement harness")]
 public class FrameTxPoolRetentionMeasurement
 {
@@ -143,6 +144,7 @@ public class FrameTxPoolRetentionMeasurement
 
     /// <summary>Membership in the pending set — what a producer reads, and the one predicate both cases count
     /// with, so the two emitted <c>survived_heads</c> are comparable.</summary>
+    /// <remarks>The standard pool only, so a sample carrying blobs would never register as pending here.</remarks>
     private bool IsPending(Transaction tx) => Array.IndexOf(_txPool.GetPendingTransactions(), tx) >= 0;
 
     private async Task AdvanceHead(Transaction? includedTx)
@@ -218,8 +220,9 @@ public class FrameTxPoolRetentionMeasurement
 
     private static void Emit(string line)
     {
-        string path = Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
-                      ?? Path.Combine(Path.GetTempPath(), "frame-prefix-retry.txt");
+        string path = Environment.GetEnvironmentVariable("FRAME_POOL_RETENTION_OUT")
+                      ?? Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
+                      ?? Path.Combine(Path.GetTempPath(), "frame-pool-retention.txt");
         File.AppendAllText(path, $"RESULT {line}{Environment.NewLine}");
     }
 }
