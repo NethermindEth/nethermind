@@ -4,9 +4,11 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -40,6 +42,17 @@ public sealed class EthereumVirtualMachine(
 public static class VirtualMachineStatics
 {
     public const int MaxCallDepth = 1024;
+
+    /// <summary>Smallest buffer the VM keeps for an ID precompile output.</summary>
+    public const int MinPrecompileScratch = 4 * 1024;
+
+    /// <summary>Largest ID precompile output the VM keeps its own buffer for; a longer one comes from the pool.</summary>
+    /// <remarks>Below the 85,000-byte large object heap threshold, because this is what every VM holds between
+    /// transactions and VMs are themselves pooled — the block cache pre-warmer and the block access list manager
+    /// each keep a scope per core — so it is multiplied by tens on a node. Sizes above it are rare enough to be
+    /// worth a pool round-trip and too large to hold that many times over.</remarks>
+    public const int MaxRetainedPrecompileScratch = 64 * 1024;
+
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
@@ -111,6 +124,21 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
     /// <remarks>Reused across instructions, like the stack it mirrors; only a stack-tracing run allocates it.</remarks>
     private byte[] _tracedStackWords = [];
+
+    /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
+    /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
+    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and that path already refuses to run when a
+    /// tracer is attached, so nothing can retain the previous contents.</remarks>
+    private byte[] _precompileScratch = [];
+
+    /// <summary>Pooled scratch for an ID output too large to hold on the VM between transactions.</summary>
+    /// <remarks>Rented on first use and handed back when the transaction ends, so the buffer a single outsized
+    /// call needs is borrowed for that transaction rather than kept for the life of this instance.</remarks>
+    private byte[]? _pooledPrecompileScratch;
+
+    /// <summary>Whether a pooled ID scratch is currently borrowed. Always false between transactions.</summary>
+    internal bool HoldsPooledPrecompileScratch => _pooledPrecompileScratch is not null;
+
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -409,6 +437,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         public void Dispose()
         {
+            vm.ReleasePooledPrecompileScratch();
             // Normal exits clear both fields; populated frame state therefore means exceptional unwind.
             if (vm._currentState is not null || vm._stateStack.Count != 0)
             {
@@ -979,6 +1008,47 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
         !codeSource.Equals(Ripemd160Address);
+
+    /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
+    /// <remarks>Buffers up to <see cref="VirtualMachineStatics.MaxRetainedPrecompileScratch"/> live on this
+    /// instance and are reused for the rest of its life. A larger one is borrowed from the pool and handed back
+    /// when the transaction ends, so what an outsized call needs is bounded by the transaction that asked for it
+    /// rather than kept per VM — of which a node holds tens.</remarks>
+    internal Memory<byte> RentPrecompileScratch(int length)
+    {
+        byte[] buffer = _precompileScratch;
+        if (buffer.Length >= length) return buffer.AsMemory(0, length);
+
+        if (length <= MaxRetainedPrecompileScratch)
+        {
+            int size = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(length, MinPrecompileScratch));
+            _precompileScratch = buffer = GC.AllocateUninitializedArray<byte>(size);
+            return buffer.AsMemory(0, length);
+        }
+
+        byte[]? pooled = _pooledPrecompileScratch;
+        if (pooled is null || pooled.Length < length)
+        {
+            ReleasePooledPrecompileScratch();
+            _pooledPrecompileScratch = pooled = SafeArrayPool<byte>.Shared.Rent(length);
+        }
+
+        return pooled.AsMemory(0, length);
+    }
+
+    /// <summary>Hands the pooled ID scratch back, if this instance is holding one.</summary>
+    /// <remarks>Clears <see cref="ReturnDataBuffer"/> first: it is the only field that can still point into the
+    /// buffer, and the pool may hand the array to another thread the instant it is returned. The field is cleared
+    /// before the return so an exception cannot leave a rental that is returned a second time.</remarks>
+    private void ReleasePooledPrecompileScratch()
+    {
+        byte[]? pooled = _pooledPrecompileScratch;
+        if (pooled is null) return;
+
+        _pooledPrecompileScratch = null;
+        _returnDataBuffer = default;
+        SafeArrayPool<byte>.Shared.Return(pooled);
+    }
 
     /// <summary>
     /// Runs a precompile outside of a call frame for the inline STATICCALL fast path, applying the same
