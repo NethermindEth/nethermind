@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -29,6 +31,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
     private static readonly IReleaseSpec CancunSpec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.CancunActivation);
+    // ArrayPoolList only returns a rental when its capacity is non-zero.
+    private const int ProbeBufferCapacity = 32;
     internal const string? WithLog = """{"withLog":true}""";
     internal const string? OnlyTopCall = """{"onlyTopCall":true}""";
     internal const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
@@ -689,10 +693,8 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Test_CallTrace_EveryTopLevelFrame_IsReturnedToThePool()
     {
-#if DEBUG
-        // BuildResult asserts a single root, which aborts a checked build before reaching the disposal below.
-        Assert.Ignore("more than one root trips BuildResult's single-root Debug.Assert in a checked build");
-#endif
+        // A plain transaction, deliberately: only a root BuildResult leaves behind can be skipped, and a
+        // frame transaction's roots are folded into the one synthetic root the trace takes ownership of.
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
         NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
 
@@ -706,6 +708,13 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
         GethLikeTxTrace trace = tracer.BuildResult();
+
+        TrackingPool[] pools = new TrackingPool[roots.Length];
+        for (int i = 0; i < roots.Length; i++)
+        {
+            pools[i] = AttachRentalProbe(roots[i]);
+        }
+
         tracer.Dispose();
         trace.Dispose();
 
@@ -713,7 +722,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             for (int i = 0; i < roots.Length; i++)
             {
-                Assert.That(IsReturnedToPool(roots[i]), Is.True, $"top-level frame {i} never returned its pooled buffers");
+                Assert.That(pools[i].Returned, Has.Count.EqualTo(1), $"top-level frame {i} never returned its pooled buffers");
             }
         }
     }
@@ -729,18 +738,25 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .GetField("_callStack", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(tracer)!).AsSpan().ToArray();
 
-    /// <summary>Reports whether a call frame's rented buffers went back to the pool, which is what disposing it does.</summary>
-    private static bool IsReturnedToPool(NativeCallTracerCallFrame callFrame)
+    /// <summary>Gives a call frame a buffer rented from a pool of its own, so that whether the frame was
+    /// disposed can be read off that pool rather than inferred from the frame.</summary>
+    /// <returns>The pool, which receives the rental back when the frame is disposed.</returns>
+    /// <remarks>The frame's own buffers come from the shared pool and it exposes no seam to swap that, so the
+    /// probe is attached through <see cref="NativeCallTracerCallFrame.Output"/>. Disposing a frame disposes
+    /// every buffer it holds, so a returned rental here means the whole frame went back.</remarks>
+    private static TrackingPool AttachRentalProbe(NativeCallTracerCallFrame callFrame)
     {
-        try
-        {
-            _ = callFrame.Calls.AsSpan().Length;
-            return false;
-        }
-        catch (ObjectDisposedException)
-        {
-            return true;
-        }
+        TrackingPool pool = new();
+        callFrame.Output?.Dispose();
+        callFrame.Output = new ArrayPoolList<byte>(pool, ProbeBufferCapacity);
+        return pool;
+    }
+
+    private sealed class TrackingPool : ArrayPool<byte>
+    {
+        public List<byte[]> Returned { get; } = [];
+        public override byte[] Rent(int minimumLength) => new byte[minimumLength];
+        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
     }
 
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)

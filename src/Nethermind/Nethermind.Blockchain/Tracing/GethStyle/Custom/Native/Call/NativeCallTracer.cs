@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -60,8 +59,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-
-        Debug.Assert(_callStack.Count <= 1, $"Unexpected frames on call stack, expected at most one master frame, found {_callStack.Count} frames.");
 
         if (_callStack.Count is not 0)
         {
