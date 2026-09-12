@@ -21,10 +21,21 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13
 # Both new targets decode rv64im only, and both read the whole .text up front:
 # SP1 panics on the first word it cannot decode, OpenVM turns it into a trap.
 # So even unreachable F/D/C/A instructions are fatal - fail at build time instead.
-# Execution harness. SP1 has no published image that executes an arbitrary ELF,
-# so point this at a host binary built against sp1-sdk v6.5.0 (a few lines around
-# ProverClient::execute). It takes <elf> <input> and prints cycles and output.
-SP1_RUNNER ?= sp1runner
+# Execution harness. SP1 publishes no image that executes an arbitrary ELF -
+# ghcr.io/succinctlabs/sp1 carries the Rust toolchain for BUILDING guests and
+# nothing that runs one - so this is our own, built from runner/ by
+# .github/workflows/release-zkvm-runners.yml and pinned by digest here.
+# SP1_RUNNER overrides it with a host binary when iterating locally.
+SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0
+# The native executor maps guest memory through /dev/shm. Docker's default of
+# 64 MB fails, and so does 1g; 4g is the smallest tested value that works on a
+# mainnet block (actual usage is ~2.7 GB). This is a ceiling, not a
+# reservation, so the headroom costs nothing.
+#
+# When it is too small the run produces an EMPTY output and a non-zero exit,
+# which reads exactly like a broken guest. Check this first.
+SP1_SHM_SIZE ?= 8g
+SP1_RUNNER ?=
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back
 # and favouring speed is close to free. Must land together with the TrieNode seqlock
@@ -102,7 +113,14 @@ $(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
 	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
 
 run: $(GUEST_DIR)/bin/$(INPUT).raw
+ifeq ($(strip $(SP1_RUNNER)),)
+	docker run --rm --shm-size=$(SP1_SHM_SIZE) -e RUST_BACKTRACE=full \
+		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
+		$(SP1_IMAGE) \
+		/n/nethermind /n/$(INPUT).raw
+else
 	$(SP1_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/bin/$(INPUT).raw
+endif
 
 build-run: build run
 

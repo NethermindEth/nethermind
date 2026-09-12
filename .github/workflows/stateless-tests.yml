@@ -17,8 +17,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build
+  unit:
+    name: zkVM unit tests
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -33,26 +33,50 @@ jobs:
           dotnet test --project src/Nethermind/Nethermind.Trie.ZkEvm.Test/Nethermind.Trie.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
           dotnet test --project src/Nethermind/Nethermind.Evm.ZkEvm.Test/Nethermind.Evm.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
 
-      - name: Build Nethermind
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: make build
-
-      - name: Upload guest binary
-        uses: actions/upload-artifact@v7
-        with:
-          name: nethermind
-          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
-          if-no-files-found: error
-          retention-days: 1
-
-  test:
-    name: Run ${{ matrix.input }}
-    needs: build
+  build:
+    name: Build ${{ matrix.vm }} guest
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
+          - vm: zisk
+            project: Nethermind.Stateless.ZiskGuest
+          - vm: sp1
+            project: Nethermind.Stateless.Sp1Guest
+          - vm: openvm
+            project: Nethermind.Stateless.OpenVmGuest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      # One bflat image compiles all three; the layout, entry point and exit
+      # protocol differ per target and come from the guest's Makefile.
+      - name: Build Nethermind
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: make build
+
+      - name: Upload guest binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-${{ matrix.vm }}
+          path: src/Nethermind/${{ matrix.project }}/bin/nethermind
+          if-no-files-found: error
+          retention-days: 1
+
+  test:
+    name: ${{ matrix.vm }} ${{ matrix.block.input }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        vm: [zisk, sp1, openvm]
+        block:
           - input: 25526356.ssz
             hash: 93dcf5b1b46c811371e26e99f975bb2e4e6294717abc2d050320839bd855233c
             output: 018cc34e1eb14c42412dc26aeca8e7e1bf540f216753c7431568985b66ecca1f
@@ -80,6 +104,25 @@ jobs:
           - input: 25532711.ssz
             hash: 19e76df2e2c4439e1dbec2ab075560d4e17817c2194deb119097ec1fae28331d
             output: adf8830ca4fc0fc93d4e0968d84a6a4007081b67bbe6de68d3d6c177f2e812dd
+        include:
+          # Every VM prints the guest's 43-byte result the same way - ZisK and
+          # OpenVM on the guest console, SP1 as the public values its runner
+          # dumps - so one grep checks all three. OpenVM additionally publishes
+          # keccak256 of that result as its proven public values; matching the
+          # result therefore matches the digest, and no second expectation is
+          # needed here.
+          - vm: zisk
+            project: Nethermind.Stateless.ZiskGuest
+            minutes: 5
+          - vm: sp1
+            project: Nethermind.Stateless.Sp1Guest
+            # SP1 executes ~500-830 M cycles per block. On zk-testing (6 cores)
+            # that is ~75 s; a GitHub runner is slower and the image pull is on
+            # top, so this is deliberately loose.
+            minutes: 30
+          - vm: openvm
+            project: Nethermind.Stateless.OpenVmGuest
+            minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -87,33 +130,40 @@ jobs:
       - name: Download guest binary
         uses: actions/download-artifact@v8
         with:
-          name: nethermind
-          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+          name: nethermind-${{ matrix.vm }}
+          path: src/Nethermind/${{ matrix.project }}/bin
 
       - name: Download input
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+        working-directory: src/Nethermind/${{ matrix.project }}/bin
         run: |
-          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${{ matrix.input }}" \
-            -o "${{ matrix.input }}"
-          echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${{ matrix.block.input }}" \
+            -o "${{ matrix.block.input }}"
+          echo "${{ matrix.block.hash }}  ${{ matrix.block.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
 
+      # The artifact loses the executable bit; ZisK reads the file, the other
+      # two hand it to a runner image that does the same, but make's own
+      # recipes expect it back.
+      - name: Restore the executable bit
+        run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/nethermind"
+
       - name: Run Nethermind guest
-        timeout-minutes: 5
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+        working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           set -euo pipefail
           suffix=0101000000000000000100
-          make run INPUT="${{ matrix.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
-          grep -q "${{ matrix.output }}$suffix" "$RUNNER_TEMP/run.log" || \
+          make run INPUT="${{ matrix.block.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          grep -q "${{ matrix.block.output }}$suffix" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
 
   status:
     name: Status
-    needs: test
+    needs: [unit, build, test]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
-          [[ "${{ needs.test.result }}" == "success" ]]
+          [[ "${{ needs.unit.result }}"  == "success" ]]
+          [[ "${{ needs.build.result }}" == "success" ]]
+          [[ "${{ needs.test.result }}"  == "success" ]]

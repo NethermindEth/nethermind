@@ -21,11 +21,14 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13
 # Both new targets decode rv64im only, and both read the whole .text up front:
 # SP1 panics on the first word it cannot decode, OpenVM turns it into a trap.
 # So even unreachable F/D/C/A instructions are fatal - fail at build time instead.
-# Execution harness. `cargo openvm run` only accepts a transpiled .vmexe, so
-# point this at a host binary built against the openvm SDK (branch
-# develop-v2.1.0, the rv64 line) that transpiles the ELF and executes it. It
-# takes <elf> <openvm.toml> <input> and prints the public values.
-OPENVM_RUNNER ?= openvm-runelf
+# Execution harness. OpenVM publishes no image at all (cargo-openvm is a source
+# install) and `cargo openvm run` only accepts a transpiled .vmexe, so this is
+# our own: runner/ builds the openvm SDK from the develop-v2.1.0 rv64 line into
+# a harness that transpiles the ELF and executes it. Published by
+# .github/workflows/release-zkvm-runners.yml, pinned by digest here.
+# OPENVM_RUNNER overrides it with a host binary when iterating locally.
+OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64
+OPENVM_RUNNER ?=
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back
 # and favouring speed is close to free. Must land together with the TrieNode seqlock
@@ -103,7 +106,15 @@ $(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
 	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
 
 run: $(GUEST_DIR)/bin/$(INPUT).raw
+ifeq ($(strip $(OPENVM_RUNNER)),)
+	docker run --rm -e RUST_BACKTRACE=full \
+		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
+		--mount type=bind,source="$(GUEST_DIR)/openvm.toml",target=/openvm.toml,readonly \
+		$(OPENVM_IMAGE) \
+		/n/nethermind /openvm.toml /n/$(INPUT).raw
+else
 	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/openvm.toml $(GUEST_DIR)/bin/$(INPUT).raw
+endif
 
 build-run: build run
 
