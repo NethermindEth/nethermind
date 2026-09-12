@@ -19,6 +19,21 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SlotRlpEncodingTests
 {
+    [Test]
+    public void Oversized_slot_iterator_value_is_rejected([Values] bool rlpWrap)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
+        byte[] oversized = new byte[33];
+        Array.Fill(oversized, (byte)1);
+        WriteRawSlotToDb(db, rlpWrap ? Rlp.Encode((ReadOnlySpan<byte>)oversized).Bytes : oversized);
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        ValueHash256 address = ValueKeccak.Compute(Addr.Bytes);
+        ValueHash256 slot = ValueKeccak.Compute(Slot.ToBigEndian());
+        using IPersistence.IFlatIterator iterator = reader.CreateStorageIterator(in address, in slot, in slot);
+        Assert.Throws<InvalidConfigurationException>(() => iterator.MoveNext());
+    }
+
     private static readonly Address Addr = TestItem.AddressA;
     private static readonly UInt256 Slot = 7;
 

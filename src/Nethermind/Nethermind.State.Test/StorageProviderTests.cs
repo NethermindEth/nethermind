@@ -53,16 +53,6 @@ public class StorageProviderTests(bool useFlat)
     ];
 
     [Test]
-    public void Oversized_storage_leaf_is_rejected()
-    {
-        StorageTree tree = new(Nethermind.Trie.Pruning.NullTrieStore.Instance, LimboLogs.Instance);
-        byte[] oversized = new byte[33];
-        Array.Fill(oversized, (byte)1);
-        tree.Set(UInt256.One, oversized);
-        Assert.Throws<Nethermind.Trie.TrieException>(() => tree.Get(UInt256.One, out _));
-    }
-
-    [Test]
     public void Empty_commit_restore()
     {
         using Context ctx = new(useFlat);

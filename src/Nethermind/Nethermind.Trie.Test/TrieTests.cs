@@ -30,6 +30,16 @@ namespace Nethermind.Trie.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
+        [Test]
+        public void Oversized_storage_leaf_is_rejected()
+        {
+            StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
+            byte[] oversized = new byte[33];
+            Array.Fill(oversized, (byte)1);
+            tree.Set(UInt256.One, oversized);
+            Assert.Throws<TrieException>(() => tree.Get(UInt256.One, out _));
+        }
+
         private ILogger _logger;
         private ILogManager _logManager;
         private Random _random = new();
