@@ -54,7 +54,15 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
+    private CodeTemplate? _template;
     public ValueHash256 CodeHash { get; set; }
+
+    /// <summary>The compiler-emitted template this code matches, recognized on first use.</summary>
+    /// <remarks>
+    /// Racing callers may each recognize the code; the results are equivalent, so the duplicate work is
+    /// preferred over synchronising a lookup that runs once per distinct code hash.
+    /// </remarks>
+    internal CodeTemplate Template => _template ??= CodeTemplate.Recognize(CodeSpan, ValidateJump);
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
