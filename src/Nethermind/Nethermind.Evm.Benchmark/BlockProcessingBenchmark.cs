@@ -140,6 +140,21 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    /// <summary>Queries one external account's balance repeatedly, the ext_account_query_warm shape.</summary>
+    private static readonly Address BalanceCallerAddress = new("0x00000000000000000000000000000000000000aa");
+
+    private static readonly byte[] BalanceSameAddressCode = BuildBalanceSameAddressCode();
+
+    private static byte[] BuildBalanceSameAddressCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(TestItem.AddressB).Op(Instruction.BALANCE).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -185,6 +200,7 @@ public class BlockProcessingBenchmark
     private Block _sloadSameKeyNoPrewarmBlock = null!;
     private Block _pushPopOnlyBlock = null!;
     private Block _tloadSameKeyBlock = null!;
+    private Block _balanceSameAddressBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -219,6 +235,7 @@ public class BlockProcessingBenchmark
         _sloadSameKeyNoPrewarmBlock = BuildBlock(BuildSloadCalls(2, 0));
         _pushPopOnlyBlock = BuildBlock(BuildCallsTo(TestItem.AddressE, 10, 0));
         _tloadSameKeyBlock = BuildBlock(BuildCallsTo(TestItem.AddressF, 10, 0));
+        _balanceSameAddressBlock = BuildBlock(BuildCallsTo(BalanceCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -274,6 +291,9 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(TestItem.AddressF, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressF, TloadSameKeyCode, Spec);
+
+            stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
 
             stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
@@ -414,6 +434,16 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_tloadSameKeyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Balance_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_balanceSameAddressBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
