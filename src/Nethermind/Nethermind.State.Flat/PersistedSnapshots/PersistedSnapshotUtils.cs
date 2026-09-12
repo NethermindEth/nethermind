@@ -35,7 +35,7 @@ internal static class PersistedSnapshotUtils
             // Slot serialized as decimal so it survives JSON round-trips without ambiguity.
             string key = $"{addr.Bytes.ToHexString(false)}:{slot}";
             storages[key] = kv.Value.HasValue
-                ? kv.Value.Value.AsReadOnlySpan.ToHexString(false)
+                ? kv.Value.Value.Value.ToBigEndian().ToHexString(false)
                 : "";
         }
         dump["storages"] = storages;
@@ -106,7 +106,7 @@ internal static class PersistedSnapshotUtils
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
                 SlotValue expected = kv.Value ?? default;
-                if (!slotValue.AsReadOnlySpan.SequenceEqual(expected.AsReadOnlySpan))
+                if (slotValue.Value != expected.Value)
                     throw new InvalidOperationException($"Storage {addr}:{slot} mismatch");
             }
 

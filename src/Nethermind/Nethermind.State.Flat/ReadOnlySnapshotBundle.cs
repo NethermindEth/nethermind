@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -132,7 +131,7 @@ public sealed class ReadOnlySnapshotBundle(
 
         if (recordDetailedMetrics)
         {
-            if (outSlotValue.AsReadOnlySpan.IsZero())
+            if (outSlotValue.Value.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }

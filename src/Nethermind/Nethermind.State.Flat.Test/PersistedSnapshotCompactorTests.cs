@@ -124,7 +124,7 @@ public class PersistedSnapshotCompactorTests
                 SlotValue slot = default;
                 Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
                     $"Slot {i} must survive merge");
-                Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
+                Assert.That(slot.Value.ToBigEndian(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).Value.ToBigEndian()),
                     $"Slot {i} value mismatch");
             }
         }
@@ -373,11 +373,11 @@ public class PersistedSnapshotCompactorTests
 
                     SlotValue slot1 = default;
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
-                    Assert.That(slot1.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x42 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(slot1.Value.ToBigEndian(), Is.EqualTo(new SlotValue(new byte[] { 0x42 }).Value.ToBigEndian()));
 
                     SlotValue slot2 = default;
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
-                    Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(slot2.Value.ToBigEndian(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).Value.ToBigEndian()));
 
                     Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressB), Is.Not.Null,
                         "Self-destruct flag for B (set in c0) must be present after compaction");
@@ -449,7 +449,7 @@ public class PersistedSnapshotCompactorTests
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
                     SlotValue slot2 = default;
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
-                    Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(slot2.Value.ToBigEndian(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).Value.ToBigEndian()));
                     Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");

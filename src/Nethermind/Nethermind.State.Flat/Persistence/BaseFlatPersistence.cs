@@ -108,7 +108,8 @@ public static class BaseFlatPersistence
     /// </summary>
     internal static int EncodeSlotValue(in SlotValue slot, bool rlpWrapSlots, Span<byte> buffer)
     {
-        ReadOnlySpan<byte> withoutLeadingZeros = slot.AsReadOnlySpan.WithoutLeadingZeros();
+        EvmWord word = slot.Value.ToBigEndianWord();
+        ReadOnlySpan<byte> withoutLeadingZeros = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref word), SlotValue.ByteCount).WithoutLeadingZeros();
         if (!rlpWrapSlots)
         {
             withoutLeadingZeros.CopyTo(buffer);
@@ -157,32 +158,8 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
-            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
-            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
-            int len = value.Length;
-            if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
-
-            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
-            if (len == SlotValue.ByteCount)
-            {
-                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-            }
-            else
-            {
-                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-
-                // Zero-initialize the leading bytes before copying the value
-                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-
-                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-
-                Unsafe.CopyBlockUnaligned(
-                    ref destPtr,
-                    ref MemoryMarshal.GetReference(value),
-                    (uint)len);
-            }
+            if (value.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
+            outValue = SlotValue.FromSpanWithoutLeadingZero(value);
 
             return true;
         }

@@ -93,7 +93,7 @@ public class HistoryReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True);
-            Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
+            Assert.That(value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
         }
     }
 
@@ -170,7 +170,7 @@ public class HistoryReaderTests
         Assert.That(found, Is.EqualTo(expectedFound));
         if (expectedFound)
         {
-            Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x55 }));
+            Assert.That(value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x55 }));
         }
     }
 

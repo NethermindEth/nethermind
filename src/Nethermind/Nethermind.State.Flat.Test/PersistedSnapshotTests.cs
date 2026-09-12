@@ -231,10 +231,10 @@ public class PersistedSnapshotTests
                     scanned[(entry.Address, slot.Slot)] = slot.Value;
         }
 
-        Assert.That(scanned[(TestItem.AddressA, (UInt256)1)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(small));
-        Assert.That(scanned[(TestItem.AddressA, (UInt256)2)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(high));
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)1)]!.Value.Value.ToBigEndian(), Is.EqualTo(small));
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)2)]!.Value.Value.ToBigEndian(), Is.EqualTo(high));
         Assert.That(scanned[(TestItem.AddressA, (UInt256)3)], Is.Null, "deleted slot must surface as null");
-        Assert.That(scanned[(TestItem.AddressB, (UInt256)4)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(full));
+        Assert.That(scanned[(TestItem.AddressB, (UInt256)4)]!.Value.Value.ToBigEndian(), Is.EqualTo(full));
     }
 
     // Drives the scanner across every entry kind in one pass: normal vs deleted account,
@@ -310,7 +310,7 @@ public class PersistedSnapshotTests
         Assert.That(perAddr[TestItem.AddressD].Sd, Is.False, "0x00 marker → destructed");
         Assert.That(perAddr[TestItem.AddressE].Sd, Is.True, "0x01 marker → new account");
 
-        Assert.That(slots[(TestItem.AddressA, (UInt256)1)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(slotVal));
+        Assert.That(slots[(TestItem.AddressA, (UInt256)1)]!.Value.Value.ToBigEndian(), Is.EqualTo(slotVal));
         Assert.That(slots[(TestItem.AddressA, (UInt256)2)], Is.Null, "deleted slot surfaces as null");
 
         Assert.That(stateNodes, Is.EqualTo(3), "one state node per depth tier");
@@ -361,7 +361,7 @@ public class PersistedSnapshotTests
             {
                 accounts[e.Address] = (e.HasAccount, e.Account?.Balance);
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                    slots[(e.Address, s.Slot)] = s.Value?.AsReadOnlySpan.ToArray();
+                    slots[(e.Address, s.Slot)] = s.Value?.Value.ToBigEndian();
             }
         }
 
@@ -424,7 +424,7 @@ public class PersistedSnapshotTests
                 {
                     nextEntry = (e.HasAccount, e.Account?.Balance);
                     foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                        nextSlots[(e.Address, s.Slot)] = s.Value?.AsReadOnlySpan.ToArray();
+                        nextSlots[(e.Address, s.Slot)] = s.Value?.Value.ToBigEndian();
                 }
             }
         }
@@ -598,9 +598,9 @@ public class PersistedSnapshotTests
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         // Slot: newer holds slot 2, older holds slot 1; both resolve.
         Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)2, -1, start, out SlotValue? sv2), Is.True);
-        Assert.That(sv2!.Value.AsReadOnlySpan[^1], Is.EqualTo((byte)0x22));
+        Assert.That(sv2!.Value.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x22));
         Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out SlotValue? sv1), Is.True);
-        Assert.That(sv1!.Value.AsReadOnlySpan[^1], Is.EqualTo((byte)0x11));
+        Assert.That(sv1!.Value.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x11));
         // Slot below the self-destruct boundary resolves to null (storage wiped).
         Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)999, 0, start, out SlotValue? svNull), Is.True);
         Assert.That(svNull, Is.Null);
@@ -766,15 +766,15 @@ public class PersistedSnapshotTests
 
         SlotValue slot1 = default;
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, ref slot1), Is.True);
-        Assert.That(slot1.AsReadOnlySpan.WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x03));
+        Assert.That(slot1.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x03));
 
         SlotValue slot2 = default;
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, ref slot2), Is.True);
-        Assert.That(slot2.AsReadOnlySpan.WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
+        Assert.That(slot2.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
 
         SlotValue slot5 = default;
         Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, ref slot5), Is.True);
-        Assert.That(slot5.AsReadOnlySpan.WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
+        Assert.That(slot5.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
     }
 
     private static IEnumerable<TestCaseData> NullSlotMergeCases()
@@ -789,7 +789,7 @@ public class PersistedSnapshotTests
             {
                 SlotValue slot = default;
                 Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
-                Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
+                Assert.That(slot.Value.ToBigEndian().AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
             })).SetName("NullOverridesValue");
 
         yield return new TestCaseData(
@@ -799,7 +799,7 @@ public class PersistedSnapshotTests
             {
                 SlotValue slot = default;
                 Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
-                Assert.That(slot.AsReadOnlySpan.WithoutLeadingZeros().ToArray().Length, Is.GreaterThan(0), "Value should override null slot after merge");
+                Assert.That(slot.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray().Length, Is.GreaterThan(0), "Value should override null slot after merge");
             })).SetName("ValueOverridesNull");
 
         yield return new TestCaseData(
@@ -809,11 +809,11 @@ public class PersistedSnapshotTests
             {
                 SlotValue slot1 = default;
                 Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot1), Is.True);
-                Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
+                Assert.That(slot1.Value.ToBigEndian().AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
 
                 SlotValue slot2 = default;
                 Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)2, ref slot2), Is.True);
-                Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
+                Assert.That(slot2.Value.ToBigEndian().AsSpan().IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
             })).SetName("NullPreservedAndValueCarried");
     }
 
@@ -892,7 +892,7 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot1), Is.True);
         byte[] expectedSlotVal = new byte[32];
         BinaryPrimitives.WriteInt32BigEndian(expectedSlotVal.AsSpan(28, 4), (int)probeIndex);
-        Assert.That(slot1.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+        Assert.That(slot1.Value.ToBigEndian().AsSpan().SequenceEqual(expectedSlotVal), Is.True);
 
         Assert.That(persisted.TryLoadStorageNodeRlp(addrHash, storagePath, out byte[]? nodeRlp1), Is.True);
         Assert.That(nodeRlp1, Is.EqualTo(storageNode.FullRlp.ToArray()));
@@ -902,7 +902,7 @@ public class PersistedSnapshotTests
         Assert.That(acc2!.Balance, Is.EqualTo(expectedAccount.Balance));
         SlotValue slot2 = default;
         Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot2), Is.True);
-        Assert.That(slot2.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+        Assert.That(slot2.Value.ToBigEndian().AsSpan().SequenceEqual(expectedSlotVal), Is.True);
 
         // AdviseDontNeed advises the mmap range cold; the next reads re-fault any dropped page
         // and the binary search must still resolve correctly.
@@ -911,7 +911,7 @@ public class PersistedSnapshotTests
         Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));
         SlotValue slot3 = default;
         Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot3), Is.True);
-        Assert.That(slot3.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+        Assert.That(slot3.Value.ToBigEndian().AsSpan().SequenceEqual(expectedSlotVal), Is.True);
 
         // Fresh miss for an unrelated address still works after AdviseDontNeed.
         Assert.That(persisted.TryGetAccount(TestItem.AddressB, out _), Is.False);

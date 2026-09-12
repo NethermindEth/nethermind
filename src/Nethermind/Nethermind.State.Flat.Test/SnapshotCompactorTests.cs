@@ -60,7 +60,7 @@ public class SnapshotCompactorTests
     private static void AssertSlotValueEqual(SlotValue? expected, SlotValue? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(expected!.Value.AsReadOnlySpan.ToArray()));
+        Assert.That(actual!.Value.Value.ToBigEndian(), Is.EqualTo(expected!.Value.Value.ToBigEndian()));
     }
 
     private static void AssertAccountSame(Account expected, Account? actual)

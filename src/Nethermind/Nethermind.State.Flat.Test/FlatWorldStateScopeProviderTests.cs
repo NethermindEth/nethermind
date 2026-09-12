@@ -354,7 +354,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
         ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(slotValue));
+        Assert.That(committedSlot!.Value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(slotValue));
     }
 
     #endregion
@@ -704,7 +704,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
         ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(val1));
+        Assert.That(committedSlot!.Value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(val1));
     }
 
     [Test]

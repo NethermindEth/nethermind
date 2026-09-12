@@ -15,7 +15,7 @@ public class SlotValueTests
     private const string FullSlotHex = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 
     [Test]
-    public void UInt256_conversion_preserves_value_and_big_endian_layout(
+    public void UInt256_conversion_preserves_value_and_big_endian_encoding(
         [Values("00", "01", "7f", "80", "ff", "0100", "0de0b6b3a7640000", FullSlotHex)] string hex)
     {
         UInt256 expected = new(Bytes.FromHexString(hex), isBigEndian: true);
@@ -25,7 +25,7 @@ public class SlotValueTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.ToBigEndian()));
+            Assert.That(slot.Value.ToBigEndian(), Is.EqualTo(expected.ToBigEndian()));
         }
     }
 
@@ -42,7 +42,7 @@ public class SlotValueTests
         byte[] data = IncrementingBytes(length);
 
         SlotValue value = new(data);
-        ReadOnlySpan<byte> bytes = value.AsReadOnlySpan;
+        ReadOnlySpan<byte> bytes = value.Value.ToBigEndian().AsSpan();
 
         Assert.That(bytes.Length, Is.EqualTo(32));
         for (int i = 0; i < length; i++) Assert.That(bytes[i], Is.EqualTo(data[i]));
@@ -62,7 +62,7 @@ public class SlotValueTests
     {
         byte[] data = Bytes.FromHexString(FullSlotHex);
         SlotValue value = SlotValue.FromSpanWithoutLeadingZero(data);
-        Assert.That(value.AsReadOnlySpan.ToArray(), Is.EqualTo(data));
+        Assert.That(value.Value.ToBigEndian(), Is.EqualTo(data));
     }
 
     [Test]
@@ -71,7 +71,7 @@ public class SlotValueTests
         byte[] data = IncrementingBytes(length);
 
         SlotValue value = SlotValue.FromSpanWithoutLeadingZero(data);
-        ReadOnlySpan<byte> bytes = value.AsReadOnlySpan;
+        ReadOnlySpan<byte> bytes = value.Value.ToBigEndian().AsSpan();
 
         for (int i = 0; i < 32 - length; i++) Assert.That(bytes[i], Is.EqualTo(0));
         for (int i = 0; i < length; i++) Assert.That(bytes[32 - length + i], Is.EqualTo(data[i]));
@@ -91,7 +91,7 @@ public class SlotValueTests
         byte[] data = Bytes.FromHexString(FullSlotHex);
         SlotValue? value = SlotValue.FromBytes(data);
         Assert.That(value, Is.Not.Null);
-        Assert.That(value!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(data));
+        Assert.That(value!.Value.Value.ToBigEndian(), Is.EqualTo(data));
     }
 
 }

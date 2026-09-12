@@ -342,7 +342,7 @@ public class FlatDbManagerTests
 
         Account? account = bundle.GetAccount(HistoryAddr);
         bundle.GetSlot(HistoryAddr, HistorySlot, bundle.DetermineSelfDestructSnapshotIdx(HistoryAddr), out SlotValue? stored);
-        byte[]? slot = stored is { } slotValue ? slotValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray() : null;
+        byte[]? slot = stored is { } slotValue ? slotValue.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray() : null;
 
         using (Assert.EnterMultipleScope())
         {

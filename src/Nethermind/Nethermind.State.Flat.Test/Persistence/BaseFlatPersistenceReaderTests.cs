@@ -48,7 +48,7 @@ public class BaseFlatPersistenceReaderTests
         value.CopyTo(expected, SlotValue.ByteCount - valueLength);
 
         Assert.That(found, Is.True);
-        Assert.That(result.AsReadOnlySpan.ToArray(), Is.EqualTo(expected));
+        Assert.That(result.Value.ToBigEndian(), Is.EqualTo(expected));
     }
 
     // Golden path: a correctly RLP-wrapped 32-byte value (0xa0 + 32 = 33 bytes on disk) decodes cleanly with
@@ -67,7 +67,7 @@ public class BaseFlatPersistenceReaderTests
         bool found = reader.TryGetStorage(default, default, ref result);
 
         Assert.That(found, Is.True);
-        Assert.That(result.AsReadOnlySpan.ToArray(), Is.EqualTo(payload));
+        Assert.That(result.Value.ToBigEndian(), Is.EqualTo(payload));
     }
 
     /// <summary>Returns the same value for any key; enough to exercise <c>TryGetStorage</c>'s decode path.</summary>

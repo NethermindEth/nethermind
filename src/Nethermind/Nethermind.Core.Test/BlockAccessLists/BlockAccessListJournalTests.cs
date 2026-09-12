@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;

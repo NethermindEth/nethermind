@@ -72,7 +72,7 @@ public class HistoryBackedPersistenceReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundPresent, Is.True);
-            Assert.That(present.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(present.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(foundAbsent, Is.False);
         }
     }
@@ -252,7 +252,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
         Assert.That(found, Is.True);
-        Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+        Assert.That(value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
     }
 
     [Test]

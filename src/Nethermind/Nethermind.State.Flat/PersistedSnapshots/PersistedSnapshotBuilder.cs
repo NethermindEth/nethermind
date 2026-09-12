@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -255,7 +256,7 @@ public static class PersistedSnapshotBuilder
                 // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
                 // length-0 = absent sentinel survives.
                 ReadOnlySpan<byte> payload = value.HasValue
-                    ? rlpBuffer[..Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer)]
+                    ? rlpBuffer[..BaseFlatPersistence.EncodeSlotValue(value.Value, true, rlpBuffer)]
                     : [];
                 int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
                 table.Add(keyBuf[..len], payload);
