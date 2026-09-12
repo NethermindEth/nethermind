@@ -157,75 +157,60 @@ public class ReadOnlyAccountChangesLookupTests
         }
     }
 
-    /// <summary>A declared slot resolves in one probe, whether it was written or only read.</summary>
-    /// <remarks>The read counts straddle the threshold at which the account switches from scanning its
-    /// declared reads to mapping them, so both paths are covered.</remarks>
+    /// <summary>A declared slot resolves correctly through both lookup strategies.</summary>
+    /// <remarks>Any storage change (or more than four declared reads) makes the account map its declared
+    /// slots; four or fewer reads with no changes are scanned. The cases pin both strategies and the
+    /// 4/5 threshold between them; the changed slot exists only in the mapped arm, since a change forces
+    /// the map by construction.</remarks>
     [Test]
-    public void TryGetDeclaredSlot_separates_changed_read_and_undeclared([Values(2, 64)] int readCount)
+    public void TryGetDeclaredSlot_separates_changed_read_and_undeclared(
+        [Values(0, 4, 5, 64)] int readCount,
+        [Values(true, false)] bool withChange)
     {
-        UInt256[] reads = new UInt256[readCount];
-        for (int i = 0; i < readCount; i++)
-        {
-            reads[i] = (UInt256)(i + 1);
-        }
-
-        ReadOnlyAccountChanges ac = Build.An.AccountChanges
-            .WithAddress(TestItem.AddressA)
-            .WithStorageReads(reads)
-            .WithStorageChanges((UInt256)1000, new StorageChange(0, 42))
-            .TestObject;
+        UInt256[] reads = BuildReads(readCount);
+        ReadOnlyAccountChanges ac = BuildDeclared(reads, withChange);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ac.TryGetDeclaredSlot((UInt256)1000, out ReadOnlySlotChanges? changed), Is.True);
-            Assert.That(changed, Is.Not.Null, "a written slot carries its changes");
+            Assert.That(ac.TryGetDeclaredSlot((UInt256)1000, out ReadOnlySlotChanges? changed), Is.EqualTo(withChange));
+            Assert.That(changed, withChange ? Is.Not.Null : Is.Null, "a written slot carries its changes");
 
-            Assert.That(ac.TryGetDeclaredSlot(reads[^1], out ReadOnlySlotChanges? read), Is.True);
-            Assert.That(read, Is.Null, "a slot declared only as a read carries no changes");
+            if (readCount > 0)
+            {
+                Assert.That(ac.TryGetDeclaredSlot(reads[^1], out ReadOnlySlotChanges? read), Is.True);
+                Assert.That(read, Is.Null, "a slot declared only as a read carries no changes");
+            }
 
             Assert.That(ac.TryGetDeclaredSlot((UInt256)9999, out ReadOnlySlotChanges? absent), Is.False);
             Assert.That(absent, Is.Null);
         }
     }
 
-    [Test]
-    public void TryGetSlotChanges_and_IsStorageRead_agree_with_the_declared_slot([Values(2, 64)] int readCount)
+    private static UInt256[] BuildReads(int count)
     {
-        UInt256[] reads = new UInt256[readCount];
-        for (int i = 0; i < readCount; i++)
+        UInt256[] reads = new UInt256[count];
+        for (int i = 0; i < count; i++)
         {
             reads[i] = (UInt256)(i + 1);
         }
 
-        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+        return reads;
+    }
+
+    private static ReadOnlyAccountChanges BuildDeclared(UInt256[] reads, bool withChange)
+    {
+        AccountChangesBuilder builder = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithStorageReads(reads)
-            .WithStorageChanges((UInt256)1000, new StorageChange(0, 42))
-            .TestObject;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ac.TryGetSlotChanges((UInt256)1000, out ReadOnlySlotChanges? changed), Is.True);
-            Assert.That(changed, Is.Not.Null);
-            Assert.That(ac.IsStorageRead((UInt256)1000), Is.False, "a written slot is not a read-only access");
-
-            Assert.That(ac.TryGetSlotChanges(reads[0], out _), Is.False, "a read-only slot has no changes");
-            Assert.That(ac.IsStorageRead(reads[0]), Is.True);
-
-            Assert.That(ac.TryGetSlotChanges((UInt256)9999, out _), Is.False);
-            Assert.That(ac.IsStorageRead((UInt256)9999), Is.False);
-        }
+            .WithStorageReads(reads);
+        if (withChange) builder = builder.WithStorageChanges((UInt256)1000, new StorageChange(0, 42));
+        return builder.TestObject;
     }
 
     /// <summary>Equality still compares the declared storage, now that reads and changes share a map.</summary>
     [Test]
     public void Equals_distinguishes_accounts_by_their_storage([Values(2, 64)] int readCount)
     {
-        UInt256[] reads = new UInt256[readCount];
-        for (int i = 0; i < readCount; i++)
-        {
-            reads[i] = (UInt256)(i + 1);
-        }
+        UInt256[] reads = BuildReads(readCount);
 
         static ReadOnlyAccountChanges Make(UInt256[] reads, UInt256 changedSlot, byte value) =>
             Build.An.AccountChanges

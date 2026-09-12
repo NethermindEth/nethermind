@@ -364,8 +364,12 @@ public class BlockAccessListBasedWorldStateTests
     public void CompositeReads_PreserveVirtualOverrides([Values("balance", "nonce", "code")] string kind)
     {
         OverriddenAccountState bws = new(TestWorldStateFactory.CreateForTest(), kind);
-        Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
-        Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+            Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.False);
+        }
+
         bws.ReportMissing = true;
         Assert.That(bws.IsDeadAccount(TestItem.AddressA), Is.True);
     }

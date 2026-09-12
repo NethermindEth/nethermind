@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -28,7 +29,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;
-    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
     private Address? _contextAccount;
     private ReadOnlyAccountChanges? _contextChanges;
@@ -325,6 +326,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool AccountExists(Address address)
         // EIP-161 non-emptiness of the effective state at this index: reading only the parent would miss
         // same-block deletions and wrongly refund EIP-8037 create-state gas on a later CREATE2 over the address.
+        // Derived types may override the individual getters; only the exact type may take the direct-array path.
         => GetType() == typeof(BlockAccessListBasedWorldState)
             ? HasAccountState(address)
             : !GetBalance(address).IsZero || GetNonce(address) != 0 || IsContract(address);
@@ -333,6 +335,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         => GetCodeHash(address) != Keccak.OfAnEmptyString;
 
     public override bool IsDeadAccount(Address address)
+        // Same exact-type gate as AccountExists, for the same reason.
         => GetType() == typeof(BlockAccessListBasedWorldState)
             ? !HasAccountState(address)
             : !AccountExists(address) ||
@@ -343,41 +346,29 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private bool HasAccountState(Address address)
     {
         ReadOnlyAccountChanges changes = ResolveContext(address);
-        BalanceChange[] balances = changes.BalanceChanges;
-        int balanceIndex = FindLastChange(balances, _blockAccessIndex);
-        if (balanceIndex >= 0 ? !balances[balanceIndex].Value.IsZero : _parentReader is WorldState balanceParent
-            ? !(ReadParentAccount(balanceParent, address)?.Balance ?? UInt256.Zero).IsZero
-            : !_parentReader!.GetBalance(address).IsZero)
+        if (changes.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balance)
+            ? !balance.Value.IsZero
+            : _parentReader is WorldState balanceParent
+                ? !(ReadParentAccount(balanceParent, address)?.Balance ?? UInt256.Zero).IsZero
+                : !_parentReader!.GetBalance(address).IsZero)
         {
             return true;
         }
 
-        NonceChange[] nonces = changes.NonceChanges;
-        int nonceIndex = FindLastChange(nonces, _blockAccessIndex);
-        if (nonceIndex >= 0 ? nonces[nonceIndex].Value != 0 : _parentReader is WorldState nonceParent
-            ? (ReadParentAccount(nonceParent, address)?.Nonce ?? 0) != 0
-            : _parentReader!.GetNonce(address) != 0)
+        if (changes.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonce)
+            ? nonce.Value != 0
+            : _parentReader is WorldState nonceParent
+                ? (ReadParentAccount(nonceParent, address)?.Nonce ?? 0) != 0
+                : _parentReader!.GetNonce(address) != 0)
         {
             return true;
         }
 
-        CodeChange[] codes = changes.CodeChanges;
-        int codeIndex = FindLastChange(codes, _blockAccessIndex);
-        return codeIndex >= 0
-            ? codes[codeIndex].CodeHash != Keccak.OfAnEmptyString
+        return changes.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange code)
+            ? code.CodeHash != Keccak.OfAnEmptyString
             : _parentReader is WorldState codeParent
                 ? (ReadParentAccount(codeParent, address)?.CodeHash.ValueHash256 ?? Keccak.OfAnEmptyString.ValueHash256) != Keccak.OfAnEmptyString
                 : _parentReader!.GetCodeHash(address) != Keccak.OfAnEmptyString;
-    }
-
-    private static int FindLastChange<T>(T[] changes, uint index) where T : struct, IIndexedChange
-    {
-        if (changes.Length <= 1)
-        {
-            return changes.Length == 1 && changes[0].Index < index ? 0 : -1;
-        }
-        int position = ((ReadOnlySpan<T>)changes).BinarySearch(new IndexKey<T>(index));
-        return (position >= 0 ? position : ~position) - 1;
     }
 
     public override void ClearStorage(Address address) { }
@@ -454,6 +445,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private ReadOnlyAccountChanges ResolveContext(Address address)
     {
         // A cached context has passed setup and parent validation. Setup and ClearParentReader invalidate it.
+        // Value equality on the 20 bytes, deliberately unlike ReadParentAccount's ReferenceEquals memo:
+        // distinct Address instances for the same account are common here and must hit.
         if (address.Equals(_contextAccount))
         {
             return _contextChanges!;
@@ -464,8 +457,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private ReadOnlyAccountChanges ResolveContextMiss(Address address)
     {
         CheckInitialized();
-        ReadOnlyAccountChanges accountChanges = GetAccountChangesOrThrow(address);
+        // Parent-reader wiring is validated first: its failure is a node-side bug (InvalidOperationException)
+        // and must not be masked by the undeclared-address InvalidBlockException.
         GetParentReader();
+        ReadOnlyAccountChanges accountChanges = GetAccountChangesOrThrow(address);
         _contextChanges = accountChanges;
         _contextAccount = address;
         return accountChanges;
