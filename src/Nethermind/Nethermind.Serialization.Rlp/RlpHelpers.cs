@@ -80,7 +80,7 @@ internal static partial class RlpHelpers
 
     private static byte[][] CreateSingleByteArrays()
     {
-        byte[][] arrays = new byte[256][];
+        byte[][] arrays = new byte[128][];
         for (int i = 0; i < arrays.Length; i++)
         {
             arrays[i] = [(byte)i];

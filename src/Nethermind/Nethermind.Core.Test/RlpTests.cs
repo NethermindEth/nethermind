@@ -554,7 +554,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Single_byte_array_decoding_reuses_shared_array([Range(0, 255)] int value)
+        public void Single_byte_array_decoding_preserves_array_ownership([Range(0, 255)] int value)
         {
             byte[] encoded = value < 128 ? [(byte)value] : [0x81, (byte)value];
             RlpReader reader = new(encoded);
@@ -566,7 +566,7 @@ namespace Nethermind.Core.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decoded, Is.EqualTo(new byte[] { (byte)value }));
-                Assert.That(decoded, Is.SameAs(expected));
+                Assert.That(decoded, value < 128 ? Is.SameAs(expected) : Is.Not.SameAs(expected));
                 Assert.That(reader.Position, Is.EqualTo(encoded.Length));
             }
         }
