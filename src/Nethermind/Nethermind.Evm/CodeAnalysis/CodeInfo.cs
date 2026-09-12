@@ -62,7 +62,9 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     /// Racing callers may each recognize the code; the results are equivalent, so the duplicate work is
     /// preferred over synchronising a lookup that runs once per distinct code hash.
     /// </remarks>
-    internal CodeTemplate Template => _template ??= CodeTemplate.Recognize(CodeSpan, ValidateJump);
+    internal CodeTemplate Template => CodeAnalysisFlags.Templates
+        ? _template ??= CodeTemplate.Recognize(CodeSpan, ValidateJump)
+        : CodeTemplate.None;
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.

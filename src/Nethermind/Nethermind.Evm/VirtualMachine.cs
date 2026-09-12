@@ -1288,7 +1288,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // introduced by a later fork to BadInstruction, and skipping past one would execute code that
         // the fork in force says must halt. Both flags are fixed for the transaction, so a frame that
         // enters through a fast path always finishes through it.
-        if (!TTracingInst.IsActive && !ReferenceEquals(env.CodeInfo.Template, CodeTemplate.None))
+        if (CodeAnalysisFlags.Templates && !TTracingInst.IsActive && !ReferenceEquals(env.CodeInfo.Template, CodeTemplate.None))
         {
             IReleaseSpec spec = Spec;
             if (env.CodeInfo.Template.MinimalProxy is { } proxy)
