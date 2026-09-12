@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -25,8 +24,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -51,8 +50,10 @@ public class InclusionListSnapshotMeasurement
     private const int Warmup = 5;
     private const int Samples = 30;
     private const ulong KeyedSeq = 1;
+    private const ulong FrameTxGasLimit = 1_000_000;
 
-    private static readonly ISpecProvider SpecProvider = MainnetSpecProvider.Instance;
+    private static readonly ISpecProvider SpecProvider =
+        new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true });
 
     [TestCase(2048, false, TestName = "ordinary transactions at the default pool size")]
     [TestCase(2048, true, TestName = "keyed transactions at the default pool size")]
@@ -60,27 +61,28 @@ public class InclusionListSnapshotMeasurement
     [TestCase(20000, true, TestName = "keyed transactions at ten times the default pool size")]
     public async Task Measure(int senders, bool keyed)
     {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         (IWorldState world, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader();
-        Address[] addresses = new Address[senders];
+        PrivateKey[] keys = new PrivateKey[senders];
         Hash256 stateRoot;
 
         using (world.BeginScope(null))
         {
             for (int i = 0; i < senders; i++)
             {
-                addresses[i] = AddressOf(i);
-                world.CreateAccount(addresses[i], 1.Ether);
+                keys[i] = KeyOfSender(i);
+                world.CreateAccount(keys[i].Address, 1.Ether);
             }
 
             if (keyed)
             {
                 // Non-empty, or the commit prunes NONCE_MANAGER and takes the slots below with it.
                 world.CreateAccount(Eip8250Constants.NonceManagerAddress, 1, 1);
-                foreach (Address sender in addresses)
+                foreach (PrivateKey key in keys)
                 {
                     for (int k = 0; k < Eip8250Constants.MaxNonceKeys; k++)
                     {
-                        world.Set(KeyedNonceManager.StorageSlot(sender, KeyOf(sender, k)), [(byte)KeyedSeq]);
+                        world.Set(KeyedNonceManager.StorageSlot(key.Address, KeyOf(key.Address, k)), [(byte)KeyedSeq]);
                     }
                 }
             }
@@ -90,7 +92,8 @@ public class InclusionListSnapshotMeasurement
             stateRoot = world.StateRoot;
         }
 
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).WithBaseFee(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).WithBaseFee(0)
+            .WithGasLimit(30_000_000).TestObject;
         TestBlockTree blockTree = new() { Head = Build.A.Block.WithHeader(header).TestObject, BestSuggestedHeader = header };
         ChainHeadInfoProvider headInfo = new(
             new ChainHeadSpecProvider(SpecProvider, blockTree),
@@ -98,7 +101,7 @@ public class InclusionListSnapshotMeasurement
             new SpecificBlockReadOnlyStateProvider(stateReader, header));
 
         await using TxPool txPool = new(
-            new EthereumEcdsa(SpecProvider.ChainId),
+            ecdsa,
             new BlobTxStorage(),
             headInfo,
             new TxPoolConfig { Size = senders, BlobsSupport = BlobsSupportMode.Disabled },
@@ -107,12 +110,10 @@ public class InclusionListSnapshotMeasurement
             LimboLogs.Instance,
             new TransactionComparerProvider(SpecProvider, blockTree).GetDefaultComparer());
 
-        // Admission is not what is being measured, and a keyed frame transaction cannot clear it without an EVM.
-        TxDistinctSortedPool pool = txPool._transactions;
         for (int i = 0; i < senders; i++)
         {
-            Transaction tx = BuildTx(i, addresses[i], keyed);
-            Assert.That(pool.TryInsert(tx.Hash!, tx), Is.True, $"transaction {i} was not inserted");
+            Transaction tx = BuildTx(ecdsa, keys[i], keyed);
+            Assert.That(txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted), $"transaction {i}");
         }
 
         // The readiness filter must reach every bucket's expensive branch, or the numbers below mean nothing.
@@ -140,14 +141,7 @@ public class InclusionListSnapshotMeasurement
             $"RESULT {label} senders={senders} keyed={keyed} min={ms[0]:F3}ms p50={ms[Samples / 2]:F3}ms p90={ms[Samples * 9 / 10]:F3}ms max={ms[^1]:F3}ms");
     }
 
-    /// <remarks>Big-endian, so distinct senders differ in the last byte: the pool's account cache shards on it.</remarks>
-    private static Address AddressOf(int index)
-    {
-        Span<byte> bytes = stackalloc byte[Address.Size];
-        bytes.Clear();
-        BinaryPrimitives.WriteInt32BigEndian(bytes[(Address.Size - sizeof(int))..], index);
-        return new Address(bytes);
-    }
+    private static PrivateKey KeyOfSender(int index) => new(Keccak.Compute(((UInt256)(index + 1)).ToBigEndian()).BytesToArray());
 
     private static UInt256 KeyOf(Address sender, int k)
     {
@@ -162,17 +156,37 @@ public class InclusionListSnapshotMeasurement
         return keys;
     }
 
-    private static Transaction BuildTx(int index, Address sender, bool keyed)
+    /// <remarks>A frame transaction authenticates by its frame signatures, so it carries a sender rather than an
+    /// outer signature — the shape <see cref="TxPool"/> admission expects of one.</remarks>
+    private static Transaction BuildTx(EthereumEcdsa ecdsa, PrivateKey key, bool keyed)
     {
-        TransactionBuilder<Transaction> builder = Build.A.Transaction
-            .WithSenderAddress(sender)
-            .WithGasLimit(21_000)
-            .WithMaxFeePerGas(1.GWei)
-            .WithMaxPriorityFeePerGas(1.GWei)
-            .WithHash(Keccak.Compute(((UInt256)index).ToBigEndian()));
+        if (!keyed)
+        {
+            return Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithNonce(0)
+                .WithChainId(SpecProvider.ChainId)
+                .WithGasLimit(21_000)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(ecdsa, key).TestObject;
+        }
 
-        return keyed
-            ? builder.WithType(TxType.FrameTx).WithNonce(KeyedSeq).WithNonceKeys(KeysOf(sender)).TestObject
-            : builder.WithType(TxType.EIP1559).WithNonce(0).TestObject;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = SpecProvider.ChainId,
+            Nonce = KeyedSeq,
+            SenderAddress = key.Address,
+            NonceKeys = KeysOf(key.Address),
+            Frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)],
+            FrameSignatures = [],
+            GasLimit = FrameTxGasLimit,
+            Value = UInt256.Zero,
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 1.GWei,
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
     }
 }

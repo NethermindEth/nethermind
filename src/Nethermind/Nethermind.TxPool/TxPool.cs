@@ -51,7 +51,7 @@ namespace Nethermind.TxPool
         private readonly HashCache _hashCache = new();
         private readonly TxBroadcaster _broadcaster;
 
-        internal readonly TxDistinctSortedPool _transactions;
+        private readonly TxDistinctSortedPool _transactions;
         private readonly BlobTxDistinctSortedPool _blobTransactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
