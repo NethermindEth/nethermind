@@ -97,7 +97,13 @@ public class BlockProcessingBenchmark
         }
     }
 
-    private static readonly IReleaseSpec Spec = Osaka.Instance;
+    /// <summary>The fork the whole scenario set runs under.</summary>
+    /// <remarks>Amsterdam turns on EIP-7928 block access lists, which decorate every state read. That layer
+    /// is what the ethpandaops bal-full suite exercises and what an Osaka-only benchmark cannot see.</remarks>
+    [Params("Osaka", "Amsterdam")]
+    public string Fork { get; set; } = "Osaka";
+
+    private IReleaseSpec Spec => Fork == "Amsterdam" ? Amsterdam.Instance : Osaka.Instance;
 
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
@@ -268,10 +274,10 @@ public class BlockProcessingBenchmark
 
         // Build DI container using standard modules instead of hand-wiring.
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
-        // with TestSpecProvider(Osaka.Instance) and in-memory databases.
+        // with TestSpecProvider(Spec) and in-memory databases.
         // Includes PrewarmerModule (via NethermindModule) for block cache pre-warming.
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(Osaka.Instance))
+            .AddModule(new TestNethermindModule(Spec))
             .Build();
 
         // Single world state — BranchProcessor.Process() manages scope internally,
@@ -319,6 +325,12 @@ public class BlockProcessingBenchmark
             stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
             stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
+
+            // Amsterdam reads two more system contracts at the end of every block.
+            stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, StopCode, Spec);
+            stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, StopCode, Spec);
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
