@@ -5227,6 +5227,42 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        /// <remarks>The snapshot's whole saving is the account read a frame-only bucket does not make, so hoisting
+        /// that read to the head of the scan would be invisible everywhere but here.</remarks>
+        [TestCase(false, 0, TestName = "a frame-only bucket is judged without an account read")]
+        [TestCase(true, 1, TestName = "a bucket with an ordinary transaction pays for one")]
+        public void Non_frame_snapshot_reads_an_account_only_for_a_non_frame_entry(bool hasOrdinaryTx, int expectedReads)
+        {
+            ISpecProvider specProvider = KeyedNonceSpecProvider();
+            CountingReadOnlyStateProvider counting = new(_stateProvider);
+            _txPool = CreatePool(null, specProvider,
+                new ChainHeadInfoProvider(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, counting));
+            Address sender = TestItem.PrivateKeyA.Address;
+            _stateProvider.CreateAccount(sender, 100.Ether);
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            if (hasOrdinaryTx)
+            {
+                Transaction plain = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .WithGasLimit(21_000)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+                Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            // Admission cached the sender, which would serve a hoisted read and hide it from the count below.
+            _txPool.ResetAddress(sender);
+            counting.ResetCounts();
+
+            _txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256.Zero);
+
+            Assert.That(counting.AccountReads(sender), Is.EqualTo(expectedReads));
+        }
+
         /// <remarks>Admission sums a sender's keyed and account-domain liabilities against one balance; the
         /// per-head sweep has to price them the same way, or a balance drop leaves both pending and announced.</remarks>
         [TestCase(true, 1, TestName = "the balance covers each alone but not both")]
