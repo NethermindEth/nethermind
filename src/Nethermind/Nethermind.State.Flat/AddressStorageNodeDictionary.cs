@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -22,6 +23,10 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 {
     private const int MaxPooledNodeDictionaries = 1_024;
     private const int PooledNodeCapacity = 4_096;
+    // A contract touching tens of thousands of slots in one block needs a dictionary far above the pooled
+    // capacity; trimming it on return made every such block re-grow it through LOH-sized doublings. Those
+    // dictionaries are retained whole instead, under a total entry budget (~64 B per entry).
+    private const long MaxRetainedLargeNodeEntries = 2L * 1024 * 1024;
 
     private readonly ConcurrentDictionary<Hash256AsKey, AddressNodes> _byAddress = new();
     private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? _cachedAddressEnumerator;
@@ -110,12 +115,86 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
     internal sealed class AddressNodes
     {
-        internal Dictionary<HashedKey<TreePath>, TrieNode> Nodes { get; } = [];
+        private Dictionary<HashedKey<TreePath>, TrieNode>? _spare;
 
-        internal void EnsureAdditionalCapacity(int additionalCapacity) =>
-            Nodes.EnsureCapacity(Nodes.Count + additionalCapacity);
+        internal Dictionary<HashedKey<TreePath>, TrieNode> Nodes { get; private set; } = [];
+
+        internal void EnsureAdditionalCapacity(int additionalCapacity)
+        {
+            int required = Nodes.Count + additionalCapacity;
+            if (required <= Nodes.Capacity) return;
+
+            // An empty dictionary about to take a large batch swaps in a retained large one instead of growing.
+            if (Nodes.Count == 0 && required > PooledNodeCapacity
+                && LargeNodeDictionaryPool.TryRent(required, out Dictionary<HashedKey<TreePath>, TrieNode>? large))
+            {
+                _spare = Nodes;
+                Nodes = large;
+                return;
+            }
+
+            Nodes.EnsureCapacity(required);
+        }
 
         internal void Set(in TreePath path, TrieNode node) => Nodes[path] = node;
+
+        internal void ResetForPooling()
+        {
+            if (Nodes.Capacity > PooledNodeCapacity)
+            {
+                Dictionary<HashedKey<TreePath>, TrieNode> large = Nodes;
+                Nodes = _spare ?? [];
+                _spare = null;
+                large.Clear();
+                LargeNodeDictionaryPool.Return(large);
+            }
+
+            Nodes.ClearAndTrim(PooledNodeCapacity, PooledNodeCapacity);
+        }
+    }
+
+    private static class LargeNodeDictionaryPool
+    {
+        private static readonly Lock Lock = new();
+        private static readonly List<Dictionary<HashedKey<TreePath>, TrieNode>> Retained = [];
+        private static long _retainedEntries;
+
+        /// <summary>Takes the smallest retained dictionary with at least <paramref name="minCapacity"/> entries of capacity.</summary>
+        public static bool TryRent(int minCapacity, [NotNullWhen(true)] out Dictionary<HashedKey<TreePath>, TrieNode>? dictionary)
+        {
+            lock (Lock)
+            {
+                int best = -1;
+                for (int i = 0; i < Retained.Count; i++)
+                {
+                    int capacity = Retained[i].Capacity;
+                    if (capacity >= minCapacity && (best < 0 || capacity < Retained[best].Capacity)) best = i;
+                }
+
+                if (best < 0)
+                {
+                    dictionary = null;
+                    return false;
+                }
+
+                dictionary = Retained[best];
+                Retained.RemoveAt(best);
+                _retainedEntries -= dictionary.Capacity;
+                return true;
+            }
+        }
+
+        /// <summary>Retains a cleared dictionary while the total retained capacity stays within budget; otherwise it is dropped.</summary>
+        public static void Return(Dictionary<HashedKey<TreePath>, TrieNode> dictionary)
+        {
+            lock (Lock)
+            {
+                if (_retainedEntries + dictionary.Capacity > MaxRetainedLargeNodeEntries) return;
+
+                Retained.Add(dictionary);
+                _retainedEntries += dictionary.Capacity;
+            }
+        }
     }
 
     private static class AddressNodesPool
@@ -142,7 +221,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
                 return;
             }
 
-            nodes.Nodes.ClearAndTrim(PooledNodeCapacity, PooledNodeCapacity);
+            nodes.ResetForPooling();
             Pool.Enqueue(nodes);
         }
     }
