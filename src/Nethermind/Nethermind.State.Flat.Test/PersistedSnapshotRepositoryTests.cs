@@ -161,7 +161,7 @@ public class PersistedSnapshotRepositoryTests
         byte[] slotBytes = new byte[32];
         slotBytes[31] = 0xAB;
         slotBytes[30] = 0xCD;
-        SlotValue slotValue = new(slotBytes);
+        SlotValue slotValue = new(new UInt256(slotBytes, isBigEndian: true));
 
         TreePath statePath = new(Keccak.Compute("state_path"), 4);
         byte[] stateRlp = [0xC2, 0x80, 0x80];
@@ -583,7 +583,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(123).TestObject;
         byte[] slot = new byte[32]; slot[31] = 0x55;
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slot);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(slot, isBigEndian: true));
         PersistedSnapshot persisted = tier.ConvertToPersistedBase(
             new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
 

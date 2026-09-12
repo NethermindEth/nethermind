@@ -83,7 +83,7 @@ public class PersistedSnapshotTests
         {
             byte[] value = new byte[32];
             value[31] = 0xFF;
-            c.Storages[(TestItem.AddressA, (UInt256)42)] = new SlotValue(value);
+            c.Storages[(TestItem.AddressA, (UInt256)42)] = new SlotValue(new UInt256(value, isBigEndian: true));
         })).SetName("Storage_SingleSlot");
 
         // Single significant byte < 0x80: RLP wraps it to the byte itself (1 byte), so the
@@ -92,14 +92,14 @@ public class PersistedSnapshotTests
         {
             byte[] value = new byte[32];
             value[31] = 0x05;
-            c.Storages[(TestItem.AddressA, (UInt256)9)] = new SlotValue(value);
+            c.Storages[(TestItem.AddressA, (UInt256)9)] = new SlotValue(new UInt256(value, isBigEndian: true));
         })).SetName("Storage_SmallSingleByteSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
         {
             byte[] value = new byte[32];
             value[31] = 0xAB;
-            c.Storages[(TestItem.AddressA, UInt256.Zero)] = new SlotValue(value);
+            c.Storages[(TestItem.AddressA, UInt256.Zero)] = new SlotValue(new UInt256(value, isBigEndian: true));
         })).SetName("Storage_ZeroSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -107,7 +107,7 @@ public class PersistedSnapshotTests
             c.Storages[(TestItem.AddressA, (UInt256)1)] = null;
             byte[] val = new byte[32];
             val[31] = 0xFF;
-            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(val);
+            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(new UInt256(val, isBigEndian: true));
         })).SetName("Storage_NullSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -115,9 +115,9 @@ public class PersistedSnapshotTests
             byte[] val1 = new byte[32]; val1[31] = 0x01;
             byte[] val2 = new byte[32]; val2[31] = 0x02;
             byte[] val3 = new byte[32]; val3[31] = 0x03;
-            c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(val1);
-            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(val2);
-            c.Storages[(TestItem.AddressB, (UInt256)5)] = new SlotValue(val3);
+            c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(val1, isBigEndian: true));
+            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(new UInt256(val2, isBigEndian: true));
+            c.Storages[(TestItem.AddressB, (UInt256)5)] = new SlotValue(new UInt256(val3, isBigEndian: true));
         })).SetName("Storage_MultipleAddresses");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -153,8 +153,8 @@ public class PersistedSnapshotTests
 
             byte[] slotVal1 = new byte[32]; slotVal1[31] = 0xFF;
             byte[] slotVal2 = new byte[32]; slotVal2[0] = 0x01; slotVal2[31] = 0x02;
-            c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal1);
-            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(slotVal2);
+            c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(slotVal1, isBigEndian: true));
+            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(new UInt256(slotVal2, isBigEndian: true));
             c.Storages[(TestItem.AddressB, (UInt256)42)] = null;
 
             c.SelfDestructedStorageAddresses[TestItem.AddressD] = false;
@@ -213,10 +213,10 @@ public class PersistedSnapshotTests
         for (int i = 0; i < 32; i++) full[i] = (byte)(i + 1); // RLP = 0xa0 + 32 bytes
 
         SnapshotContent content = new();
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(small);
-        content.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(high);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(small, isBigEndian: true));
+        content.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(new UInt256(high, isBigEndian: true));
         content.Storages[(TestItem.AddressA, (UInt256)3)] = null;
-        content.Storages[(TestItem.AddressB, (UInt256)4)] = new SlotValue(full);
+        content.Storages[(TestItem.AddressB, (UInt256)4)] = new SlotValue(new UInt256(full, isBigEndian: true));
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -251,7 +251,7 @@ public class PersistedSnapshotTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).WithNonce(3).TestObject;
         content.Accounts[TestItem.AddressC] = null;                          // deleted marker
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(slotVal, isBigEndian: true));
         content.Storages[(TestItem.AddressA, (UInt256)2)] = null;
         content.SelfDestructedStorageAddresses[TestItem.AddressD] = false;   // 0x00 destructed
         content.SelfDestructedStorageAddresses[TestItem.AddressE] = true;    // 0x01 new-account
@@ -342,11 +342,11 @@ public class PersistedSnapshotTests
             v[30] = (byte)((i >> 8) & 0xFF);
             v[31] = (byte)(i & 0xFF);
             expected[i] = v;
-            content.Storages[(big, (UInt256)i)] = new SlotValue(v);
+            content.Storages[(big, (UInt256)i)] = new SlotValue(new UInt256(v, isBigEndian: true));
         }
         content.Accounts[next] = Build.An.Account.WithBalance(2000).TestObject;
         byte[] nextSlot = new byte[32]; nextSlot[31] = 0x2A;
-        content.Storages[(next, (UInt256)42)] = new SlotValue(nextSlot);
+        content.Storages[(next, (UInt256)42)] = new SlotValue(new UInt256(nextSlot, isBigEndian: true));
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -397,11 +397,11 @@ public class PersistedSnapshotTests
             byte[] v = new byte[32];
             v[30] = (byte)((i >> 8) & 0xFF);
             v[31] = (byte)(i & 0xFF);
-            content.Storages[(big, (UInt256)i)] = new SlotValue(v);
+            content.Storages[(big, (UInt256)i)] = new SlotValue(new UInt256(v, isBigEndian: true));
         }
         content.Accounts[next] = Build.An.Account.WithBalance(2000).TestObject;
         byte[] nextSlotValue = new byte[32]; nextSlotValue[31] = 0x2A;
-        content.Storages[(next, (UInt256)42)] = new SlotValue(nextSlotValue);
+        content.Storages[(next, (UInt256)42)] = new SlotValue(new UInt256(nextSlotValue, isBigEndian: true));
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -484,7 +484,7 @@ public class PersistedSnapshotTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(5).TestObject;
         content.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(9).TestObject; // 2nd address → real address BTree
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(slotVal, isBigEndian: true));
         content.SelfDestructedStorageAddresses[TestItem.AddressA] = true;
         TreePath statePath = new(Keccak.Compute("sp"), 4);
         content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
@@ -562,7 +562,7 @@ public class PersistedSnapshotTests
         SnapshotContent older = new();
         older.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
-        older.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(v1);
+        older.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(v1, isBigEndian: true));
         older.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
         TreePath statePath = new(Keccak.Compute("st-p"), 4);
         older.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
@@ -573,7 +573,7 @@ public class PersistedSnapshotTests
         SnapshotContent newer = new();
         newer.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(200).TestObject;
         newer.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(7).TestObject;
-        newer.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(v2);
+        newer.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(new UInt256(v2, isBigEndian: true));
 
         byte[] olderData = PersistedSnapshotBuilderTestExtensions.Build(
             new Snapshot(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing), _blobs);
@@ -749,14 +749,14 @@ public class PersistedSnapshotTests
         byte[] val3 = new byte[32]; val3[31] = 0x03;
 
         SnapshotContent content1 = new();
-        content1.Storages[(addrA, (UInt256)1)] = new SlotValue(val1);
-        content1.Storages[(addrB, (UInt256)5)] = new SlotValue(val2);
+        content1.Storages[(addrA, (UInt256)1)] = new SlotValue(new UInt256(val1, isBigEndian: true));
+        content1.Storages[(addrB, (UInt256)5)] = new SlotValue(new UInt256(val2, isBigEndian: true));
         Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _blobs);
 
         SnapshotContent content2 = new();
-        content2.Storages[(addrA, (UInt256)1)] = new SlotValue(val3);
-        content2.Storages[(addrA, (UInt256)2)] = new SlotValue(val2);
+        content2.Storages[(addrA, (UInt256)1)] = new SlotValue(new UInt256(val3, isBigEndian: true));
+        content2.Storages[(addrA, (UInt256)2)] = new SlotValue(new UInt256(val2, isBigEndian: true));
         Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _blobs);
 
@@ -783,7 +783,7 @@ public class PersistedSnapshotTests
         nonZero[31] = 0xFF;
 
         yield return new TestCaseData(
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(nonZero, isBigEndian: true))),
             (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
             (Action<PersistedSnapshot>)(persisted =>
             {
@@ -794,7 +794,7 @@ public class PersistedSnapshotTests
 
         yield return new TestCaseData(
             (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(new UInt256(nonZero, isBigEndian: true))),
             (Action<PersistedSnapshot>)(persisted =>
             {
                 SlotValue slot = default;
@@ -804,7 +804,7 @@ public class PersistedSnapshotTests
 
         yield return new TestCaseData(
             (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(new UInt256(nonZero, isBigEndian: true))),
             (Action<PersistedSnapshot>)(persisted =>
             {
                 SlotValue slot1 = default;
@@ -866,7 +866,7 @@ public class PersistedSnapshotTests
         {
             byte[] val = new byte[32];
             BinaryPrimitives.WriteInt32BigEndian(val.AsSpan(28, 4), i + 1);
-            content.Storages[(addr, (UInt256)i + 1)] = new SlotValue(val);
+            content.Storages[(addr, (UInt256)i + 1)] = new SlotValue(new UInt256(val, isBigEndian: true));
         }
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);

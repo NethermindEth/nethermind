@@ -137,7 +137,7 @@ public class SnapshotCompactionBenchmark
                 slotBuffer[0] = (byte)b;
                 slotBuffer[1] = (byte)s;
                 slotBuffer[2] = (byte)c;
-                content.Storages[(contract, slot)] = new SlotValue(slotBuffer);
+                content.Storages[(contract, slot)] = new SlotValue(new UInt256(slotBuffer, isBigEndian: true));
             }
 
             for (int n = 0; n < StorageNodesPerContract; n++)

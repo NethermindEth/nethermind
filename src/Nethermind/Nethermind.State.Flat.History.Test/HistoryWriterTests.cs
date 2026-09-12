@@ -1607,11 +1607,11 @@ public class HistoryWriterTests
     private static byte[] EncodedSlot(ReadOnlySpan<byte> rawSlotBytes)
     {
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = BaseFlatPersistence.EncodeSlotValue(new SlotValue(rawSlotBytes), RlpWrapSlots, buffer);
+        int written = BaseFlatPersistence.EncodeSlotValue(new SlotValue(new UInt256(rawSlotBytes, isBigEndian: true) << ((32 - rawSlotBytes.Length) * 8)), RlpWrapSlots, buffer);
         return buffer[..written].ToArray();
     }
 
-    private static SlotValue Slot(params byte[] bytes) => new(bytes);
+    private static SlotValue Slot(params byte[] bytes) => new(new UInt256(bytes, isBigEndian: true) << ((32 - bytes.Length) * 8));
 
     private static SlotValue HistorySlot(params byte[] bytes) => SlotValue.FromSpanWithoutLeadingZero(bytes);
 

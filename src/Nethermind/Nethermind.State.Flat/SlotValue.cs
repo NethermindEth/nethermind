@@ -8,20 +8,10 @@ namespace Nethermind.State.Flat;
 
 /// <summary>A numeric storage slot held without a separate byte array.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 32)]
-public readonly struct SlotValue
+public readonly struct SlotValue(in UInt256 value)
 {
-    public readonly UInt256 Value;
+    public readonly UInt256 Value = value;
     public const int ByteCount = 32;
-
-    public SlotValue(in UInt256 value) => Value = value;
-
-    /// <summary>Reads big-endian bytes, padding a short input on the right.</summary>
-    public SlotValue(ReadOnlySpan<byte> data)
-    {
-        if (data.Length > ByteCount) ThrowInvalidLength();
-        Value = new UInt256(data, isBigEndian: true);
-        if (data.Length is > 0 and < ByteCount) Value <<= (ByteCount - data.Length) * 8;
-    }
 
     private static void ThrowInvalidLength() => throw new ArgumentException("Slot value cannot exceed 32 bytes", "data");
 

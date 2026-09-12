@@ -37,23 +37,6 @@ public class SlotValueTests
     }
 
     [Test]
-    public void Test_Ctor_AcceptsLengthsUpTo32([Values(0, 1, 16, 31, 32)] int length)
-    {
-        byte[] data = IncrementingBytes(length);
-
-        SlotValue value = new(data);
-        ReadOnlySpan<byte> bytes = value.Value.ToBigEndian().AsSpan();
-
-        Assert.That(bytes.Length, Is.EqualTo(32));
-        for (int i = 0; i < length; i++) Assert.That(bytes[i], Is.EqualTo(data[i]));
-        for (int i = length; i < 32; i++) Assert.That(bytes[i], Is.EqualTo(0));
-    }
-
-    [Test]
-    public void Test_Ctor_ThrowsOnOversizedInput() =>
-        Assert.That(() => new SlotValue(new byte[33]), Throws.ArgumentException);
-
-    [Test]
     public void Test_FromSpanWithoutLeadingZero_ThrowsOnOversizedInput([Values(33, 64)] int length) =>
         Assert.That(() => SlotValue.FromSpanWithoutLeadingZero(new byte[length]), Throws.ArgumentException);
 
