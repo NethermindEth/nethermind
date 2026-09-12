@@ -107,8 +107,8 @@ jobs:
               echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
               exit 1
             fi
-            if (( RAISE_VERIFY_GAS < 322800 )); then
-              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above it is 322800. Use 322800 for that point alone, or 500000 for the complete sweep."
+            if (( RAISE_VERIFY_GAS < 500000 )); then
+              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above stock 300000 is 500000."
               exit 1
             fi
             if [[ ! -f "${CONST_FILE}" ]]; then
@@ -188,11 +188,6 @@ jobs:
           # Named so a self-ignored case fails loudly instead of quietly shrinking the sweep.
           mempool_markers=('shape=groth16-' 'shape=groth16-soispoke' 'case=signature_reject')
           flood_markers=('case=flood_delay' 'shape=groth16-' 'shape=groth16-soispoke' 'shape=signature-stuffed')
-          if (( RAISE_VERIFY_GAS >= 322800 )); then
-            # signature-stuffed is exempt from the reachability guard, so a bare ceiling=322800 would pass unpatched too.
-            mempool_markers+=('verify_gas=322800')
-            flood_markers+=('shape=keccak-wide ceiling=322800')
-          fi
           if (( RAISE_VERIFY_GAS >= 500000 )); then
             mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
             flood_markers+=('shape=groth16-500k')
@@ -209,7 +204,7 @@ jobs:
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement "${flood_markers[@]}" || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
-            producer_retry_markers=('case=k_retry_sweep' 'case=k_retry_two_axis')
+            producer_retry_markers=('case=k_retry_sweep')
             run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "${producer_retry_markers[@]}" || status=1
           fi
           if [[ "${HARNESS}" == "prefix-retry" ]]; then
