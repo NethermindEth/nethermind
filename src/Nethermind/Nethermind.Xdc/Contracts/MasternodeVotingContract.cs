@@ -153,31 +153,6 @@ internal class MasternodeVotingContract(
     }
 
     /// <summary>
-    /// Optimization to get candidates directly from storage without going through EVM call
-    /// </summary>
-    /// <param name="header"></param>
-    /// <returns></returns>
-    public Address[] GetCandidatesFromState(BlockHeader header)
-    {
-        CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
-        Span<byte> input = [(byte)variableSlot];
-        UInt256 slot = new(Keccak.Compute(input).Bytes);
-        using IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
-        IWorldState worldState = source.WorldState;
-        worldState.Get(new StorageCell(ContractAddress, slot), out UInt256 length);
-        Address[] candidates = new Address[(ulong)length];
-        for (int i = 0; i < length; i++)
-        {
-            UInt256 key = CalculateArrayKey(slot, (ulong)i, 1);
-            candidates[i] = ReadAddress(worldState, key);
-        }
-        return candidates;
-    }
-
-    private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size) => slot + new UInt256(index * size);
-
-    /// <summary>
     /// Returns an array of masternode candidates sorted by stake
     /// </summary>
     /// <param name="blockHeader"></param>

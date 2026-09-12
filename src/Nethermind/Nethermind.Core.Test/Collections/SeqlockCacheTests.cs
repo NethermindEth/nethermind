@@ -31,6 +31,38 @@ public class SeqlockCacheTests
         public readonly bool Equals(in SameHashKey other) => Id == other.Id;
     }
 
+    private readonly struct InterleavedValue(UInt256 value) : IEquatable<InterleavedValue>
+    {
+        public static Action? OnEquals;
+        private readonly UInt256 _value = value;
+
+        public bool Equals(InterleavedValue other)
+        {
+            Action? callback = OnEquals;
+            OnEquals = null;
+            callback?.Invoke();
+            return _value == other._value;
+        }
+    }
+
+    [Test]
+    public void TrySetExclusive_rechecks_header_after_value_comparison()
+    {
+        SeqlockCache<ZeroHashKey, InterleavedValue> cache = new(1);
+        ZeroHashKey key = new(1);
+        InterleavedValue original = new(UInt256.One);
+        cache.Set(in key, original);
+        InterleavedValue.OnEquals = () => cache.Set(in key, new InterleavedValue(UInt256.MaxValue));
+        try
+        {
+            Assert.That(cache.TrySetExclusive(in key, original), Is.False);
+        }
+        finally
+        {
+            InterleavedValue.OnEquals = null;
+        }
+    }
+
     private static StorageCell CreateKey(int seed)
     {
         byte[] addressBytes = new byte[20];

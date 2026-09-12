@@ -29,10 +29,10 @@ namespace Nethermind.State;
 /// production storage (i.e. backed directly by RocksDB or equivalent) so the persisted-code
 /// hint cache used by <c>StateProvider.InsertCode</c> can short-circuit redundant writes
 /// of popular contract bytecode (factory contracts etc.).
-/// Leaving it <c>false</c> for transient overlays is mandatory â€” otherwise the hint cache
+/// Leaving it <c>false</c> for transient overlays is mandatory — otherwise the hint cache
 /// would remember writes that get discarded with the overlay, and a subsequent scope on
 /// the same StateProvider would skip re-inserting the bytes, throwing
-/// "Code 0xâ€¦ is missing from the database" on the next read.
+/// "Code 0x… is missing from the database" on the next read.
 /// </param>
 public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = false) : IWorldStateScopeProvider
 {
@@ -61,7 +61,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
-        // Tracked HintBal background task â€” StartWriteBatch / Dispose cancel and drain it.
+        // Tracked HintBal background task — StartWriteBatch / Dispose cancel and drain it.
         private CancellationTokenSource? _hintBalCts;
         private Task? _hintBalTask;
 
@@ -140,7 +140,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             return _hintBalTask = Task.Run(() =>
             {
                 // PatriciaTree.Get mutates shared TrieNode children in place as it resolves them,
-                // so each Parallel.For iteration must own its StateTree / StorageTree â€” slots per
+                // so each Parallel.For iteration must own its StateTree / StorageTree — slots per
                 // account are read sequentially on the worker that owns it.
                 ParallelOptions parallelOptions = new() { CancellationToken = token };
                 try
@@ -190,7 +190,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 ReadOnlySpan<UInt256> reads = ac.StorageReads;
                 if (changed.Length + reads.Length == 0) return;
 
-                // Sorted-merge walk over (ChangedSlots, StorageReads) â€” both arrays are
+                // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
                 // ascending and disjoint, so one merged pass keeps adjacent trie paths
                 // hot across consecutive Get calls.
                 StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
@@ -445,7 +445,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = false) : IWorldStateScopeProvider.ICodeDb
     {
         // Persisted-code hint cache. Non-null only for durable codeDbs (production).
-        // Overlay codeDbs leave this null â€” overlay writes are not durable and must never
+        // Overlay codeDbs leave this null — overlay writes are not durable and must never
         // populate a hint that survives the overlay's reset.
         // Capacity 1_024: 4x the per-block filter (256) to cover hot factory-deployed
         // bytecode across multiple recent blocks. False negatives just cause a redundant

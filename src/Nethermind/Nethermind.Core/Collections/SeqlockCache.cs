@@ -95,12 +95,7 @@ public sealed class SeqlockCache<TKey, TValue>
     private readonly Entry[] _entries;
 
     /// <summary>
-    /// Current epoch counter (unshifted, informational / debugging).
-    /// </summary>
-    private long _epoch;
-
-    /// <summary>
-    /// Pre-shifted epoch tag: (_epoch &lt;&lt; EpochShift) &amp; EpochMask.
+    /// Pre-shifted epoch tag, or an unmatchable sentinel after epoch exhaustion.
     /// Readers use this directly to avoid shift/mask in the hot path.
     /// </summary>
     private long _shiftedEpoch;
@@ -122,7 +117,6 @@ public sealed class SeqlockCache<TKey, TValue>
         _sets = 1 << setsBits;
         _setMask = _sets - 1;
         _entries = new Entry[_sets << 1]; // sets * 2 ways
-        _epoch = 0;
         _shiftedEpoch = 0;
     }
 
@@ -412,7 +406,10 @@ public sealed class SeqlockCache<TKey, TValue>
         bool inWay1 = (h1 & TagMask) == tagToStore && e1.Key.Equals(in key);
         if (inWay0 || inWay1)
         {
-            if ((!inWay0 || SameValue(in e0.Value, in value)) && (!inWay1 || SameValue(in e1.Value, in value))) return true;
+            bool sameValue = (!inWay0 || SameValue(in e0.Value, in value)) && (!inWay1 || SameValue(in e1.Value, in value));
+            Volatile.ReadBarrier();
+            if (h0 != Volatile.Read(ref e0.HashEpochSeqLock) || h1 != Volatile.Read(ref e1.HashEpochSeqLock)) return false;
+            if (sameValue) return true;
             if (inWay0 && !WriteEntry(ref e0, h0, in key, value, tagToStore, keyMatches: true)) return false;
             return !inWay1 || WriteEntry(ref e1, h1, in key, value, tagToStore, keyMatches: true);
         }
@@ -481,7 +478,6 @@ public sealed class SeqlockCache<TKey, TValue>
             long prev = Interlocked.CompareExchange(ref _shiftedEpoch, newShifted, oldShifted);
             if (prev == oldShifted)
             {
-                Volatile.Write(ref _epoch, newEpoch);
                 return;
             }
 
