@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Config;
@@ -63,6 +65,19 @@ public class BalApplyCreationProfileTests
     {
         (IWorldStateScopeProvider scopeProvider, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
         using IContainer _ = container;
+        Db.IDbProvider dbProvider = container.Resolve<Db.IDbProvider>();
+        List<(string Name, Db.MemDb Db)> dbs = [];
+        foreach (string name in (string[])[Db.DbNames.State, Db.DbNames.Code])
+        {
+            if (dbProvider.GetDb<Db.IDb>(name) is Db.MemDb memDb) dbs.Add((name, memDb));
+        }
+
+        Db.IColumnsDb<Nethermind.State.Flat.FlatDbColumns> flat =
+            dbProvider.GetColumnDb<Nethermind.State.Flat.FlatDbColumns>(Db.DbNames.Flat);
+        foreach (Nethermind.State.Flat.FlatDbColumns column in Enum.GetValues<Nethermind.State.Flat.FlatDbColumns>())
+        {
+            if (flat.GetColumnDb(column) is Db.MemDb columnDb) dbs.Add(($"flat.{column}", columnDb));
+        }
         CountingLogger counter = new();
         scopeProvider = new WorldStateScopeOperationLogger(scopeProvider, new OneLoggerLogManager(new ILogger(counter)));
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
@@ -108,9 +123,10 @@ public class BalApplyCreationProfileTests
             long reads = Interlocked.Read(ref counter.AccountReads) - readsBefore;
             if (round >= 0)
             {
+                string perDb = string.Join(" ", dbs.Select(d => $"{d.Name}={d.Db.ReadsCount}r/{d.Db.WritesCount}w"));
                 System.IO.File.AppendAllText(
                     System.IO.Path.Combine(System.IO.Path.GetTempPath(), "bal-apply-profile.txt"),
-                    $"APPLY {(bulk ? "bulk" : "journal")} round {round}: {sw.Elapsed.TotalMilliseconds:F1} ms accountReads={reads} root={worldState.StateRoot}{Environment.NewLine}");
+                    $"APPLY {(bulk ? "bulk" : "journal")} round {round}: {sw.Elapsed.TotalMilliseconds:F1} ms accountReads={reads} {perDb} root={worldState.StateRoot}{Environment.NewLine}");
             }
 
             worldState.Reset();

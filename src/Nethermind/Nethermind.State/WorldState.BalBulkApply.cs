@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -41,6 +43,7 @@ public sealed partial class WorldState : IBalBulkWorldState
         using ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch Batch, ReadOnlyAccountChanges Changes)> storageBatches = new(bal.ItemCount);
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(bal.ItemCount);
         using IWorldStateScopeProvider.ICodeSetter codeSetter = scope.CodeDb.BeginCodeWrite();
+        HashSet<ValueHash256>? insertedCode = null;
 
         // Storage-root fixups fired at the batch's dispose must land in the change tracking
         // too, so any later read through the journal sees the reconciled account.
@@ -69,7 +72,13 @@ public sealed partial class WorldState : IBalBulkWorldState
             if (accountChanges.CodeChanges.Length > 0)
             {
                 CodeChange codeChange = accountChanges.CodeChanges[^1];
-                if (codeChange.Code is { Length: > 0 })
+                // Mirror the journaled InsertCode dedupe: factory deployments repeat one blob across many
+                // accounts, and re-persisting it per deployment is pure write amplification on create-heavy
+                // blocks. ContainsCode is a persistence hint (defaults to false), so the block-local set does
+                // the deduplication even when the backend cannot.
+                if (codeChange.Code is { Length: > 0 }
+                    && !scope.CodeDb.ContainsCode(codeChange.CodeHash)
+                    && (insertedCode ??= []).Add(codeChange.CodeHash))
                 {
                     codeSetter.Set(codeChange.CodeHash, codeChange.Code);
                 }
