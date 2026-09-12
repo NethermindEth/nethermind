@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
+using NLog.Targets.Wrappers;
 using Level = NLog.LogLevel;
 
 namespace Nethermind.Logging.NLog;
@@ -18,6 +19,7 @@ public class NLogManager : ILogManager, IDisposable
 {
     private const string DefaultFileTargetName = "file-async_wrapped";
     private const string DefaultFolder = "logs";
+    private const string SeqTargetName = "seq";
 
     /// <summary>
     /// The constructor to use when the configuration is not yet initialized.
@@ -90,6 +92,11 @@ public class NLogManager : ILogManager, IDisposable
             lock (configurationLoggingRules)
             {
                 Target[] targets = GetTargets(configurationLoggingRules);
+                if (targets.Length == 0)
+                {
+                    return;
+                }
+
                 IEnumerable<LoggingRule> loggingRules = ParseRules(logRules, targets);
                 foreach (LoggingRule loggingRule in loggingRules)
                 {
@@ -100,15 +107,30 @@ public class NLogManager : ILogManager, IDisposable
         }
     }
 
+    /// <remarks>
+    /// Excludes anything that reaches the seq target: its floor is <c>Seq.MinLevel</c>, which the runner's
+    /// <c>NLogConfigurator</c> applies only to a catch-all ("*") rule whose target is named <c>seq</c> so that
+    /// <c>NLog.config</c> can still opt a single namespace into seq with an explicit <c>writeTo="seq"</c> rule
+    /// (#4835). A rule synthesised from <c>Init.LogRules</c> that fanned out to seq would bypass that floor
+    /// (#6911), and removing a seq-writing rule as "overridden" would leave seq with no rule at all.
+    /// </remarks>
     private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
-        configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
+        configurationLoggingRules.SelectMany(static r => r.Targets).Where(static t => !WritesToSeq(t)).Distinct().ToArray();
 
+    /// <remarks>
+    /// Never removes a rule that writes to seq, for the same reason <see cref="GetTargets"/> excludes it from
+    /// the targets a synthesised rule can use — dropping it as "overridden" would leave seq with no rule at all.
+    /// A surviving rule keeps its own levels and targets, so <c>Init.LogRules</c> cannot raise or lower a
+    /// namespace that <c>NLog.config</c> already routes to seq, directly or through a group such as <c>all</c>,
+    /// and a <c>final="true"</c> rule of that shape suppresses the synthesised rule entirely. That matches the
+    /// node's behaviour with no <c>Init.LogRules</c> set: for those namespaces the config file is authoritative.
+    /// </remarks>
     private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
     {
         string regexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
         for (int j = 0; j < configurationLoggingRules.Count;)
         {
-            if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern))
+            if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern) && !configurationLoggingRules[j].Targets.Any(WritesToSeq))
             {
                 configurationLoggingRules.RemoveAt(j);
             }
@@ -118,6 +140,14 @@ public class NLogManager : ILogManager, IDisposable
             }
         }
     }
+
+    private static bool WritesToSeq(Target target) =>
+        target.Name == SeqTargetName || target switch
+        {
+            WrapperTargetBase wrapper => wrapper.WrappedTarget is not null && WritesToSeq(wrapper.WrappedTarget),
+            CompoundTargetBase compound => compound.Targets.Any(WritesToSeq),
+            _ => false
+        };
 
     private static IEnumerable<LoggingRule> ParseRules(string logRules, Target[] targets)
     {
