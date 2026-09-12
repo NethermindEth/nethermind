@@ -95,6 +95,14 @@ run:
 
 build-run: build run
 
+# Step count and the prover cost model for one input. Both are exact - the emulator is
+# deterministic - so a single run is the measurement, with no warm-up or repetition.
+stats:
+	docker run --rm -e RUST_BACKTRACE=full \
+		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
+		$(ZISK_IMAGE) \
+		ziskemu -e /n/nethermind -i /n/$(INPUT) -X --no-thousands-sep
+
 clean:
 	rm -rf \
 		$(GUEST_DIR)/bin/** \
@@ -109,4 +117,5 @@ clean:
 	build-run \
 	dotnet-build \
 	run \
+	stats \
 	clean
