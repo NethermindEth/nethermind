@@ -246,6 +246,33 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address PrecompileCallCallerAddress = new("0x00000000000000000000000000000000000000fa");
+
+    /// <summary>STATICCALL to the identity precompile with no input.</summary>
+    /// <remarks>STATICCALL to a precompile takes the inline path, which runs the callee without building a
+    /// frame or suspending to the outer dispatch loop. Against <see cref="StaticCall_SameAddress"/> that
+    /// isolates what the frame round trip costs.</remarks>
+    private static readonly byte[] StaticCallPrecompileCode = BuildStaticCallPrecompileCode();
+
+    private static byte[] BuildStaticCallPrecompileCode()
+    {
+        Address identity = new("0x0000000000000000000000000000000000000004");
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CallsPerCall; i++)
+        {
+            code = code
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(identity)
+                .PushData(1000)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -296,6 +323,7 @@ public class BlockProcessingBenchmark
     private Block _extCodeHashBlock = null!;
     private Block _staticCallBlock = null!;
     private Block _staticCallEoaBlock = null!;
+    private Block _staticCallPrecompileBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -335,6 +363,7 @@ public class BlockProcessingBenchmark
         _extCodeHashBlock = BuildBlock(BuildCallsTo(ExtCodeHashCallerAddress, 10, 0));
         _staticCallBlock = BuildBlock(BuildCallsTo(CallCallerAddress, 10, 0));
         _staticCallEoaBlock = BuildBlock(BuildCallsTo(EoaCallCallerAddress, 10, 0));
+        _staticCallPrecompileBlock = BuildBlock(BuildCallsTo(PrecompileCallCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -393,6 +422,9 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(PrecompileCallCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(PrecompileCallCallerAddress, StaticCallPrecompileCode, Spec);
 
             stateProvider.CreateAccount(EoaTargetAddress, UInt256.One);
             stateProvider.CreateAccount(EoaCallCallerAddress, UInt256.Zero);
@@ -602,6 +634,16 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_staticCallEoaBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] StaticCall_ToPrecompile()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_staticCallPrecompileBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
