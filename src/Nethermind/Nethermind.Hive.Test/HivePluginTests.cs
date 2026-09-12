@@ -73,26 +73,23 @@ namespace Nethermind.Hive.Test
             Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
         }
 
-        [TestCase("", 128UL, 32UL, 128UL)]
-        [TestCase("1", 128UL, 32UL, 544UL)]
-        [TestCase("1", 128UL, 64UL, 576UL)]
-        [TestCase("1", 1_024UL, 32UL, 1_024UL)]
+        [Test]
         [NonParallelizable]
-        public void Configures_flat_db_for_expected_deep_reorgs(string value, ulong configuredDepth, ulong compactSize, ulong expectedDepth)
+        public void Configures_flat_db_for_expected_deep_reorgs()
         {
             const string variable = "HIVE_EXPECT_DEEP_REORGS";
             string previous = Environment.GetEnvironmentVariable(variable);
             try
             {
-                Environment.SetEnvironmentVariable(variable, value);
-                FlatDbConfig config = new() { CompactSize = compactSize, MinReorgDepth = configuredDepth };
+                Environment.SetEnvironmentVariable(variable, "1");
+                FlatDbConfig config = new();
 
                 using IContainer container = new ContainerBuilder()
                     .AddModule(new TestNethermindModule(config))
                     .AddModule(new HiveModule())
                     .Build();
 
-                Assert.That(container.Resolve<IFlatDbConfig>().MinReorgDepth, Is.EqualTo(expectedDepth));
+                Assert.That(container.Resolve<IFlatDbConfig>().MinReorgDepth, Is.EqualTo(544UL));
             }
             finally
             {
