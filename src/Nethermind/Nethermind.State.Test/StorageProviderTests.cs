@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
@@ -182,10 +183,14 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
+        Snapshot[] snapshots = new Snapshot[4];
+        snapshots[0] = provider.TakeSnapshot();
+        for (int i = 1; i < snapshots.Length; i++)
+        {
+            provider.Set(new StorageCell(ctx.Address1, 1), _values[i]);
+            snapshots[i] = provider.TakeSnapshot();
+        }
+        provider.Restore(snapshots[snapshot + 1]);
 
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
     }
@@ -302,19 +307,23 @@ public class StorageProviderTests(bool useFlat)
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
+        Snapshot initial = provider.TakeSnapshot();
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        Snapshot first = provider.TakeSnapshot();
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        Snapshot second = provider.TakeSnapshot();
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
+        Snapshot third = provider.TakeSnapshot();
+        provider.Restore(third);
+        provider.Restore(second);
+        provider.Restore(first);
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
         provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
         provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, 2, Snapshot.EmptyPosition);
-        provider.Restore(Snapshot.EmptyPosition, 1, Snapshot.EmptyPosition);
-        provider.Restore(Snapshot.EmptyPosition, 0, Snapshot.EmptyPosition);
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
+        provider.Restore(initial);
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
         provider.Get(new StorageCell(ctx.Address1, 1));
@@ -491,6 +500,19 @@ public class StorageProviderTests(bool useFlat)
     /// Commit will reset transient state
     /// </summary>
     [Test]
+    public void Commit_resets_transient_state()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+
+        provider.Commit(Frontier.Instance);
+        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+    }
+
+    [Test]
     public void Transient_span_writes_copy_values_and_skip_unchanged_values([Values(0, 1, 255)] byte value, [Values] bool traced)
     {
         using Context ctx = new(useFlat);
@@ -541,44 +563,85 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Transient_writes_coalesce_between_snapshots([Values] bool revertChild)
+    public void Writes_coalesce_between_snapshots([Values] bool revertChild, [Values] bool transient)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 1);
+        void Set(byte[] value)
+        {
+            if (transient) provider.SetTransientState(cell, value);
+            else provider.Set(cell, value);
+        }
+        byte[] Get() => (transient ? provider.GetTransientState(cell) : provider.Get(cell)).ToArray();
+        int Position(Snapshot snapshot) => transient ? snapshot.StorageSnapshot.TransientStorageSnapshot : snapshot.StorageSnapshot.PersistentStorageSnapshot;
         Snapshot initial = provider.TakeSnapshot();
-        for (int i = 1; i <= 4; i++) provider.SetTransientState(cell, _values[i]);
+        for (int i = 1; i <= 4; i++) Set(_values[i]);
         Snapshot parent = provider.TakeSnapshot();
-        Assert.That(parent.StorageSnapshot.TransientStorageSnapshot, Is.EqualTo(initial.StorageSnapshot.TransientStorageSnapshot + 1));
+        Assert.That(Position(parent), Is.EqualTo(Position(initial) + 1));
 
-        for (int i = 5; i <= 8; i++) provider.SetTransientState(cell, _values[i]);
+        for (int i = 5; i <= 8; i++) Set(_values[i]);
         Snapshot child = provider.TakeSnapshot();
-        Assert.That(child.StorageSnapshot.TransientStorageSnapshot, Is.EqualTo(parent.StorageSnapshot.TransientStorageSnapshot + 1));
+        Assert.That(Position(child), Is.EqualTo(Position(parent) + 1));
         if (revertChild)
         {
             provider.Restore(parent);
-            Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[4]));
+            Assert.That(Get(), Is.EqualTo(_values[4]));
         }
 
-        for (int i = 9; i <= 12; i++) provider.SetTransientState(cell, _values[i]);
-        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[12]));
+        for (int i = 9; i <= 12; i++) Set(_values[i]);
+        Assert.That(Get(), Is.EqualTo(_values[12]));
         provider.Restore(parent);
-        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[4]));
+        Assert.That(Get(), Is.EqualTo(_values[4]));
         provider.Restore(initial);
-        Assert.That(provider.GetTransientState(cell).IsZero(), Is.True);
+        Assert.That(Get().IsZero(), Is.True);
     }
 
-    [Test]
-    public void Commit_resets_transient_state()
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Journal_matches_snapshot_model(bool transient, bool span)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
+        StorageCell[] cells = [new(ctx.Address1, 1), new(ctx.Address1, 2), new(ctx.Address2, 1)];
+        byte[] values = new byte[cells.Length];
+        Span<byte> buffer = stackalloc byte[32];
+        buffer.Clear();
+        List<(Snapshot Snapshot, byte[] Values)> snapshots = [(provider.TakeSnapshot(), (byte[])values.Clone())];
+        Random random = new(1153);
+        for (int step = 0; step < 2048; step++)
+        {
+            switch (random.Next(5))
+            {
+                case 0:
+                    snapshots.Add((provider.TakeSnapshot(), (byte[])values.Clone()));
+                    break;
+                case 1:
+                    int index = random.Next(snapshots.Count);
+                    provider.Restore(snapshots[index].Snapshot);
+                    values = (byte[])snapshots[index].Values.Clone();
+                    snapshots.RemoveRange(index + 1, snapshots.Count - index - 1);
+                    break;
+                default:
+                    int slot = random.Next(cells.Length);
+                    values[slot] = (byte)random.Next(_values.Length);
+                    if (span)
+                    {
+                        buffer[^1] = values[slot];
+                        provider.SetTransientState(cells[slot], buffer);
+                    }
+                    else if (transient) provider.SetTransientState(cells[slot], _values[values[slot]]);
+                    else provider.Set(cells[slot], _values[values[slot]]);
+                    break;
+            }
 
-        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
-
-        provider.Commit(Frontier.Instance);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+            for (int slot = 0; slot < cells.Length; slot++)
+            {
+                ReadOnlySpan<byte> actual = transient ? provider.GetTransientState(cells[slot]) : provider.Get(cells[slot]);
+                Assert.That(new UInt256(actual, isBigEndian: true), Is.EqualTo((UInt256)values[slot]), $"Step {step}, slot {slot}");
+            }
+        }
     }
 
     /// <summary>

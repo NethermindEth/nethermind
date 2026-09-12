@@ -17,7 +17,7 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase(ILogManager logManager, bool coalesceUpdates = false)
+    internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
@@ -205,7 +205,7 @@ namespace Nethermind.State
         {
             int prevIdx = exists ? head.CurrentIdx : -1;
 
-            if (coalesceUpdates && prevIdx > _protectedPosition)
+            if (prevIdx > _protectedPosition)
             {
                 // No snapshot can observe the intermediate value of this entry.
                 CollectionsMarshal.AsSpan(_changes)[prevIdx].Value = value;

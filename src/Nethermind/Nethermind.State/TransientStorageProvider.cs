@@ -15,7 +15,7 @@ namespace Nethermind.State
     /// EIP-1153 provides a transient store for contracts that doesn't persist
     /// storage across calls. Reverts will rollback any transient state changes.
     /// </summary>
-    internal sealed class TransientStorageProvider(ILogManager logManager) : PartialStorageProviderBase(logManager, coalesceUpdates: true)
+    internal sealed class TransientStorageProvider(ILogManager logManager) : PartialStorageProviderBase(logManager)
     {
 
         /// <summary>Copies a changed transient value into the journal.</summary>
