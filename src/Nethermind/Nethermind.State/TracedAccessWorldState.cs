@@ -84,21 +84,31 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
-        AccountChangesAtIndex accountChanges;
         if (_lastReadStorageChanges is { } cached && _lastReadStorageCell.Equals(storageCell))
         {
-            // Already recorded this exact cell; reuse its entry and skip the read-recording.
-            accountChanges = cached;
+            GetInternal(cached, in storageCell, out value);
+            return;
         }
-        else
+
+        GetStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetStorageSlow(in StorageCell storageCell, out UInt256 value)
+    {
+        bool covered = ReadCoverage?.TryMark(storageCell) == true;
+        AccountChangesAtIndex accountChanges = GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address);
+        bool hasChange = accountChanges.StorageChanges.TryGetValue(storageCell.Index, out StorageChange change);
+        if (!covered && !hasChange) accountChanges.AddStorageRead(in storageCell.Index);
+        _lastReadStorageCell = storageCell;
+        _lastReadStorageChanges = accountChanges;
+
+        if (parallel && hasChange)
         {
-            accountChanges = ReadCoverage?.TryMark(storageCell) == true
-                ? GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address)
-                : GeneratingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
-            _lastReadStorageCell = storageCell;
-            _lastReadStorageChanges = accountChanges;
+            value = change.Value;
+            return;
         }
-        GetInternal(accountChanges, in storageCell, out value);
+        base.Get(in storageCell, out value);
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)

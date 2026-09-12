@@ -230,7 +230,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [Test]
-    public void Set_WithCurrentValue_PreservesOriginalAndRollback([Values(0ul, 1ul, 2ul, ulong.MaxValue)] ulong next)
+    public void Set_WithCurrentValue_PreservesOriginalAndRollback([Values(0ul, 1ul, 2ul, ulong.MaxValue)] ulong next, [Values] bool evictReadCache)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
@@ -244,6 +244,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Get(in cell, out UInt256 currentValue);
             tws.Set(in cell, (UInt256)next, in currentValue);
             tws.GetOriginal(in cell, out UInt256 original);
+            if (evictReadCache) tws.Get(new StorageCell(cell.Address, 2), out _);
             tws.Get(in cell, out UInt256 actual);
             AccountChangesAtIndex changes = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!;
             using (Assert.EnterMultipleScope())
