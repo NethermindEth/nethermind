@@ -38,6 +38,11 @@ namespace Nethermind.Core.Collections;
 ///
 /// Array layout: [way0_set0..way0_setN, way1_set0..way1_setN] (split, not interleaved).
 /// </summary>
+/// <remarks>
+/// Entry sequences wrap after 65,536 writes without clearing the cache. Validation assumes that fewer than
+/// 65,536 publications to the same entry occur between observing its header and rechecking it or acquiring
+/// its write lock. An operation delayed across a full sequence cycle can encounter ABA.
+/// </remarks>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The cached value type; null and default values are allowed.</typeparam>
 public sealed class SeqlockCache<TKey, TValue>
@@ -377,7 +382,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     /// <remarks>
     /// The caller must be the only writer. Any observed lock or lost CAS means another writer is live, and the
-    /// method reports that instead of waiting for it. Sequence exhaustion also reports failure and clears the cache.
+    /// method reports that instead of waiting for it.
     /// </remarks>
     /// <returns>
     /// <see langword="true"/> when every copy of the key now holds <paramref name="value"/>; <see langword="false"/>
@@ -434,13 +439,8 @@ public sealed class SeqlockCache<TKey, TValue>
     {
         if (existing < 0) return false; // locked
 
-        // Never reuse a header in one epoch, or let a delayed writer restore an older epoch.
+        // Do not let a delayed writer restore an older epoch or publish after epoch exhaustion.
         if (!keyMatches && ((existing & EpochMask) > (tagToStore & EpochMask) || (tagToStore & SeqMask) != 0)) return false;
-        if ((existing & SeqMask) == SeqMask && (keyMatches || (existing & EpochMask) == (tagToStore & EpochMask)))
-        {
-            Clear();
-            return false;
-        }
 
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
         long lockedHeader = tagToStore | newSeq | LockMarker;
@@ -450,7 +450,7 @@ public sealed class SeqlockCache<TKey, TValue>
             return false;
         }
 
-        // A matching snapshot and successful CAS prove the stored key is unchanged.
+        // A matching snapshot and successful CAS let the writer retain the stored key.
         if (!keyMatches) entry.Key = key;
         entry.Value = value;
 

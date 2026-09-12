@@ -134,25 +134,37 @@ public class SeqlockCacheTests
     }
 
     [Test]
-    public void Exhausted_sequence_cannot_reuse_a_readers_header([Values] bool exclusive)
+    public void Sequence_wrap_publishes_without_clearing_other_entries([Values] bool exclusive, [Values] bool replaceKey)
     {
         SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
         ZeroHashKey key = new(1);
+        ZeroHashKey otherKey = new(2);
         cache.Set(in key, UInt256.One);
+        UInt256 otherValue = new(1, 2, 3, 4);
+        cache.Set(in otherKey, in otherValue);
         Array entries = Entries(cache);
-        long initialHeader = EntryHeader(entries, 0);
-        object entry = entries.GetValue(0)!;
+        int entryIndex = replaceKey ? 2 : 0;
+        long initialHeader = EntryHeader(entries, entryIndex);
+        object entry = entries.GetValue(entryIndex)!;
         entry.GetType().GetField("HashEpochSeqLock")!.SetValue(entry, initialHeader | 0x1FFFEL);
-        entries.SetValue(entry, 0);
+        entries.SetValue(entry, entryIndex);
 
-        if (exclusive) Assert.That(cache.TrySetExclusive(in key, UInt256.MaxValue), Is.False);
+        if (replaceKey)
+        {
+            otherKey = key;
+            otherValue = UInt256.One;
+            key = new(3);
+        }
+        if (exclusive) Assert.That(cache.TrySetExclusive(in key, UInt256.MaxValue), Is.True);
         else cache.Set(in key, UInt256.MaxValue);
-        Assert.That(cache.TryGetValue(in key, out _), Is.False);
-        cache.Set(in key, UInt256.MaxValue);
-        cache.Set(in key, UInt256.One);
-        Assert.That(EntryHeader(entries, 0), Is.Not.EqualTo(initialHeader));
-        Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
-        Assert.That(actual, Is.EqualTo(UInt256.One));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EntryHeader(entries, entryIndex), Is.EqualTo(initialHeader & ~0x1FFFEL));
+            Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(UInt256.MaxValue));
+            Assert.That(cache.TryGetValue(in otherKey, out UInt256 otherActual), Is.True);
+            Assert.That(otherActual, Is.EqualTo(otherValue));
+        }
     }
 
     [Test]
