@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
@@ -25,11 +26,11 @@ namespace Nethermind.State
     /// journal entries — every change is a plain overwrite, so an undo log of the previous word is enough
     /// to restore any snapshot.
     /// </remarks>
-    internal sealed class TransientStorageProvider(ILogManager? logManager)
+    internal sealed class TransientStorageProvider(ILogManager logManager)
     {
         private readonly Dictionary<StorageCell, Entry> _values = [];
         private readonly List<Undo> _undo = new(Resettable.StartCapacity);
-        private readonly ILogger _logger = logManager?.GetClassLogger<TransientStorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger = logManager.GetClassLogger<TransientStorageProvider>();
 
         /// <summary>A stored value: the word plus how many bytes of it were written.</summary>
         /// <remarks>The length is kept so a read returns exactly the bytes that were stored. Callers other
@@ -65,12 +66,24 @@ namespace Nethermind.State
 
         public void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
         {
-            Debug.Assert(newValue.Length <= ValueHash256.MemorySize);
+            // Reachable from plugins through IWorldState, so fail with an actionable message rather than
+            // truncating the length byte in release.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(newValue.Length, ValueHash256.MemorySize);
 
-            Entry entry = default;
+            Unsafe.SkipInit(out Entry entry);
             entry.Length = (byte)newValue.Length;
-            // Right-aligned, so the stored bytes read back unchanged and a full word needs no shifting.
-            newValue.CopyTo(entry.Value.BytesAsSpan[(ValueHash256.MemorySize - newValue.Length)..]);
+            if (newValue.Length == ValueHash256.MemorySize)
+            {
+                // TSTORE always pops a full word, so the hot path skips the zero-fill entirely.
+                newValue.CopyTo(entry.Value.BytesAsSpan);
+            }
+            else
+            {
+                entry.Value = default;
+                // Right-aligned, so the stored bytes read back unchanged.
+                newValue.CopyTo(entry.Value.BytesAsSpan[(ValueHash256.MemorySize - newValue.Length)..]);
+            }
+
             Set(in storageCell, in entry);
         }
 
@@ -143,32 +156,23 @@ namespace Nethermind.State
         public void Reset(bool resetBlockChanges = true)
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
-            _values.Clear();
+            _values.ClearAndTrim();
             _undo.Clear();
         }
 
         /// <summary>Zeroes every cell of the address, revertibly.</summary>
-        /// <remarks>Collects first rather than writing while enumerating, since a write can grow the table.</remarks>
+        /// <remarks><see cref="Dictionary{TKey,TValue}"/> supports removal during enumeration, and removal
+        /// cannot grow the table, so the zero-write is inlined rather than collected first.</remarks>
         public void ClearStorage(Address address)
         {
-            List<StorageCell>? toClear = null;
-            foreach (StorageCell cell in _values.Keys)
+            foreach (KeyValuePair<StorageCell, Entry> cell in _values)
             {
-                if (cell.Address == address)
+                if (cell.Key.Address == address)
                 {
-                    (toClear ??= []).Add(cell);
+                    _undo.Add(new Undo(cell.Key, cell.Value, existed: true));
+                    _values.Remove(cell.Key);
                 }
             }
-
-            if (toClear is null) return;
-
-            foreach (StorageCell cell in toClear)
-            {
-                Set(in cell, in ZeroEntry);
-            }
         }
-
-        /// <summary>Matches the single zero byte an unwritten cell reads as.</summary>
-        private static readonly Entry ZeroEntry = new() { Value = default, Length = 1 };
     }
 }

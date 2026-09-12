@@ -100,7 +100,6 @@ public static partial class EvmInstructions
         // Pop the 32-byte value from the stack.
         if (!stack.PopWord256(out Span<byte> bytes)) goto StackUnderflow;
 
-        // Store either the actual value (if non-zero) or a predefined zero constant.
         vm.WorldState.SetTransientState(in storageCell, bytes);
 
         // If storage tracing is enabled, retrieve the current stored value and log the operation.
