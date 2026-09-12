@@ -1500,12 +1500,12 @@ namespace Nethermind.TxPool
 
             // EIP-8141: a successful insert hands the payer exposure and paymaster slot to the pool,
             // released on Removed. Every other exit, a throw included, must release them here or they leak.
+            TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTransactions : _transactions);
             bool reservationSettled = false;
             try
             {
                 bool eip1559Enabled = headSpec.IsEip1559Enabled;
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-                TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTransactions : _transactions);
 
                 relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
                 tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
@@ -1515,7 +1515,6 @@ namespace Nethermind.TxPool
                 bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
                 // The reservation is now the pool's, or was already released by a self-eviction Removed.
                 reservationSettled = true;
-                state.PaymasterReserved = false;
 
                 if (!inserted)
                 {
@@ -1569,13 +1568,22 @@ namespace Nethermind.TxPool
                 Metrics.BlobTransactionCount = _blobTransactions.Count;
                 return AcceptTxResult.Accepted;
             }
+            catch
+            {
+                // The insert can take the record and then throw — the persistent blob pool writes the body
+                // inside it — and the reservations are then the pooled record's, released on its Removed.
+                reservationSettled |= relevantPool.ContainsKey(tx.Hash!.ValueHash256);
+                throw;
+            }
             finally
             {
                 if (!reservationSettled)
                 {
                     ReleaseFrameTxReservations(tx);
-                    state.PaymasterReserved = false;
                 }
+
+                // Settled either way by here, so the caller's own release must not run again.
+                state.PaymasterReserved = false;
             }
         }
 
