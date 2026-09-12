@@ -86,8 +86,8 @@ public interface IBlocksConfig : IConfig
     bool ParallelBalStateRootShadow { get; set; }
 
     [ConfigItem(
-        Description = "On the parallel Block Level Access List path, apply the BAL's post-block values through the backend's bulk write batch (journal-bypassing, per-account parallel) instead of replaying them through the journaled world-state operations. Experimental Amsterdam/BAL path; disabling falls back to the journaled replay.",
-        DefaultValue = "true",
+        Description = "On the parallel Block Level Access List path, apply the BAL's post-block values through the backend's bulk write batch (journal-bypassing, per-account parallel) instead of replaying them through the journaled world-state operations. Experimental Amsterdam/BAL path, off by default: the 2026-08 state-actor A/B showed it wins on storage-write-heavy blocks (+4.6% sstore) but loses 20-36% on account-creation-heavy ones.",
+        DefaultValue = "false",
         HiddenFromDocs = true)]
     bool ParallelBalBulkApply { get; set; }
 
