@@ -6,11 +6,18 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
-# One image serves every guest: the multi-VM bflat build carries the zisk, sp1
-# and openvm layouts side by side, so all three guests are compiled by the same
-# toolchain and runtime.
-# TODO: pin by digest once this image is published to a registry.
-BFLAT_IMAGE ?= maximmenshikov/bflat-riscv64-multivm2
+# One image serves every guest: the bflat build carries the zisk, sp1 and
+# openvm layouts side by side, so all three guests are compiled by the same
+# toolchain and runtime. Pinned by digest - :latest moves with every CI run.
+#
+# This is the .NET 10 PERF image. The variant is not a preference: the min
+# profile does not carry perf-36 (atomics as plain load/modify/store), so a
+# guest built from it fails the --error-on-atomic gate below with ~240 A
+# instructions, and no zkVM here implements the A extension. Between the two
+# .NET lines, 10 runs ~2.6% fewer SP1 cycles and ~2.5% fewer ZisK steps than
+# 11 on the nine stateless-tests mainnet blocks; 11 gives ~6.5% smaller
+# binaries, which matters less than proving cost.
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13de95839e03397f7a6ea9c4a6d7f902dadc843934a
 ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9fbc36b34043b81370b69e57a18cbd91c2d1c
 # ziskemu ROMs the whole .text, so even unreachable F/D/C/A instructions reject
 # the guest - fail at build time instead.
