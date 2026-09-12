@@ -220,7 +220,7 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                        new UInt256(storageItem.Value, isBigEndian: true));
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);

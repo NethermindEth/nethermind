@@ -354,7 +354,7 @@ public class TestBlockchain : IDisposable
 
             byte[] code = Bytes.FromHexString("0xabcd");
             state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec);
-            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), (UInt256)0xabcdef);
 
             IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
 

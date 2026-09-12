@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using Nethermind.Core.Extensions;
 using System;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -69,7 +70,7 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void Transient_span_writes_use_worker_journal()
+    public void Transient_writes_use_worker_journal()
     {
         IWorldState parent = null!;
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
@@ -78,17 +79,19 @@ public class BlockAccessListBasedWorldStateTests
         {
             StorageCell cell = new(TestItem.AddressA, 1);
             Snapshot snapshot = bws.TakeSnapshot();
-            byte[] value = new byte[32];
-            value[^1] = 7;
-            bws.SetTransientState(cell, value.AsSpan());
-            value[^1] = 8;
+            UInt256 value = UInt256.MaxValue;
+            bws.SetTransientState(cell, in value);
+            value = UInt256.Zero;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(bws.GetTransientState(cell)[^1], Is.EqualTo(7));
-                Assert.That(parent.GetTransientState(cell).ToArray(), Is.EqualTo(new byte[] { 0 }));
+                bws.GetTransientState(cell, out UInt256 storageValue1);
+                Assert.That(storageValue1, Is.EqualTo(UInt256.MaxValue));
+                parent.GetTransientState(cell, out UInt256 storageValue2);
+                Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0 }));
             }
             bws.Restore(snapshot);
-            Assert.That(bws.GetTransientState(cell).ToArray(), Is.EqualTo(new byte[] { 0 }));
+            bws.GetTransientState(cell, out UInt256 storageValue3);
+            Assert.That(storageValue3.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0 }));
         }
     }
 
@@ -104,7 +107,7 @@ public class BlockAccessListBasedWorldStateTests
             ws =>
             {
                 ws.CreateAccount(cell.Address, 100);
-                ws.Set(cell, [(byte)storedValue]);
+                ws.Set(cell, new UInt256((ReadOnlySpan<byte>)[(byte)storedValue], isBigEndian: true));
             },
             ws =>
             {
@@ -119,26 +122,30 @@ public class BlockAccessListBasedWorldStateTests
             Assert.That(bws.IsDeadAccount(cell.Address), Is.False);
             if (!decorate) Assert.That(parent.TakeSnapshot(), Is.EqualTo(before), "account read must not journal");
 
-            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
-            Assert.That(new UInt256(bws.GetOriginal(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            bws.Get(cell, out UInt256 storageValue4);
+            Assert.That(storageValue4, Is.EqualTo((UInt256)storedValue));
+            bws.GetOriginal(in cell, out UInt256 originalValue);
+            Assert.That(originalValue, Is.EqualTo((UInt256)storedValue));
             if (!decorate)
                 Assert.That(parent.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot,
                     Is.EqualTo(before.StorageSnapshot.PersistentStorageSnapshot), "storage read must not journal");
 
             Snapshot snapshot = bws.TakeSnapshot();
-            bws.Set(cell, [99]);
+            bws.Set(cell, (UInt256)99);
             bws.Restore(snapshot);
-            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)storedValue));
+            bws.Get(cell, out UInt256 storageValue5);
+            Assert.That(storageValue5, Is.EqualTo((UInt256)storedValue));
 
             bws.ClearParentReader();
-            parent.Set(cell, [77]);
+            parent.Set(cell, (UInt256)77);
             parent.AddToBalance(cell.Address, 100, Spec);
             parent.SetNonce(cell.Address, 3);
             parent.Commit(Spec);
             parent.CommitTree(1);
             bws.SetParentReader(decorate ? new ParentDecorator(parent) : parent);
             bws.Setup(Build.A.Block.WithBlockAccessList(bal).TestObject);
-            Assert.That(new UInt256(bws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)77));
+            bws.Get(cell, out UInt256 storageValue6);
+            Assert.That(storageValue6, Is.EqualTo((UInt256)77));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(bws.GetBalance(cell.Address), Is.EqualTo((UInt256)200));
@@ -194,8 +201,8 @@ public class BlockAccessListBasedWorldStateTests
             {
                 ws.CreateAccount(TestItem.AddressA, 100);
                 ws.CreateAccount(TestItem.AddressB, 100);
-                ws.Set(cells[1], [42]);
-                ws.Set(cells[2], [77]);
+                ws.Set(cells[1], (UInt256)42);
+                ws.Set(cells[2], (UInt256)77);
             }, ws => parent = ws, coverage);
         using (scope)
         {
@@ -215,7 +222,7 @@ public class BlockAccessListBasedWorldStateTests
             }
 
             if (replaceReader) bws.ClearParentReader();
-            parent.Set(cells[0], [99]);
+            parent.Set(cells[0], (UInt256)99);
             parent.Commit(Spec);
             parent.CommitTree(1);
             if (replaceReader) bws.SetParentReader(parent);
@@ -233,8 +240,10 @@ public class BlockAccessListBasedWorldStateTests
             {
                 for (int i = 0; i < cells.Length; i++)
                 {
-                    ReadOnlySpan<byte> value = repeat % 2 == 0 ? bws.Get(cells[i]) : bws.GetOriginal(cells[i]);
-                    Assert.That(new UInt256(value, isBigEndian: true), Is.EqualTo((UInt256)expected[i]));
+                    UInt256 value;
+                    if (repeat % 2 == 0) bws.Get(in cells[i], out value);
+                    else bws.GetOriginal(in cells[i], out value);
+                    Assert.That(value, Is.EqualTo((UInt256)expected[i]));
                 }
             }
             if (coverage is not null)
@@ -649,8 +658,8 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            ReadOnlySpan<byte> retrieved = bws.Get(cell);
-            Assert.That(new UInt256(retrieved, isBigEndian: true), Is.EqualTo((UInt256)99));
+            bws.Get(cell, out UInt256 retrieved);
+            Assert.That(retrieved, Is.EqualTo((UInt256)99));
         }
     }
 
@@ -738,13 +747,13 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws =>
             {
                 ws.CreateAccount(TestItem.AddressA, 0);
-                ws.Set(cell, [0x2A]);
+                ws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x2A], isBigEndian: true));
             });
 
         using (scope)
         {
-            ReadOnlySpan<byte> retrieved = bws.Get(cell);
-            Assert.That(new UInt256(retrieved, isBigEndian: true), Is.EqualTo((UInt256)0x2A));
+            bws.Get(cell, out UInt256 retrieved);
+            Assert.That(retrieved, Is.EqualTo((UInt256)0x2A));
         }
     }
 
@@ -772,7 +781,7 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws =>
             {
                 ws.CreateAccount(TestItem.AddressA, 0);
-                ws.Set(cell, [0x2A]);
+                ws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x2A], isBigEndian: true));
             },
             readCoverage: useCoverage ? plan.CreateCoverage() : null);
 
@@ -781,8 +790,8 @@ public class BlockAccessListBasedWorldStateTests
             Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
                 () =>
                 {
-                    if (original) bws.GetOriginal(cell);
-                    else bws.Get(cell);
+                    if (original) bws.GetOriginal(in cell, out _);
+                    else bws.Get(in cell, out _);
                 });
         }
     }

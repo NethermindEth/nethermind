@@ -237,7 +237,8 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, byte[] value);
+        /// <summary>Writes a big-endian slot value, consuming or copying it before returning.</summary>
+        void Set(in UInt256 index, ReadOnlySpan<byte> value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

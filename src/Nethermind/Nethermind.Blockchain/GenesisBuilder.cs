@@ -72,7 +72,7 @@ public class GenesisBuilder(
                 foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                 {
                     stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.WithoutLeadingZeros().ToArray());
+                        new UInt256(storage.Value, isBigEndian: true));
                 }
             }
 

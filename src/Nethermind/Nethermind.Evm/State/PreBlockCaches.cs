@@ -9,6 +9,7 @@ using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -409,17 +410,18 @@ public class PreBlockCaches
 
     private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        private static readonly byte[] ZeroValue = [0];
         public Address Address { get; set; } = null!;
         public bool Contended { get; set; }
         public ILogger Logger { get; set; }
         public bool Cleared { get; set; }
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
         {
             if (Contended) return;
 
             StorageCell cell = new(Address, in index);
-            if (!storageCache.TrySetExclusive(in cell, value)) Contended = true;
+            if (!storageCache.TrySetExclusive(in cell, value.IsZero() ? ZeroValue : value.ToArray())) Contended = true;
         }
 
         public void Clear()

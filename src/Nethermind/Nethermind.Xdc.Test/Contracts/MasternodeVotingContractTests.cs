@@ -65,6 +65,12 @@ internal class MasternodeVotingContractTests
         Address[] candidates = masterVoting.GetCandidates(genesis);
         Assert.That(candidates, Is.Not.Empty);
 
+        Dictionary<Address, Address> owners = [];
+        foreach (Address candidate in candidates)
+        {
+            owners.Add(candidate, masterVoting.GetCandidateOwner(genesis, candidate));
+        }
+
         using IReadOnlyTxProcessorSource source = envFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(genesis);
         IWorldState worldState = scope.WorldState;
@@ -75,6 +81,7 @@ internal class MasternodeVotingContractTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(voters, Is.EquivalentTo(new[] { GenesisVoter }), $"voters of {candidate}");
+                Assert.That(masterVoting.GetCandidateOwner(worldState, candidate), Is.EqualTo(owners[candidate]));
                 Assert.That(masterVoting.GetVoterStake(worldState, candidate, GenesisVoter),
                     Is.EqualTo(10_000_000.Ether), $"stake of {GenesisVoter} on {candidate}");
             }
@@ -93,6 +100,7 @@ internal class MasternodeVotingContractTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(masterVoting.GetVoters(scope.WorldState, TestItem.AddressD), Is.Empty);
+            Assert.That(masterVoting.GetCandidateOwner(scope.WorldState, TestItem.AddressD), Is.EqualTo(Address.Zero));
             Assert.That(masterVoting.GetVoterStake(scope.WorldState, TestItem.AddressD, GenesisVoter), Is.EqualTo(UInt256.Zero));
         }
     }
@@ -117,7 +125,7 @@ internal class MasternodeVotingContractTests
             foreach (KeyValuePair<string, string> kvp in GenesisAllocation)
             {
                 StorageCell cell = new(codeSource, UInt256.Parse(kvp.Key));
-                stateProvider.Set(cell, Bytes.FromHexString(kvp.Value));
+                stateProvider.Set(cell, new Nethermind.Int256.UInt256(Bytes.FromHexString(kvp.Value), isBigEndian: true));
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

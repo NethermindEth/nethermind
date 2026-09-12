@@ -115,7 +115,7 @@ namespace Nethermind.Store.Test
             IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
-            void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, newValue);
+            void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, new UInt256(newValue, isBigEndian: true));
 
             void AddOneToBalance() => provider.AddToBalance(_address1, 1, spec);
 
@@ -174,7 +174,7 @@ namespace Nethermind.Store.Test
             }
 
             provider.CreateAccount(_address1, 1);
-            provider.Set(storageCell, new byte[] { 1 });
+            provider.Set(storageCell, new UInt256(new byte[] { 1 }, isBigEndian: true));
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
@@ -222,7 +222,7 @@ namespace Nethermind.Store.Test
 
                 /* at this stage we have an account with empty storage at the address that we want to test */
 
-                state.Set(storageCell, initialValue);
+                state.Set(storageCell, new UInt256(initialValue, isBigEndian: true));
                 state.Commit(MuirGlacier.Instance);
                 state.CommitTree(2);
                 baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
@@ -245,7 +245,7 @@ namespace Nethermind.Store.Test
 
             using (IDisposable _ = processorStateProvider.BeginScope(baseBlock))
             {
-                processorStateProvider.Set(storageCell, newValue);
+                processorStateProvider.Set(storageCell, new UInt256(newValue, isBigEndian: true));
                 processorStateProvider.Commit(MuirGlacier.Instance);
                 processorStateProvider.CommitTree(baseBlock.Number + 1);
                 baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;

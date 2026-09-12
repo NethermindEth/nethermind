@@ -83,40 +83,14 @@ public class MintedRecordContract : IMintedRecordContract
         ReadStorage(worldState, MintedRecordPostBurnedBase + epoch),
         ReadStorage(worldState, MintedRecordPostRewardBlockBase + epoch));
 
-    private static UInt256 ReadStorage(IWorldState worldState, UInt256 slot)
+    private static UInt256 ReadStorage(IWorldState worldState, in UInt256 slot)
     {
-        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(MintedRecordAddress, slot));
-        if (value.Length == 0)
-        {
-            return UInt256.Zero;
-        }
-
-        return new UInt256(value, isBigEndian: true);
+        worldState.Get(new StorageCell(MintedRecordAddress, slot), out UInt256 value);
+        return value;
     }
 
     private static void WriteStorage(IWorldState worldState, UInt256 slot, in UInt256 value) =>
-        worldState.Set(new StorageCell(MintedRecordAddress, slot), ToStorageBytes(value));
-
-    private static byte[] ToStorageBytes(in UInt256 value)
-    {
-        if (value.IsZero)
-        {
-            return [];
-        }
-
-        Span<byte> full = stackalloc byte[32];
-        value.ToBigEndian(full);
-        int firstNonZero = 0;
-        while (firstNonZero < full.Length && full[firstNonZero] == 0)
-        {
-            firstNonZero++;
-        }
-
-        int length = full.Length - firstNonZero;
-        byte[] compact = new byte[length];
-        full.Slice(firstNonZero).CopyTo(compact);
-        return compact;
-    }
+        worldState.Set(new StorageCell(MintedRecordAddress, slot), in value);
 
     private static UInt256 AddSaturating(UInt256 left, UInt256 right) =>
         UInt256.AddOverflow(left, right, out UInt256 result) ? UInt256.MaxValue : result;

@@ -372,7 +372,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private ValueHash256 _keyBuff = new();
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
         {
             _wasSetCalled = true;
             if (_bulkWrite is null)

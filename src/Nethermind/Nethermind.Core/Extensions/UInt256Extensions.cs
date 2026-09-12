@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -27,6 +29,15 @@ public static class UInt256Extensions
     /// </summary>
     public static EvmWord ToBigEndianWord(this in UInt256 value)
         => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value)).ByteSwap();
+
+    /// <summary>Returns the shortest nonempty big-endian byte representation of the value.</summary>
+    [SkipLocalsInit]
+    public static byte[] ToMinimalBigEndian(this in UInt256 value)
+    {
+        EvmWord word = value.ToBigEndianWord();
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
+        return bytes.WithoutLeadingZeros().ToArray();
+    }
 
     public static int CountLeadingZeros(this in UInt256 uInt256)
     {

@@ -99,12 +99,12 @@ public class BlockProcessorTests
             TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
             CheckWorkerCoverage(pre, blockNumber);
             previousCoverage = pre.ReadCoverage;
-            pre.Get(new StorageCell(TestItem.AddressA, 1));
-            pre.Get(new StorageCell(TestItem.AddressA, 3));
+            pre.Get(new StorageCell(TestItem.AddressA, 1), out _);
+            pre.Get(new StorageCell(TestItem.AddressA, 3), out _);
             if (revertWrite)
             {
                 Snapshot snapshot = pre.TakeSnapshot();
-                pre.Set(new StorageCell(TestItem.AddressA, 1), [99]);
+                pre.Set(new StorageCell(TestItem.AddressA, 1), (UInt256)99);
                 pre.Restore(snapshot);
             }
             manager.NextTransaction();
@@ -113,9 +113,9 @@ public class BlockProcessorTests
             manager.GetTxProcessor(uint.MaxValue);
             TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
             CheckWorkerCoverage(post, blockNumber);
-            post.Set(new StorageCell(TestItem.AddressA, 3), [7]);
+            post.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)7);
             bool skipRead = omitRead && blockNumber == blockCount;
-            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2));
+            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2), out _);
             if (skipRead)
                 Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
             else
@@ -209,7 +209,8 @@ public class BlockProcessorTests
                 {
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
                     Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
-                    Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
+                    stateProvider.Get(storageCell, out UInt256 storageValue1);
+                    Assert.That(storageValue1, Is.EqualTo((UInt256)0x2Au));
                 }
             });
     }

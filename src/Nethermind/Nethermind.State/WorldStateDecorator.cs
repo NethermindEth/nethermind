@@ -60,25 +60,21 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool IsDeadAccount(Address address)
         => State.IsDeadAccount(address);
 
-    public virtual ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
-        => State.GetOriginal(in storageCell);
+    public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
+        => State.GetOriginal(in storageCell, out value);
 
-    public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        => State.Get(in storageCell);
+    public virtual void Get(in StorageCell storageCell, out UInt256 value)
+        => State.Get(in storageCell, out value);
 
-    public virtual void Set(in StorageCell storageCell, byte[] newValue)
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue)
         => State.Set(in storageCell, newValue);
 
-    public virtual ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => State.GetTransientState(in storageCell);
+    public virtual void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        => State.GetTransientState(in storageCell, out value);
 
-    public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public virtual void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => State.SetTransientState(in storageCell, newValue);
 
-    /// <inheritdoc/>
-    /// <remarks>Routes through the array overload to preserve overrides in existing decorators.</remarks>
-    public virtual void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
-        => SetTransientState(in storageCell, newValue.ToArray());
 
     public virtual void Reset(bool resetBlockChanges = true)
         => State.Reset(resetBlockChanges);

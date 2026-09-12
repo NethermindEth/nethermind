@@ -24,12 +24,8 @@ public class Db(IWorldState worldState)
     {
         using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
-        ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), new UInt256(index.ToBytes(), isBigEndian: true)));
-        if (bytes.Length < array.Length)
-        {
-            Array.Clear(array);
-        }
-        bytes.CopyTo(array.AsSpan(array.Length - bytes.Length));
+        WorldState.Get(new StorageCell(address.ToAddress(), new UInt256(index.ToBytes(), isBigEndian: true)), out UInt256 value);
+        value.ToBigEndian(array);
         return array.ToTypedScriptArray();
     }
 

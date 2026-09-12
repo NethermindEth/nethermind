@@ -26,9 +26,6 @@ public class WitnessGeneratingWorldState(
     IHeaderFinder headerFinder)
     : WorldStateDecorator(state)
 {
-    /// <inheritdoc/>
-    public override void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
-        => State.SetTransientState(in storageCell, newValue);
 
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
@@ -140,7 +137,8 @@ public class WitnessGeneratingWorldState(
                 {
                     ValueHash256 slotKey = default;
                     StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
-                    bool deleted = base.Get(new StorageCell(address, slot)).IndexOfAnyExcept((byte)0) < 0;
+                    base.Get(new StorageCell(address, slot), out UInt256 storageValue1);
+                    bool deleted = storageValue1.IsZero;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
                 PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(address), new Hash256(storageRoot), slotEntries.AsSpan(), sink);
@@ -228,19 +226,19 @@ public class WitnessGeneratingWorldState(
         return ref base.GetCodeHash(address);
     }
 
-    public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);
-        return base.GetOriginal(in storageCell);
+        base.GetOriginal(in storageCell, out value);
     }
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);
-        return base.Get(in storageCell);
+        base.Get(in storageCell, out value);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         RecordSlot(storageCell);
         base.Set(in storageCell, newValue);

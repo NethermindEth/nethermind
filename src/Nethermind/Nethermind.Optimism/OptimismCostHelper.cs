@@ -51,21 +51,15 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (tx.IsDeposit())
             return UInt256.Zero;
 
-        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
+        worldState.Get(_l1BaseFeeSlot, out UInt256 l1BaseFee);
 
         if (opSpecHelper.IsFjord(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
+            worldState.Get(_blobBaseFeeSlot, out UInt256 blobBaseFee);
 
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
-
-            const int baseFeeFieldsStart = 16;
-            const int fieldSize = sizeof(uint);
-
-            int l1BaseFeeScalarStart = scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
-            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart ? fieldSize : fieldSize - baseFeeFieldsStart + scalarData.Length);
-            UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
-            UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
+            worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
+            UInt256 l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
+            UInt256 l1BlobBaseFeeScalar = (uint)scalarData[1];
 
             uint fastLzSize = ComputeFlzCompressLen(tx);
 
@@ -79,24 +73,18 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
         if (opSpecHelper.IsEcotone(header))
         {
-            UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
+            worldState.Get(_blobBaseFeeSlot, out UInt256 blobBaseFee);
 
-            ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
-
-            const int baseFeeFieldsStart = 16;
-            const int fieldSize = sizeof(uint);
-
-            int l1BaseFeeScalarStart = scalarData.Length > baseFeeFieldsStart ? scalarData.Length - baseFeeFieldsStart : 0;
-            int l1BaseFeeScalarEnd = l1BaseFeeScalarStart + (scalarData.Length >= baseFeeFieldsStart ? fieldSize : fieldSize - baseFeeFieldsStart + scalarData.Length);
-            UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
-            UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
+            worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
+            UInt256 l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
+            UInt256 l1BlobBaseFeeScalar = (uint)scalarData[1];
 
             return ComputeL1CostEcotone(dataGas, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
         }
         else
         {
-            UInt256 overhead = new(worldState.Get(_overheadSlot), true);
-            UInt256 feeScalar = new(worldState.Get(_scalarSlot), true);
+            worldState.Get(_overheadSlot, out UInt256 overhead);
+            worldState.Get(_scalarSlot, out UInt256 feeScalar);
 
             return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
         }
@@ -107,43 +95,12 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         if (!opSpecHelper.IsIsthmus(header))
             return UInt256.Zero;
 
-        ReadOnlySpan<byte> span = worldState.Get(_operatorFeeParamsSlot);
-        if (span.IsEmpty)
-            return UInt256.Zero;
-
-        const int scalarSize = 4;
-        const int constantSize = 8;
-        const int size = scalarSize + constantSize;
-
-        (uint scalar, ulong constant) operatorFee;
-
-        switch (span.Length)
-        {
-            case size:
-                operatorFee = Parse(span);
-                break;
-            case > size:
-                operatorFee = Parse(span.Slice(span.Length - size));
-                break;
-            case < size:
-                Span<byte> aligned = stackalloc byte[size];
-                span.CopyTo(aligned.Slice(size - span.Length));
-                operatorFee = Parse(aligned);
-                break;
-        }
+        worldState.Get(_operatorFeeParamsSlot, out UInt256 parameters);
+        (uint scalar, ulong constant) operatorFee = ((uint)parameters[1], parameters[0]);
 
         return opSpecHelper.IsJovian(header)
             ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests
             : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
-
-        static (uint scalar, ulong constant) Parse(scoped ReadOnlySpan<byte> span)
-        {
-            const int feeStart = 4;
-
-            uint operatorFeeScalar = ReadUInt32BigEndian(span[..feeStart]);
-            ulong operatorFeeConstant = ReadUInt64BigEndian(span[feeStart..]);
-            return (operatorFeeScalar, operatorFeeConstant);
-        }
     }
 
     // https://specs.optimism.io/protocol/jovian/exec-engine.html#da-footprint-block-limit

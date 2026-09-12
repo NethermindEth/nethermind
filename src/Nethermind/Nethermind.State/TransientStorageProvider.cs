@@ -18,37 +18,32 @@ namespace Nethermind.State
     internal sealed class TransientStorageProvider(ILogManager logManager) : PartialStorageProviderBase(logManager)
     {
 
-        /// <summary>Copies a changed transient value into the journal.</summary>
+        /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Set(in StorageCell cell, ReadOnlySpan<byte> value)
+        public override void Set(in StorageCell cell, in UInt256 value)
         {
-            if (_intraBlockCache.Count == 0 && IsZero(value)) return;
+            if (_intraBlockCache.Count == 0 && value.IsZero) return;
             ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
-            if (exists && value.SequenceEqual(head.Value)) return;
-
-            bool isZero = IsZero(value);
-            if (isZero && (!exists || head.Value.AsSpan().IsZero()))
+            if (exists && value == head.Value) return;
+            if (!exists && value.IsZero)
             {
-                if (!exists) _intraBlockCache.Remove(cell);
+                _intraBlockCache.Remove(cell);
                 return;
             }
-
-            PushUpdate(in cell, isZero ? StorageTree.ZeroBytes : value.ToArray(), ref head, exists);
+            PushUpdate(in cell, in value, ref head, exists);
         }
 
-        /// <inheritdoc/>
-        public override void Set(in StorageCell cell, byte[] value) => base.Set(in cell, value);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsZero(ReadOnlySpan<byte> value)
-            => value.Length == 32 ? MemoryMarshal.Read<UInt256>(value).IsZero : value.IsZero();
+        protected override void ClearSlot(in StorageCell cell, ref HeadChange head, bool exists)
+        {
+            if (!head.Value.IsZero) base.ClearSlot(in cell, ref head, exists);
+        }
 
         /// <summary>
         /// Get the storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at cell</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes : StorageTree.ZeroBytes;
+        /// <param name="value">Value at cell</param>
+        protected override void GetCurrentValue(in StorageCell storageCell, out UInt256 value) =>
+            TryGetCachedValue(in storageCell, out value);
     }
 }

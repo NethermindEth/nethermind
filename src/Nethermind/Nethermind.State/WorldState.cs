@@ -108,28 +108,28 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+        public void GetOriginal(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            _persistentStorageProvider.GetOriginal(in storageCell, out value);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public void Get(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.Get(storageCell);
+            _persistentStorageProvider.Get(in storageCell, out value);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
 
         /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
-        /// <remarks>Only for immutable BAL parent readers. The returned bytes must not be mutated.</remarks>
-        internal byte[] GetPureReadStorage(in StorageCell cell)
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal void GetPureReadStorage(in StorageCell cell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.GetPureRead(cell);
+            _persistentStorageProvider.GetPureRead(in cell, out value);
         }
 
         /// <summary>Reads a parent-state account without recording a journal entry.</summary>
@@ -139,23 +139,17 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.GetPureRead(address);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+        public void GetTransientState(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _transientStorageProvider.Get(storageCell);
+            _transientStorageProvider.Get(in storageCell, out value);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
         }
 
-        /// <inheritdoc/>
-        public void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
-        {
-            DebugGuardInScope();
-            _transientStorageProvider.Set(storageCell, newValue);
-        }
         public void Reset(bool resetBlockChanges = true)
         {
             DebugGuardInScope();

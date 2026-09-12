@@ -209,7 +209,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            tws.Set(cell, [0x01]);
+            tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -230,10 +230,10 @@ public class TracedAccessWorldStateTests(bool parallel)
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            _ = tws.Get(cell);
+            tws.Get(cell, out _);
             if (useGetOriginal)
             {
-                _ = tws.GetOriginal(cell);
+                tws.GetOriginal(in cell, out _);
             }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
@@ -538,10 +538,12 @@ public class TracedAccessWorldStateTests(bool parallel)
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            tws.Set(cell, [0x01]);
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo(UInt256.One));
-            tws.Set(cell, [0x02]);
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
+            tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
+            tws.Get(cell, out UInt256 storageValue1);
+            Assert.That(storageValue1, Is.EqualTo(UInt256.One));
+            tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x02], isBigEndian: true));
+            tws.Get(cell, out UInt256 storageValue2);
+            Assert.That(storageValue2, Is.EqualTo((UInt256)2));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())

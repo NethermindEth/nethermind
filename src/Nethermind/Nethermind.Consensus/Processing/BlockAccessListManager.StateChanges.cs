@@ -68,11 +68,8 @@ public partial class BlockAccessListManager
                 int slotCount = slotChange.Changes.Length;
                 if (slotCount > 0)
                 {
-                    // StorageChange.Value is now EvmWord (Vector256<byte>) in big-endian wire form.
-                    EvmWord value = slotChange.Changes[^1].Value;
-                    ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
-                        ref Unsafe.As<EvmWord, byte>(ref value), 32);
-                    stateProvider.Set(storageCell, [.. valueBytes.WithoutLeadingZeros()]);
+                    EvmWord value = slotChange.Changes[^1].Value.ByteSwap();
+                    stateProvider.Set(storageCell, Unsafe.As<EvmWord, UInt256>(ref value));
                 }
             }
         }

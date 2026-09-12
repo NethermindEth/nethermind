@@ -1160,7 +1160,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1168,7 +1168,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                     }
                 }
@@ -1198,14 +1198,14 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable scope = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j), out _);
                             }
                         }
                     }

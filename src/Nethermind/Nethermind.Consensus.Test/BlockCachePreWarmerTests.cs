@@ -72,21 +72,21 @@ public class BlockCachePreWarmerTests
             worldState.CreateAccount(TestItem.AddressA, 1_000_000.Ether);
             worldState.CreateAccount(TestItem.AddressB, 1_000_000.Ether);
             // Seed storage for BAL-based prewarming tests
-            worldState.Set(new StorageCell(TestItem.AddressA, 1), new byte[] { 0x42 });
-            worldState.Set(new StorageCell(TestItem.AddressA, 2), new byte[] { 0x43 });
-            worldState.Set(new StorageCell(TestItem.AddressB, 10), new byte[] { 0x99 });
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
+            worldState.Set(new StorageCell(TestItem.AddressA, 2), new UInt256(new byte[] { 0x43 }, isBigEndian: true));
+            worldState.Set(new StorageCell(TestItem.AddressB, 10), new UInt256(new byte[] { 0x99 }, isBigEndian: true));
             // Contract reading a slot whose index is the value of slot 0: PUSH0 SLOAD SLOAD POP STOP
             byte[] sloadChainCode = [0x5F, 0x54, 0x54, 0x50, 0x00];
             worldState.CreateAccount(TestItem.AddressE, 0);
             worldState.InsertCode(TestItem.AddressE, Keccak.Compute(sloadChainCode), sloadChainCode, Osaka.Instance);
-            worldState.Set(new StorageCell(TestItem.AddressE, 0), [5]);
-            worldState.Set(new StorageCell(TestItem.AddressE, 5), [7]);
+            worldState.Set(new StorageCell(TestItem.AddressE, 0), (UInt256)5);
+            worldState.Set(new StorageCell(TestItem.AddressE, 5), (UInt256)7);
             // Contract reading more distinct slots than the discovery cell budget allows
             byte[] sloadManyCode = BuildSloadManyCode(SloadManySlotCount);
             worldState.CreateAccount(TestItem.AddressF, 0);
             worldState.InsertCode(TestItem.AddressF, Keccak.Compute(sloadManyCode), sloadManyCode, Osaka.Instance);
             // Non-empty storage root, or reads short-circuit to defaults without touching the tree
-            worldState.Set(new StorageCell(TestItem.AddressF, 0), [1]);
+            worldState.Set(new StorageCell(TestItem.AddressF, 0), (UInt256)1);
             worldState.Commit(Osaka.Instance);
             worldState.CommitTree(0);
             _genesisStateRoot = worldState.StateRoot;
@@ -522,10 +522,12 @@ public class BlockCachePreWarmerTests
         using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
-        Assert.That(new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true), Is.EqualTo((UInt256)0x24));
+        scope.WorldState.Get(warmedCell, out UInt256 storageValue1);
+        Assert.That(storageValue1, Is.EqualTo((UInt256)0x24));
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo(1_000_000.Ether));
-        Assert.That(new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true), Is.EqualTo((UInt256)0x99));
+        scope.WorldState.Get(missedCell, out UInt256 storageValue2);
+        Assert.That(storageValue2, Is.EqualTo((UInt256)0x99));
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True,
             "parallel validation parent readers must populate cache misses");

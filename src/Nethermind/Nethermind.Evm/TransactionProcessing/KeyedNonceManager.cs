@@ -42,7 +42,7 @@ public static class KeyedNonceManager
 
     private static ulong CurrentNonceSeq(IWorldState state, in StorageCell slot)
     {
-        UInt256 stored = new(state.Get(slot), isBigEndian: true);
+        state.Get(slot, out UInt256 stored);
         // Clamp so a crafted high-bit slot cannot false-match a valid nonce_seq < MAX_NONCE_SEQ.
         return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
     }
@@ -58,9 +58,7 @@ public static class KeyedNonceManager
             return;
         }
 
-        Span<byte> buffer = stackalloc byte[32];
-        ((UInt256)nonceSeq + UInt256.One).ToBigEndian(buffer);
-        byte[] nextSeq = buffer.WithoutLeadingZeros().ToArray();
+        UInt256 nextSeq = (UInt256)nonceSeq + UInt256.One;
 
         if (Avx512F.IsSupported && nonceKeys.Length is >= HashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {

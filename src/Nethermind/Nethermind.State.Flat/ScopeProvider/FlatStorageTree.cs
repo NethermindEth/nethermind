@@ -166,10 +166,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
         {
             trieBatch.Set(in index, value);
-            storageTree.Set(index, value);
+            storageTree.Set(index, value.IsZero() ? StorageTree.ZeroBytes : value.ToArray());
         }
 
         public void Clear()
@@ -184,7 +184,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
     private sealed class FlatOverlayStorageWriteBatch(FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value) => storageTree.Set(index, value);
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value) => storageTree.Set(index, value.IsZero() ? StorageTree.ZeroBytes : value.ToArray());
 
         public void Clear() => storageTree.ClearStorage();
 

@@ -153,7 +153,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             logger.Trace($"{scopeId}: {address}, Storage write batch disposed");
         }
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
         {
             writeBatch.Set(in index, value);
             logger.Trace($"{scopeId}: {address}, Set {index} to {value.ToHexString()}");

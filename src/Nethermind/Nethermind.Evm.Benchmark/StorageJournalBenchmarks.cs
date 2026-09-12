@@ -24,8 +24,8 @@ public class StorageJournalBenchmarks
     private IWorldState _state = null!;
     private StorageCell[] _cells = null!;
     private StorageCell[] _freshCells = null!;
-    private readonly byte[] _initial = [1];
-    private readonly byte[] _updated = [2];
+    private readonly UInt256 _initial = UInt256.One;
+    private readonly UInt256 _updated = 2;
     private bool _alternate;
 
     [Params(128, 4096)]
@@ -55,12 +55,15 @@ public class StorageJournalBenchmarks
     }
 
     [Benchmark]
-    public int CachedReads()
+    public ulong CachedReads()
     {
-        int sum = 0;
+        ulong sum = 0;
         for (int pass = 0; pass < 8; pass++)
             foreach (StorageCell cell in _cells)
-                sum += _state.Get(cell)[0];
+            {
+                _state.Get(in cell, out UInt256 value);
+                sum += value[0];
+            }
         return sum;
     }
 
@@ -96,10 +99,10 @@ public class StorageJournalBenchmarks
     {
         if (restoreOriginal)
             foreach (StorageCell cell in _cells)
-                _state.Get(cell);
+                _state.Get(cell, out _);
 
         _alternate = !_alternate;
-        byte[] value = restoreOriginal || _alternate ? _updated : _initial;
+        UInt256 value = restoreOriginal || _alternate ? _updated : _initial;
         for (int pass = 0; pass < passes; pass++)
             foreach (StorageCell cell in _cells)
                 _state.Set(cell, value);

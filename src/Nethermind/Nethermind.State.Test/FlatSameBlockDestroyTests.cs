@@ -13,6 +13,10 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using NUnit.Framework;
 
+using Nethermind.Int256;
+
+using System;
+
 namespace Nethermind.Store.Test;
 
 [TestFixture]
@@ -32,8 +36,8 @@ public class FlatSameBlockDestroyTests
         using (worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(contract, 1);
-            worldState.Set(slot, [0x01]);
-            worldState.Set(new StorageCell(contract, 1), [0x02]);
+            worldState.Set(slot, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
+            worldState.Set(new StorageCell(contract, 1), new UInt256((ReadOnlySpan<byte>)[0x02], isBigEndian: true));
             worldState.Commit(Frontier.Instance);
 
             worldState.GetBalance(contract);

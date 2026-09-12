@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -25,18 +26,12 @@ namespace Nethermind.State;
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
-    /// <inheritdoc/>
-    public override void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
-        => State.SetTransientState(in storageCell, newValue);
 
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
-    // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
-    // the returned span is consumed by the EVM stack push before another GetInternal runs.
-    private readonly byte[] _scratchStorage = new byte[32];
     // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
@@ -90,7 +85,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         AccountChangesAtIndex accountChanges;
         if (_lastReadStorageChanges is { } cached && _lastReadStorageCell.Equals(storageCell))
@@ -106,7 +101,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             _lastReadStorageCell = storageCell;
             _lastReadStorageChanges = accountChanges;
         }
-        return GetInternal(accountChanges, in storageCell);
+        GetInternal(accountChanges, in storageCell, out value);
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
@@ -131,10 +126,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
-        ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
-        GeneratingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
+        GetInternal(in storageCell, out UInt256 oldValue);
+        GeneratingBlockAccessList.AddStorageChange(storageCell, oldValue, newValue);
         base.Set(storageCell, newValue);
     }
 
@@ -355,21 +350,20 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private ValueHash256 GetCodeHashInternal(Address address)
         => GetCodeHashCurrent(address, out ValueHash256 hash) ? hash : base.GetCodeHash(address);
 
-    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
-        => GetInternal(parallel ? GeneratingBlockAccessList.GetAccountChanges(storageCell.Address) : null, in storageCell);
+    private void GetInternal(in StorageCell storageCell, out UInt256 value)
+        => GetInternal(parallel ? GeneratingBlockAccessList.GetAccountChanges(storageCell.Address) : null, in storageCell, out value);
 
-    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
+    private void GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell, out UInt256 value)
     {
         if (parallel && accountChanges is not null &&
             accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
         {
-            // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
-            // frame without allocating a new byte[32] per SLOAD.
-            change.Value.Value.CopyTo(_scratchStorage);
-            return _scratchStorage;
+            EvmWord word = change.Value.Value.ByteSwap();
+            value = Unsafe.As<EvmWord, UInt256>(ref word);
+            return;
         }
 
-        return base.Get(storageCell);
+        base.Get(in storageCell, out value);
     }
 
     private bool AccountExistsInternal(Address address)

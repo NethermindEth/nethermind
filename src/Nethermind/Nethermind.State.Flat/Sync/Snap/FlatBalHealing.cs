@@ -211,7 +211,7 @@ public class FlatBalHealing(
                 {
                     word.CopyTo(slotValue);
                     ReadOnlySpan<byte> trimmed = slotValue.WithoutLeadingZeros();
-                    storage.Set(slot, trimmed.ToArray());
+                    storage.Set(slot, trimmed);
                     batch.SetStorage(address, slot, trimmed.IsZero() ? null : SlotValue.FromSpanWithoutLeadingZero(trimmed));
                 }
 
