@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,6 +39,15 @@ public partial class BlockProcessor
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
         private int _pooledSlotsInUse;
+
+        // BalRootReadyLagTime tracking: per-tx completion Stopwatch timestamps (each slot is written
+        // by exactly one worker, so the stores are contention-free; the drain point is their max,
+        // taken after the parallel loop joins) plus the timestamp of "BAL apply produced the root".
+        // ExecutionMetricsFlag is a compile-time switch (NO_EXEC_METRICS), so in default builds this
+        // always runs; the per-tx cost is a single plain store.
+        private long[] _balTxFinishedAt = [];
+        private long _balTrackingStartAt;
+        private long _balRootReadyAt;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -144,6 +154,7 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            ResetBalRootLagTracking();
 
             try
             {
@@ -159,7 +170,7 @@ public partial class BlockProcessor
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
                             txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner,
-                            incrementalValidation),
+                            incrementalValidation, self: this),
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
@@ -176,7 +187,8 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     state.balManager.WaitForBalWarmup();
-                                    BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    state.balManager.ApplyBlockStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    state.self.OnBalRootReady();
                                     return state;
                                 }
 
@@ -221,6 +233,7 @@ public partial class BlockProcessor
                                     throw;
                                 }
 
+                                state.self.OnBalTxWorkerFinished(txIndex);
                                 return state;
                             }
                             finally
@@ -255,6 +268,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
+                ReportBalRootReadyLag(len);
                 return CombineReceipts(receiptsTracers, len);
             }
             finally
@@ -265,6 +279,44 @@ public partial class BlockProcessor
                 // consistent on success.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, len, outerReceiptsTracer);
             }
+        }
+
+        private void ResetBalRootLagTracking()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Volatile.Write(ref _balRootReadyAt, 0);
+            // With no tx workers the drain point is the start of the parallel loop.
+            _balTrackingStartAt = Stopwatch.GetTimestamp();
+        }
+
+        private void OnBalTxWorkerFinished(int txIndex)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            _balTxFinishedAt[txIndex] = Stopwatch.GetTimestamp();
+        }
+
+        private void OnBalRootReady()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Volatile.Write(ref _balRootReadyAt, Stopwatch.GetTimestamp());
+        }
+
+        private void ReportBalRootReadyLag(int txCount)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            long rootReadyAt = Volatile.Read(ref _balRootReadyAt);
+            if (rootReadyAt == 0) return;
+            // Only reached when every tx worker completed, so all txCount slots carry this block's
+            // timestamps; the parallel-loop join ordered those stores before these reads.
+            long workersDrainedAt = _balTrackingStartAt;
+            long[] txFinishedAt = _balTxFinishedAt;
+            for (int i = 0; i < txCount; i++)
+            {
+                if (txFinishedAt[i] > workersDrainedAt) workersDrainedAt = txFinishedAt[i];
+            }
+
+            Metrics.IncrementBalRootReadyLagTime(
+                rootReadyAt > workersDrainedAt ? Stopwatch.GetElapsedTime(workersDrainedAt, rootReadyAt).Ticks : 0);
         }
 
         private void EnsureParallelBuffers(int length)
@@ -283,10 +335,12 @@ public partial class BlockProcessor
             GasValidationResultSlot[] gasResultPool = _gasResultPool;
             int[] txExecutionOrder = _txExecutionOrder;
             TxExecutionSortKey[] txExecutionSortKeys = _txExecutionSortKeys;
+            long[] balTxFinishedAt = _balTxFinishedAt;
             Array.Resize(ref receiptsTracerPool, newLength);
             Array.Resize(ref gasResultPool, newLength);
             Array.Resize(ref txExecutionOrder, newLength);
             Array.Resize(ref txExecutionSortKeys, newLength);
+            Array.Resize(ref balTxFinishedAt, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
                 receiptsTracerPool[i] = new BlockReceiptsTracer(true);
@@ -297,6 +351,7 @@ public partial class BlockProcessor
             _gasResultPool = gasResultPool;
             _txExecutionOrder = txExecutionOrder;
             _txExecutionSortKeys = txExecutionSortKeys;
+            _balTxFinishedAt = balTxFinishedAt;
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
