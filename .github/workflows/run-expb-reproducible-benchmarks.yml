@@ -188,6 +188,7 @@ jobs:
       amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
       expb_env: ${{ steps.resolve.outputs.expb_env }}
+      priority_mode: ${{ steps.resolve.outputs.priority_mode }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
       run_count: ${{ steps.resolve.outputs.run_count }}
@@ -264,6 +265,20 @@ jobs:
               flat_write_buffer_floor=""
             fi
             expb_env="${DISPATCH_EXPB_ENV:-}"
+            priority_mode=""
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" || "${_kv}" != EXPB_NETHERMIND_PRIORITY_MODE=* ]] && continue
+              if [[ -n "${priority_mode}" ]]; then
+                echo "EXPB_NETHERMIND_PRIORITY_MODE must be specified at most once."
+                exit 1
+              fi
+              priority_mode="${_kv#*=}"
+            done < <(printf '%s\n' "${expb_env}" | tr ',' '\n')
+            if [[ -n "${priority_mode}" && "${priority_mode}" != "observe" && "${priority_mode}" != "nice" && "${priority_mode}" != "off" ]]; then
+              echo "EXPB_NETHERMIND_PRIORITY_MODE must be observe, nice, or off (got '${priority_mode}')."
+              exit 1
+            fi
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
@@ -328,6 +343,7 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            priority_mode=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -347,6 +363,7 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            priority_mode=""
           fi
 
           # One switch drives the runner and every path that differs between the two boxes, so a
@@ -355,8 +372,9 @@ jobs:
             arm64)
               runner_label="reproducible-benchmarks-arm"
               expb_data_dir="/data/expb-data"
-              # This box carries a single flat snapshot and serves both config spellings from it.
-              flat_snapshot_dir="/data/nethermind/nethermind-flat-25490000"
+              # Legacy and Fusaka configs use distinct snapshots; the ARM runner must have the
+              # matching one mounted instead of silently running legacy payloads on the Fusaka head.
+              flat_snapshot_dir="/data/nethermind/nethermind-flat-snapshot"
               flat_snapshot_block_dir="/data/nethermind/nethermind-flat-25490000"
               ;;
             amd64)
@@ -372,7 +390,7 @@ jobs:
               ;;
           esac
 
-          # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
+          # The ARM box stocks flat snapshots only, and the config render rewrites only the flat
           # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
           if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
             echo "::error::The reproducible-benchmarks-arm runner only serves a flat snapshot - dispatch with arch=amd64 for halfpath."
@@ -399,8 +417,8 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${delay_seconds}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "delay_seconds must be a number (integer or decimal seconds, e.g. 0.25), got '${delay_seconds}'."
+          if ! [[ "${delay_seconds}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "delay_seconds must be a non-negative number (integer or decimal seconds, e.g. 0.25), got '${delay_seconds}'."
             exit 1
           fi
 
@@ -495,6 +513,7 @@ jobs:
             echo "expb_env<<EOF"
             printf '%s\n' "${expb_env}"
             echo "EOF"
+            echo "priority_mode=${priority_mode}"
           } >> "${GITHUB_OUTPUT}"
 
   prepare-docker:
@@ -749,6 +768,7 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          RUNNER_LABEL: ${{ needs.resolve.outputs.runner_label }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -813,6 +833,7 @@ jobs:
           curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
           chmod +x "${YQ}"
 
+          # BEGIN EXPB_DELAY_RENDER
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
@@ -824,6 +845,104 @@ jobs:
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
+          # Source files can carry a literal numeric delay, so set the EXPB field(s) explicitly
+          # instead of relying only on the <<DELAY>> placeholder. Warmup delay stays unchanged.
+          if ! [[ "${DELAY_SECONDS}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::delay_seconds must be a non-negative number, got '${DELAY_SECONDS}'."
+            exit 1
+          fi
+          scenario_exists="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios // {} | has(strenv(SK))' "${RENDERED_CONFIG_FILE}")"
+          if [[ "${scenario_exists}" != "true" ]]; then
+            echo "::error::Rendered scenario '${SCENARIO_NAME}' is missing; cannot apply delay_seconds=${DELAY_SECONDS}."
+            exit 1
+          fi
+          has_payloads_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)] | has("payloads_delay")' "${RENDERED_CONFIG_FILE}")"
+          has_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)] | has("delay")' "${RENDERED_CONFIG_FILE}")"
+          if [[ "${has_payloads_delay}" == "true" ]]; then
+            SK="${SCENARIO_NAME}" V="${DELAY_SECONDS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].payloads_delay = (strenv(V) | tonumber)' "${RENDERED_CONFIG_FILE}"
+          fi
+          if [[ "${has_delay}" == "true" || "${has_payloads_delay}" != "true" ]]; then
+            SK="${SCENARIO_NAME}" V="${DELAY_SECONDS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].delay = (strenv(V) | tonumber)' "${RENDERED_CONFIG_FILE}"
+            has_delay="true"
+          fi
+          if [[ "${has_payloads_delay}" == "true" ]]; then
+            effective_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].payloads_delay' "${RENDERED_CONFIG_FILE}")"
+          elif [[ "${has_delay}" == "true" ]]; then
+            effective_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].delay' "${RENDERED_CONFIG_FILE}")"
+          else
+            effective_delay=""
+          fi
+          if ! [[ "${effective_delay}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk -v actual="${effective_delay}" -v expected="${DELAY_SECONDS}" 'BEGIN { exit !(actual == expected) }'; then
+            echo "::error::Unable to apply delay_seconds=${DELAY_SECONDS} to scenario '${SCENARIO_NAME}' (effective payload delay='${effective_delay}')."
+            exit 1
+          fi
+          # END EXPB_DELAY_RENDER
+          payload_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].payloads // .scenarios.[strenv(SK)].payloads_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          fcus_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].fcus // .scenarios.[strenv(SK)].fcus_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          snapshot_source="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].snapshot_source // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          echo "EXPB selected inputs: payloads=${payload_path} fcus=${fcus_path} snapshot_source=${snapshot_source}"
+
+          if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
+            echo "EXPB ARM snapshot directories directly under /data/nethermind:"
+            if [[ -d /data/nethermind ]]; then
+              find /data/nethermind -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+            else
+              echo "::warning::ARM snapshot root /data/nethermind is not present."
+            fi
+          fi
+
+          # BEGIN EXPB_ARM_SNAPSHOT_CHECK
+          if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
+            if [[ "${snapshot_source}" == "<missing>" || ! -d "${snapshot_source}" ]]; then
+              echo "::error::ARM snapshot_source directory is missing: ${snapshot_source}. Select a dataset whose matching snapshot exists under /data/nethermind (legacy or Fusaka 25490000)."
+              exit 1
+            fi
+            echo "EXPB ARM snapshot_source exists: ${snapshot_source}"
+          fi
+          # END EXPB_ARM_SNAPSHOT_CHECK
+
+          diagnose_jsonl() {
+            local kind="$1"
+            local selected_path="$2"
+            local file_path="${selected_path}"
+            if [[ "${file_path}" != /* && "${file_path}" != "<missing>" ]]; then
+              file_path="${EXPB_DATA_DIR}/${file_path#./}"
+            fi
+            echo "EXPB ${kind} metadata file: ${file_path}"
+            if [[ ! -f "${file_path}" ]]; then
+              echo "::warning::Selected ${kind} JSONL file is missing: ${file_path}"
+              return 0
+            fi
+            if ! python3 - "${file_path}" "${kind}" <<'PY'
+          import json
+          import sys
+
+          path, kind = sys.argv[1:]
+          with open(path, encoding="utf-8") as stream:
+              for line in stream:
+                  if not line.strip():
+                      continue
+                  request = json.loads(line)
+                  params = request.get("params")
+                  first = params[0] if isinstance(params, list) and params and isinstance(params[0], dict) else {}
+                  if kind == "payloads":
+                      value = first.get("blockNumber", "<missing>")
+                      block = int(value, 16) if isinstance(value, str) and value.lower().startswith("0x") else value
+                      print(f"EXPB payload first record: blockNumber={block} parentHash={first.get('parentHash', '<missing>')}")
+                  else:
+                      print(f"EXPB fcu first record: headBlockHash={first.get('headBlockHash', '<missing>')}")
+                  break
+              else:
+                  raise SystemExit(f"no nonblank records in {kind} JSONL")
+          PY
+            then
+              echo "::warning::Could not inspect the first ${kind} JSONL record."
+            fi
+          }
+          diagnose_jsonl payloads "${payload_path}"
+          diagnose_jsonl fcus "${fcus_path}"
           # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
           while IFS= read -r flag; do
@@ -853,6 +972,10 @@ jobs:
               echo "Set client env ${env_key}=${env_value}."
             done
           fi
+
+          source_config_sha256="$(sha256sum "${SOURCE_CONFIG_FILE}" | awk '{print $1}')"
+          rendered_base_sha256="$(sha256sum "${RENDERED_CONFIG_FILE}" | awk '{print $1}')"
+          echo "EXPB config identity: source=${SOURCE_CONFIG_FILE} source_sha256=${source_config_sha256} rendered_base_sha256=${rendered_base_sha256} payload_path=${payload_path} effective_payload_delay_seconds=${effective_delay}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -1120,6 +1243,21 @@ jobs:
 
           exit "${expb_exit_code}"
 
+      - name: Verify Linux priority records
+        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' }}
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          PRIORITY_MODE: ${{ needs.resolve.outputs.priority_mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          verifier="${RUNNER_TEMP}/verify-priority-log.py"
+          verifier_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/raw/${GITHUB_SHA}/scripts/priority-bench/verify_priority_log.py"
+          curl --fail --silent --show-error --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" "${verifier_url}" -o "${verifier}"
+          python3 "${verifier}" "${RAW_RUN_LOG}" --mode "${PRIORITY_MODE}"
+
       - name: Analyze benchmark output
         id: analyze
         if: always()
@@ -1323,27 +1461,39 @@ jobs:
       - name: Enforce run quality gates
         if: always()
         shell: bash
+        env:
+          RUN_EXPB_OUTCOME: ${{ steps.run-expb.outcome }}
+          EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
+          EXCEPTION_LINES_FILE: ${{ steps.analyze.outputs.exception_lines_file }}
+          INVALID_BLOCK_FOUND: ${{ steps.analyze.outputs.invalid_block_found }}
+          INVALID_BLOCK_LINES_FILE: ${{ steps.analyze.outputs.invalid_block_lines_file }}
         run: |
           set -euo pipefail
+          quality_gate_failed="false"
 
-          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
+          if [[ "${RUN_EXPB_OUTCOME}" != "success" ]]; then
             echo "expb execute-scenarios did not finish successfully."
-            exit 1
+            quality_gate_failed="true"
           fi
 
-          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
+          if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
             echo "Exceptions were detected in run output. Failing workflow."
-            if [[ -f "${{ steps.analyze.outputs.exception_lines_file }}" ]]; then
-              head -n 40 "${{ steps.analyze.outputs.exception_lines_file }}"
+            if [[ -f "${EXCEPTION_LINES_FILE}" ]]; then
+              head -n 40 "${EXCEPTION_LINES_FILE}"
             fi
-            exit 1
+            quality_gate_failed="true"
           fi
 
-          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
+          if [[ "${INVALID_BLOCK_FOUND}" == "true" ]]; then
             echo "Invalid block lines were detected in run output. Failing workflow."
-            if [[ -f "${{ steps.analyze.outputs.invalid_block_lines_file }}" ]]; then
-              head -n 40 "${{ steps.analyze.outputs.invalid_block_lines_file }}"
+            if [[ -f "${INVALID_BLOCK_LINES_FILE}" ]]; then
+              head -n 40 "${INVALID_BLOCK_LINES_FILE}"
             fi
+            quality_gate_failed="true"
+          fi
+
+          if [[ "${quality_gate_failed}" == "true" ]]; then
+            echo "Run quality gates failed."
             exit 1
           fi
 
@@ -2103,6 +2253,7 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          RUNNER_LABEL: ${{ needs.resolve.outputs.runner_label }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -2156,6 +2307,7 @@ jobs:
           curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
           chmod +x "${YQ}"
 
+          # BEGIN EXPB_DELAY_RENDER
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
@@ -2167,6 +2319,104 @@ jobs:
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
+          # Source files can carry a literal numeric delay, so set the EXPB field(s) explicitly
+          # instead of relying only on the <<DELAY>> placeholder. Warmup delay stays unchanged.
+          if ! [[ "${DELAY_SECONDS}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::delay_seconds must be a non-negative number, got '${DELAY_SECONDS}'."
+            exit 1
+          fi
+          scenario_exists="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios // {} | has(strenv(SK))' "${RENDERED_CONFIG_FILE}")"
+          if [[ "${scenario_exists}" != "true" ]]; then
+            echo "::error::Rendered scenario '${SCENARIO_NAME}' is missing; cannot apply delay_seconds=${DELAY_SECONDS}."
+            exit 1
+          fi
+          has_payloads_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)] | has("payloads_delay")' "${RENDERED_CONFIG_FILE}")"
+          has_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)] | has("delay")' "${RENDERED_CONFIG_FILE}")"
+          if [[ "${has_payloads_delay}" == "true" ]]; then
+            SK="${SCENARIO_NAME}" V="${DELAY_SECONDS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].payloads_delay = (strenv(V) | tonumber)' "${RENDERED_CONFIG_FILE}"
+          fi
+          if [[ "${has_delay}" == "true" || "${has_payloads_delay}" != "true" ]]; then
+            SK="${SCENARIO_NAME}" V="${DELAY_SECONDS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].delay = (strenv(V) | tonumber)' "${RENDERED_CONFIG_FILE}"
+            has_delay="true"
+          fi
+          if [[ "${has_payloads_delay}" == "true" ]]; then
+            effective_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].payloads_delay' "${RENDERED_CONFIG_FILE}")"
+          elif [[ "${has_delay}" == "true" ]]; then
+            effective_delay="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].delay' "${RENDERED_CONFIG_FILE}")"
+          else
+            effective_delay=""
+          fi
+          if ! [[ "${effective_delay}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || ! awk -v actual="${effective_delay}" -v expected="${DELAY_SECONDS}" 'BEGIN { exit !(actual == expected) }'; then
+            echo "::error::Unable to apply delay_seconds=${DELAY_SECONDS} to scenario '${SCENARIO_NAME}' (effective payload delay='${effective_delay}')."
+            exit 1
+          fi
+          # END EXPB_DELAY_RENDER
+          payload_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].payloads // .scenarios.[strenv(SK)].payloads_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          fcus_path="$(SK="${SCENARIO_NAME}" "${YQ}" -r '(.scenarios.[strenv(SK)].fcus // .scenarios.[strenv(SK)].fcus_file) // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          snapshot_source="$(SK="${SCENARIO_NAME}" "${YQ}" -r '.scenarios.[strenv(SK)].snapshot_source // "<missing>"' "${RENDERED_CONFIG_FILE}")"
+          echo "EXPB selected inputs: payloads=${payload_path} fcus=${fcus_path} snapshot_source=${snapshot_source}"
+
+          if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
+            echo "EXPB ARM snapshot directories directly under /data/nethermind:"
+            if [[ -d /data/nethermind ]]; then
+              find /data/nethermind -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+            else
+              echo "::warning::ARM snapshot root /data/nethermind is not present."
+            fi
+          fi
+
+          # BEGIN EXPB_ARM_SNAPSHOT_CHECK
+          if [[ "${RUNNER_LABEL}" == "reproducible-benchmarks-arm" ]]; then
+            if [[ "${snapshot_source}" == "<missing>" || ! -d "${snapshot_source}" ]]; then
+              echo "::error::ARM snapshot_source directory is missing: ${snapshot_source}. Select a dataset whose matching snapshot exists under /data/nethermind (legacy or Fusaka 25490000)."
+              exit 1
+            fi
+            echo "EXPB ARM snapshot_source exists: ${snapshot_source}"
+          fi
+          # END EXPB_ARM_SNAPSHOT_CHECK
+
+          diagnose_jsonl() {
+            local kind="$1"
+            local selected_path="$2"
+            local file_path="${selected_path}"
+            if [[ "${file_path}" != /* && "${file_path}" != "<missing>" ]]; then
+              file_path="${EXPB_DATA_DIR}/${file_path#./}"
+            fi
+            echo "EXPB ${kind} metadata file: ${file_path}"
+            if [[ ! -f "${file_path}" ]]; then
+              echo "::warning::Selected ${kind} JSONL file is missing: ${file_path}"
+              return 0
+            fi
+            if ! python3 - "${file_path}" "${kind}" <<'PY'
+          import json
+          import sys
+
+          path, kind = sys.argv[1:]
+          with open(path, encoding="utf-8") as stream:
+              for line in stream:
+                  if not line.strip():
+                      continue
+                  request = json.loads(line)
+                  params = request.get("params")
+                  first = params[0] if isinstance(params, list) and params and isinstance(params[0], dict) else {}
+                  if kind == "payloads":
+                      value = first.get("blockNumber", "<missing>")
+                      block = int(value, 16) if isinstance(value, str) and value.lower().startswith("0x") else value
+                      print(f"EXPB payload first record: blockNumber={block} parentHash={first.get('parentHash', '<missing>')}")
+                  else:
+                      print(f"EXPB fcu first record: headBlockHash={first.get('headBlockHash', '<missing>')}")
+                  break
+              else:
+                  raise SystemExit(f"no nonblank records in {kind} JSONL")
+          PY
+            then
+              echo "::warning::Could not inspect the first ${kind} JSONL record."
+            fi
+          }
+          diagnose_jsonl payloads "${payload_path}"
+          diagnose_jsonl fcus "${fcus_path}"
           # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
           while IFS= read -r flag; do
@@ -2196,6 +2446,10 @@ jobs:
               echo "Set client env ${env_key}=${env_value}."
             done
           fi
+
+          source_config_sha256="$(sha256sum "${SOURCE_CONFIG_FILE}" | awk '{print $1}')"
+          rendered_base_sha256="$(sha256sum "${RENDERED_CONFIG_FILE}" | awk '{print $1}')"
+          echo "EXPB config identity: source=${SOURCE_CONFIG_FILE} source_sha256=${source_config_sha256} rendered_base_sha256=${rendered_base_sha256} payload_path=${payload_path} effective_payload_delay_seconds=${effective_delay}"
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -2458,6 +2712,21 @@ jobs:
 
           exit "${expb_exit_code}"
 
+      - name: Verify Linux priority records
+        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' }}
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          PRIORITY_MODE: ${{ needs.resolve.outputs.priority_mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          verifier="${RUNNER_TEMP}/verify-priority-log.py"
+          verifier_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/raw/${GITHUB_SHA}/scripts/priority-bench/verify_priority_log.py"
+          curl --fail --silent --show-error --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" "${verifier_url}" -o "${verifier}"
+          python3 "${verifier}" "${RAW_RUN_LOG}" --mode "${PRIORITY_MODE}"
+
       - name: Analyze benchmark output
         id: analyze
         if: always()
@@ -2655,17 +2924,42 @@ jobs:
       - name: Enforce run quality gates
         if: always()
         shell: bash
+        env:
+          RUN_EXPB_OUTCOME: ${{ steps.run-expb.outcome }}
+          EXCEPTION_FOUND: ${{ steps.analyze.outputs.exception_found }}
+          EXCEPTION_LINES_FILE: ${{ steps.analyze.outputs.exception_lines_file }}
+          INVALID_BLOCK_FOUND: ${{ steps.analyze.outputs.invalid_block_found }}
+          INVALID_BLOCK_LINES_FILE: ${{ steps.analyze.outputs.invalid_block_lines_file }}
+          TAG: ${{ matrix.tag }}
+          RUN: ${{ matrix.run }}
         run: |
           set -euo pipefail
-          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
-            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
-            echo "Continuing multi-image run (fail-fast is disabled)."
+          quality_gate_failed="false"
+
+          if [[ "${RUN_EXPB_OUTCOME}" != "success" ]]; then
+            echo "expb execute-scenarios did not finish successfully for ${TAG} run ${RUN}."
+            quality_gate_failed="true"
           fi
-          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
-            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+
+          if [[ "${EXCEPTION_FOUND}" == "true" ]]; then
+            echo "Exceptions were detected for ${TAG} run ${RUN}."
+            if [[ -f "${EXCEPTION_LINES_FILE}" ]]; then
+              head -n 40 "${EXCEPTION_LINES_FILE}"
+            fi
+            quality_gate_failed="true"
           fi
-          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
-            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+
+          if [[ "${INVALID_BLOCK_FOUND}" == "true" ]]; then
+            echo "Invalid block lines were detected for ${TAG} run ${RUN}."
+            if [[ -f "${INVALID_BLOCK_LINES_FILE}" ]]; then
+              head -n 40 "${INVALID_BLOCK_LINES_FILE}"
+            fi
+            quality_gate_failed="true"
+          fi
+
+          if [[ "${quality_gate_failed}" == "true" ]]; then
+            echo "Run quality gates failed for ${TAG} run ${RUN}."
+            exit 1
           fi
 
       - name: Collect and upload profiling artifacts

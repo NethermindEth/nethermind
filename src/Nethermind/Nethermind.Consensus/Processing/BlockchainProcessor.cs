@@ -47,6 +47,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
+    private readonly ExpbPriorityProbe _expbPriorityProbe;
 
     private readonly Channel<BlockRef> _recoveryQueue = Channel.CreateUnbounded<BlockRef>(
         new UnboundedChannelOptions()
@@ -109,6 +110,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
+        _expbPriorityProbe = ExpbPriorityProbe.FromEnvironment(_logger);
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
         _specProvider = specProvider;
@@ -358,7 +360,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
+            using ExpbPriorityProbe.Scope priorityProbe = _expbPriorityProbe.Enter();
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            priorityProbe.CaptureDuring();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
