@@ -705,50 +705,55 @@ public class FrameTxReceiptDecoderTests
         }
     }
 
-    // The payload defines only failure, success and skipped. An out-of-range byte round-trips, so the decoder is
-    // the only place it can be caught before AggregateStatus folds it to failure and RPC surfaces it raw.
+    /// <summary>The payload defines only failure, success and skipped, and the decoder is where a peer's
+    /// out-of-range byte is caught before AggregateStatus folds it to failure and RPC surfaces it raw.</summary>
+    /// <remarks>The write paths refuse those values first, so they are spliced into encoded bytes instead. Only
+    /// single-byte statuses are spliced, leaving the enclosing lengths intact; the two-byte <see cref="byte.MaxValue"/>
+    /// is pinned on the write side by <see cref="Encode_FrameStatusOutsideThePayloadValues_IsRefused"/>.</remarks>
     [TestCase(TxFrameReceipt.StatusFailure, false)]
     [TestCase(TxFrameReceipt.StatusSuccess, false)]
     [TestCase(TxFrameReceipt.StatusSkipped, false)]
     [TestCase((byte)3, true)]
-    [TestCase(byte.MaxValue, true)]
+    [TestCase((byte)0x7f, true)]
     public void MessageDecode_FrameStatusOutsideThePayloadValues_Throws(byte status, bool rejected)
     {
-        TxReceipt receipt = CreateReceipt(new TxFrameReceipt(status, 21_000, 0, []));
+        if (!rejected)
+        {
+            Assert.That(DecodeMessage(CreateReceipt(new TxFrameReceipt(status, 21_000, 0, []))).FrameReceipts![0].Status,
+                Is.EqualTo(status));
+            return;
+        }
 
-        if (rejected)
-        {
-            Assert.That(() => DecodeMessage(receipt), Throws.InstanceOf<RlpException>());
-        }
-        else
-        {
-            Assert.That(DecodeMessage(receipt).FrameReceipts![0].Status, Is.EqualTo(status));
-        }
+        byte[] encoded = EncodeMessage(CreateReceipt(new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, [])));
+        encoded[FirstFrameStatusOffset(encoded)] = status;
+
+        Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
     }
 
     // The log ceiling is derived from a whole transaction's gas, so the frames share one budget; spent per frame
-    // it would admit MaxFrames times the emissions it stands for.
+    // it would admit MaxFrames times the emissions it stands for. Encoded before the ceiling is lowered, or the
+    // write path's own guard would refuse the over-budget receipt and the decoder would never see it.
     [TestCase(0, false, TestName = "MessageDecode_FrameLogsAtTheReceiptBudget_IsAccepted")]
     [TestCase(1, true, TestName = "MessageDecode_FrameLogsOverTheReceiptBudget_Throws")]
     public void MessageDecode_FrameLogBudgetIsSpentPerReceiptNotPerFrame(int excess, bool rejected)
     {
-        RlpLimit.InitMaxBlockGas(EightLogBlockGas);
-
-        int maxReceiptLogs = RlpLimit.ReceiptLogs.Limit;
-        int firstFrameLogs = maxReceiptLogs / 2;
-        int secondFrameLogs = maxReceiptLogs - firstFrameLogs + excess;
+        int firstFrameLogs = EightLogBlockGasLimit / 2;
+        int secondFrameLogs = EightLogBlockGasLimit - firstFrameLogs + excess;
         // Each frame stays under the ceiling on its own, so only their sum can trip the guard.
-        TxReceipt receipt = CreateReceipt(
+        byte[] encoded = EncodeMessage(CreateReceipt(
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(firstFrameLogs)),
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(secondFrameLogs)));
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(secondFrameLogs))));
+
+        RlpLimit.InitMaxBlockGas(EightLogBlockGas);
+        Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(EightLogBlockGasLimit), "the ceiling the frames are sized against");
 
         if (rejected)
         {
-            Assert.That(() => DecodeMessage(receipt), Throws.InstanceOf<RlpException>());
+            Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
         }
         else
         {
-            Assert.That(DecodeMessage(receipt).Logs, Has.Length.EqualTo(maxReceiptLogs));
+            Assert.That(DecodeMessage(encoded).Logs, Has.Length.EqualTo(EightLogBlockGasLimit));
         }
     }
 
@@ -765,6 +770,22 @@ public class FrameTxReceiptDecoderTests
         RlpLimit.InitMaxBlockGas(EightLogBlockGas);
 
         Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
+    }
+
+    /// <summary>Where the first frame's status byte sits in an encoded receipt message.</summary>
+    /// <remarks>Walks the wrapper, the type byte and the payload fields the decoder reads before the status,
+    /// so a layout change moves this with it rather than silently patching the wrong byte.</remarks>
+    private static int FirstFrameStatusOffset(byte[] encoded)
+    {
+        RlpReader reader = new(encoded);
+        reader.SkipLength();
+        reader.SkipBytes(1);
+        reader.ReadSequenceLength();
+        reader.SkipItem();
+        reader.SkipItem();
+        reader.ReadSequenceLength();
+        reader.ReadSequenceLength();
+        return reader.Position;
     }
 
     private static TxReceipt DecodeMessage(TxReceipt receipt) => DecodeMessage(EncodeMessage(receipt));
