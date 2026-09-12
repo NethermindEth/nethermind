@@ -219,6 +219,33 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address EoaCallCallerAddress = new("0x00000000000000000000000000000000000000ee");
+
+    /// <summary>An account with no code, so a call to it takes the empty-account fast path.</summary>
+    private static readonly Address EoaTargetAddress = new("0x00000000000000000000000000000000000000ef");
+
+    /// <summary>STATICCALL to a codeless account: identical opcode work, but no call frame is built.</summary>
+    /// <remarks>Subtracting this from <see cref="StaticCall_SameAddress"/> isolates what a frame costs.</remarks>
+    private static readonly byte[] StaticCallEoaCode = BuildStaticCallEoaCode();
+
+    private static byte[] BuildStaticCallEoaCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CallsPerCall; i++)
+        {
+            code = code
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(EoaTargetAddress)
+                .PushData(1000)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -268,6 +295,7 @@ public class BlockProcessingBenchmark
     private Block _extCodeSizeBlock = null!;
     private Block _extCodeHashBlock = null!;
     private Block _staticCallBlock = null!;
+    private Block _staticCallEoaBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -306,6 +334,7 @@ public class BlockProcessingBenchmark
         _extCodeSizeBlock = BuildBlock(BuildCallsTo(ExtCodeSizeCallerAddress, 10, 0));
         _extCodeHashBlock = BuildBlock(BuildCallsTo(ExtCodeHashCallerAddress, 10, 0));
         _staticCallBlock = BuildBlock(BuildCallsTo(CallCallerAddress, 10, 0));
+        _staticCallEoaBlock = BuildBlock(BuildCallsTo(EoaCallCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -364,6 +393,10 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(EoaTargetAddress, UInt256.One);
+            stateProvider.CreateAccount(EoaCallCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(EoaCallCallerAddress, StaticCallEoaCode, Spec);
 
             stateProvider.CreateAccount(CallCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(CallCallerAddress, StaticCallSameAddressCode, Spec);
@@ -559,6 +592,16 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_staticCallBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] StaticCall_ToEoa()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_staticCallEoaBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
