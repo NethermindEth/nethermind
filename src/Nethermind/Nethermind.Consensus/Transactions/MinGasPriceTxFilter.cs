@@ -14,6 +14,8 @@ namespace Nethermind.Consensus.Transactions;
 /// After 1559: EffectivePriorityFeePerGas = transaction.EffectiveGasPrice - BaseFee.</summary>
 public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFilter
 {
+    internal bool IncludeRejectionMessage { get; init; } = true;
+
     public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
         => IsAllowed(tx, parentHeader, blocksConfig.MinGasPrice, currentSpec);
 
@@ -30,7 +32,9 @@ public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFil
         bool allowed = premiumPerGas >= minGasPriceFloor;
         return allowed
             ? AcceptTxResult.Accepted
-            : AcceptTxResult.FeeTooLow.WithMessage(
-                $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
+            : IncludeRejectionMessage
+                ? AcceptTxResult.FeeTooLow.WithMessage(
+                    $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}")
+                : AcceptTxResult.FeeTooLow;
     }
 }
