@@ -43,6 +43,9 @@ public class InclusionListSizeMeasurement
     private const int Draws = 2000;
     private const int SszOffsetBytes = 4;
 
+    // Below this fraction of the cap, a draw is corpus-bound rather than cap-bound and proves nothing.
+    private const double MinSaturationFraction = 0.95;
+
     [Test]
     public void Measure()
     {
@@ -65,6 +68,13 @@ public class InclusionListSizeMeasurement
         }
         TestContext.Out.WriteLine($"RESULT size min={sizes[0]}B max={sizes[^1]}B");
 
+        // Even one list containing every corpus transaction couldn't reach the cap, so no draw ever will.
+        if (total < Eip7805Constants.MaxBytesPerInclusionList)
+        {
+            Assert.Inconclusive($"Corpus totals {total}B, below the {Eip7805Constants.MaxBytesPerInclusionList}B cap — " +
+                                 "not even the whole corpus fills one list. Supply a larger corpus.");
+        }
+
         MeasureListCounts(txs);
     }
 
@@ -74,11 +84,15 @@ public class InclusionListSizeMeasurement
         InclusionListBuilder builder = BuildBuilder(PoolOfOneTxPerSender(txs));
         int[] counts = new int[Draws];
         long totalBytes = 0;
+        long maxBytes = 0;
         for (int i = 0; i < Draws; i++)
         {
             using InclusionListBytes list = builder.GetInclusionList();
             counts[i] = list.Count;
-            foreach (ArrayPoolList<byte> entry in list) totalBytes += entry.Count;
+            long listBytes = 0;
+            foreach (ArrayPoolList<byte> entry in list) listBytes += entry.Count;
+            totalBytes += listBytes;
+            if (listBytes > maxBytes) maxBytes = listBytes;
         }
 
         Array.Sort(counts);
@@ -91,14 +105,26 @@ public class InclusionListSizeMeasurement
         TestContext.Out.WriteLine($"RESULT list bytes mean={(double)totalBytes / Draws:F0} of " +
                                   $"{Eip7805Constants.MaxBytesPerInclusionList}, " +
                                   $"with SSZ offsets {(double)(totalBytes + (long)SszOffsetBytes * sum) / Draws:F0}");
+
+        long saturationThreshold = (long)(Eip7805Constants.MaxBytesPerInclusionList * MinSaturationFraction);
+        if (maxBytes < saturationThreshold)
+        {
+            Assert.Inconclusive($"No draw exceeded {maxBytes}B of the {Eip7805Constants.MaxBytesPerInclusionList}B cap " +
+                                 $"({MinSaturationFraction:P0} threshold) — draws are corpus-bound, not cap-bound. Supply a larger corpus.");
+        }
     }
 
     private static Transaction[] LoadCorpus()
     {
         string? path = Environment.GetEnvironmentVariable(CorpusVariable);
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        if (string.IsNullOrEmpty(path))
         {
             Assert.Ignore($"Set {CorpusVariable} to a file of raw transaction hex, one per line.");
+        }
+
+        if (!File.Exists(path))
+        {
+            Assert.Fail($"{CorpusVariable} is set to '{path}', but no such file exists.");
         }
 
         string[] lines = File.ReadAllLines(path!);
@@ -107,6 +133,11 @@ public class InclusionListSizeMeasurement
         {
             string trimmed = line.Trim();
             if (trimmed.Length > 0) raw.Add(Bytes.FromHexString(trimmed));
+        }
+
+        if (raw.Count == 0)
+        {
+            Assert.Fail($"{CorpusVariable} file '{path}' contains no transaction lines.");
         }
 
         byte[][] entries = raw.ToArray();
