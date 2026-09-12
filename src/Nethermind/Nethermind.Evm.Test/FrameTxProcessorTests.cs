@@ -4433,6 +4433,10 @@ public class FrameTxProcessorTests
             JsonElement senderFrame = frames[1];
             Assert.That(senderFrame.GetProperty("type").GetString(), Is.EqualTo("CALL"));
             Assert.That(senderFrame.GetProperty("to").GetString(), Is.EqualTo(Observer.ToString()));
+            Assert.That(HexValue(senderFrame, "gas"), Is.EqualTo(tx.Frames![1].GasLimit));
+            Assert.That(HexValue(senderFrame, "gasUsed"), Is.EqualTo(receipts[1].GasUsed)
+                .And.Not.EqualTo(HexValue(root, "gasUsed")),
+                "each frame spends its own gas; the transaction's total belongs to the synthetic root");
 
             if (onlyTopCall)
             {
