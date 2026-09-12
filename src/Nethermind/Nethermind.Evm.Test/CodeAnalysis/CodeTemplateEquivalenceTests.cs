@@ -115,6 +115,49 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
     }
 
     /// <summary>
+    /// The dispatcher solc emits when targeting Shanghai or later, which pushes its zeroes with PUSH0.
+    /// Those cost Base rather than VeryLow, so the preamble's price differs from the older shape.
+    /// </summary>
+    [TestCase(0xa9059cbbu, TestName = "First selector in the chain")]
+    [TestCase(0x18160dddu, TestName = "Last selector in the chain")]
+    [TestCase(0xdeadbeefu, TestName = "Selector that falls through to the fallback")]
+    public void Matches_the_dispatch_loop_for_a_push0_dispatcher(uint selector) =>
+        AssertBothPathsAgree(
+            Nothing,
+            TemplateCode.SelectorDispatch(Selectors, withCallValueGuard: true, push0: true).Code,
+            SelectorBytes(selector),
+            UInt256.Zero);
+
+    [Test]
+    public void Matches_the_dispatch_loop_for_a_push0_dispatcher_with_per_function_guards() =>
+        AssertBothPathsAgree(
+            Nothing,
+            TemplateCode.SelectorDispatch(Selectors, withCallValueGuard: false, perFunctionCallValueGuard: true, push0: true).Code,
+            SelectorBytes(Selectors[1]),
+            UInt256.Zero);
+
+    [Test]
+    public void Matches_the_dispatch_loop_for_a_push0_binary_search_tree()
+    {
+        byte[] code = TemplateCode.SelectorDispatch(
+            TreeSelectors, withCallValueGuard: true, DispatchShape.BinarySearch, push0: true).Code;
+
+        foreach (uint selector in TreeSelectors)
+        {
+            AssertBothPathsAgree(Nothing, code, SelectorBytes(selector), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Matches_the_dispatch_loop_for_a_push0_dispatcher_before_push0_exists() =>
+        AssertBothPathsAgree(
+            Nothing,
+            TemplateCode.SelectorDispatch(Selectors, withCallValueGuard: true, push0: true).Code,
+            SelectorBytes(Selectors[0]),
+            UInt256.Zero,
+            MainnetSpecProvider.ParisBlockNumber);
+
+    /// <summary>
     /// The PUSH0 forwarders, whose opcodes exist only from Shanghai. Running them on Paris pins the fork
     /// gate: the dispatch loop must halt on PUSH0 there, and the fast path must decline to skip it.
     /// </summary>

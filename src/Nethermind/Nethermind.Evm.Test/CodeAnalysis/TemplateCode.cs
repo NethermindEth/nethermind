@@ -94,18 +94,24 @@ public static class TemplateCode
         bool withCallValueGuard,
         DispatchShape shape = DispatchShape.Linear,
         bool recognized = true,
-        bool perFunctionCallValueGuard = false)
+        bool perFunctionCallValueGuard = false,
+        bool push0 = false)
     {
+        // Solc targeting Shanghai or later pushes its zeroes with PUSH0 instead of PUSH1 0x00.
+        byte[] zero = push0 ? [(byte)Instruction.PUSH0] : [(byte)Instruction.PUSH1, 0x00];
+
         List<byte> code = recognized
             ? [(byte)Instruction.PUSH1, 0x80, (byte)Instruction.PUSH1, 0x40, (byte)Instruction.MSTORE]
             : [(byte)Instruction.PUSH2, 0x00, 0x80, (byte)Instruction.PUSH1, 0x40, (byte)Instruction.MSTORE];
 
         if (withCallValueGuard)
         {
-            int guardTarget = code.Count + 11;
+            int guardTarget = code.Count + 9 + zero.Length;
             code.AddRange([(byte)Instruction.CALLVALUE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO]);
             code.AddRange(Push2(guardTarget));
-            code.AddRange([(byte)Instruction.JUMPI, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.DUP1, (byte)Instruction.REVERT]);
+            code.Add((byte)Instruction.JUMPI);
+            code.AddRange(zero);
+            code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.REVERT]);
             code.AddRange([(byte)Instruction.JUMPDEST, (byte)Instruction.POP]);
         }
 
@@ -116,7 +122,8 @@ public static class TemplateCode
         code.AddRange(Push2(0));
         code.Add((byte)Instruction.JUMPI);
 
-        code.AddRange([(byte)Instruction.PUSH1, 0x00, (byte)Instruction.CALLDATALOAD, (byte)Instruction.PUSH1, 0xE0, (byte)Instruction.SHR]);
+        code.AddRange(zero);
+        code.AddRange([(byte)Instruction.CALLDATALOAD, (byte)Instruction.PUSH1, 0xE0, (byte)Instruction.SHR]);
 
         Dictionary<uint, int> bodyPatches = [];
         uint[] ordered = [.. selectors];
@@ -131,7 +138,9 @@ public static class TemplateCode
         }
 
         int fallback = code.Count;
-        code.AddRange([(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.DUP1, (byte)Instruction.REVERT]);
+        code.Add((byte)Instruction.JUMPDEST);
+        code.AddRange(zero);
+        code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.REVERT]);
         foreach (int patch in fallbackPatches)
         {
             Patch(code, patch, fallback);
@@ -148,8 +157,10 @@ public static class TemplateCode
             {
                 // CALLVALUE DUP1 ISZERO PUSH2 body JUMPI PUSH1 0x00 DUP1 REVERT JUMPDEST POP
                 code.AddRange([(byte)Instruction.CALLVALUE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO]);
-                code.AddRange(Push2(code.Count + 8));
-                code.AddRange([(byte)Instruction.JUMPI, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.DUP1, (byte)Instruction.REVERT]);
+                code.AddRange(Push2(code.Count + 6 + zero.Length));
+                code.Add((byte)Instruction.JUMPI);
+                code.AddRange(zero);
+                code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.REVERT]);
                 code.AddRange([(byte)Instruction.JUMPDEST, (byte)Instruction.POP]);
             }
 

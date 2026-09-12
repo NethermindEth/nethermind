@@ -1300,10 +1300,9 @@ public partial class VirtualMachine<TGasPolicy>(
                     if (proxyEntry != EvmExceptionType.None) goto ProxyFailure;
                 }
             }
-            // The dispatcher extracts its selector with SHR.
-            else if (!vmState.IsContinuation && spec.ShiftOpcodesEnabled)
+            else if (!vmState.IsContinuation)
             {
-                TryEnterFunctionBody(vmState, ref stack, ref gas);
+                TryEnterFunctionBody(vmState, spec, ref stack, ref gas);
             }
         }
 
@@ -1456,11 +1455,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// the dispatch loop then charges for as usual. Every rejection happens before any of that is
     /// applied, so declining is always equivalent to never having been called.
     /// </remarks>
-    private static void TryEnterFunctionBody(VmState<TGasPolicy> vmState, ref EvmStack stack, ref TGasPolicy gas)
+    private static void TryEnterFunctionBody(VmState<TGasPolicy> vmState, IReleaseSpec spec, ref EvmStack stack, ref TGasPolicy gas)
     {
         ExecutionEnvironment env = vmState.Env;
         SelectorDispatch? dispatch = env.CodeInfo.Template.SelectorDispatch;
-        if (dispatch is null) return;
+        if (dispatch is null || !dispatch.IsEnabled(spec)) return;
 
         ReadOnlySpan<byte> input = env.InputData.Span;
         if (input.Length < sizeof(uint)) return;

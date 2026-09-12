@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -44,14 +45,32 @@ internal sealed class SelectorDispatch
     private readonly ulong[] _gas;
     private readonly bool[] _guarded;
 
-    private SelectorDispatch(uint[] selectors, int[] targets, ulong[] gas, bool[] guarded, bool rejectsCallValue)
+    private SelectorDispatch(
+        uint[] selectors,
+        int[] targets,
+        ulong[] gas,
+        bool[] guarded,
+        bool rejectsCallValue,
+        bool usesPush0)
     {
         _selectors = selectors;
         _targets = targets;
         _gas = gas;
         _guarded = guarded;
         RejectsCallValue = rejectsCallValue;
+        _usesPush0 = usesPush0;
     }
+
+    private readonly bool _usesPush0;
+
+    /// <summary>Whether the fork in force defines every opcode this dispatcher's preamble skips.</summary>
+    /// <remarks>
+    /// Every dispatcher extracts its selector with SHR, and one built by a Shanghai-targeting solc pushes
+    /// its zeroes with PUSH0. Skipping an opcode a fork has yet to define would run code the dispatch loop
+    /// must instead halt on as <see cref="EvmExceptionType.BadInstruction"/>.
+    /// </remarks>
+    public bool IsEnabled(IReleaseSpec spec) =>
+        spec.ShiftOpcodesEnabled && (!_usesPush0 || spec.IncludePush0Instruction);
 
     /// <summary>Whether the preamble carries the contract-wide guard that reverts on a non-zero call value.</summary>
     /// <remarks>
@@ -110,13 +129,14 @@ internal sealed class SelectorDispatch
             !reader.TryOpcode(Instruction.JUMPI)) return null;
 
         // PUSH1 0x00 CALLDATALOAD PUSH1 0xE0 SHR: shift the selector down to the low four bytes.
-        if (!reader.TryPush1(0) ||
+        if (!reader.TryPushZero() ||
             !reader.TryOpcode(Instruction.CALLDATALOAD) ||
             !reader.TryPush1(0xE0) ||
             !reader.TryOpcode(Instruction.SHR)) return null;
 
         List<Entry> entries = [];
-        if (!TryParseNode(code, isValidJumpDestination, entries, reader.Position, reader.Gas, depth: 0) ||
+        bool usesPush0 = reader.UsedPush0;
+        if (!TryParseNode(code, isValidJumpDestination, entries, reader.Position, reader.Gas, depth: 0, ref usesPush0) ||
             entries.Count == 0 ||
             HasDuplicateSelectors(entries)) return null;
 
@@ -132,7 +152,7 @@ internal sealed class SelectorDispatch
             guarded[i] = entries[i].Guarded;
         }
 
-        return new SelectorDispatch(selectors, targets, gas, guarded, rejectsCallValue);
+        return new SelectorDispatch(selectors, targets, gas, guarded, rejectsCallValue, usesPush0);
     }
 
     /// <summary>One selector's resolved body, the gas consumed reaching it, and whether it rejects call value.</summary>
@@ -153,7 +173,8 @@ internal sealed class SelectorDispatch
         List<Entry> entries,
         int position,
         ulong gas,
-        int depth)
+        int depth,
+        ref bool usesPush0)
     {
         if (depth > MaxDepth || entries.Count > MaxEntries) return false;
 
@@ -166,11 +187,11 @@ internal sealed class SelectorDispatch
             // The taken branch lands on a JUMPDEST, which the EVM charges before the subtree runs.
             int takenFirst = entries.Count;
             if (!TryParseNode(code, isValidJumpDestination, entries, branch + 1,
-                    gas + ComparisonGas + GasCostOf.JumpDest, depth + 1)) return false;
+                    gas + ComparisonGas + GasCostOf.JumpDest, depth + 1, ref usesPush0)) return false;
 
             int fallThroughFirst = entries.Count;
             if (!TryParseNode(code, isValidJumpDestination, entries, reader.Position,
-                    gas + ComparisonGas, depth + 1)) return false;
+                    gas + ComparisonGas, depth + 1, ref usesPush0)) return false;
 
             // GT computes "pivot > selector", LT computes "pivot < selector"; the taken branch is the side
             // that comparison selects, and the fall-through takes everything else.
@@ -179,7 +200,7 @@ internal sealed class SelectorDispatch
                    AllSelectorsSatisfy(entries, fallThroughFirst, entries.Count, pivot, below: !takenIsBelowPivot);
         }
 
-        return TryParseEqualityRun(code, isValidJumpDestination, entries, position, gas);
+        return TryParseEqualityRun(code, isValidJumpDestination, entries, position, gas, ref usesPush0);
     }
 
     /// <summary>Parses consecutive equality tests, each sending its selector to a function body.</summary>
@@ -188,7 +209,8 @@ internal sealed class SelectorDispatch
         Func<int, bool> isValidJumpDestination,
         List<Entry> entries,
         int position,
-        ulong gas)
+        ulong gas,
+        ref bool usesPush0)
     {
         Reader reader = new(code) { Position = position };
         int matched = 0;
@@ -200,7 +222,7 @@ internal sealed class SelectorDispatch
             if (!isValidJumpDestination(target)) return false;
 
             ulong bodyGas = gas + ComparisonGas;
-            bool guarded = TrySkipFunctionCallValueGuard(code, isValidJumpDestination, ref target, ref bodyGas);
+            bool guarded = TrySkipFunctionCallValueGuard(code, isValidJumpDestination, ref target, ref bodyGas, ref usesPush0);
             entries.Add(new Entry(selector, target, bodyGas, guarded));
             matched++;
             gas += ComparisonGas;
@@ -222,7 +244,8 @@ internal sealed class SelectorDispatch
         ReadOnlySpan<byte> code,
         Func<int, bool> isValidJumpDestination,
         ref int target,
-        ref ulong gas)
+        ref ulong gas,
+        ref bool usesPush0)
     {
         Reader reader = new(code) { Position = target };
 
@@ -235,7 +258,7 @@ internal sealed class SelectorDispatch
             !reader.TryOpcode(Instruction.JUMPI)) return false;
 
         // The revert arm is jumped over, so its opcodes are skipped rather than charged.
-        if (!reader.TrySkipPush1(0) ||
+        if (!reader.TrySkipPushZero() ||
             !reader.TrySkipOpcode(Instruction.DUP1) ||
             !reader.TrySkipOpcode(Instruction.REVERT)) return false;
 
@@ -246,6 +269,7 @@ internal sealed class SelectorDispatch
 
         target = reader.Position;
         gas += reader.Gas;
+        usesPush0 |= reader.UsedPush0;
         return true;
     }
 
@@ -305,7 +329,7 @@ internal sealed class SelectorDispatch
             !probe.TryOpcode(Instruction.JUMPI)) return false;
 
         // The revert arm is jumped over, so its opcodes are skipped rather than charged.
-        if (!probe.TrySkipPush1(0) ||
+        if (!probe.TrySkipPushZero() ||
             !probe.TrySkipOpcode(Instruction.DUP1) ||
             !probe.TrySkipOpcode(Instruction.REVERT)) return false;
 
@@ -364,6 +388,39 @@ internal sealed class SelectorDispatch
             instruction = (Instruction)_code[Position];
             Position++;
             return true;
+        }
+
+        /// <summary>Whether any zero push matched so far used the PUSH0 form.</summary>
+        public bool UsedPush0 { get; private set; }
+
+        /// <summary>
+        /// Reads a zero push in either form: PUSH0, or the PUSH1 0x00 that solc emits when it is not
+        /// targeting Shanghai. The two cost different gas, so the charge follows the form found.
+        /// </summary>
+        public bool TryPushZero()
+        {
+            if (Position < _code.Length && _code[Position] == (byte)Instruction.PUSH0)
+            {
+                Position++;
+                Gas += GasCostOf.Base;
+                UsedPush0 = true;
+                return true;
+            }
+
+            return TryPush1(0);
+        }
+
+        /// <summary>Reads a zero push in either form without charging for it.</summary>
+        public bool TrySkipPushZero()
+        {
+            if (Position < _code.Length && _code[Position] == (byte)Instruction.PUSH0)
+            {
+                Position++;
+                UsedPush0 = true;
+                return true;
+            }
+
+            return TrySkipPush1(0);
         }
 
         public bool TryPush1(int value)

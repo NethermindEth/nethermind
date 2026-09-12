@@ -34,16 +34,19 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
     /// <summary>RETURNDATACOPY of nothing still costs the opcode's base, with no word or expansion gas.</summary>
     private const ulong EmptyReturnDataCopyCost = GasCostOf.VeryLow;
 
-    [TestCase(0u, false)]
-    [TestCase(1u, false)]
-    [TestCase(2u, false)]
-    [TestCase(0u, true, TestName = "Body opens with its own call value guard")]
-    [TestCase(2u, true, TestName = "Guarded body further down the chain")]
-    public void Dispatcher_reports_the_gas_the_interpreter_charges_to_reach_the_body(uint index, bool perFunctionGuard)
+    [TestCase(0u, false, false)]
+    [TestCase(1u, false, false)]
+    [TestCase(2u, false, false)]
+    [TestCase(0u, true, false, TestName = "Body opens with its own call value guard")]
+    [TestCase(2u, true, false, TestName = "Guarded body further down the chain")]
+    [TestCase(0u, false, true, TestName = "Preamble pushes its zeroes with PUSH0")]
+    [TestCase(2u, false, true, TestName = "PUSH0 preamble, selector further down the chain")]
+    [TestCase(1u, true, true, TestName = "PUSH0 preamble and a per-function guard")]
+    public void Dispatcher_reports_the_gas_the_interpreter_charges_to_reach_the_body(uint index, bool perFunctionGuard, bool push0)
     {
         uint[] selectors = [0xa9059cbb, 0x70a08231, 0x18160ddd];
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
-            selectors, withCallValueGuard: !perFunctionGuard, perFunctionCallValueGuard: perFunctionGuard);
+            selectors, withCallValueGuard: !perFunctionGuard, perFunctionCallValueGuard: perFunctionGuard, push0: push0);
         uint selector = selectors[index];
 
         SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch!;
