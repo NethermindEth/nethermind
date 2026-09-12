@@ -187,6 +187,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         value = default;
         if (parentReader is not WorldState worldState) return false;
         ref UInt256 cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_pureReadValues, cell, out bool exists);
+        // The concrete parent reads its own caches and cannot resize this worker's dictionary.
         if (!exists) worldState.GetPureReadStorage(in cell, out cached);
         value = cached;
         _lastPureRead = cell;

@@ -1021,6 +1021,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ulong round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
+                // Capture updates the provider's separate originals map, leaving this dictionary ref valid.
                 provider.CaptureOriginalValue(storageCell, valueChange.After);
                 valueChange.SetCapturedRound(round);
             }

@@ -141,8 +141,16 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
     {
+        AssertCurrentStorageValue(in storageCell, in currentValue);
         GeneratingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
         State.Set(in storageCell, in newValue, in currentValue);
+    }
+
+    [Conditional("DEBUG")]
+    private void AssertCurrentStorageValue(in StorageCell cell, in UInt256 expected)
+    {
+        State.Get(in cell, out UInt256 actual);
+        Debug.Assert(actual == expected, "Storage must not change between reading the current value and recording the write.");
     }
 
     public override ref readonly UInt256 GetBalance(Address address)
