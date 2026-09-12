@@ -559,7 +559,9 @@ namespace Nethermind.Core.Test
             byte[] encoded = value < 128 ? [(byte)value] : [0x81, (byte)value];
             RlpReader reader = new(encoded);
             byte[] decoded = reader.DecodeByteArray();
-            byte[] expected = ((ReadOnlySpan<byte>)new byte[] { (byte)value }).ToArrayWithSingleByteCache();
+            RlpReader secondReader = new(encoded);
+            byte[] expected = secondReader.DecodeByteArray();
+            encoded[^1] ^= 0xff;
 
             using (Assert.EnterMultipleScope())
             {
