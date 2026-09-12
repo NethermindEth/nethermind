@@ -42,6 +42,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
     private readonly Dictionary<StorageCell, UInt256> _originalValues = [];
+    // Memoizes captured values only; transaction originals still resolve through the journal.
+    private StorageCell _lastCapturedCell;
+    private UInt256 _lastCapturedOriginal;
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly List<StorageClearChange> _storageClearJournal = [];
 
@@ -50,6 +53,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void EndOriginalsRound()
     {
+        _lastCapturedCell = default;
         _originalValues.ClearAndTrim();
         if (++_originalsRound == 0) _originalsRound = 1;
     }
@@ -132,24 +136,41 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <param name="value">Original value at the cell.</param>
     public void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
-        if (!_originalValues.TryGetValue(storageCell, out value))
-        {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
-        }
+        if (_lastCapturedCell.Address is null || _lastCapturedCell.Index != storageCell.Index || _lastCapturedCell.Address != storageCell.Address)
+            LoadCapturedOriginal(in storageCell);
 
-        if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
+        if (_intraBlockCache.Count != 0)
         {
-            int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
-            if (head.CurrentIdx <= currentSnapshot)
+            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
+            if (!Unsafe.IsNullRef(ref head))
             {
-                // Untouched this transaction — the current value is the tx original.
-                value = head.Value;
-                return;
-            }
+                int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+                if (head.CurrentIdx <= currentSnapshot)
+                {
+                    // Untouched this transaction — the current value is the tx original.
+                    value = head.Value;
+                    return;
+                }
 
-            // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
-            value = head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
+                // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
+                if (head.OriginalIdx != -1)
+                {
+                    value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
+                    return;
+                }
+            }
         }
+        value = _lastCapturedOriginal;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LoadCapturedOriginal(in StorageCell storageCell)
+    {
+        if (!_originalValues.TryGetValue(storageCell, out UInt256 value))
+            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+
+        _lastCapturedCell = storageCell;
+        _lastCapturedOriginal = value;
     }
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
@@ -543,6 +564,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             slot = value;
         }
+        _lastCapturedCell = cell;
+        _lastCapturedOriginal = slot;
     }
 
     [SkipLocalsInit]
@@ -684,6 +707,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _storageClearJournal.RemoveAt(journalIndex);
         GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange);
 
+        _lastCapturedCell = default;
         foreach (StorageCell cell in _originalValues.Keys)
         {
             if (cell.Address == change.Address)

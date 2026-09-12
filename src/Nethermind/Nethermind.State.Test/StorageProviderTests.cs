@@ -248,6 +248,39 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Original_value_requires_capture_even_when_a_write_head_exists([Values] bool writeFirst, [Values(0ul, 1ul, ulong.MaxValue)] ulong index)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, index);
+        StorageCell other = new(ctx.Address1, index ^ 1);
+        provider.Get(in other, out _);
+        if (writeFirst) provider.Set(in cell, UInt256.One);
+
+        Assert.Throws<InvalidOperationException>(() => provider.GetOriginal(in cell, out _));
+    }
+
+    [Test]
+    public void Original_value_cache_ends_with_the_capture_round([Values] bool write, [Values] bool reset)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Get(in cell, out _);
+        provider.GetOriginal(in cell, out UInt256 original);
+        Assert.That(original, Is.EqualTo(UInt256.Zero));
+        if (write) provider.Set(in cell, UInt256.One);
+
+        if (reset) provider.Reset(resetBlockChanges: false);
+        else provider.Commit(Frontier.Instance);
+
+        Assert.Throws<InvalidOperationException>(() => provider.GetOriginal(in cell, out _));
+        provider.Get(in cell, out _);
+        provider.GetOriginal(in cell, out original);
+        Assert.That(original, Is.EqualTo(write && !reset ? UInt256.One : UInt256.Zero));
+    }
+
+    [Test]
     public void Same_address_different_index([Range(-1, 2)] int snapshot)
     {
         using Context ctx = new(useFlat);
@@ -921,6 +954,8 @@ public class StorageProviderTests(bool useFlat)
             {
                 provider.Reset(resetBlockChanges: false);
             }
+
+            Assert.Throws<InvalidOperationException>(() => provider.GetOriginal(in readAfterClear, out _));
 
             using (Assert.EnterMultipleScope())
             {
