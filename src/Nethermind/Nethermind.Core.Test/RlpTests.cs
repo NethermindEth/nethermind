@@ -34,6 +34,151 @@ namespace Nethermind.Core.Test
             Assert.That(decoded, Is.EqualTo(value));
         }
 
+        [Test]
+        public void Cursor_decoders_chain_without_changing_the_input([Values(0, 3)] int start)
+        {
+            byte[] encoded = [0xc7, 0x01, 0x81, 0x80, 0x83, 0x61, 0x62, 0x63];
+            byte[] buffer = [.. new byte[start], .. encoded];
+            LiteRlpReader reader = new(buffer);
+
+            int position = start;
+            reader.ReadSequenceLength(ref position, out int contentLength);
+            int contentStart = position;
+            reader.DecodeULong(ref position, out ulong first);
+            reader.DecodeUInt256(ref position, out UInt256 second);
+            reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> third);
+            int rereadPosition = contentStart;
+            ulong reread = reader.DecodeULong(ref rereadPosition);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(contentLength, Is.EqualTo(7));
+                Assert.That(first, Is.EqualTo(1));
+                Assert.That(second, Is.EqualTo((UInt256)128));
+                Assert.That(third.ToArray(), Is.EqualTo(new byte[] { 0x61, 0x62, 0x63 }));
+                Assert.That(position, Is.EqualTo(start + encoded.Length));
+                Assert.That(rereadPosition, Is.EqualTo(start + 2));
+                Assert.That(reread, Is.EqualTo(first));
+                Assert.That(buffer.AsSpan(start).ToArray(), Is.EqualTo(encoded));
+            }
+        }
+
+        [Test]
+        public void Cursor_reader_distinguishes_null_from_empty_string()
+        {
+            byte[] nullValue = [Rlp.EmptyListByte, Rlp.EmptyByteArrayByte];
+            RlpReader nullContext = new(nullValue);
+            bool consumedNull = nullContext.TryConsumeNull(out LiteRlpReader nullReader, out int nullPosition);
+
+            byte[] emptyString = [Rlp.EmptyByteArrayByte];
+            RlpReader emptyContext = new(emptyString);
+            bool consumedEmptyString = emptyContext.TryConsumeNull(out LiteRlpReader emptyReader, out int emptyPosition);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(consumedNull, Is.True);
+                Assert.That(nullPosition, Is.Zero);
+                Assert.That(nullContext.Position, Is.EqualTo(1));
+                Assert.That(nullReader.Data.Length, Is.EqualTo(nullValue.Length));
+                Assert.That(nullReader.Data[0], Is.EqualTo(Rlp.EmptyListByte));
+                Assert.That(consumedEmptyString, Is.False);
+                Assert.That(emptyPosition, Is.Zero);
+                Assert.That(emptyContext.Position, Is.Zero);
+                Assert.That(emptyReader.Data[0], Is.EqualTo(Rlp.EmptyByteArrayByte));
+            }
+        }
+
+        [Test]
+        public void Lite_reader_forwards_the_remaining_cursor_decoders()
+        {
+            byte[] integer = [0x82, 0x01, 0x00];
+            LiteRlpReader reader = new(integer);
+            int position = 0;
+
+            reader.DecodeUShort(ref position, out ushort ushortValue);
+            Assert.That((ushortValue, position), Is.EqualTo(((ushort)256, integer.Length)));
+
+            position = 0;
+            reader.DecodePositiveLong(ref position, out long longValue);
+            Assert.That((longValue, position), Is.EqualTo((256L, integer.Length)));
+
+            position = 0;
+            reader.DecodeEvmWord(ref position, out EvmWord _);
+            Assert.That(position, Is.EqualTo(integer.Length));
+
+            byte[] byteValueRlp = [1];
+            reader = new(byteValueRlp);
+            position = 0;
+            reader.DecodeByte(ref position, out byte byteValue);
+            Assert.That((byteValue, position), Is.EqualTo(((byte)1, byteValueRlp.Length)));
+
+            byte[] hashRlp = [160, .. Keccak.EmptyTreeHash.Bytes];
+            reader = new(hashRlp);
+            position = 0;
+            reader.DecodeValueKeccakOrNull(ref position, out ValueHash256? nullableHash);
+            Assert.That((nullableHash, position), Is.EqualTo((Keccak.EmptyTreeHash.ValueHash256, hashRlp.Length)));
+
+            position = 0;
+            bool hasValue = reader.TryDecodeValueKeccak(ref position, out ValueHash256 valueHash);
+            Assert.That((hasValue, valueHash, position), Is.EqualTo((true, Keccak.EmptyTreeHash.ValueHash256, hashRlp.Length)));
+
+            byte[] zeroPrefixHashRlp = [1];
+            reader = new(zeroPrefixHashRlp);
+            position = 0;
+            reader.DecodeZeroPrefixKeccak(ref position, out Hash256? zeroPrefixHash);
+            byte[] expectedHashBytes = new byte[Hash256.Size];
+            expectedHashBytes[^1] = 1;
+            Assert.That((zeroPrefixHash, position), Is.EqualTo((new Hash256(expectedHashBytes), zeroPrefixHashRlp.Length)));
+
+            byte[] bloomRlp = ExpectedBloom(Bloom.Empty);
+            reader = new(bloomRlp);
+            position = 0;
+            reader.DecodeBloomSpan(ref position, out ReadOnlySpan<byte> bloomBytes);
+            Assert.That(bloomBytes.ToArray(), Is.EqualTo(Bloom.Empty.Bytes.ToArray()));
+            Assert.That(position, Is.EqualTo(bloomRlp.Length));
+
+            byte[] stringRlp = [0x83, 0x61, 0x62, 0x63];
+            reader = new(stringRlp);
+            position = 0;
+            reader.DecodeString(ref position, out string value);
+            Assert.That((value, position), Is.EqualTo(("abc", stringRlp.Length)));
+        }
+
+        [Test]
+        public void Cursor_span_decoder_keeps_the_failing_item_position()
+        {
+            byte[] buffer = [0x01, 0x81, 0x01];
+            int position = 0;
+
+            void Decode()
+            {
+                LiteRlpReader reader = new(buffer);
+                reader.DecodeByteArraySpan(ref position, out _);
+                reader.DecodeByteArraySpan(ref position, out _);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            Assert.That(position, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Cursor_decoder_keeps_the_failing_item_position([Values(0, 3)] int start, [Values] bool useOut)
+        {
+            byte[] buffer = [.. new byte[start], 0x01, 0x81, 0x01];
+            int position = start;
+
+            void Decode()
+            {
+                LiteRlpReader reader = new(buffer);
+                if (useOut) reader.DecodeULong(ref position, out _);
+                else reader.DecodeULong(ref position);
+            }
+
+            Decode();
+            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            Assert.That(position, Is.EqualTo(start + 1));
+        }
+
         /// <summary>Builds a value whose canonical big-endian encoding is exactly that many bytes.</summary>
         private static UInt256 UInt256OfByteLength(int byteLength)
         {
@@ -1182,7 +1327,7 @@ namespace Nethermind.Core.Test
         {
             // These prefixes declare a multi-byte length field, but the data is truncated
             // before all length bytes are present. The bounds check should catch this.
-            Action act = () => RlpHelpers.PeekNextRlpLength(truncatedData, 0);
+            Action act = () => new LiteRlpReader(truncatedData).PeekNextRlpLength(0);
             Assert.That(act, Throws.TypeOf<RlpException>());
         }
     }

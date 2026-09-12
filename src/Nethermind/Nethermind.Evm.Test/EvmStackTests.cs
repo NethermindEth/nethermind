@@ -7,6 +7,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -17,6 +18,35 @@ namespace Nethermind.Evm.Test;
 
 public class EvmStackTests
 {
+    [Test]
+    public void IsJumpDestination_AtBitmapBoundaries_RejectsPaddingAndPushData(
+        [Values(0, 1, 2, 63, 64, 65, 127, 128, 129)] int codeLength,
+        [Values] bool cached)
+    {
+        byte[] code = new byte[codeLength];
+        Array.Fill(code, (byte)Instruction.JUMPDEST);
+        if (codeLength > 1) code[0] = (byte)Instruction.PUSH1;
+        CodeInfo codeInfo = new(code);
+        byte slot = 0;
+
+        for (int destination = -1; destination <= codeLength + 64; destination++)
+        {
+            EvmStack stack = new(0, ref slot, code, codeInfo);
+            if (cached && codeLength > 0) stack.IsJumpDestination(0);
+            bool expected = destination >= (codeLength > 1 ? 2 : 0) && destination < codeLength;
+
+            Assert.That(stack.IsJumpDestination(destination), Is.EqualTo(expected), $"destination {destination}");
+        }
+
+        EvmStack extremeStack = new(0, ref slot, code, codeInfo);
+        if (cached && codeLength > 0) extremeStack.IsJumpDestination(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(extremeStack.IsJumpDestination(int.MinValue), Is.False);
+            Assert.That(extremeStack.IsJumpDestination(int.MaxValue), Is.False);
+        }
+    }
+
     [Test]
     public void UInt256_writeback_preserves_aliases_and_unaligned_slots(
         [Values(0, 1, 7, 8, 31)] int offset, [Values] bool alias)
