@@ -69,6 +69,30 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void Transient_span_writes_use_worker_journal()
+    {
+        IWorldState parent = null!;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            1, Build.A.BlockAccessList.TestObject, decorateParent: ws => parent = ws);
+        using (scope)
+        {
+            StorageCell cell = new(TestItem.AddressA, 1);
+            Snapshot snapshot = bws.TakeSnapshot();
+            byte[] value = new byte[32];
+            value[^1] = 7;
+            bws.SetTransientState(cell, value.AsSpan());
+            value[^1] = 8;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetTransientState(cell)[^1], Is.EqualTo(7));
+                Assert.That(parent.GetTransientState(cell).ToArray(), Is.EqualTo(new byte[] { 0 }));
+            }
+            bws.Restore(snapshot);
+            Assert.That(bws.GetTransientState(cell).ToArray(), Is.EqualTo(new byte[] { 0 }));
+        }
+    }
+
+    [Test]
     public void DeclaredReads_PreserveOriginalValuesAndSnapshots([Values] bool decorate, [Values(0, 42)] int storedValue)
     {
         StorageCell cell = new(TestItem.AddressA, 1);

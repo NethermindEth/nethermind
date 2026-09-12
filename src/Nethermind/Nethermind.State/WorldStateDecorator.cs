@@ -75,6 +75,11 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue)
         => State.SetTransientState(in storageCell, newValue);
 
+    /// <inheritdoc/>
+    /// <remarks>Routes through the array overload to preserve overrides in existing decorators.</remarks>
+    public virtual void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        => SetTransientState(in storageCell, newValue.ToArray());
+
     public virtual void Reset(bool resetBlockChanges = true)
         => State.Reset(resetBlockChanges);
 

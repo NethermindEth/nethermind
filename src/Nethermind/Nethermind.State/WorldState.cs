@@ -149,6 +149,13 @@ namespace Nethermind.State
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
         }
+
+        /// <inheritdoc/>
+        public void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        {
+            DebugGuardInScope();
+            _transientStorageProvider.Set(storageCell, newValue);
+        }
         public void Reset(bool resetBlockChanges = true)
         {
             DebugGuardInScope();

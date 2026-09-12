@@ -413,6 +413,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override void SetTransientState(in StorageCell storageCell, byte[] newValue)
         => _transientStorageProvider.Set(in storageCell, newValue);
 
+    /// <inheritdoc/>
+    public override void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        => _transientStorageProvider.Set(in storageCell, newValue);
+
     public override void ResetTransient()
         => _transientStorageProvider.Reset();
 

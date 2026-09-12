@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
@@ -116,6 +117,43 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
         Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
+    }
+
+    [Test]
+    public void repeated_tstore_preserves_value_and_gas([Values(0, 1, 255)] int value)
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInTransientStorage(0, value)
+            .StoreDataInTransientStorage(0, value)
+            .LoadDataFromTransientStorage(0)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(), code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(value));
+            Assert.That(result.GasSpent, Is.EqualTo(GasCostOf.Transaction + 2 * GasCostOf.TStore + GasCostOf.TLoad + 10 * GasCostOf.VeryLow));
+            Assert.That(result.Writes, Is.EqualTo(2));
+            Assert.That(result.NewValue, Is.EqualTo((UInt256)value));
+            Assert.That(result.CurrentValue, Is.EqualTo((UInt256)value));
+        }
+    }
+
+    private sealed class TransientStoreTracer : TestAllTracerWithOutput
+    {
+        public int Writes { get; private set; }
+        public UInt256 NewValue { get; private set; }
+        public UInt256 CurrentValue { get; private set; }
+
+        public override void SetOperationTransientStorage(Address address, UInt256 storageIndex, System.ReadOnlySpan<byte> newValue, System.ReadOnlySpan<byte> currentValue)
+        {
+            Writes++;
+            NewValue = new UInt256(newValue, isBigEndian: true);
+            CurrentValue = new UInt256(currentValue, isBigEndian: true);
+        }
     }
 
     /// <summary>

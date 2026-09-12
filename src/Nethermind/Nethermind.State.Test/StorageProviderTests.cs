@@ -491,6 +491,84 @@ public class StorageProviderTests(bool useFlat)
     /// Commit will reset transient state
     /// </summary>
     [Test]
+    public void Transient_span_writes_copy_values_and_skip_unchanged_values([Values(0, 1, 255)] byte value, [Values] bool traced)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = BuildStorageProvider(ctx);
+        if (traced)
+        {
+            TracedAccessWorldState decorator = new(provider, parallel: false);
+            decorator.SetGeneratingBlockAccessList(new());
+            provider = decorator;
+        }
+        StorageCell cell = new(ctx.Address1, 1);
+        byte[] bytes = new byte[32];
+        bytes[^1] = value;
+        provider.SetTransientState(cell, bytes.AsSpan());
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(cell, bytes.AsSpan());
+        Assert.That(provider.TakeSnapshot(), Is.EqualTo(snapshot));
+        bytes[^1] ^= 1;
+        Assert.That(provider.GetTransientState(cell)[^1], Is.EqualTo(value));
+        provider.Restore(Snapshot.Empty);
+        Assert.That(provider.GetTransientState(cell).IsZero(), Is.True);
+    }
+
+    [Test]
+    public void Transient_span_write_preserves_decorator_override()
+    {
+        using Context ctx = new(useFlat);
+        TransientWriteDecorator decorator = new(BuildStorageProvider(ctx));
+        IWorldState provider = decorator;
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.SetTransientState(cell, _values[1].AsSpan());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decorator.Writes, Is.EqualTo(1));
+            Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[1]));
+        }
+    }
+
+    private sealed class TransientWriteDecorator(IWorldState state) : WorldStateDecorator(state)
+    {
+        public int Writes { get; private set; }
+
+        public override void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        {
+            Writes++;
+            base.SetTransientState(in storageCell, newValue);
+        }
+    }
+
+    [Test]
+    public void Transient_writes_coalesce_between_snapshots([Values] bool revertChild)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        Snapshot initial = provider.TakeSnapshot();
+        for (int i = 1; i <= 4; i++) provider.SetTransientState(cell, _values[i]);
+        Snapshot parent = provider.TakeSnapshot();
+        Assert.That(parent.StorageSnapshot.TransientStorageSnapshot, Is.EqualTo(initial.StorageSnapshot.TransientStorageSnapshot + 1));
+
+        for (int i = 5; i <= 8; i++) provider.SetTransientState(cell, _values[i]);
+        Snapshot child = provider.TakeSnapshot();
+        Assert.That(child.StorageSnapshot.TransientStorageSnapshot, Is.EqualTo(parent.StorageSnapshot.TransientStorageSnapshot + 1));
+        if (revertChild)
+        {
+            provider.Restore(parent);
+            Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[4]));
+        }
+
+        for (int i = 9; i <= 12; i++) provider.SetTransientState(cell, _values[i]);
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[12]));
+        provider.Restore(parent);
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[4]));
+        provider.Restore(initial);
+        Assert.That(provider.GetTransientState(cell).IsZero(), Is.True);
+    }
+
+    [Test]
     public void Commit_resets_transient_state()
     {
         using Context ctx = new(useFlat);

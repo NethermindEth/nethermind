@@ -25,6 +25,10 @@ namespace Nethermind.State;
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
+    /// <inheritdoc/>
+    public override void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        => State.SetTransientState(in storageCell, newValue);
+
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;

@@ -69,6 +69,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="newValue">Value to store</param>
     void SetTransientState(in StorageCell storageCell, byte[] newValue);
 
+    /// <summary>Copies a value into transient storage.</summary>
+    void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        => SetTransientState(in storageCell, newValue.ToArray());
+
     /// <summary>
     /// Reset all storage
     /// </summary>

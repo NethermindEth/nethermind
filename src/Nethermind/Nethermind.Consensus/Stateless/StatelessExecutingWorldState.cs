@@ -13,6 +13,10 @@ namespace Nethermind.Consensus.Stateless;
 /// </summary>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
+    /// <inheritdoc/>
+    public override void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        => State.SetTransientState(in storageCell, newValue);
+
     /// <remarks>
     /// Forces a witness-backed code lookup that throws when the bytecode is absent from the witness.
     /// </remarks>

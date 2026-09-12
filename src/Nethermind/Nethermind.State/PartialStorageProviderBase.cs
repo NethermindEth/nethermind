@@ -17,11 +17,12 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase(ILogManager logManager)
+    internal abstract class PartialStorageProviderBase(ILogManager logManager, bool coalesceUpdates = false)
     {
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
+        private int _protectedPosition = Resettable.EmptyPosition;
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -49,6 +50,7 @@ namespace Nethermind.State
         public int TakeSnapshot(bool newTransactionStart)
         {
             int position = _changes.Count - 1;
+            _protectedPosition = position;
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
             if (newTransactionStart && position != Resettable.EmptyPosition)
             {
@@ -73,6 +75,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
             }
 
+            _protectedPosition = snapshot;
             if (snapshot == currentPosition)
             {
                 return;
@@ -153,6 +156,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
+            _protectedPosition = Resettable.EmptyPosition;
             _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
         }
@@ -194,7 +198,20 @@ namespace Nethermind.State
             // Overwrites the head in place, never removes+re-adds — ClearStorage relies on this
             // to legally call Set while enumerating _intraBlockCache.
             ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            PushUpdate(in cell, value, ref head, exists);
+        }
+
+        protected void PushUpdate(in StorageCell cell, byte[] value, ref HeadChange head, bool exists)
+        {
             int prevIdx = exists ? head.CurrentIdx : -1;
+
+            if (coalesceUpdates && prevIdx > _protectedPosition)
+            {
+                // No snapshot can observe the intermediate value of this entry.
+                CollectionsMarshal.AsSpan(_changes)[prevIdx].Value = value;
+                head.Value = value;
+                return;
+            }
 
             // The first write to a cell in a tx (head at or before the tx boundary) captures the
             // overwritten value as the tx original; later writes carry it forward.
@@ -210,6 +227,7 @@ namespace Nethermind.State
         {
             StorageCell marker = default;
             _changes.Add(new Change(in marker, StorageTree.ZeroBytes, StorageChangeType.StorageClear, journalIndex, -1));
+            _protectedPosition = _changes.Count - 1;
         }
 
         protected virtual void RestoreStorageClear(int journalIndex) =>
@@ -236,10 +254,10 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
+        protected struct Change(in StorageCell storageCell, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
         {
             public readonly StorageCell StorageCell = storageCell;
-            public readonly byte[] Value = value;
+            public byte[] Value = value;
             public readonly StorageChangeType ChangeType = changeType;
 
             /// <summary>
@@ -269,9 +287,9 @@ namespace Nethermind.State
         /// Head of a cell's change chain, with the newest value and original-index inlined so reads
         /// and <see cref="PersistentStorageProvider.GetOriginal"/> resolve with a single lookup.
         /// </summary>
-        protected readonly struct HeadChange(byte[] value, int currentIdx, int originalIdx)
+        protected struct HeadChange(byte[] value, int currentIdx, int originalIdx)
         {
-            public readonly byte[] Value = value;
+            public byte[] Value = value;
             public readonly int CurrentIdx = currentIdx;
             public readonly int OriginalIdx = originalIdx;
         }
