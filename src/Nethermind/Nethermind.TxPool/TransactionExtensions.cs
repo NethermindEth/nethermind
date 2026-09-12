@@ -18,6 +18,30 @@ namespace Nethermind.TxPool
 
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
+        /// <summary>
+        /// Length of the blob-elided network encoding of <paramref name="tx"/>, i.e. exactly the byte count a
+        /// peer receives for it in an eth/72 <c>PooledTransactions</c> response:
+        /// <c>0x03 || rlp([tx_payload_body, wrapper_version, [], commitments, cell_proofs])</c>.
+        /// This is the value that must be published in <c>NewPooledTransactionHashes</c>, because that is what
+        /// receivers size-check the delivered transaction against.
+        /// </summary>
+        /// <remarks>
+        /// Delegates to the same <see cref="BlobTransactionPayload.Elide"/> the serve path uses, so the announced
+        /// size cannot drift from the served bytes.
+        /// </remarks>
+        public static int GetElidedNetworkLength(this Transaction tx)
+        {
+            if (!tx.SupportsBlobs)
+            {
+                return tx.GetLength();
+            }
+
+            // A blob transaction without its network wrapper has no network encoding to announce.
+            return tx.NetworkWrapper is ShardBlobNetworkWrapper
+                ? BlobTransactionPayload.Elide(tx).GetLength()
+                : 0;
+        }
+
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
         public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.SupportsBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
