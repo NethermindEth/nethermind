@@ -669,6 +669,42 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
+    // Rolling a storage clear back drops originals first captured under the clear, so anything caching a probe
+    // of them has to let go: after the rollback the cell recaptures the block value, and only a stale cache can
+    // still answer with the zero the clear planted.
+    [Test]
+    public void Rolling_back_a_storage_clear_forgets_originals_captured_under_the_clear()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Snapshot snapshot = provider.TakeSnapshot();
+            provider.ClearStorage(TestItem.AddressA);
+
+            provider.Get(cell);
+            Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes),
+                "precondition: the first capture happens under the clear");
+
+            provider.Restore(snapshot);
+
+            provider.Get(cell);
+            Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        }
+    }
+
     // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be
     // re-checked. Each case leaves two clears to make, and pins that the second is never reached.
     [TestCase(StorageWriteStop.BeforeTheFirstClear, 0)]
