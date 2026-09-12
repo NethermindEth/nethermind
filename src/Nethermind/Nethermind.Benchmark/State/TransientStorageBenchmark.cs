@@ -12,14 +12,14 @@ using Nethermind.Int256;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>The transient storage write path, by the shapes the benchmark suite exercises.</summary>
-/// <remarks>Each method resets first, so the undo log cannot grow without bound across invocations and
-/// both the write and the cleanup it causes are counted. Rewriting the same word is the shape a
-/// reentrancy guard produces, and the one where other clients skip their journal entry entirely.</remarks>
+/// <remarks>Each method body resets first — inside the measurement, amortised over
+/// <see cref="OperationsPerInvoke"/> writes — so the undo log cannot grow across invocations and the
+/// cleanup a transaction boundary causes is counted. Rewriting the same word is the shape a reentrancy
+/// guard produces, and the one where other clients skip their journal entry entirely.</remarks>
 [MemoryDiagnoser]
 public class TransientStorageBenchmark
 {
     private const int OperationsPerInvoke = 1000;
-    private const int VaryingKeys = 256;
 
     private IWorldState _worldState = null!;
     private StorageCell _fixedCell;
@@ -39,20 +39,18 @@ public class TransientStorageBenchmark
         _otherWord[31] = 9;
 
         _fixedCell = new StorageCell(TestItem.AddressA, (UInt256)1);
-        _varyingCells = new StorageCell[VaryingKeys];
-        for (int i = 0; i < VaryingKeys; i++)
+        _varyingCells = new StorageCell[OperationsPerInvoke];
+        for (int i = 0; i < OperationsPerInvoke; i++)
         {
             _varyingCells[i] = new StorageCell(TestItem.AddressA, (UInt256)(i + 1000));
         }
     }
 
-    [IterationSetup]
-    public void ResetBetweenIterations() => _worldState.Reset();
-
     /// <summary>Same cell, same word every time.</summary>
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
     public void Store_SameWord()
     {
+        _worldState.Reset();
         ReadOnlySpan<byte> word = _word;
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
@@ -64,6 +62,7 @@ public class TransientStorageBenchmark
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
     public void Store_ChangingWord()
     {
+        _worldState.Reset();
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
             _worldState.SetTransientState(in _fixedCell, (ReadOnlySpan<byte>)((i & 1) == 0 ? _word : _otherWord));
@@ -74,10 +73,11 @@ public class TransientStorageBenchmark
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
     public void Store_VaryingKeys()
     {
+        _worldState.Reset();
         ReadOnlySpan<byte> word = _word;
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
-            _worldState.SetTransientState(in _varyingCells[i & (VaryingKeys - 1)], word);
+            _worldState.SetTransientState(in _varyingCells[i], word);
         }
     }
 }
