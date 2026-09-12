@@ -24,7 +24,7 @@ public class AccountChangesAtIndex(Address address)
 
     public UInt256? PreTxBalance { get; internal set; }
     public byte[]? PreTxCode { get; internal set; }
-    private Dictionary<UInt256, UInt256>? _preTxStorage;
+    private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
 
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
     private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
@@ -56,12 +56,22 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageRead(in UInt256 key) => _storageReads.Remove(key);
 
-    public void GetOrCapturePreTxStorage(in UInt256 key, in UInt256 captureValue, out UInt256 value)
+    /// <summary>Returns the transaction's original value and whether this snapshot epoch needs an undo record.</summary>
+    public bool GetOrCapturePreTxStorage(in UInt256 key, in UInt256 captureValue, ulong journalEpoch, out UInt256 value)
     {
-        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8, UInt256Comparer.GetOptimized());
-        ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
-        if (!exists) slot = captureValue;
-        value = slot;
+        _preTxStorage ??= new Dictionary<UInt256, PreTxStorage>(8, UInt256Comparer.GetOptimized());
+        ref PreTxStorage slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
+        bool needsUndo = !exists || slot.JournalEpoch != journalEpoch;
+        if (!exists) slot = new(in captureValue, journalEpoch);
+        else if (needsUndo) slot.JournalEpoch = journalEpoch;
+        value = slot.Value;
+        return needsUndo;
+    }
+
+    private struct PreTxStorage(in UInt256 value, ulong journalEpoch)
+    {
+        public readonly UInt256 Value = value;
+        public ulong JournalEpoch = journalEpoch;
     }
 
     public void ClearStorage()

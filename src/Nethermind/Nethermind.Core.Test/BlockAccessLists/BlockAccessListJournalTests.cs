@@ -379,4 +379,65 @@ public class BlockAccessListJournalTests
             Assert.That(account.StorageReads, Does.Not.Contain(key));
         }
     }
+
+    [Test]
+    public void Storage_journal_coalesces_interleaved_writes_between_nested_snapshots([Values] bool separateAccounts)
+    {
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        StorageCell[] cells = [new(TestItem.AddressA, 0), new(TestItem.AddressA, UInt256.MaxValue),
+            new(separateAccounts ? TestItem.AddressB : TestItem.AddressA, 3)];
+        int empty = slice.TakeSnapshot();
+        WriteRepeated(7, 11);
+        int outer = slice.TakeSnapshot();
+        Assert.That(outer, Is.EqualTo(cells.Length));
+        WriteRepeated(11, 7);
+        int inner = slice.TakeSnapshot();
+        Assert.That(inner - outer, Is.EqualTo(cells.Length));
+        AssertValue(7);
+
+        WriteRepeated(7, 29);
+        slice.Restore(inner);
+        AssertValue(7);
+        WriteRepeated(7, 53);
+        slice.Restore(inner);
+        AssertValue(7);
+        slice.Restore(outer);
+        AssertValue(11);
+        slice.Restore(empty);
+        AssertValue(7);
+
+        slice.Clear();
+        WriteRepeated(7, 11);
+        Assert.That(slice.TakeSnapshot(), Is.EqualTo(cells.Length));
+        slice.Restore(0);
+        AssertValue(7);
+
+        void WriteRepeated(uint before, uint after)
+        {
+            UInt256 current = before;
+            for (uint repeat = 0; repeat < 64; repeat++)
+            {
+                UInt256 next = repeat == 63 ? after : repeat + 100;
+                foreach (StorageCell cell in cells) slice.AddStorageChange(in cell, in current, in next);
+                current = next;
+            }
+        }
+
+        void AssertValue(uint expected)
+        {
+            foreach (StorageCell cell in cells)
+            {
+                AccountChangesAtIndex account = slice.GetAccountChanges(cell.Address)!;
+                if (expected == 7)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(account.HasStorageChange(cell.Index), Is.False);
+                        Assert.That(account.StorageReads, Does.Contain(cell.Index));
+                    }
+                }
+                else Assert.That(account.StorageChanges[cell.Index].Value, Is.EqualTo((UInt256)expected));
+            }
+        }
+    }
 }

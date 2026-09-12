@@ -33,6 +33,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
+    private ulong _storageJournalEpoch;
 
     private readonly List<CodeChange> _previousCodeChanges = [];
 
@@ -73,6 +74,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
         _accountChanges.ClearAndTrim();
         _changes.Clear();
+        _storageJournalEpoch = 0;
         _previousCodeChanges.Clear();
         _lastReadAddress = null;
         _lastReadChanges = null;
@@ -187,17 +189,17 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
 
         ref StorageChange slotChange = ref CollectionsMarshal.GetValueRefOrAddDefault(accountChanges.StorageChanges, key, out bool hasPrevious);
-        StorageChange oldStorageChange = slotChange;
-
-        accountChanges.GetOrCapturePreTxStorage(in key, in before, out UInt256 preTxStorage);
-
-        _changes.Add(new Change(slot: key, previousValue: new ChangeValue(oldStorageChange.Value))
+        if (accountChanges.GetOrCapturePreTxStorage(in key, in before, _storageJournalEpoch, out UInt256 preTxStorage))
         {
-            Account = accountChanges,
-            Type = ChangeType.StorageChange,
-            HasPrevious = hasPrevious,
-            PreviousIndex = oldStorageChange.Index,
-        });
+            // One undo per slot between snapshot boundaries also covers interleaved writes to other slots.
+            _changes.Add(new Change(slot: key, previousValue: new ChangeValue(slotChange.Value))
+            {
+                Account = accountChanges,
+                Type = ChangeType.StorageChange,
+                HasPrevious = hasPrevious,
+                PreviousIndex = slotChange.Index,
+            });
+        }
 
         if (preTxStorage != after)
         {
@@ -276,10 +278,15 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         AddBalanceChange(address, oldBalance, 0);
     }
 
-    public int TakeSnapshot() => _changes.Count;
+    public int TakeSnapshot()
+    {
+        _storageJournalEpoch++;
+        return _changes.Count;
+    }
 
     public void Restore(int snapshot)
     {
+        _storageJournalEpoch++;
         // Intentionally does not reset _lastReadAddress/_lastReadChanges: Restore reverts entry values
         // in place and never evicts an entry, so the cached reference stays valid. See class invariant.
         snapshot = int.Max(0, snapshot);
