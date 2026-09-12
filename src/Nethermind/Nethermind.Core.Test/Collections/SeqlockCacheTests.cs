@@ -46,13 +46,14 @@ public class SeqlockCacheTests
     }
 
     [Test]
-    public void TrySetExclusive_rechecks_header_after_value_comparison()
+    public void TrySetExclusive_rechecks_header_after_value_comparison([Values] bool changeOtherWay)
     {
         SeqlockCache<ZeroHashKey, InterleavedValue> cache = new(1);
         ZeroHashKey key = new(1);
         InterleavedValue original = new(UInt256.One);
         cache.Set(in key, original);
-        InterleavedValue.OnEquals = () => cache.Set(in key, new InterleavedValue(UInt256.MaxValue));
+        ZeroHashKey changedKey = changeOtherWay ? new(2) : key;
+        InterleavedValue.OnEquals = () => cache.Set(in changedKey, new InterleavedValue(UInt256.MaxValue));
         try
         {
             Assert.That(cache.TrySetExclusive(in key, original), Is.False);
