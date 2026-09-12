@@ -1045,7 +1045,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
-            if (!TTracingInst.IsActive)
+            if (CodeAnalysis.CodeAnalysisFlags.Fusion && !TTracingInst.IsActive)
             {
                 long[]? sites = vm.FusionSites;
                 if (sites is not null && CodeAnalysis.MappingSlotFusion.IsSite(sites, programCounter - 1))

@@ -64,17 +64,16 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     /// preferred over synchronising a scan that runs once per distinct code hash. The resolved flag is
     /// published after the result so a reader never sees a resolved-but-absent scan.
     /// </remarks>
-    internal MappingSlotFusion? Fusion
-    {
-        get
-        {
-            if (Volatile.Read(ref _fusionResolved)) return _fusion;
+    internal MappingSlotFusion? Fusion => CodeAnalysisFlags.Fusion ? ResolveFusion() : null;
 
-            MappingSlotFusion? fusion = MappingSlotFusion.Find(CodeSpan);
-            _fusion = fusion;
-            Volatile.Write(ref _fusionResolved, true);
-            return fusion;
-        }
+    private MappingSlotFusion? ResolveFusion()
+    {
+        if (Volatile.Read(ref _fusionResolved)) return _fusion;
+
+        MappingSlotFusion? fusion = MappingSlotFusion.Find(CodeSpan);
+        _fusion = fusion;
+        Volatile.Write(ref _fusionResolved, true);
+        return fusion;
     }
 
     /// <summary>

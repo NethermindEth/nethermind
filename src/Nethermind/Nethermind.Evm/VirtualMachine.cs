@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -1259,7 +1260,9 @@ public partial class VirtualMachine<TGasPolicy>(
 
         // Resolved per frame rather than per opcode: the fork decides which runs may fuse, and a run
         // whose trailing zero is a PUSH0 must stay unfused until Shanghai defines it.
-        FusionSites = env.CodeInfo.Fusion?.SitesFor(Spec.IncludePush0Instruction);
+        FusionSites = CodeAnalysisFlags.Fusion
+            ? env.CodeInfo.Fusion?.SitesFor(Spec.IncludePush0Instruction)
+            : null;
 
         ReadOnlySpan<byte> codeSpan = env.CodeInfo.CodeSpan;
         // If no machine code is present, treat the call as empty.
