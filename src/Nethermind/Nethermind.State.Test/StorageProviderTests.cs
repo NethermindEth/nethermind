@@ -858,7 +858,7 @@ public class StorageProviderTests(bool useFlat)
     private sealed class RejectingStorageWriteBatch(Action onClear) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public int ClearCount { get; private set; }
-        public void Set(in UInt256 index, ReadOnlySpan<byte> value) => Assert.Fail("Storage writes must stop after the batch rejects them.");
+        public void Set(in UInt256 index, in UInt256 value) => Assert.Fail("Storage writes must stop after the batch rejects them.");
         public void Clear()
         {
             ClearCount++;
@@ -1701,10 +1701,10 @@ public class StorageProviderTests(bool useFlat)
         {
             public void Dispose() => baseStorageBatch?.Dispose();
 
-            public void Set(in UInt256 index, ReadOnlySpan<byte> value)
+            public void Set(in UInt256 index, in UInt256 value)
             {
                 baseStorageBatch.Set(in index, value);
-                writtenData.Slots[new StorageCell(address, index)] = value.ToArray();
+                writtenData.Slots[new StorageCell(address, index)] = value.ToMinimalBigEndian();
             }
 
             public void Clear()

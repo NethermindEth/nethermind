@@ -593,8 +593,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
         Assert.That(a!.Balance, Is.EqualTo((UInt256)123));
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv), Is.True);
-        Assert.That(sv![^1], Is.EqualTo((byte)0x55));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out SlotValue? sv), Is.True);
+        Assert.That(sv!.Value.AsReadOnlySpan[^1], Is.EqualTo((byte)0x55));
 
         // Absent addresses: the real bloom excludes them (or the snapshot misses) → fall through.
         foreach (Address absent in new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF })

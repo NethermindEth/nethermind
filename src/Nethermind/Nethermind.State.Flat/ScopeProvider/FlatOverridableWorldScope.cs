@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -165,7 +166,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         {
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-            return snapshotBundle.GetSlot(address, index, selfDestructIdx) ?? [];
+            snapshotBundle.GetSlot(address, index, selfDestructIdx, out SlotValue? value);
+            return value is { } slot ? slot.AsReadOnlySpan.WithoutLeadingZeros().ToArrayWithSingleByteCache() : [];
         }
 
         public byte[]? GetCode(Hash256 codeHash)

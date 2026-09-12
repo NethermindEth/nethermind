@@ -122,7 +122,7 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out SlotValue? value)
     {
         GuardDispose();
 
@@ -130,13 +130,15 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
-            return slotValue?.ToEvmBytes();
+            value = slotValue;
+            return;
         }
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
-            return null;
+            value = null;
+            return;
         }
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
@@ -144,17 +146,19 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
-                return slotValue?.ToEvmBytes();
+                value = slotValue;
+                return;
             }
 
             if (i <= currentBundleSelfDestructIdx)
             {
                 // This is the snapshot with selfdestruct
-                return null;
+                value = null;
+                return;
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+        _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
@@ -481,19 +485,19 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
         HashedKey<(Address, UInt256)> key = new((address, index));
-        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+        if (value.IsZero)
         {
             _changedSlots[key] = null;
         }
         else
         {
-            _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
+            _changedSlots[key] = new SlotValue(in value);
         }
 
         if (!_addressesWithChangedSlots.ContainsKey(address))

@@ -4,7 +4,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.State.Flat;
 
@@ -18,6 +20,16 @@ public readonly struct SlotValue
     public Span<byte> AsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
     public ReadOnlySpan<byte> AsReadOnlySpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
     public const int ByteCount = 32;
+
+    /// <summary>Stores a numeric value in the flat database's big-endian representation.</summary>
+    public SlotValue(in UInt256 value) => _bytes = value.ToBigEndianWord();
+
+    /// <summary>Returns the numeric value represented by the slot.</summary>
+    public void ToUInt256(out UInt256 value)
+    {
+        EvmWord word = _bytes.ByteSwap();
+        value = Unsafe.As<EvmWord, UInt256>(ref word);
+    }
 
     public SlotValue(ReadOnlySpan<byte> data)
     {
@@ -56,16 +68,5 @@ public readonly struct SlotValue
                 data.CopyTo(buffer[(32 - data.Length)..]);
                 return Unsafe.ReadUnaligned<SlotValue>(ref MemoryMarshal.GetReference(buffer));
         }
-    }
-
-    /// <summary>
-    /// Currently, the worldstate that the evm use expect the bytes to be without leading zeros
-    /// </summary>
-    private static readonly byte[] ZeroBytes = [0];
-
-    public byte[] ToEvmBytes()
-    {
-        if (_bytes == Vector256<byte>.Zero) return ZeroBytes;
-        return AsReadOnlySpan.WithoutLeadingZeros().ToArray();
     }
 }

@@ -180,7 +180,7 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        void Get(in UInt256 index, out UInt256 value);
 
         /// <summary>
         /// Hint that a slot is being written. Backends may use this to start asynchronous
@@ -237,8 +237,8 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        /// <summary>Writes a big-endian slot value, consuming or copying it before returning.</summary>
-        void Set(in UInt256 index, ReadOnlySpan<byte> value);
+        /// <summary>Writes the slot value.</summary>
+        void Set(in UInt256 index, in UInt256 value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

@@ -129,7 +129,7 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _loopSize; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
-            scope.CreateStorageTree(slot.Account).Get(in slot.Slot);
+            scope.CreateStorageTree(slot.Account).Get(in slot.Slot, out _);
         }
     }
 
@@ -142,7 +142,7 @@ public class WorldStateBenchmarks
 
         for (int i = 0; i < _loopSize; i++)
         {
-            storageTree.Get(in _bigContractSlots[rand.Next(0, _bigContractSlots.Length)]);
+            storageTree.Get(in _bigContractSlots[rand.Next(0, _bigContractSlots.Length)], out _);
         }
     }
 
@@ -168,7 +168,7 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _slots.Length; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[i];
-            scope.CreateStorageTree(slot.Account).Get(in slot.Slot);
+            scope.CreateStorageTree(slot.Account).Get(in slot.Slot, out _);
         }
     }
 
@@ -180,7 +180,7 @@ public class WorldStateBenchmarks
 
         for (int i = 0; i < _bigContractSlots.Length; i++)
         {
-            storageTree.Get(in _bigContractSlots[i]);
+            storageTree.Get(in _bigContractSlots[i], out _);
         }
     }
 

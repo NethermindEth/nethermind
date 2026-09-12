@@ -3,11 +3,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -307,36 +309,37 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
-        public byte[] Get(in UInt256 index)
+        public void Get(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[]? value) && value is not null)
+            if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached) && cached is not null)
             {
+                value = new UInt256(cached, isBigEndian: true);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
                 if (!isPrewarmer) _metrics.IncrementPreBlockStorageHits();
             }
             else
             {
-                value = LoadFromTreeStorage(in storageCell);
+                LoadFromTreeStorage(in storageCell, out value);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                preBlockCache.Set(in storageCell, value);
+                EvmWord word = value.ToBigEndianWord();
+                preBlockCache.Set(in storageCell, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1)).WithoutLeadingZeros().ToArrayWithSingleByteCache());
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
-            return value;
         }
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
 
-        private byte[] LoadFromTreeStorage(in StorageCell storageCell)
+        private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
             // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
 
-            return baseStorageTree.Get(storageCell.Index);
+            baseStorageTree.Get(storageCell.Index, out value);
         }
     }
 
@@ -346,21 +349,20 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address) : IWorldStateScopeProvider.IStorageTree
     {
-        private static readonly byte[] SpeculativeStorageValue = [1];
-
         public Hash256 RootHash => baseStorageTree.RootHash;
 
-        public byte[] Get(in UInt256 index)
+        public void Get(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index);
-            if (preBlockCache.TryGetValue(in storageCell, out byte[]? value) && value is not null)
+            if (preBlockCache.TryGetValue(in storageCell, out byte[]? cached) && cached is not null)
             {
-                return value;
+                value = new UInt256(cached, isBigEndian: true);
+                return;
             }
 
             storageReadCapture.Record(in storageCell);
             // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
-            return SpeculativeStorageValue;
+            value = UInt256.One;
         }
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);

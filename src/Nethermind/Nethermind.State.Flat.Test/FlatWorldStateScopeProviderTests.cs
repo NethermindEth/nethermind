@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -183,7 +184,8 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify slot shadowed by Layer 2 snapshot (newerSlotValue)
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(newerSlotValue));
+        storageTree.Get(slotIndex, out UInt256 slotRead186);
+        Assert.That(slotRead186.ToMinimalBigEndian(), Is.EqualTo(newerSlotValue));
     }
 
     [Test]
@@ -210,7 +212,8 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(persistedAccount));
 
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(persistedSlotValue));
+        storageTree.Get(slotIndex, out UInt256 slotRead213);
+        Assert.That(slotRead213.ToMinimalBigEndian(), Is.EqualTo(persistedSlotValue));
     }
 
     [Test]
@@ -235,7 +238,7 @@ public class FlatWorldStateScopeProviderTests
         {
             writeBatch.Set(testAddress, testAccount);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, writtenSlotValue);
+            storageBatch.Set(slotIndex, new UInt256(writtenSlotValue, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -245,7 +248,8 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+        storageTree.Get(slotIndex, out UInt256 slotRead248);
+        Assert.That(slotRead248.ToMinimalBigEndian(), Is.EqualTo(writtenSlotValue));
     }
 
     [Test]
@@ -336,7 +340,7 @@ public class FlatWorldStateScopeProviderTests
         {
             writeBatch.Set(testAddress, testAccount);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Set(slotIndex, new UInt256(slotValue, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -350,7 +354,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
         ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
+        Assert.That(committedSlot!.Value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(slotValue));
     }
 
     #endregion
@@ -384,7 +388,8 @@ public class FlatWorldStateScopeProviderTests
 
         // Slot should be blocked by selfdestruct
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(StorageTree.ZeroBytes));
+        storageTree.Get(slotIndex, out UInt256 slotRead387);
+        Assert.That(slotRead387.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -411,10 +416,12 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
 
         // slot1 should return zero (blocked by selfdestruct)
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(StorageTree.ZeroBytes));
+        storageTree.Get(slot1, out UInt256 slotRead414);
+        Assert.That(slotRead414.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
 
         // slot2 should return the value (written after selfdestruct)
-        Assert.That(storageTree.Get(slot2), Is.EqualTo(slot2AfterValue));
+        storageTree.Get(slot2, out UInt256 slotRead417);
+        Assert.That(slotRead417.ToMinimalBigEndian(), Is.EqualTo(slot2AfterValue));
     }
 
     #endregion
@@ -438,7 +445,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Set(slotIndex, new UInt256(slotValue, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -480,9 +487,9 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 3);
-            storageBatch.Set(slot1, value1);
-            storageBatch.Set(slot2, value2);
-            storageBatch.Set(slot3, value3);
+            storageBatch.Set(slot1, new UInt256(value1, isBigEndian: true));
+            storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
+            storageBatch.Set(slot3, new UInt256(value3, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -521,7 +528,7 @@ public class FlatWorldStateScopeProviderTests
                 using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotsPerCommit);
                 int firstSlot = commit * slotsPerCommit + 1;
                 int lastSlot = firstSlot + slotsPerCommit;
-                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true));
             }
 
             scope.Commit((ulong)(commit + 1));
@@ -530,7 +537,7 @@ public class FlatWorldStateScopeProviderTests
         TestMemDb testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
-        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true).ToMinimalBigEndian());
         expectedTree.UpdateRootHash();
 
         Account? account = scope.Get(address);
@@ -557,7 +564,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot1, new UInt256(value1, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -566,7 +573,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -604,7 +611,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot1, new UInt256(value1, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -622,7 +629,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(3);
@@ -682,7 +689,7 @@ public class FlatWorldStateScopeProviderTests
             writeBatch.Set(addr1, acc1);
             writeBatch.Set(addr2, acc2);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr1, 1);
-            storageBatch.Set(slot1, val1);
+            storageBatch.Set(slot1, new UInt256(val1, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -697,7 +704,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
         ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(val1));
+        Assert.That(committedSlot!.Value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(val1));
     }
 
     [Test]
@@ -758,7 +765,8 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify both are blocked
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
+        storageTree.Get(slot, out UInt256 slotRead761);
+        Assert.That(slotRead761.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -803,7 +811,8 @@ public class FlatWorldStateScopeProviderTests
         // Before the fix: would fail because DoTryFindStorageNodeExternal exited early
         // After the fix: properly falls through and finds storage in ReadOnlySnapshots
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr1);
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(value1));
+        storageTree.Get(slot1, out UInt256 slotRead806);
+        Assert.That(slotRead806.ToMinimalBigEndian(), Is.EqualTo(value1));
     }
 
     [Test]
@@ -833,7 +842,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotBefore, valueBefore);
+            storageBatch.Set(slotBefore, new UInt256(valueBefore, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -843,7 +852,7 @@ public class FlatWorldStateScopeProviderTests
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
             storageBatch.Clear();
-            storageBatch.Set(slotAtSelfDestruct, valueAtSelfDestruct);
+            storageBatch.Set(slotAtSelfDestruct, new UInt256(valueAtSelfDestruct, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -852,7 +861,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter, valueAfter);
+            storageBatch.Set(slotAfter, new UInt256(valueAfter, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(3);
@@ -862,9 +871,12 @@ public class FlatWorldStateScopeProviderTests
         // - slotAtSelfDestruct should be found (set in same commit as self-destruct)
         // - slotAfter should be found (added after self-destruct)
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
-        Assert.That(storageTree.Get(slotAtSelfDestruct), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
-        Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
+        storageTree.Get(slotBefore, out UInt256 slotRead865);
+        Assert.That(slotRead865.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        storageTree.Get(slotAtSelfDestruct, out UInt256 slotRead866);
+        Assert.That(slotRead866.ToMinimalBigEndian(), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
+        storageTree.Get(slotAfter, out UInt256 slotRead867);
+        Assert.That(slotRead867.ToMinimalBigEndian(), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
     }
 
     [Test]
@@ -900,7 +912,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter1, valueAfter1);
+            storageBatch.Set(slotAfter1, new UInt256(valueAfter1, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -909,7 +921,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter2, valueAfter2);
+            storageBatch.Set(slotAfter2, new UInt256(valueAfter2, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -917,11 +929,14 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
 
         // Slots written after self-destruct in local snapshots should be visible
-        Assert.That(storageTree.Get(slotAfter1), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
-        Assert.That(storageTree.Get(slotAfter2), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
+        storageTree.Get(slotAfter1, out UInt256 slotRead920);
+        Assert.That(slotRead920.ToMinimalBigEndian(), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
+        storageTree.Get(slotAfter2, out UInt256 slotRead921);
+        Assert.That(slotRead921.ToMinimalBigEndian(), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
 
         // Slot from before self-destruct (in read-only snapshot) should be blocked
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        storageTree.Get(slotBefore, out UInt256 slotRead924);
+        Assert.That(slotRead924.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
     }
 
     #endregion

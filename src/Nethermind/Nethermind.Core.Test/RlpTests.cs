@@ -8,6 +8,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -550,6 +551,22 @@ namespace Nethermind.Core.Test
             }
 
             return 1 + byteCount;
+        }
+
+        [Test]
+        public void Single_byte_array_decoding_reuses_shared_array([Range(0, 255)] int value)
+        {
+            byte[] encoded = value < 128 ? [(byte)value] : [0x81, (byte)value];
+            RlpReader reader = new(encoded);
+            byte[] decoded = reader.DecodeByteArray();
+            byte[] expected = ((ReadOnlySpan<byte>)new byte[] { (byte)value }).ToArrayWithSingleByteCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.EqualTo(new byte[] { (byte)value }));
+                Assert.That(decoded, Is.SameAs(expected));
+                Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            }
         }
 
         [Test]

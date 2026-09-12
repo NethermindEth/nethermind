@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -12,6 +13,21 @@ namespace Nethermind.State.Flat.Test;
 public class SlotValueTests
 {
     private const string FullSlotHex = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+
+    [Test]
+    public void UInt256_conversion_preserves_value_and_big_endian_layout(
+        [Values("00", "01", "7f", "80", "ff", "0100", "0de0b6b3a7640000", FullSlotHex)] string hex)
+    {
+        UInt256 expected = new(Bytes.FromHexString(hex), isBigEndian: true);
+        SlotValue slot = new(in expected);
+        slot.ToUInt256(out UInt256 actual);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.ToBigEndian()));
+        }
+    }
 
     private static byte[] IncrementingBytes(int length)
     {
@@ -78,20 +94,4 @@ public class SlotValueTests
         Assert.That(value!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(data));
     }
 
-    [Test]
-    public void Test_ToEvmBytes_ReturnsCanonicalZeroForZeroValue()
-    {
-        SlotValue zero = new(ReadOnlySpan<byte>.Empty);
-        Assert.That(zero.ToEvmBytes(), Is.EqualTo(new byte[] { 0 }));
-    }
-
-    [TestCase("01", "01")]
-    [TestCase("0102", "0102")]
-    [TestCase("00ff", "ff")]
-    [TestCase(FullSlotHex, FullSlotHex)]
-    public void Test_ToEvmBytes_StripsLeadingZerosForNonZeroValue(string inputHex, string expectedHex)
-    {
-        SlotValue value = SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString(inputHex));
-        Assert.That(value.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString(expectedHex)));
-    }
 }

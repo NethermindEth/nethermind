@@ -106,7 +106,7 @@ public class SlotRlpEncodingTests
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         SlotValue read = default;
         Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-        Assert.That(read.ToEvmBytes(), Is.EqualTo(stripped));
+        Assert.That(read.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(stripped));
 
         // The leaf RLP is stored verbatim — byte-identical to our on-disk format.
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpLeaf));
@@ -151,7 +151,7 @@ public class SlotRlpEncodingTests
         {
             SlotValue read = default;
             Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-            Assert.That(read.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("0102")));
+            Assert.That(read.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("0102")));
         }
 
         // Writes on the legacy DB stay raw and never stamp the metadata markers.
@@ -163,7 +163,7 @@ public class SlotRlpEncodingTests
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
         SlotValue read2 = default;
         Assert.That(reader2.TryGetSlot(Addr, Slot, ref read2), Is.True);
-        Assert.That(read2.ToEvmBytes(), Is.EqualTo(Bytes.FromHexString("abcd")));
+        Assert.That(read2.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("abcd")));
     }
 
     // A Layout marker without slots (e.g. accounts synced but no storage yet) is still a brand-new DB — it wraps.

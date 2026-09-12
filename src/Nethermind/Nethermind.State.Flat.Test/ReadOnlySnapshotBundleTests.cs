@@ -95,7 +95,8 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = stored)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0x12, 0x34 }));
+        bundle.GetSlot(address, index, selfDestructStateIdx: -1, out SlotValue? value);
+        Assert.That(value, Is.EqualTo(stored));
     }
 
     [Test]
@@ -106,7 +107,8 @@ public class ReadOnlySnapshotBundleTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot(), MakeSnapshot()), reader);
 
-        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1), Is.Null);
+        bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1, out SlotValue? value);
+        Assert.That(value, Is.Null);
         reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
     }
 
@@ -119,8 +121,8 @@ public class ReadOnlySnapshotBundleTests
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        // Default SlotValue.ToEvmBytes() is the canonical zero (single 0x00 byte).
-        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
+        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1, out SlotValue? value);
+        Assert.That(value, Is.EqualTo(default(SlotValue)));
     }
 
     [Test]

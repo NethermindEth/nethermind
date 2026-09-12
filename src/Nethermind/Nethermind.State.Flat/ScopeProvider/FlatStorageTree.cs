@@ -65,26 +65,22 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     internal bool IsDisposed => _scope.IsDisposed;
 
-    public byte[] Get(in UInt256 index)
+    public void Get(in UInt256 index, out UInt256 value)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
-        {
-            value = StorageTree.ZeroBytes;
-        }
+        _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx, out SlotValue? slotValue);
+        value = default;
+        if (slotValue is { } slot) slot.ToUInt256(out value);
 
         // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
         // access, and a historical value verified against the current trie would be wrong anyway.
         if (_config.VerifyWithTrie && !_scope.Trieless)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
+            _tree.Get(in index, out UInt256 treeValue);
+            if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
-
-        return value!;
     }
 
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
@@ -140,7 +136,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
 
     internal void ClearStorage()
     {
@@ -166,10 +162,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
             trieBatch.Set(in index, value);
-            storageTree.Set(index, value.IsZero() ? StorageTree.ZeroBytes : value.ToArray());
+            storageTree.Set(index, value);
         }
 
         public void Clear()
@@ -184,7 +180,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
     private sealed class FlatOverlayStorageWriteBatch(FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, ReadOnlySpan<byte> value) => storageTree.Set(index, value.IsZero() ? StorageTree.ZeroBytes : value.ToArray());
+        public void Set(in UInt256 index, in UInt256 value) => storageTree.Set(index, value);
 
         public void Clear() => storageTree.ClearStorage();
 

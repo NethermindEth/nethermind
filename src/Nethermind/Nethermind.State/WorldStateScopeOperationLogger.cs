@@ -89,11 +89,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     {
         public Hash256 RootHash => storageTree.RootHash;
 
-        public byte[] Get(in UInt256 index)
+        public void Get(in UInt256 index, out UInt256 value)
         {
-            byte[] bytes = storageTree.Get(in index);
-            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {bytes.ToHexString()}");
-            return bytes;
+            storageTree.Get(in index, out value);
+            logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {value.ToMinimalBigEndian().ToHexString()}");
         }
 
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
@@ -153,10 +152,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             logger.Trace($"{scopeId}: {address}, Storage write batch disposed");
         }
 
-        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
             writeBatch.Set(in index, value);
-            logger.Trace($"{scopeId}: {address}, Set {index} to {value.ToHexString()}");
+            logger.Trace($"{scopeId}: {address}, Set {index} to {value.ToMinimalBigEndian().ToHexString()}");
         }
 
         public void Clear()

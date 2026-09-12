@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -410,18 +411,27 @@ public class PreBlockCaches
 
     private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private static readonly byte[] ZeroValue = [0];
         public Address Address { get; set; } = null!;
         public bool Contended { get; set; }
         public ILogger Logger { get; set; }
         public bool Cleared { get; set; }
 
-        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
             if (Contended) return;
 
             StorageCell cell = new(Address, in index);
-            if (!storageCache.TrySetExclusive(in cell, value.IsZero() ? ZeroValue : value.ToArray())) Contended = true;
+            byte[] bytes;
+            if (value.IsZero)
+            {
+                bytes = Bytes.ZeroByteSpan.ToArrayWithSingleByteCache();
+            }
+            else
+            {
+                EvmWord word = value.ToBigEndianWord();
+                bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1)).WithoutLeadingZeros().ToArrayWithSingleByteCache();
+            }
+            if (!storageCache.TrySetExclusive(in cell, bytes)) Contended = true;
         }
 
         public void Clear()

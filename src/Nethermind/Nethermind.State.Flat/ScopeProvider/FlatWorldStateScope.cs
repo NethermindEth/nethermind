@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -340,8 +341,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+        _snapshotBundle.GetSlot(address, in slot, selfDestructIdx, out SlotValue? value);
+        sink.OnStorageRead(in cell, value is { } stored ? stored.AsReadOnlySpan.WithoutLeadingZeros().ToArrayWithSingleByteCache() : StorageTree.ZeroBytes);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

@@ -110,8 +110,7 @@ public class WriteBatchBenchmark
                     IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
                     for (int s = 0; s < slots; s++)
                     {
-                        storageBatch.Set((UInt256)(ulong)(s + 1),
-                            new byte[] { (byte)((s + 1) & 0xFF) });
+                        storageBatch.Set((UInt256)(ulong)(s + 1), (UInt256)(byte)((s + 1) & 0xFF));
                     }
 
                     storageBatch.Dispose();
@@ -197,8 +196,7 @@ public class WriteBatchBenchmark
                 batch.CreateStorageWriteBatch(_addresses[i], estimatedEntries: StorageSlotsPerAccount);
             for (int s = 0; s < StorageSlotsPerAccount; s++)
             {
-                storageBatch.Set((UInt256)(ulong)(s + 1),
-                    new byte[] { (byte)((s + 1) & 0xFF) });
+                storageBatch.Set((UInt256)(ulong)(s + 1), (UInt256)(byte)((s + 1) & 0xFF));
             }
         }
     }
@@ -226,8 +224,7 @@ public class WriteBatchBenchmark
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
             for (int s = 0; s < slots; s++)
             {
-                storageBatch.Set((UInt256)(ulong)(s + 1),
-                    new byte[] { (byte)((s + 1) & 0xFF) });
+                storageBatch.Set((UInt256)(ulong)(s + 1), (UInt256)(byte)((s + 1) & 0xFF));
             }
 
             storageBatch.Dispose();

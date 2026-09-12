@@ -1358,7 +1358,8 @@ public class HistoryWriterTests
         using (ReadOnlySnapshotBundle tip = TipBundle(blockCount, blockCount))
         {
             tipAccount = tip.GetAccount(AddrA);
-            tipSlot = tip.GetSlot(AddrA, Slot1, tip.DetermineSelfDestructSnapshotIdx(AddrA));
+            tip.GetSlot(AddrA, Slot1, tip.DetermineSelfDestructSnapshotIdx(AddrA), out SlotValue? stored);
+            tipSlot = stored is { } slotValue ? slotValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray() : null;
         }
 
         bool historyHasMidpoint = _reader.TryGetAccount(blockCount / 2, AddrA, out AccountStruct midpoint);

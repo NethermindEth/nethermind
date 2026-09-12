@@ -38,7 +38,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         SlotValue slotValue = default;
         if (reader.TryGetSlot(address, in slot, ref slotValue))
         {
-            return slotValue.ToEvmBytes();
+            return slotValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray();
         }
         return null;
     }
@@ -342,7 +342,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(reader.TryGetStorageRaw(addrHash, slotHash, ref rawValue), Is.EqualTo(storageValue is not null));
             if (storageValue is not null)
             {
-                Assert.That(rawValue.ToEvmBytes(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
+                Assert.That(rawValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
             }
         }
     }

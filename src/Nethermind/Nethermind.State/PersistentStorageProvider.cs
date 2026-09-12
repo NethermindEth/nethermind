@@ -986,7 +986,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            value = new UInt256(_backend.Get(storageCell.Index), isBigEndian: true);
+            _backend.Get(storageCell.Index, out value);
         }
 
         [SkipLocalsInit]
@@ -1012,7 +1012,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
 
             using ArrayPoolListRef<KeyValuePair<UInt256, StorageChangeTrace>> deferredDeletes = new(0);
-            Unsafe.SkipInit(out EvmWord buffer);
 
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
@@ -1027,7 +1026,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     {
                         // Safe while enumerating: this only overwrites the existing key, never adds or removes.
                         BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, EncodeStorageValue(in after, ref buffer));
+                        storageWriteBatch.Set(kvp.Key, in after);
 
                         writes++;
                     }
@@ -1042,7 +1041,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 UInt256 after = kvp.Value.After;
                 BlockChange[kvp.Key] = new(after, after);
-                storageWriteBatch.Set(kvp.Key, EncodeStorageValue(in after, ref buffer));
+                storageWriteBatch.Set(kvp.Key, in after);
 
                 writes++;
             }
@@ -1071,10 +1070,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.Count == 0) return;
 
             using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(Address, BlockChange.Count);
-            Unsafe.SkipInit(out EvmWord buffer);
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
-                storageWriteBatch.Set(kvp.Key, EncodeStorageValue(kvp.Value.After, ref buffer));
+                storageWriteBatch.Set(kvp.Key, kvp.Value.After);
             }
         }
 

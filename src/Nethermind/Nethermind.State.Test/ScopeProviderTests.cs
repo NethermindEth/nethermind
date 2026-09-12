@@ -89,7 +89,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_CanSaveToStorage([Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries)
+    public void Test_CanSaveToStorage([Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries, [Values(1, 3, 32)] int valueLength)
     {
         using Context ctx = new(useFlat);
 
@@ -103,8 +103,9 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, estimatedEntries);
-                Span<byte> value = stackalloc byte[] { 1, 2, 3 };
-                storageSet.Set(1, value);
+                Span<byte> value = stackalloc byte[valueLength];
+                value.Fill(0xff);
+                storageSet.Set(1, new UInt256(value, isBigEndian: true));
                 value.Clear();
             }
 
@@ -118,7 +119,10 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            Assert.That(storage.Get(1), Is.EqualTo([1, 2, 3]));
+            byte[] expected = new byte[valueLength];
+            expected.AsSpan().Fill(0xff);
+            storage.Get(1, out UInt256 slotRead124);
+            Assert.That(slotRead124.ToMinimalBigEndian(), Is.EqualTo(expected));
         }
     }
 
@@ -156,7 +160,7 @@ public class ScopeProviderTests(bool useFlat)
         using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
         using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
         {
-            storageSet.Set(1, [1, 2, 3]);
+            storageSet.Set(1, new UInt256([1, 2, 3], isBigEndian: true));
         }
 
         writeBatch.Set(TestItem.AddressA, null);
@@ -178,12 +182,12 @@ public class ScopeProviderTests(bool useFlat)
 
                 using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 2))
                 {
-                    storageA.Set(1, [10, 20]);
-                    storageA.Set(2, [30, 40]);
+                    storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
+                    storageA.Set(2, new UInt256([30, 40], isBigEndian: true));
                 }
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1);
-                storageB.Set(5, [50, 60]);
+                storageB.Set(5, new UInt256([50, 60], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -222,13 +226,16 @@ public class ScopeProviderTests(bool useFlat)
                 StorageCell cellB5 = new(TestItem.AddressB, 5);
 
                 Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
-                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
+                storageTreeA.Get(1, out UInt256 slotRead228);
+                Assert.That(sink.Storage[cellA1], Is.EqualTo(slotRead228.ToMinimalBigEndian()));
 
                 Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
-                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
+                storageTreeA.Get(2, out UInt256 slotRead231);
+                Assert.That(sink.Storage[cellA2], Is.EqualTo(slotRead231.ToMinimalBigEndian()));
 
                 Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
-                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+                storageTreeB.Get(5, out UInt256 slotRead234);
+                Assert.That(sink.Storage[cellB5], Is.EqualTo(slotRead234.ToMinimalBigEndian()));
             }
         }
     }
@@ -248,7 +255,7 @@ public class ScopeProviderTests(bool useFlat)
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
                 for (int i = 1; i <= slotCount; i++)
                 {
-                    storageA.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                    storageA.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true));
                 }
             }
 
@@ -273,7 +280,8 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 1; i <= slotCount; i++)
             {
                 StorageCell cell = new(TestItem.AddressA, (UInt256)i);
-                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i)), $"slot {i}");
+                storageTreeA.Get((UInt256)i, out UInt256 slotRead279);
+                Assert.That(sink.Storage[cell], Is.EqualTo(slotRead279.ToMinimalBigEndian()), $"slot {i}");
             }
         }
     }
@@ -292,7 +300,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -333,11 +341,11 @@ public class ScopeProviderTests(bool useFlat)
             writeBatch.Set(TestItem.AddressC, new Account(1, 300));
             writeBatch.Set(TestItem.AddressE, new Account(0, 0));
             using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-            storageA.Set(SlotA1.Index, [10, 20]);
+            storageA.Set(SlotA1.Index, new UInt256([10, 20], isBigEndian: true));
             using IWorldStateScopeProvider.IStorageWriteBatch storageC = writeBatch.CreateStorageWriteBatch(TestItem.AddressC, 1);
-            storageC.Set(SlotC5.Index, [5]);
+            storageC.Set(SlotC5.Index, new UInt256([5], isBigEndian: true));
             using IWorldStateScopeProvider.IStorageWriteBatch storageE = writeBatch.CreateStorageWriteBatch(TestItem.AddressE, 1);
-            storageE.Set(SlotE1.Index, [3]);
+            storageE.Set(SlotE1.Index, new UInt256([3], isBigEndian: true));
         }
 
         scope.Commit(1);
@@ -1171,7 +1179,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1396,7 +1404,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storage.Set(1, [1, 2, 3]);
+                storage.Set(1, new UInt256([1, 2, 3], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1415,7 +1423,7 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock, populatorMetrics))
         {
             scope.Get(TestItem.AddressA);
-            scope.CreateStorageTree(TestItem.AddressA).Get(1);
+            scope.CreateStorageTree(TestItem.AddressA).Get(1, out _);
         }
 
         Assert.That(populatorMetrics.PreBlockAccountHits + populatorMetrics.PreBlockAccountMisses, Is.Zero);
@@ -1429,8 +1437,8 @@ public class ScopeProviderTests(bool useFlat)
             scope.Get(TestItem.AddressA);
             scope.Get(TestItem.AddressB);
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            storage.Get(1);
-            storage.Get(2);
+            storage.Get(1, out _);
+            storage.Get(2, out _);
         }
 
         Assert.That(consumerMetrics.PreBlockAccountHits, Is.EqualTo(1));
@@ -1451,7 +1459,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storage.Set(1, [10, 20]);
+                storage.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1466,7 +1474,8 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
 
         using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, metrics);
-        byte[] value = readScope.CreateStorageTree(TestItem.AddressA).Get(1);
+        readScope.CreateStorageTree(TestItem.AddressA).Get(1, out UInt256 slotRead1472);
+        byte[] value = slotRead1472.ToMinimalBigEndian();
 
         using (Assert.EnterMultipleScope())
         {
@@ -1488,7 +1497,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storage.Set(1, [10, 20]);
+                storage.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1504,14 +1513,16 @@ public class ScopeProviderTests(bool useFlat)
         {
             using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
             IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);
-            Assert.That(capturedStorageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
+            capturedStorageTree.Get(1, out UInt256 slotRead1510);
+            Assert.That(slotRead1510.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 1 }));
             Assert.That(capture.Cells, Does.Contain(cell));
         }
 
         Assert.That(caches.StorageCache.TryGetValue(in cell, out _), Is.False);
         using IWorldStateScopeProvider.IScope uncapturedReadScope = populator.BeginScope(baseBlock);
         IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
-        Assert.That(uncapturedStorageTree.Get(1), Is.EqualTo(new byte[] { 10, 20 }));
+        uncapturedStorageTree.Get(1, out UInt256 slotRead1517);
+        Assert.That(slotRead1517.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 10, 20 }));
         Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] cached), Is.True);
         Assert.That(cached, Is.EqualTo(new byte[] { 10, 20 }));
     }
@@ -1531,7 +1542,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);

@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -596,12 +597,12 @@ public class PersistedSnapshotTests
 
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         // Slot: newer holds slot 2, older holds slot 1; both resolve.
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)2, -1, start, out byte[]? sv2), Is.True);
-        Assert.That(sv2![^1], Is.EqualTo((byte)0x22)); // ToEvmBytes strips leading zeros
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv1), Is.True);
-        Assert.That(sv1![^1], Is.EqualTo((byte)0x11));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)2, -1, start, out SlotValue? sv2), Is.True);
+        Assert.That(sv2!.Value.AsReadOnlySpan[^1], Is.EqualTo((byte)0x22));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out SlotValue? sv1), Is.True);
+        Assert.That(sv1!.Value.AsReadOnlySpan[^1], Is.EqualTo((byte)0x11));
         // Slot below the self-destruct boundary resolves to null (storage wiped).
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)999, 0, start, out byte[]? svNull), Is.True);
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)999, 0, start, out SlotValue? svNull), Is.True);
         Assert.That(svNull, Is.Null);
         // Slot fully absent (no boundary) falls through.
         Assert.That(stack.TryGetSlot(TestItem.AddressF, (UInt256)1, -1, start, out _), Is.False);
@@ -765,15 +766,15 @@ public class PersistedSnapshotTests
 
         SlotValue slot1 = default;
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, ref slot1), Is.True);
-        Assert.That(slot1.ToEvmBytes()[0], Is.EqualTo(0x03));
+        Assert.That(slot1.AsReadOnlySpan.WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x03));
 
         SlotValue slot2 = default;
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, ref slot2), Is.True);
-        Assert.That(slot2.ToEvmBytes()[0], Is.EqualTo(0x02));
+        Assert.That(slot2.AsReadOnlySpan.WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
 
         SlotValue slot5 = default;
         Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, ref slot5), Is.True);
-        Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));
+        Assert.That(slot5.AsReadOnlySpan.WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
     }
 
     private static IEnumerable<TestCaseData> NullSlotMergeCases()
@@ -798,7 +799,7 @@ public class PersistedSnapshotTests
             {
                 SlotValue slot = default;
                 Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
-                Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
+                Assert.That(slot.AsReadOnlySpan.WithoutLeadingZeros().ToArray().Length, Is.GreaterThan(0), "Value should override null slot after merge");
             })).SetName("ValueOverridesNull");
 
         yield return new TestCaseData(

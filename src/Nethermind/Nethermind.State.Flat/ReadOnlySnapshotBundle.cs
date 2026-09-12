@@ -96,10 +96,10 @@ public sealed class ReadOnlySnapshotBundle(
         return _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
-        GetSlot(selfDestructStateIdx, (address, index));
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out SlotValue? value) =>
+        GetSlot(selfDestructStateIdx, (address, index), out value);
 
-    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
+    public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out SlotValue? value)
     {
         GuardDispose();
 
@@ -109,29 +109,30 @@ public sealed class ReadOnlySnapshotBundle(
         {
             if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
             {
-                byte[]? res = slotValue?.ToEvmBytes();
+                value = slotValue;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
+                return;
             }
 
             if (_persistedSnapshotCount + i <= selfDestructStateIdx)
             {
-                return null;
+                value = null;
+                return;
             }
         }
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
-            return persistedSlot;
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
+            return;
 
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
-        byte[]? slotResult = outSlotValue.ToEvmBytes();
+        value = outSlotValue;
 
         if (recordDetailedMetrics)
         {
-            if (slotResult is null || slotResult.IsZero())
+            if (outSlotValue.AsReadOnlySpan.IsZero())
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -140,8 +141,6 @@ public sealed class ReadOnlySnapshotBundle(
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
             }
         }
-
-        return slotResult;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>

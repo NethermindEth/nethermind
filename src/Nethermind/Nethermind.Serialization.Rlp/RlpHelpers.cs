@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -79,10 +80,12 @@ internal static partial class RlpHelpers
 
     private static byte[][] CreateSingleByteArrays()
     {
-        byte[][] arrays = new byte[128][];
+        byte[][] arrays = new byte[256][];
+        Span<byte> value = stackalloc byte[1];
         for (int i = 0; i < arrays.Length; i++)
         {
-            arrays[i] = [(byte)i];
+            value[0] = (byte)i;
+            arrays[i] = ((ReadOnlySpan<byte>)value).ToArrayWithSingleByteCache();
         }
 
         return arrays;

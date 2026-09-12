@@ -21,6 +21,43 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BytesTests
     {
+        [Test]
+        public void Single_byte_arrays_are_shared_and_detached_from_input([Range(0, 255)] int value)
+        {
+            byte[] input = [(byte)value];
+            byte[] first = ((ReadOnlySpan<byte>)input).ToArrayWithSingleByteCache();
+            byte[] second = ((ReadOnlySpan<byte>)input).ToArrayWithSingleByteCache();
+            input[0] ^= 0xff;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.EqualTo(new byte[] { (byte)value }));
+                Assert.That(second, Is.SameAs(first));
+            }
+        }
+
+        [Test]
+        public void Longer_cached_array_requests_copy_input([Values(2, 8, 32)] int length)
+        {
+            byte[] input = new byte[length];
+            input[^1] = 1;
+            byte[] first = ((ReadOnlySpan<byte>)input).ToArrayWithSingleByteCache();
+            byte[] second = ((ReadOnlySpan<byte>)input).ToArrayWithSingleByteCache();
+            input[^1] = 2;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.Length, Is.EqualTo(length));
+                Assert.That(first[^1], Is.EqualTo(1));
+                Assert.That(second, Is.EqualTo(first));
+                Assert.That(second, Is.Not.SameAs(first));
+            }
+        }
+
+        [Test]
+        public void Empty_cached_array_request_returns_empty()
+            => Assert.That(ReadOnlySpan<byte>.Empty.ToArrayWithSingleByteCache(), Is.Empty);
+
         private static string CreateHexString(int byteLength)
         {
             char[] chars = new char[byteLength * 2];

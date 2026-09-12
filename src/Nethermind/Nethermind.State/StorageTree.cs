@@ -106,7 +106,19 @@ namespace Nethermind.State
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
-        public byte[] Get(in UInt256 index) => Get(index, null);
+        public void Get(in UInt256 index, out UInt256 value)
+        {
+            ValueHash256 key = default;
+            ComputeKeyWithLookup(in index, ref key);
+            ReadOnlySpan<byte> encoded = Get(key.Bytes);
+            if (encoded.IsEmpty)
+            {
+                value = default;
+                return;
+            }
+            RlpReader reader = new(encoded);
+            value = new UInt256(reader.DecodeByteArraySpan(), isBigEndian: true);
+        }
 
         public void HintSet(in UInt256 index)
         {
