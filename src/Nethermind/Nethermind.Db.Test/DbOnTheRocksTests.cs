@@ -65,6 +65,35 @@ namespace Nethermind.Db.Test
             Assert.That(options.GetDisableWal(), Is.True);
         }
 
+        [TestCase(null, "async_wal_precreate=true", TestName = "AsyncWalPrecreate_DefaultsToTrue")]
+        [TestCase("async_wal_precreate=false;", "async_wal_precreate=false", TestName = "AsyncWalPrecreate_CanBeDisabled")]
+        [TestCase("recycle_log_file_num=2;", "async_wal_precreate=false", TestName = "AsyncWalPrecreate_IsDisabledWhenWalRecyclingIsEnabled")]
+        public void AsyncWalPrecreate_IsPersistedAndReopened(string? additionalOptions, string expectedAsyncWalOption)
+        {
+            byte[] key = [1, 2, 3];
+            byte[] value = [4, 5, 6];
+            DbConfig config = new();
+            config.AdditionalRocksDbOptions = additionalOptions;
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance))
+            {
+                db.Set(key, value);
+                db.Flush();
+
+                string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+                File.WriteAllText(Path.Combine(fullPath, "OPTIONS-999999.dbtmp"), "async_wal_precreate=true");
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain(expectedAsyncWalOption));
+            }
+
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(reopened, key), Is.EqualTo(value));
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain(expectedAsyncWalOption));
+            }
+        }
+
         [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
@@ -679,6 +708,31 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        private static string ReadOptionsFile(string dbPath)
+        {
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
+            string? latestOptionsPath = null;
+            ulong latestOptionsNumber = 0;
+            foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
+            {
+                string fileName = Path.GetFileName(optionsPath);
+                if (!fileName.StartsWith("OPTIONS-", StringComparison.Ordinal) ||
+                    !ulong.TryParse(fileName.AsSpan("OPTIONS-".Length), out ulong optionsNumber))
+                {
+                    continue;
+                }
+
+                if (latestOptionsPath is null || optionsNumber > latestOptionsNumber)
+                {
+                    latestOptionsPath = optionsPath;
+                    latestOptionsNumber = optionsNumber;
+                }
+            }
+
+            Assert.That(latestOptionsPath, Is.Not.Null, $"No persisted RocksDB options file found in '{fullPath}'.");
+            return File.ReadAllText(latestOptionsPath!).Replace(" ", string.Empty, StringComparison.Ordinal);
+        }
 
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
