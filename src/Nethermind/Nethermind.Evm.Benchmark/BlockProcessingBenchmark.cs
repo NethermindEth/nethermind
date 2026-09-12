@@ -191,6 +191,34 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address CallCallerAddress = new("0x00000000000000000000000000000000000000dd");
+
+    /// <summary>STATICCALL to one account repeatedly, the CALL half of ext_account_query_warm.</summary>
+    /// <remarks>Fewer iterations than the single-opcode loops: a call frame is far more code per step,
+    /// and the contract would otherwise exceed the EIP-170 size limit.</remarks>
+    private const int CallsPerCall = 400;
+
+    private static readonly byte[] StaticCallSameAddressCode = BuildStaticCallCode();
+
+    private static byte[] BuildStaticCallCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CallsPerCall; i++)
+        {
+            // STATICCALL takes gas, address, argsOffset, argsLength, retOffset, retLength.
+            code = code
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressB)
+                .PushData(1000)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -239,6 +267,7 @@ public class BlockProcessingBenchmark
     private Block _balanceSameAddressBlock = null!;
     private Block _extCodeSizeBlock = null!;
     private Block _extCodeHashBlock = null!;
+    private Block _staticCallBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -276,6 +305,7 @@ public class BlockProcessingBenchmark
         _balanceSameAddressBlock = BuildBlock(BuildCallsTo(BalanceCallerAddress, 10, 0));
         _extCodeSizeBlock = BuildBlock(BuildCallsTo(ExtCodeSizeCallerAddress, 10, 0));
         _extCodeHashBlock = BuildBlock(BuildCallsTo(ExtCodeHashCallerAddress, 10, 0));
+        _staticCallBlock = BuildBlock(BuildCallsTo(CallCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -334,6 +364,9 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(CallCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(CallCallerAddress, StaticCallSameAddressCode, Spec);
 
             stateProvider.CreateAccount(ExtCodeHashCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(ExtCodeHashCallerAddress, ExtCodeHashSameAddressCode, Spec);
@@ -516,6 +549,16 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_extCodeHashBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] StaticCall_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_staticCallBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
