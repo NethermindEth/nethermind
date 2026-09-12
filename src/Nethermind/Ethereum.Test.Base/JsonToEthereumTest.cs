@@ -119,6 +119,38 @@ namespace Ethereum.Test.Base
         }
 
         /// <summary>
+        /// Parses the <c>inclusionListSatisfied</c> an engine fixture expects on the fork-choice update
+        /// that follows the payload (EIP-7805).
+        /// </summary>
+        /// <param name="engineNewPayload">The fixture's engine payload entry.</param>
+        /// <param name="expected">The expected value, null meaning the field must be absent.</param>
+        /// <returns>False when the fixture states no expectation at all, leaving the response unasserted.</returns>
+        /// <remarks>
+        /// When only <c>inclusionListSatisfied</c> is given, execution-apis <c>bogota.md</c> pins the
+        /// fork-choice answer: the head was just deemed VALID by <c>engine_newPayloadV6</c>, so the
+        /// compliance answer determined there must be repeated.
+        /// </remarks>
+        /// <exception cref="FormatException">The override is neither a boolean nor null.</exception>
+        public static bool TryParseForkchoiceInclusionListSatisfied(TestEngineNewPayloadsJson engineNewPayload, out bool? expected)
+        {
+            JsonElement stated = engineNewPayload.ForkchoiceUpdatedInclusionListSatisfied;
+            if (stated.ValueKind == JsonValueKind.Undefined)
+            {
+                expected = engineNewPayload.InclusionListSatisfied;
+                return expected is not null;
+            }
+
+            expected = stated.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                _ => throw new FormatException($"Invalid forkchoiceUpdatedInclusionListSatisfied: '{stated.GetRawText()}'")
+            };
+            return true;
+        }
+
+        /// <summary>
         /// Parses the JSON-RPC error code an engine fixture expects <c>engine_newPayloadV*</c> to
         /// answer with, or null when it expects the payload to be validated.
         /// </summary>

@@ -14,6 +14,16 @@ namespace Ethereum.Test.Base
         // EIP-7805: expected PayloadStatusV2.inclusionListSatisfied; only meaningful for a VALID payload.
         public bool? InclusionListSatisfied { get; set; }
 
+        /// <summary>
+        /// The <c>inclusionListSatisfied</c> the fixture expects on the fork-choice update that follows the
+        /// payload, overriding the value inherited from <see cref="InclusionListSatisfied"/>.
+        /// </summary>
+        /// <remarks>
+        /// A JSON <c>null</c> asserts the field is absent, which an omitted property cannot express — hence
+        /// <see cref="JsonElement"/> (<c>Undefined</c> when the fixture is silent) rather than <c>bool?</c>.
+        /// </remarks>
+        public JsonElement ForkchoiceUpdatedInclusionListSatisfied { get; set; }
+
         public ExecutionWitnessJson? ExecutionWitness { get; set; }
         public bool? ExecutionWitnessMutated { get; set; }
 
