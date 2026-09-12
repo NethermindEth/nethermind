@@ -273,6 +273,21 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address SstoreCallerAddress = new("0x00000000000000000000000000000000000000ab");
+
+    /// <summary>Writes alternating values to one slot: the dirty-transition shape, 100 gas per write.</summary>
+    private static readonly byte[] SstoreDirtyCode = BuildSstoreDirtyCode();
+
+    private static byte[] BuildSstoreDirtyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData((i & 1) == 0 ? 7 : 9).PushData(0).Op(Instruction.SSTORE);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -324,6 +339,7 @@ public class BlockProcessingBenchmark
     private Block _staticCallBlock = null!;
     private Block _staticCallEoaBlock = null!;
     private Block _staticCallPrecompileBlock = null!;
+    private Block _sstoreDirtyBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -364,6 +380,7 @@ public class BlockProcessingBenchmark
         _staticCallBlock = BuildBlock(BuildCallsTo(CallCallerAddress, 10, 0));
         _staticCallEoaBlock = BuildBlock(BuildCallsTo(EoaCallCallerAddress, 10, 0));
         _staticCallPrecompileBlock = BuildBlock(BuildCallsTo(PrecompileCallCallerAddress, 10, 0));
+        _sstoreDirtyBlock = BuildBlock(BuildCallsTo(SstoreCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -422,6 +439,10 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(SstoreCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(SstoreCallerAddress, SstoreDirtyCode, Spec);
+            stateProvider.Set(new StorageCell(SstoreCallerAddress, UInt256.Zero), [0x05]);
 
             stateProvider.CreateAccount(PrecompileCallCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(PrecompileCallCallerAddress, StaticCallPrecompileCode, Spec);
@@ -644,6 +665,16 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
             result = _branchProcessor.Process(_parentHeader, [_staticCallPrecompileBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Sstore_DirtyTransitions()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_sstoreDirtyBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
