@@ -34,9 +34,9 @@ public class AccountChangesAtIndex(Address address)
     public int StorageChangeCount => _storageChanges.Count;
     public HashSet<UInt256> StorageReads => _storageReads;
 
-    public bool HasStorageChange(UInt256 key) => _storageChanges.ContainsKey(key);
+    public bool HasStorageChange(in UInt256 key) => _storageChanges.ContainsKey(key);
 
-    public bool TryGetStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
+    public bool TryGetStorageChange(in UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         if (_storageChanges.TryGetValue(key, out StorageChange existing))
         {
@@ -47,12 +47,12 @@ public class AccountChangesAtIndex(Address address)
         return false;
     }
 
-    public void SetStorageChange(UInt256 key, StorageChange storageChange)
+    public void SetStorageChange(in UInt256 key, StorageChange storageChange)
         => _storageChanges[key] = storageChange;
 
-    public bool RemoveStorageChange(UInt256 key) => _storageChanges.Remove(key);
+    public bool RemoveStorageChange(in UInt256 key) => _storageChanges.Remove(key);
 
-    public bool TryRemoveStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
+    public bool TryRemoveStorageChange(in UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         if (_storageChanges.Remove(key, out StorageChange existing))
         {
@@ -63,16 +63,16 @@ public class AccountChangesAtIndex(Address address)
         return false;
     }
 
-    public void AddStorageRead(UInt256 key) => _storageReads.Add(key);
+    public void AddStorageRead(in UInt256 key) => _storageReads.Add(key);
 
-    public bool RemoveStorageRead(UInt256 key) => _storageReads.Remove(key);
+    public bool RemoveStorageRead(in UInt256 key) => _storageReads.Remove(key);
 
-    public UInt256 GetOrCapturePreTxStorage(UInt256 key, in UInt256 captureValue)
+    public void GetOrCapturePreTxStorage(in UInt256 key, in UInt256 captureValue, out UInt256 value)
     {
         _preTxStorage ??= new Dictionary<UInt256, UInt256>(8, UInt256Comparer.GetOptimized());
         ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
         if (!exists) slot = captureValue;
-        return slot;
+        value = slot;
     }
 
     public void ClearStorage()

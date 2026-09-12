@@ -25,7 +25,7 @@ public class AccountChangesAtIndexTests
             UInt256 slot = (UInt256)i;
             accountChanges.SetStorageChange(slot, storageChange);
             accountChanges.AddStorageRead(slot);
-            accountChanges.GetOrCapturePreTxStorage(slot, UInt256.One);
+            accountChanges.GetOrCapturePreTxStorage(slot, UInt256.One, out _);
         }
 
         int changesCapacityBeforeClear = accountChanges.StorageChanges.Capacity;

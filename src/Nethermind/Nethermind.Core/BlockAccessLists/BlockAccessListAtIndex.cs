@@ -98,13 +98,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         UInt256 preTxBalance = accountChanges.PreTxBalance ??= before;
 
         BalanceChange? previous = accountChanges.BalanceChange;
-        _changes.Add(new Change
+        _changes.Add(new Change(previousValue: new ChangeValue(previous?.Value ?? default))
         {
             Account = accountChanges,
             Type = ChangeType.BalanceChange,
             HasPrevious = previous.HasValue,
             PreviousIndex = previous?.Index ?? 0,
-            PreviousValue = new ChangeValue(previous?.Value ?? default),
         });
 
         accountChanges.BalanceChange = preTxBalance != after
@@ -148,13 +147,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
         NonceChange? previous = accountChanges.NonceChange;
-        _changes.Add(new Change
+        _changes.Add(new Change(previousValue: new ChangeValue(previous?.Value ?? 0UL))
         {
             Account = accountChanges,
             Type = ChangeType.NonceChange,
             HasPrevious = previous.HasValue,
             PreviousIndex = previous?.Index ?? 0,
-            PreviousValue = new ChangeValue(previous?.Value ?? 0UL),
         });
 
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
@@ -174,7 +172,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     }
 
     /// <summary>Records a storage-slot read and returns the account entry in a single account resolution.</summary>
-    public AccountChangesAtIndex RecordStorageReadAndGet(Address address, UInt256 key)
+    public AccountChangesAtIndex RecordStorageReadAndGet(Address address, in UInt256 key)
     {
         AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
         if (!accountChanges.HasStorageChange(key))
@@ -182,7 +180,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         return accountChanges;
     }
 
-    public void AddStorageChange(Address address, UInt256 key, UInt256 before, UInt256 after)
+    public void AddStorageChange(Address address, in UInt256 key, in UInt256 before, in UInt256 after)
     {
         if (before == after) return;
 
@@ -190,16 +188,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
         accountChanges.TryRemoveStorageChange(key, out StorageChange? oldStorageChange);
 
-        UInt256 preTxStorage = accountChanges.GetOrCapturePreTxStorage(key, before);
+        accountChanges.GetOrCapturePreTxStorage(in key, in before, out UInt256 preTxStorage);
 
-        _changes.Add(new Change
+        _changes.Add(new Change(slot: key, previousValue: new ChangeValue(oldStorageChange?.Value ?? default))
         {
             Account = accountChanges,
-            Slot = key,
             Type = ChangeType.StorageChange,
             HasPrevious = oldStorageChange.HasValue,
             PreviousIndex = oldStorageChange?.Index ?? 0,
-            PreviousValue = new ChangeValue(oldStorageChange?.Value ?? default),
         });
 
         if (preTxStorage != after)
@@ -213,12 +209,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
     }
 
-    public void AddStorageChange(in StorageCell storageCell, UInt256 before, UInt256 after)
-        => AddStorageChange(storageCell.Address, storageCell.Index, before, after);
+    public void AddStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
+        => AddStorageChange(storageCell.Address, in storageCell.Index, in before, in after);
 
     public void AddStorageRead(in StorageCell storageCell) => AddStorageRead(storageCell.Address, storageCell.Index);
 
-    public void AddStorageRead(Address address, UInt256 key)
+    public void AddStorageRead(Address address, in UInt256 key)
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
         if (!accountChanges.HasStorageChange(key))
@@ -235,26 +231,23 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
         {
             changedSlots.Add(kv.Key);
-            _changes.Add(new Change
+            _changes.Add(new Change(slot: kv.Key, previousValue: new ChangeValue(kv.Value.Value))
             {
                 Account = accountChanges,
                 Type = ChangeType.StorageChange,
-                Slot = kv.Key,
                 HasPrevious = true,
                 PreviousIndex = kv.Value.Index,
-                PreviousValue = new ChangeValue(kv.Value.Value),
             });
         }
 
         if (accountChanges.NonceChange is { } nonce)
         {
-            _changes.Add(new Change
+            _changes.Add(new Change(previousValue: new ChangeValue(nonce.Value))
             {
                 Account = accountChanges,
                 Type = ChangeType.NonceChange,
                 HasPrevious = true,
                 PreviousIndex = nonce.Index,
-                PreviousValue = new ChangeValue(nonce.Value),
             });
         }
 
@@ -303,7 +296,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             {
                 case ChangeType.BalanceChange:
                     accountChanges.BalanceChange = change.HasPrevious
-                        ? new BalanceChange(change.PreviousIndex, change.PreviousValue.Balance)
+                        ? new BalanceChange(change.PreviousIndex, change.PreviousValue.Value)
                         : null;
                     break;
                 case ChangeType.CodeChange:
@@ -327,7 +320,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                     accountChanges.RemoveStorageChange(slot);
                     if (change.HasPrevious)
                     {
-                        accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue.Storage));
+                        accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue.Value));
                         accountChanges.RemoveStorageRead(slot);
                     }
                     else
@@ -389,28 +382,24 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         StorageChange = 3,
     }
 
-    private readonly struct Change
+    private readonly struct Change(in ChangeValue previousValue = default, in UInt256 slot = default)
     {
-        public AccountChangesAtIndex Account { get; init; }
+        public required AccountChangesAtIndex Account { get; init; }
         public ChangeType Type { get; init; }
         public bool HasPrevious { get; init; }
         public uint PreviousIndex { get; init; }
-        public UInt256 Slot { get; init; }
-        public ChangeValue PreviousValue { get; init; }
+        public readonly UInt256 Slot = slot;
+        public readonly ChangeValue PreviousValue = previousValue;
     }
 
     private readonly struct ChangeValue
     {
-        private readonly UInt256 _data;
+        public readonly UInt256 Value;
 
-        public ChangeValue(UInt256 balance) => _data = balance;
+        public ChangeValue(in UInt256 balance) => Value = balance;
 
-        public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
+        public ChangeValue(ulong nonce) => Value = new UInt256(nonce);
 
-        public UInt256 Balance => _data;
-
-        public ulong Nonce => _data.u0;
-
-        public UInt256 Storage => _data;
+        public ulong Nonce => Value.u0;
     }
 }

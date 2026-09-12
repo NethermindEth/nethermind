@@ -121,10 +121,10 @@ internal sealed partial class BlockAccessListValidationIndex
             ScalarLaneEqualAt(_code, other._code, row, ordinal) &&
             _storage.SlotsEqualAt(other._storage, row, ordinal);
 
-        public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, value);
+        public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, in value);
         public bool TryAddNonce(int row, int ordinal, ulong value) => _nonce.Add(row, ordinal, value);
-        public bool TryAddCode(int row, int ordinal, in ValueHash256 hash) => _code.Add(row, ordinal, hash);
-        public bool TryAddStorage(int row, int ordinal, in UInt256 key, in UInt256 value) => _storage.Add(row, ordinal, key, value);
+        public bool TryAddCode(int row, int ordinal, in ValueHash256 hash) => _code.Add(row, ordinal, in hash);
+        public bool TryAddStorage(int row, int ordinal, in UInt256 key, in UInt256 value) => _storage.Add(row, ordinal, in key, in value);
 
         /// <summary>
         /// Walk every account in <paramref name="accounts"/>, assign it an ordinal via
@@ -426,7 +426,7 @@ internal sealed partial class BlockAccessListValidationIndex
                 MutableBookkeeping.ForRowCount(rowCount));
         }
 
-        public void Fill(int row, Span<int> cursors, int accountOrdinal, TValue value)
+        public void Fill(int row, Span<int> cursors, int accountOrdinal, in TValue value)
         {
             int offset = cursors[row]++;
             AccountOrdinals[offset] = accountOrdinal;
@@ -447,7 +447,7 @@ internal sealed partial class BlockAccessListValidationIndex
                 if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, select(change));
         }
 
-        public bool Add(int row, int accountOrdinal, TValue value)
+        public bool Add(int row, int accountOrdinal, in TValue value)
         {
             int offset = ReserveNextOffset(row);
             if (offset < 0) return false;
@@ -539,7 +539,7 @@ internal sealed partial class BlockAccessListValidationIndex
                 MutableBookkeeping.ForRowCount(rowCount));
         }
 
-        public void Fill(int row, Span<int> cursors, int accountOrdinal, UInt256 key, UInt256 value)
+        public void Fill(int row, Span<int> cursors, int accountOrdinal, in UInt256 key, in UInt256 value)
         {
             int offset = cursors[row]++;
             AccountOrdinals[offset] = accountOrdinal;
@@ -560,7 +560,7 @@ internal sealed partial class BlockAccessListValidationIndex
                     if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, slotChanges.Key, change.Value);
         }
 
-        public bool Add(int row, int accountOrdinal, UInt256 key, UInt256 value)
+        public bool Add(int row, int accountOrdinal, in UInt256 key, in UInt256 value)
         {
             int offset = ReserveNextOffset(row);
             if (offset < 0) return false;
