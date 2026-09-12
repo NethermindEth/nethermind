@@ -716,14 +716,17 @@ public partial class EngineModuleTests
 
         // Occupy the processor so the payload has to queue and newPayloadV6 times out before it is processed.
         chain.ThrottleBlockProcessor(500);
-        ManualResetEventSlim processingStarted = new(false);
-        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+        using ManualResetEventSlim processingStarted = new(false);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        branchProcessor.ProcessingStarted = processingStarted;
         Block occupyBlock = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent)
             .WithNonce(0).WithDifficulty(0).WithStateRoot(parent.StateRoot!).TestObject;
         occupyBlock.Header.TotalDifficulty = parent.TotalDifficulty;
         _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
             occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
-        processingStarted.Wait(TimeSpan.FromSeconds(5));
+        Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block processor was never occupied");
+        // Later blocks must not signal an event this test disposes while the chain is still processing.
+        branchProcessor.ProcessingStarted = null;
 
         ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
             payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
@@ -794,6 +797,79 @@ public partial class EngineModuleTests
         {
             Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(expected));
+        }
+    }
+
+    // A newPayloadV6 landing while forkchoiceUpdatedV5 evaluates the retained list wins: the answer being
+    // computed is already stale, so publishing it would shadow the newer list on every later update.
+    [Test]
+    public async Task ForkchoiceUpdatedV5_does_not_publish_an_answer_for_a_list_superseded_while_it_was_evaluated()
+    {
+        HeadStateInterceptor headState = new();
+        InterleavingEvaluator evaluator = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder
+                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<IStateReader>(headState))
+                .AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
+                {
+                    evaluator.Inner = inner;
+                    return evaluator;
+                }));
+        headState.Inner = chain.StateReader;
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+
+        // Retain a censoring list the block does not satisfy, by resending it with its state pruned.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        headState.PrunedBlock = payload.BlockHash;
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the resend must leave its list retained");
+        headState.PrunedBlock = null;
+
+        // A nonce the sender is past cannot be appended, so this list is satisfied where the censoring one is not.
+        Transaction unappendableTx = Build.A.Transaction
+            .WithNonce(99).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        // Stand in for the concurrent call: retain the satisfied list after the forkchoice update has read the
+        // censoring one but before it can publish an answer for it.
+        evaluator.BeforeEvaluate = () =>
+        {
+            evaluator.BeforeEvaluate = null;
+            headState.PrunedBlock = payload.BlockHash;
+            ResultWrapper<PayloadStatusV2> superseding = rpc
+                .engine_newPayloadV6(payload, [], Keccak.Zero, [], [Rlp.Encode(unappendableTx).Bytes]).GetAwaiter().GetResult();
+            Assert.That(superseding.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the superseding call must leave its list retained");
+            headState.PrunedBlock = null;
+        };
+
+        ForkchoiceStateV1 forkchoiceState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV2Result> superseded = await rpc.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null);
+        ResultWrapper<ForkchoiceUpdatedV2Result> next = await rpc.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(superseded.Data.PayloadStatus.InclusionListSatisfied, Is.False, "answer for the list that update read");
+            Assert.That(next.Data.PayloadStatus.InclusionListSatisfied, Is.True, "answer for the list that superseded it");
+        }
+    }
+
+    /// <summary>Wraps the chain's <see cref="IInclusionListComplianceEvaluator"/> so a test can act inside the
+    /// window between <c>engine_forkchoiceUpdatedV5</c> reading the retained list and publishing an answer.</summary>
+    private sealed class InterleavingEvaluator : IInclusionListComplianceEvaluator
+    {
+        public IInclusionListComplianceEvaluator Inner { get; set; } = null!;
+
+        public Action? BeforeEvaluate { get; set; }
+
+        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
+        {
+            BeforeEvaluate?.Invoke();
+            return Inner.TryEvaluate(blockHash, inclusionListTransactions);
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -18,22 +19,27 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    /// <summary>Entries the retained-inclusion-list cache holds.</summary>
+    /// <summary>Entries the per-block inclusion-list cache holds.</summary>
     /// <remarks>
-    /// Each entry is bounded by <see cref="Eip7805Constants.MaxAggregateInclusionListBytes"/> (128 KiB), so this
-    /// caps retention at ~2 MiB. Only a branch tip is ever asked for an answer and bogota.md allows discarding
+    /// A retained entry is bounded by <see cref="Eip7805Constants.MaxAggregateInclusionListBytes"/> (128 KiB), so
+    /// this caps retention at ~2 MiB. Only a branch tip is ever asked for an answer and bogota.md allows discarding
     /// the rest, so this only has to span the few unresolved payloads a lagging processor can leave behind.
     /// </remarks>
-    private const int RetainedInclusionListCapacity = 16;
+    private const int InclusionListCacheCapacity = 16;
 
-    // Inclusion-list compliance computed during engine_newPayloadV6, retained so a later
-    // engine_forkchoiceUpdatedV5 to that head can report it (execution-apis#609). The list is a per-call
-    // parameter, not a property of the block, so an entry here only answers for the most recent call.
-    private readonly LruCache<Hash256, bool> _inclusionListSatisfiedByBlock = new(64, "inclusionListSatisfied");
+    /// <summary>What is known about a block's inclusion-list compliance: either the answer
+    /// <c>engine_newPayloadV6</c> computed, or the list retained for a payload it could not answer for.</summary>
+    private readonly record struct InclusionListState(bool? Answer, byte[][]? Retained);
 
-    // bogota.md engine_newPayloadV6 (3): the list itself is retained for payloads newPayloadV6 could not
-    // answer for, so a forkchoice update that promotes one to a VALID head can still answer (:163-169).
-    private readonly LruCache<Hash256, byte[][]> _retainedInclusionLists = new(RetainedInclusionListCapacity, "retainedInclusionLists");
+    // Compliance computed during engine_newPayloadV6, kept so a later engine_forkchoiceUpdatedV5 to that head can
+    // report it (execution-apis#609); bogota.md engine_newPayloadV6 (3) keeps the list itself for payloads
+    // newPayloadV6 could not answer for. One entry per block, because the list is a per-call parameter rather than
+    // a property of the block: a list from a newer call must not be shadowed by the answer to an older one.
+    private readonly LruCache<Hash256, InclusionListState> _inclusionListByBlock = new(InclusionListCacheCapacity, "inclusionListByBlock");
+
+    // The cache's own lock makes each operation atomic, not the read-evaluate-publish sequence in
+    // GetInclusionListSatisfied, which must not overwrite a list a concurrent engine_newPayloadV6 retained.
+    private readonly Lock _inclusionListLock = new();
 
     private readonly IInclusionListComplianceEvaluator _inclusionListComplianceEvaluator = inclusionListComplianceEvaluator;
 
@@ -77,16 +83,14 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (inclusionListSatisfied is { } satisfied && status.LatestValidHash is { } validHash)
         {
-            _inclusionListSatisfiedByBlock.Set(validHash, satisfied);
-            _retainedInclusionLists.Delete(validHash);
+            SetInclusionListState(validHash, new InclusionListState(satisfied, null));
         }
         else if (status.Status is PayloadStatus.Accepted or PayloadStatus.Syncing
             && executionPayloadParams is { InclusionListTransactions: { } retained, ExecutionPayload.BlockHash: { } blockHash })
         {
-            // Those two statuses carry no answer but can still become a VALID head, so keep the list — and
-            // drop any answer an earlier call cached, since it was computed for a different list.
-            _inclusionListSatisfiedByBlock.Delete(blockHash);
-            _retainedInclusionLists.Set(blockHash, retained);
+            // Those two statuses carry no answer but can still become a VALID head, so keep the list — which
+            // replaces any answer an earlier call cached, since that was computed for a different list.
+            SetInclusionListState(blockHash, new InclusionListState(null, retained));
         }
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
@@ -141,22 +145,24 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// <summary>Inclusion-list compliance of a <c>VALID</c> forkchoice head (bogota.md
     /// <c>engine_forkchoiceUpdatedV5</c> (2)).</summary>
     /// <remarks>
-    /// Prefers the answer <c>engine_newPayloadV6</c> already computed, falling back to the list retained for a
+    /// Uses the answer <c>engine_newPayloadV6</c> already computed, falling back to the list retained for a
     /// payload that resolved to <c>ACCEPTED</c>/<c>SYNCING</c>. Decoding and sender recovery are deferred to
-    /// that fallback, so a head with nothing retained costs one cache probe. At most one of the two caches
-    /// holds an entry for a block — whichever <c>engine_newPayloadV6</c> wrote last — so the answer probed
-    /// first can never predate a newer retained list. Both caches are lock-guarded and the answer is a pure
-    /// function of (block, list), so concurrent calls for one head recompute the same value.
+    /// that fallback, so a head with nothing retained costs one cache probe. The answer is a pure function of
+    /// (block, list), so concurrent calls for one head recompute the same value.
     /// </remarks>
     /// <returns><c>null</c> when no list was retained for the head, or its state is no longer readable.</returns>
     private bool? GetInclusionListSatisfied(Hash256 headBlockHash)
     {
-        if (_inclusionListSatisfiedByBlock.TryGet(headBlockHash, out bool satisfied)) return satisfied;
-        if (!_retainedInclusionLists.TryGet(headBlockHash, out byte[][]? retained)) return null;
+        if (!_inclusionListByBlock.TryGet(headBlockHash, out InclusionListState state)) return null;
+        if (state.Answer is { } satisfied) return satisfied;
+        if (state.Retained is not { } retained) return null;
 
         bool? evaluated;
         try
         {
+            // An ecrecover per retained transaction plus a state read per sender, charged to the forkchoice
+            // response the consensus client awaits for payloadId. Accepted: only a head its own newPayloadV6
+            // left unanswered pays it, and publishing the answer below caps it at once per head.
             evaluated = _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained);
         }
         // The head is already applied and a build may be under way, and bogota.md permits a null answer, so
@@ -174,14 +180,31 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (evaluated is not { } answer)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot evaluate the inclusion list of head {headBlockHash}; reporting inclusionListSatisfied as null.");
+            // Routine while the head's state is still healing, and the entry survives so the next update retries.
+            if (_logger.IsDebug) _logger.Debug($"Cannot evaluate the inclusion list of head {headBlockHash}; reporting inclusionListSatisfied as null.");
             return null;
         }
 
-        // The answer supersedes the bytes, and the head is no longer a payload awaiting one.
-        _inclusionListSatisfiedByBlock.Set(headBlockHash, answer);
-        _retainedInclusionLists.Delete(headBlockHash);
+        // Publish only while the list the answer was computed for is still the retained one: a concurrent
+        // engine_newPayloadV6 may have replaced it, and the newer list outranks this answer.
+        lock (_inclusionListLock)
+        {
+            if (_inclusionListByBlock.TryGet(headBlockHash, out InclusionListState current)
+                && ReferenceEquals(current.Retained, retained))
+            {
+                _inclusionListByBlock.Set(headBlockHash, new InclusionListState(answer, null));
+            }
+        }
+
         return answer;
+    }
+
+    private void SetInclusionListState(Hash256 blockHash, InclusionListState state)
+    {
+        lock (_inclusionListLock)
+        {
+            _inclusionListByBlock.Set(blockHash, state);
+        }
     }
 
     // Mirrors the newPayloadV6 aggregate bound (IExecutionPayloadParams.ValidateInitialParams).
