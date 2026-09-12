@@ -1260,6 +1260,7 @@ public class FrameTxProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(result.TransactionExecuted, Is.False, "a frame count outside the admitted range executed");
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
             Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.MissingFrames));
         }
@@ -1734,28 +1735,6 @@ public class FrameTxProcessorTests
             new TestCaseData(frames, expectedError).SetName($"CallAndRestore_{name}_IsRejected");
     }
 
-    /// <remarks>
-    /// A frame transaction carrying no frame list at all: reachable from <c>eth_call</c>, where the JSON view
-    /// leaves <see cref="Transaction.Frames"/> null when the request omits the field. Before the check was
-    /// hoisted this left the processor as an <see cref="NullReferenceException"/> rather than a refusal.
-    /// </remarks>
-    [Test]
-    public void CallAndRestore_FrameTransactionWithoutAFrameList_IsRejected()
-    {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.Frames = null;
-
-        TransactionResult result = CallAndRestore(tx);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.MissingFrames));
-        }
-    }
-
     /// <summary>
     /// A <c>VERIFY</c> frame may only approve execution for the sender, and the codeless-target default code
     /// is held to that too.
@@ -2042,11 +2021,12 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <summary>A frame transaction's <c>CallAndRestore</c> must leave nothing behind.</summary>
-    /// <remarks><c>eth_estimateGas</c> binary-searches <c>CallAndRestore</c> against one world state, so a
-    /// surviving nonce bump makes the next iteration fail its nonce pre-check.</remarks>
+    /// <summary>A frame transaction's <c>CallAndRestore</c> must leave nothing behind, so the same world state
+    /// takes the same call again with the same outcome.</summary>
+    /// <remarks><c>EstimateFrameTx</c> prices the signed reservation without re-executing, so the repeat here
+    /// stands in for the <c>eth_call</c> traffic that shares one world state with the estimator's probe.</remarks>
     [Test]
-    public void CallAndRestore_RepeatedForGasEstimation_LeavesNoStateAndEstimates()
+    public void CallAndRestore_RepeatedAgainstOneWorldState_LeavesNoStateAndEstimates()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient));
@@ -2054,20 +2034,31 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
 
-        EstimateGasTracer gasTracer = new();
+        FrameReceiptTracer firstTracer = new();
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
-        TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
-        Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
+        TransactionResult first = _transactionProcessor.CallAndRestore(tx, firstTracer);
+        UInt256 nonceBetween = _stateProvider.GetNonce(Sender);
+        UInt256 balanceBetween = _stateProvider.GetBalance(Sender);
+
+        FrameReceiptTracer secondTracer = new();
+        TransactionResult second = _transactionProcessor.CallAndRestore(tx, secondTracer);
 
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
+        ulong estimate = estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(first.TransactionExecuted, Is.True, first.ErrorDescription ?? first.Error.ToString());
+            Assert.That(nonceBetween, Is.EqualTo(UInt256.Zero), "the first call left a nonce bump behind");
+            Assert.That(balanceBetween, Is.EqualTo(1.Ether), "the first call left a payer charge behind");
+            Assert.That(second.TransactionExecuted, Is.True, second.ErrorDescription ?? second.Error.ToString());
+            Assert.That(firstTracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess), "the first call did not run the body to completion");
+            Assert.That(secondTracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess), "the repeat did not run the body to completion");
+            Assert.That(secondTracer.GasSpent, Is.EqualTo(firstTracer.GasSpent), "the repeat ended differently from the first call");
             Assert.That(error, Is.Null);
             Assert.That(estimate, Is.GreaterThan((ulong)GasCostOf.Transaction), "the estimate collapsed to the regular-path lower bound");
-            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0ul), "the estimation loop committed a nonce bump");
-            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the estimation loop committed a payer charge");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0ul), "the repeat or the estimate left a nonce bump behind");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the repeat or the estimate left a payer charge behind");
         }
     }
 
