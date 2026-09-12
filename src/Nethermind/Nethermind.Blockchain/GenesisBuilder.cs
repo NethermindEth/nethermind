@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
