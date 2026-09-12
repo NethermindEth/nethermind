@@ -39,7 +39,7 @@ namespace Nethermind.Mining.Test
         }
 
         [Test]
-        public void Selection_does_not_allocate_for_gas_price_filter([Values(0, 1, 2)] int gasPrice)
+        public void Pipeline_does_not_allocate_for_gas_price_filter([Values(0, 1, 2)] int gasPrice)
         {
             ITxFilterPipeline pipeline = new TxFilterPipelineBuilder(NullLogManager.Instance)
                 .WithMinGasPriceFilter(new BlocksConfig { MinGasPrice = 1 })
