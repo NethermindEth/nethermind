@@ -261,6 +261,7 @@ public class TxPoolContentListsTests
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IHandler<Hash256?, InclusionListBytes>>(),
             Substitute.For<Nethermind.Consensus.Transactions.IInclusionListTxSource>(),
+            Substitute.For<IInclusionListComplianceEvaluator>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>>(),

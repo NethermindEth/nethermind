@@ -1168,7 +1168,7 @@ public partial class EngineModuleTests
         IStateReader mockedStateReader = Substitute.For<IStateReader>();
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
-            .UpdateSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(innerBuilder => innerBuilder
+            .UpdateSingleton<NewPayloadHandler>(innerBuilder => innerBuilder
                 .AddSingleton<IStateReader>(mockedStateReader)));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
