@@ -17,9 +17,12 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     // Deliberately below any real minimum, so the encode loop's early-break check below never skips a
     // smaller tx that could still fit.
     private const int MinTransactionSizeBytes = 32;
-    // Senders drawn per list, deliberately over twice the entries the byte cap can emit: an entry skipped
-    // for size spends a draw without spending budget, and the spare senders are what refill it.
-    private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
+    // Upper bound on the entries the byte cap can emit: 64 is under the smallest encoding seen in practice
+    // (73 bytes over a 300k-key scan), so this over-counts rather than under-counts.
+    private const int MaxEmittableEntries = Eip7805Constants.MaxBytesPerInclusionList / 64;
+    // Senders drawn per list, at twice the emittable entries: an entry skipped for size spends a draw
+    // without spending budget, and the spare senders are what refill it.
+    private const int SenderSampleCapacity = 2 * MaxEmittableEntries;
 
     /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
     /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
