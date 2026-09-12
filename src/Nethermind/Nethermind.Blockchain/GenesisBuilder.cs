@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -70,8 +71,17 @@ public class GenesisBuilder(
             {
                 foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                 {
+                    ReadOnlySpan<byte> storageValue = storage.Value;
+                    if (storageValue.Length > 32)
+                    {
+                        storageValue = storageValue.WithoutLeadingZeros();
+                        if (storageValue.Length > 32)
+                        {
+                            throw new InvalidOperationException($"Genesis storage value for {address} at {storage.Key} exceeds 32 bytes.");
+                        }
+                    }
                     stateProvider.Set(new StorageCell(address, storage.Key),
-                        new UInt256(storage.Value, isBigEndian: true));
+                        new UInt256(storageValue, isBigEndian: true));
                 }
             }
 
