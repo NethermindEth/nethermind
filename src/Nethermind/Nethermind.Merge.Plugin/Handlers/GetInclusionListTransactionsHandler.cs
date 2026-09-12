@@ -16,9 +16,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,
-    ISpecProvider specProvider) : IHandler<Hash256?, InclusionListBytes>
+    ISpecProvider specProvider,
+    IMergeConfig mergeConfig) : IHandler<Hash256?, InclusionListBytes>
 {
-    private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider);
+    private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider, mergeConfig);
 
     /// <inheritdoc/>
     /// <param name="parentBlockHash">Block whose header fixes the next-block base fee the candidates are

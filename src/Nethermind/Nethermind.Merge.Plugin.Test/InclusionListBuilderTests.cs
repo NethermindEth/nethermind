@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -36,13 +37,19 @@ public class InclusionListBuilderTests
     }
 
     // Frontier leaves the parent's base fee unchanged, so the head header fixes the fee the builder asks for.
-    private static InclusionListBuilder BuildBuilder(ITxPool pool, UInt256 baseFee = default)
+    // The age tier defaults to MergeConfig's, so an unnamed tier is the shipped one: off.
+    private static InclusionListBuilder BuildBuilder(ITxPool pool, UInt256 baseFee = default, double oldestShare = 0, int oldestCount = 200)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(baseFee).TestObject);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
-        return new InclusionListBuilder(pool, blockTree, specProvider);
+        MergeConfig mergeConfig = new()
+        {
+            InclusionListOldestSenderShare = oldestShare,
+            InclusionListOldestSenderCount = oldestCount
+        };
+        return new InclusionListBuilder(pool, blockTree, specProvider, mergeConfig);
     }
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
@@ -186,16 +193,128 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => senderByHash[Decode(b).Hash!]).Distinct().Count(), Is.EqualTo(senderCount));
     }
 
+    // Both draws answer to the transport's caps, whether or not part of one is reserved by age.
     [Test]
-    public void Handles_more_senders_than_the_sample_capacity()
+    public void Handles_more_senders_than_the_sample_capacity([Values(0.0, 0.5)] double oldestShare)
     {
         Transaction[] txs = [.. Enumerable.Range(0, TestItem.PrivateKeys.Length)
             .SelectMany(i => new[] { TxOfSize(0, 0, TestItem.PrivateKeys[i]), TxOfSize(0, 1, TestItem.PrivateKeys[i]) })];
 
-        using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs), oldestShare: oldestShare).GetInclusionList();
 
         Assert.That(il.Count, Is.LessThanOrEqualTo(Eip7805Constants.MaxTransactionsPerInclusionList));
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
+    /// <summary>A one-transaction sender, its pool index standing in for how long it has been pending.</summary>
+    private static Transaction SenderTx(int index, ulong poolIndex, int payloadBytes = 50)
+    {
+        // A nonce per sender keeps every transaction distinct and every appendable run one entry long.
+        Transaction tx = TxOfSize(payloadBytes, index);
+        // The pool holds far more senders than there are test keys, and only the address is read here.
+        tx.SenderAddress = Address.FromNumber((UInt256)(index + 1));
+        tx.PoolIndex = poolIndex;
+        return tx;
+    }
+
+    private const int TierPoolSenders = 800;
+    private const int TierCohortSize = 160;
+
+    /// <summary>The share of the listed transactions that came from the oldest cohort, over many lists.</summary>
+    /// <param name="step">Pool indices apart between consecutive senders; <c>0</c> stamps them all alike.</param>
+    private static double ListedOldestShare(double oldestShare, int oldestCount, ulong firstPoolIndex, ulong step)
+    {
+        Transaction[] txs = new Transaction[TierPoolSenders];
+        HashSet<Hash256> cohort = [];
+        for (int i = 0; i < TierPoolSenders; i++)
+        {
+            txs[i] = SenderTx(i, firstPoolIndex + (ulong)i * step);
+            if (i < TierCohortSize) cohort.Add(txs[i].Hash!);
+        }
+
+        InclusionListBuilder builder = BuildBuilder(PoolOf(txs), oldestShare: oldestShare, oldestCount: oldestCount);
+        int listed = 0;
+        int fromCohort = 0;
+        // One list is a single draw; a share only means anything across many of them.
+        for (int round = 0; round < 60; round++)
+        {
+            using InclusionListBytes il = builder.GetInclusionList();
+            foreach (ArrayPoolList<byte> bytes in il)
+            {
+                listed++;
+                if (cohort.Contains(Decode(bytes).Hash!)) fromCohort++;
+            }
+        }
+
+        return (double)fromCohort / listed;
+    }
+
+    // Off, the draw is uniform and the oldest cohort is listed at its share of the pool, 160 of 800. On, the
+    // share reserved out of the 256-sender draw is the share of the list the cohort gets, since the byte cap
+    // keeps a random prefix of that draw. Both are what the model of a censored transaction's odds rests on.
+    [TestCase(0.0, TierCohortSize, 0ul, 1ul, 0.20)]
+    [TestCase(0.25, TierCohortSize, 0ul, 1ul, 0.25)]
+    [TestCase(0.5, TierCohortSize, 0ul, 1ul, 0.50)]
+    // A share under the cohort's own 0.20 of the pool is a floor that does not bind, not a ceiling that demotes
+    // it: reserving a sliver of the draw for the oldest senders must never list fewer of them than drawing
+    // uniformly would have. Reserving by share alone inverts here, worst at the smallest non-zero shares.
+    [TestCase(0.02, TierCohortSize, 0ul, 1ul, 0.20)]
+    [TestCase(0.05, TierCohortSize, 0ul, 1ul, 0.20)]
+    // The cohort is the pool's oldest by rank, not by an index threshold, so the same share holds wherever the
+    // pool's sequence happens to start — which is what survives it restarting with the process.
+    [TestCase(0.5, TierCohortSize, ulong.MaxValue - 10_000ul, 1ul, 0.50)]
+    // Nothing to rank by leaves the whole pool tied for oldest, which is the uniform draw again.
+    [TestCase(0.5, TierCohortSize, 0ul, 0ul, 0.20)]
+    // So does a cohort as wide as the pool: there is nothing left to reserve the draw against.
+    [TestCase(0.5, TierPoolSenders, 0ul, 1ul, 0.20)]
+    public void Reserved_share_is_a_floor_under_what_the_oldest_cohort_gets(double oldestShare, int oldestCount, ulong firstPoolIndex, ulong step, double expected) =>
+        Assert.That(ListedOldestShare(oldestShare, oldestCount, firstPoolIndex, step), Is.EqualTo(expected).Within(0.04));
+
+    // A share worth less than one of the draw's slots must still reserve one: truncating it away would leave
+    // the tier off, and the shipped default running, on a knob an operator is calibrating.
+    [Test]
+    public void Reserves_a_slot_for_a_share_below_one_slot()
+    {
+        Transaction[] txs = new Transaction[TierPoolSenders];
+        txs[0] = SenderTx(0, 0);
+        // Nothing behind the cohort can be listed, so the list is non-empty exactly when the cohort is drawn.
+        for (int i = 1; i < txs.Length; i++) txs[i] = SenderTx(i, (ulong)i, Eip7805Constants.MaxBytesPerInclusionList);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs), oldestShare: 0.003, oldestCount: 1).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { txs[0].Hash }));
+    }
+
+    // A misconfigured share must fail loudly: clamping or truncating it hands back the shipped default.
+    [TestCase(double.NaN)]
+    [TestCase(double.PositiveInfinity)]
+    [TestCase(-0.1)]
+    [TestCase(1.5)]
+    public void Rejects_a_share_that_is_not_a_fraction(double oldestShare) =>
+        Assert.That(() => BuildBuilder(PoolOf(), oldestShare: oldestShare), Throws.InstanceOf<ArgumentOutOfRangeException>());
+
+    /// <summary>Entries one draw fits in the byte cap, asserting no sender reached the list twice.</summary>
+    private static int ListedCount(Transaction[] txs, double oldestShare, int oldestCount)
+    {
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs), oldestShare: oldestShare, oldestCount: oldestCount).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash).Distinct().Count(), Is.EqualTo(il.Count),
+            "a sender drawn into both tiers would be listed twice");
+        return il.Count;
+    }
+
+    // Neither tier running short may cost the list entries: each spends what the other leaves.
+    [TestCase(0.05, 28)] // a cohort wider than its reserved draw, with too few senders behind it to fill the rest
+    [TestCase(0.5, 5)]   // a cohort too narrow to fill its reserved draw
+    public void A_short_tier_does_not_shrink_the_draw(double oldestShare, int oldestCount)
+    {
+        const int senderCount = 30;
+        Transaction[] txs = new Transaction[senderCount];
+        for (int i = 0; i < txs.Length; i++) txs[i] = SenderTx(i, (ulong)i);
+
+        // The premise: this pool fits the byte cap whole, so a narrowed draw would cost the list entries.
+        Assert.That(ListedCount(txs, 0, oldestCount), Is.EqualTo(senderCount));
+        Assert.That(ListedCount(txs, oldestShare, oldestCount), Is.EqualTo(senderCount));
     }
 
     [Test]
