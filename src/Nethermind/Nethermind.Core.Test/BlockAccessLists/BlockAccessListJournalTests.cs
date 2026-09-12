@@ -351,4 +351,32 @@ public class BlockAccessListJournalTests
             Assert.That(accountChanges.TryGetStorageChange(slot, out _), Is.False);
         }
     }
+
+    [Test]
+    public void Storage_overwrites_preserve_snapshot_and_read_membership([Values] bool returnToOriginal)
+    {
+        BlockAccessListAtIndex slice = new() { Index = 3 };
+        UInt256 key = UInt256.MaxValue;
+        slice.AddStorageChange(TestItem.AddressA, in key, 7, 11);
+        int snapshot = slice.TakeSnapshot();
+        slice.AddStorageChange(TestItem.AddressA, in key, 11, 13);
+        UInt256 last = returnToOriginal ? 7u : 17u;
+        slice.AddStorageChange(TestItem.AddressA, in key, 13, in last);
+
+        AccountChangesAtIndex account = slice.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.HasStorageChange(in key), Is.EqualTo(!returnToOriginal));
+            Assert.That(account.StorageReads.Contains(key), Is.EqualTo(returnToOriginal));
+        }
+        if (!returnToOriginal) Assert.That(account.StorageChanges[key].Value, Is.EqualTo(last));
+
+        slice.Restore(snapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)11));
+            Assert.That(account.StorageChanges[key].Index, Is.EqualTo(3u));
+            Assert.That(account.StorageReads, Does.Not.Contain(key));
+        }
+    }
 }

@@ -52,17 +52,6 @@ public class AccountChangesAtIndex(Address address)
 
     public bool RemoveStorageChange(in UInt256 key) => _storageChanges.Remove(key);
 
-    public bool TryRemoveStorageChange(in UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
-    {
-        if (_storageChanges.Remove(key, out StorageChange existing))
-        {
-            storageChange = existing;
-            return true;
-        }
-        storageChange = null;
-        return false;
-    }
-
     public void AddStorageRead(in UInt256 key) => _storageReads.Add(key);
 
     public bool RemoveStorageRead(in UInt256 key) => _storageReads.Remove(key);

@@ -184,27 +184,29 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         if (before == after) return;
 
-        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+        AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
 
-        accountChanges.TryRemoveStorageChange(key, out StorageChange? oldStorageChange);
+        ref StorageChange slotChange = ref CollectionsMarshal.GetValueRefOrAddDefault(accountChanges.StorageChanges, key, out bool hasPrevious);
+        StorageChange oldStorageChange = slotChange;
 
         accountChanges.GetOrCapturePreTxStorage(in key, in before, out UInt256 preTxStorage);
 
-        _changes.Add(new Change(slot: key, previousValue: new ChangeValue(oldStorageChange?.Value ?? default))
+        _changes.Add(new Change(slot: key, previousValue: new ChangeValue(oldStorageChange.Value))
         {
             Account = accountChanges,
             Type = ChangeType.StorageChange,
-            HasPrevious = oldStorageChange.HasValue,
-            PreviousIndex = oldStorageChange?.Index ?? 0,
+            HasPrevious = hasPrevious,
+            PreviousIndex = oldStorageChange.Index,
         });
 
         if (preTxStorage != after)
         {
-            accountChanges.SetStorageChange(key, new StorageChange(Index, after));
+            slotChange = new StorageChange(Index, after);
             accountChanges.RemoveStorageRead(key);
         }
         else
         {
+            accountChanges.RemoveStorageChange(key);
             accountChanges.AddStorageRead(key);
         }
     }
@@ -317,7 +319,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                     break;
                 case ChangeType.StorageChange:
                     UInt256 slot = change.Slot;
-                    accountChanges.RemoveStorageChange(slot);
                     if (change.HasPrevious)
                     {
                         accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue.Value));
@@ -325,6 +326,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                     }
                     else
                     {
+                        accountChanges.RemoveStorageChange(slot);
                         // No prior change in this tx — the slot was accessed (SSTORE implies
                         // SLOAD at the EVM level), so mark it as a read to preserve that the
                         // slot was touched even though the change was reverted.
