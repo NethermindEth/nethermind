@@ -176,6 +176,21 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private static readonly Address ExtCodeHashCallerAddress = new("0x00000000000000000000000000000000000000cc");
+
+    /// <summary>EXTCODEHASH on one account with code, the ext_account_query_warm shape.</summary>
+    private static readonly byte[] ExtCodeHashSameAddressCode = BuildExtCodeHashCode();
+
+    private static byte[] BuildExtCodeHashCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(TestItem.AddressB).Op(Instruction.EXTCODEHASH).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static byte[] BuildSloadSameKeyCode()
     {
         Prepare code = Prepare.EvmCode;
@@ -223,6 +238,7 @@ public class BlockProcessingBenchmark
     private Block _tloadSameKeyBlock = null!;
     private Block _balanceSameAddressBlock = null!;
     private Block _extCodeSizeBlock = null!;
+    private Block _extCodeHashBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -259,6 +275,7 @@ public class BlockProcessingBenchmark
         _tloadSameKeyBlock = BuildBlock(BuildCallsTo(TestItem.AddressF, 10, 0));
         _balanceSameAddressBlock = BuildBlock(BuildCallsTo(BalanceCallerAddress, 10, 0));
         _extCodeSizeBlock = BuildBlock(BuildCallsTo(ExtCodeSizeCallerAddress, 10, 0));
+        _extCodeHashBlock = BuildBlock(BuildCallsTo(ExtCodeHashCallerAddress, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -317,6 +334,9 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(ExtCodeHashCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(ExtCodeHashCallerAddress, ExtCodeHashSameAddressCode, Spec);
 
             stateProvider.CreateAccount(ExtCodeSizeCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(ExtCodeSizeCallerAddress, ExtCodeSizeSameAddressCode, Spec);
@@ -491,6 +511,16 @@ public class BlockProcessingBenchmark
     }
 
     [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] ExtCodeHash_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_extCodeHashBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] ContractCall_200()
     {
         Block[] result = null!;
@@ -566,7 +596,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(50_000)
+                .WithGasLimit(100_000) // Amsterdam prices access-list intrinsic gas above the old 50k
                 .WithGasPrice(2.GWei)
                 .WithAccessList(SampleAccessList)
                 .SignedAndResolved(_senderKey)
