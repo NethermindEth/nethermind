@@ -113,6 +113,7 @@ internal class BlackListedAddressFilterTests
             .WithTo(TestItem.AddressC)
             .WithValue(1)
             .WithType(TxType.Legacy)
+            .WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier)
             .WithNonce(chain.TxPool.GetLatestPendingNonce(TestItem.AddressB))
             .TestObject;
         new Signer(chain.SpecProvider.ChainId, TestItem.PrivateKeyB, NullLogManager.Instance).TrySign(tx);

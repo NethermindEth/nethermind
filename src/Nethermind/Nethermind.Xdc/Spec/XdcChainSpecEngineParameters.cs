@@ -60,6 +60,18 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? TipXDCXCancellationFeeBlock { get; set; }
     public ulong? Gas50xBlock { get; set; }
 
+    /// <summary>
+    /// Gas price floor, in wei, that the transaction pool applies before <see cref="Gas50xBlock"/>; from that block it
+    /// is multiplied by <see cref="XdcConstants.Gas50xMultiplier"/>. Defaults to
+    /// <see cref="XdcConstants.DefaultMinGasPrice"/> (0.25 gwei, so 12.5 gwei once raised).
+    /// </summary>
+    /// <remarks>
+    /// Mirrors the reference client's <c>--miner-gasprice</c>: a value below the default is raised to it, so the floor
+    /// can never be weakened below what the network expects. Zero means the same as unset here; only a subnet can
+    /// disable the check, via <see cref="XdcSubnetChainSpecEngineParameters"/>.
+    /// </remarks>
+    public UInt256? MinGasPrice { get; set; }
+
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
     [JsonConverter(typeof(XdcToWeiConverter))]
@@ -75,6 +87,18 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? TIPXDCXMinerDisable { get; set; }
     public ulong? TIPXDCXReceiverDisable { get; set; }
     public ulong? DynamicGasLimitBlock { get; set; }
+
+    /// <summary>The transaction pool's gas price floor, in wei, at <paramref name="blockNumber"/>.</summary>
+    /// <remarks>Mirrors <c>common.GetMinGasPrice</c> of XDPoSChain: the configured floor below
+    /// <see cref="Gas50xBlock"/>, raised 50x from it.</remarks>
+    internal virtual UInt256 ResolveMinGasPrice(ulong blockNumber) =>
+        (Gas50xBlock ?? ulong.MaxValue) <= blockNumber
+            ? ConfiguredMinGasPrice * XdcConstants.Gas50xMultiplier
+            : ConfiguredMinGasPrice;
+
+    /// <summary>The stated floor, never below <see cref="XdcConstants.DefaultMinGasPrice"/>.</summary>
+    protected UInt256 ConfiguredMinGasPrice =>
+        UInt256.Max(MinGasPrice.GetValueOrDefault(), XdcConstants.DefaultMinGasPrice);
 
     private readonly struct V2ConfigBySwitchRoundComparer : IComparer<V2ConfigParams>
     {
@@ -106,6 +130,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
         if (DynamicGasLimitBlock is not null)
             blockNumbers.Add(DynamicGasLimitBlock.Value);
+        if (Gas50xBlock is not null)
+            blockNumbers.Add(Gas50xBlock.Value);
         if (TipXDCX is not null)
             blockNumbers.Add(TipXDCX.Value);
         if (TIPXDCXMinerDisable is not null)

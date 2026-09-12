@@ -191,7 +191,8 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxGossipPolicy>(),
                     [
                         new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
-                        new BlackListedAddressFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>())
+                        new BlackListedAddressFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>()),
+                        new MinGasPriceFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>())
                     ]);
 
                 return txPool;
@@ -606,7 +607,9 @@ public class XdcTestBlockchain : TestBlockchain
 
     public TransactionBuilder<Transaction> CreateTransactionBuilder()
     {
-        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction;
+        // MinGasPriceFilter keeps anything cheaper out of the pool, so a transaction below the floor would never
+        // reach a block.
+        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction.WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier);
 
         Block? head = BlockFinder.Head;
         if (head is not null)
