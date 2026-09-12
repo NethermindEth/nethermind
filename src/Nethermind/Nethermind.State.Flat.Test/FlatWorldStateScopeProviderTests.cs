@@ -1014,13 +1014,13 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
 
-        storageTree.HintSet((UInt256)1, [1]);
+        storageTree.HintSet((UInt256)1);
 
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
-        storageTree.HintSet((UInt256)1, [1]);
+        storageTree.HintSet((UInt256)1);
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 

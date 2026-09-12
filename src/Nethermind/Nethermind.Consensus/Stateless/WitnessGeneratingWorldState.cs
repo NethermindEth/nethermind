@@ -26,7 +26,6 @@ public class WitnessGeneratingWorldState(
     IHeaderFinder headerFinder)
     : WorldStateDecorator(state)
 {
-
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());

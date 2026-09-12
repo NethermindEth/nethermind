@@ -327,7 +327,7 @@ public class PrewarmerScopeProvider(
             return value;
         }
 
-        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
+        public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
@@ -363,7 +363,7 @@ public class PrewarmerScopeProvider(
             return SpeculativeStorageValue;
         }
 
-        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
+        public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch

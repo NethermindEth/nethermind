@@ -411,7 +411,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => _transientStorageProvider.Set(in storageCell, newValue);
 
-
     public override void ResetTransient()
         => _transientStorageProvider.Reset();
 

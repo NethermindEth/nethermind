@@ -13,7 +13,6 @@ namespace Nethermind.Consensus.Stateless;
 /// </summary>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
-
     /// <remarks>
     /// Forces a witness-backed code lookup that throws when the bytecode is absent from the witness.
     /// </remarks>

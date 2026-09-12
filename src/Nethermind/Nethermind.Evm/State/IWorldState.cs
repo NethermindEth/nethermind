@@ -68,7 +68,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="newValue">Value to store</param>
     void SetTransientState(in StorageCell storageCell, in UInt256 newValue);
 
-
     /// <summary>
     /// Reset all storage
     /// </summary>

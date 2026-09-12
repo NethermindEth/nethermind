@@ -186,7 +186,7 @@ public interface IWorldStateScopeProvider
         /// Hint that a slot is being written. Backends may use this to start asynchronous
         /// trie warm-up for the slot path.
         /// </summary>
-        void HintSet(in UInt256 index, byte[]? value);
+        void HintSet(in UInt256 index);
     }
 
     /// <summary>

@@ -75,7 +75,6 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => State.SetTransientState(in storageCell, newValue);
 
-
     public virtual void Reset(bool resetBlockChanges = true)
         => State.Reset(resetBlockChanges);
 

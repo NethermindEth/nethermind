@@ -953,7 +953,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             EnsureStorageTree();
-            _backend.HintSet(storageCell.Index, null);
+            _backend.HintSet(storageCell.Index);
         }
 
         public void LoadFromTree(in StorageCell storageCell, out UInt256 value)

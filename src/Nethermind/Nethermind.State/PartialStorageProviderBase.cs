@@ -3,13 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Int256;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.State
