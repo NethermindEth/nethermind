@@ -62,9 +62,10 @@ public class FrameTxMempoolDosMeasurement
     private const ulong VerifyGas = Eip8141Constants.MaxVerifyGas;
 
     private const ulong Ceiling100k = 100_000;
-    private const ulong Ceiling236k = 236_285;
     private const ulong Ceiling300k = 300_000;
     private const ulong Ceiling500k = 500_000;
+
+    private const ulong Ceiling322800 = 322_800;
 
     /// <summary>Small frame budget reserved by the signature-stuffing shape.</summary>
     private const ulong MinimalFrameGas = 400;
@@ -130,7 +131,7 @@ public class FrameTxMempoolDosMeasurement
             }
         }
 
-        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling236k, Ceiling300k, Ceiling500k })
+        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling300k, Ceiling322800, Ceiling500k })
         {
             yield return new TestCaseData("keccak-wide", ceiling);
         }
@@ -146,7 +147,7 @@ public class FrameTxMempoolDosMeasurement
 
     private static IEnumerable<TestCaseData> CeilingCases()
     {
-        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling236k, Ceiling300k, Ceiling500k })
+        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling300k, Ceiling322800, Ceiling500k })
         {
             yield return new TestCaseData(ceiling);
         }

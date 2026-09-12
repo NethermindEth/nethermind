@@ -107,9 +107,12 @@ public class FrameTxFloodMeasurement
         }
     }
 
+    /// <summary>322,800 is soispoke's real declared budget (320,000 + 2,800 signature).</summary>
+    private static readonly ulong[] SweptCeilings = [100_000ul, 300_000ul, 322_800ul, 500_000ul];
+
     private static IEnumerable<TestCaseData> ProductionDelayCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling, 0);
             yield return new TestCaseData(ceiling, 100);
@@ -118,7 +121,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingRateCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -140,7 +143,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling);
         }
@@ -531,8 +534,21 @@ public class FrameTxFloodMeasurement
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
         double shedPct = ShedPct(flooded);
 
+        // signature-stuffed scales with cores, unlike execution shapes, so only its single-core rows get
+        // an explicit-target core projection.
+        string coreNormalizedField = "";
+        if (shape == "signature-stuffed" && IsSingleCore()
+            && int.TryParse(Environment.GetEnvironmentVariable("FRAME_FLOOD_PROJECT_CORES"), out int targetCores)
+            && targetCores > 0)
+        {
+            coreNormalizedField = $"delta_p50_us_core_normalized={(w - w0) * targetCores:F1} "
+                                  + $"delta_p50_us_core_normalized_cores={targetCores} "
+                                  + "delta_p50_us_core_normalized_basis=analytic_projection ";
+        }
+
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+             + coreNormalizedField
              + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
              + $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
              + $"valid={(worstDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
