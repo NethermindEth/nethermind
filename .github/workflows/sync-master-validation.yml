@@ -1,5 +1,4 @@
-# NOTE: Requires repository secret SLACK_SYNC_WEBHOOK_URL for failure notifications.
-# Create a Slack incoming webhook and add it as a repo secret.
+# NOTE: Requires repository secret SLACK_WEBHOOK_URL for failure notifications.
 
 name: Sync Master Validation
 
@@ -206,7 +205,7 @@ jobs:
           COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
-          webhook: ${{ secrets.SLACK_SYNC_WEBHOOK_URL }}
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,6 +12,8 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -18,10 +21,117 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
+    {
+        RecordingPrestateTracer tracer = new(TestState);
+        using ITxTracer executionTracer = new CancellationTxTracer(new CompositeTxTracer(
+            tracer, fullTrace ? new FullInstructionTracer() : NullTxTracer.Instance));
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(2)
+            .Op(Instruction.ADD)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Does.Contain(Instruction.SLOAD));
+            Assert.That(tracer.Operations.Contains(Instruction.ADD), Is.EqualTo(fullTrace));
+            Assert.That(tracer.Error, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Execute_WhenExcludedOpcodeFails_ReportsTheError()
+    {
+        using RecordingPrestateTracer tracer = new(TestState);
+
+        Execute(tracer, Prepare.EvmCode.Op(Instruction.ADD).Done, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Does.Not.Contain(Instruction.ADD));
+            Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        }
+    }
+
     private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
     private const string DiffMode = """{"diffMode":true}""";
     private const string PrestateMode = """{"diffMode":false}""";
     private const string? NoConfig = null;
+
+    [TestCaseSource(nameof(CaptureCases))]
+    public void StartOperation_WhenOpcodeChanges_CapturesOnlyRequiredInputs(Instruction opcode, bool stack, bool memory)
+    {
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions() with { EnableReturnData = true },
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ITxTracer outer = new CancellationTxTracer(new CompositeTxTracer(tracer));
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+
+        outer.StartOperation(0, Instruction.CREATE2, 100, environment);
+        outer.StartOperation(1, opcode, 100, environment);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingStack, Is.EqualTo(stack));
+            Assert.That(tracer.IsTracingMemory, Is.EqualTo(memory));
+            Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(tracer.IsTracingReturnData, Is.False);
+            Assert.That(tracer.IsTracingRefunds, Is.False);
+            Assert.That(outer.IsTracingStack, Is.EqualTo(stack));
+            Assert.That(outer.IsTracingMemory, Is.EqualTo(memory));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CaptureCases()
+    {
+        yield return new TestCaseData(Instruction.ADD, false, false);
+        yield return new TestCaseData(Instruction.CREATE2, true, true);
+        Instruction[] stackInstructions =
+        [
+            Instruction.SLOAD, Instruction.SSTORE, Instruction.BALANCE,
+            Instruction.EXTCODECOPY, Instruction.EXTCODEHASH, Instruction.EXTCODESIZE, Instruction.SELFDESTRUCT,
+            Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL, Instruction.CREATE,
+        ];
+        foreach (Instruction instruction in stackInstructions)
+        {
+            yield return new TestCaseData(instruction, true, false);
+        }
+    }
+
+    [Test]
+    public void SetOperationStack_WhenAnOperationHasErrored_CapturesNothingMore([Values] bool errored)
+    {
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
+
+        tracer.StartOperation(0, Instruction.SLOAD, 100, environment);
+        if (errored)
+        {
+            tracer.ReportOperationError(EvmExceptionType.OutOfGas);
+            // The frame that halted unwinds, but its caller keeps executing unrelated opcodes
+            tracer.StartOperation(1, Instruction.ADD, 100, environment);
+        }
+
+        tracer.SetOperationStack(new TraceStack(new byte[EvmStack.WordSize]));
+
+        NativePrestateTracerAccount account =
+            ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value)[TestItem.AddressB];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingStack, Is.EqualTo(!errored));
+            Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(errored ? 0 : 1));
+        }
+    }
 
     private static GethTraceOptions GetGethTraceOptions(string? config = null) => GethTraceOptions.Default with
     {
@@ -77,10 +187,13 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
         """;
 
-    [TestCase(NoConfig, ExpectedSStorePrestateTrace)]
-    [TestCase(PrestateMode, ExpectedSStorePrestateTrace)]
-    [TestCase(DiffMode, ExpectedSStoreDiffModeTrace)]
-    public void Test_PrestateTrace_SStore(string? config, string expectedTrace)
+    [TestCase(NoConfig, ExpectedSStorePrestateTrace, false)]
+    [TestCase(PrestateMode, ExpectedSStorePrestateTrace, false)]
+    [TestCase(DiffMode, ExpectedSStoreDiffModeTrace, false)]
+    [TestCase(NoConfig, ExpectedSStorePrestateTrace, true)]
+    [TestCase(PrestateMode, ExpectedSStorePrestateTrace, true)]
+    [TestCase(DiffMode, ExpectedSStoreDiffModeTrace, true)]
+    public void Test_PrestateTrace_SStore(string? config, string expectedTrace, bool wrapped)
     {
         TestState.CreateAccount(Address.Zero, 100.Ether);
         StorageCell storageCell = new(TestItem.AddressB, 32);
@@ -88,11 +201,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.Set(storageCell, storageData);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
-        GethLikeTxTrace trace = Execute(
-                tracer,
-                SStore,
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
+        GethLikeTxTrace trace = ExecutePrestate(tracer, SStore, wrapped);
         Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
     }
 
@@ -232,10 +341,13 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
         """;
 
-    [TestCase(NoConfig, ExpectedCreate2PrestateTrace)]
-    [TestCase(PrestateMode, ExpectedCreate2PrestateTrace)]
-    [TestCase(DiffMode, ExpectedCreate2DiffModeTrace)]
-    public void Test_PrestateTrace_Create2(string? config, string expectedTrace)
+    [TestCase(NoConfig, ExpectedCreate2PrestateTrace, false)]
+    [TestCase(PrestateMode, ExpectedCreate2PrestateTrace, false)]
+    [TestCase(DiffMode, ExpectedCreate2DiffModeTrace, false)]
+    [TestCase(NoConfig, ExpectedCreate2PrestateTrace, true)]
+    [TestCase(PrestateMode, ExpectedCreate2PrestateTrace, true)]
+    [TestCase(DiffMode, ExpectedCreate2DiffModeTrace, true)]
+    public void Test_PrestateTrace_Create2(string? config, string expectedTrace, bool wrapped)
     {
         byte[] salt = { 4, 5, 6 };
         byte[] deployedCode = { 1, 2, 3 };
@@ -252,11 +364,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
-        GethLikeTxTrace trace = Execute(
-                tracer,
-                code,
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
+        GethLikeTxTrace trace = ExecutePrestate(tracer, code, wrapped);
 
         Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
     }
@@ -422,6 +530,39 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             .BuildResult();
 
         Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+    }
+
+    private GethLikeTxTrace ExecutePrestate(NativePrestateTracer tracer, byte[] code, bool wrapped)
+    {
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(tracer, new FullInstructionTracer()), default)
+            : tracer;
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+        return tracer.BuildResult();
+    }
+
+    private sealed class FullInstructionTracer : TxTracer
+    {
+        public override bool IsTracingInstructions => true;
+    }
+
+    private sealed class RecordingPrestateTracer(IWorldState worldState)
+        : NativePrestateTracer(worldState, GetGethTraceOptions(), Hash256.Zero, TestItem.AddressA, TestItem.AddressB)
+    {
+        public List<Instruction> Operations { get; } = [];
+        public EvmExceptionType? Error { get; private set; }
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
+            Operations.Add(opcode);
+            base.StartOperation(pc, opcode, gas, env);
+        }
+
+        public override void ReportOperationError(EvmExceptionType error)
+        {
+            Error = error;
+            base.ReportOperationError(error);
+        }
     }
 
     private static byte[] SStore => Prepare.EvmCode

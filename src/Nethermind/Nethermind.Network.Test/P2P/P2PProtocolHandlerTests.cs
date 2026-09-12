@@ -35,6 +35,8 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _session = Substitute.For<ISession>();
+            // PublicKeyA is this node's own identity; the tests treat PublicKeyB as the authenticated remote one.
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyB);
             _serializer = new MessageSerializationService(
                 SerializerInfo.Create(new HelloMessageSerializer()),
                 SerializerInfo.Create(new PingMessageSerializer()),
@@ -311,6 +313,31 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             _session.Received(1).InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, Arg.Any<string>());
+        }
+
+        [Test]
+        public void On_hello_claiming_another_node_id_than_authenticated_disconnects()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            List<ProtocolEventArgs> requestedProtocols = [];
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyC,
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = 5,
+            };
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.UnexpectedIdentity, Arg.Any<string>());
+            Assert.That(requestedProtocols, Is.Empty);
+            Assert.That(p2PProtocolHandler.AgreedCapabilities, Is.Empty);
+            Assert.That(p2PProtocolHandler.AvailableCapabilities, Is.Empty);
         }
 
         [Test]

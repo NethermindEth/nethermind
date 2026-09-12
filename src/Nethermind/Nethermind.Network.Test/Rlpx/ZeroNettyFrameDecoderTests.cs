@@ -94,6 +94,28 @@ public class ZeroNettyFrameDecoderTests
         Assert.Throws<CorruptedFrameException>(() => decoder.Decode(encoded));
     }
 
+    [Test]
+    public void Rejects_frame_with_tampered_payload()
+    {
+        Assert.Throws<CorruptedFrameException>(() => DecodeTamperedPayload(throwOnCorruptedFrames: true));
+        Assert.That(DecodeTamperedPayload(throwOnCorruptedFrames: false), Is.Null, "unverified plaintext was forwarded");
+    }
+
+    private static IByteBuffer DecodeTamperedPayload(bool throwOnCorruptedFrames)
+    {
+        // Both the cipher and the MAC processor carry per-connection state, so each decode
+        // needs its own pair rather than the ones built in SetUp.
+        (EncryptionSecrets _, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor decoderMac = new(TestItem.IgnoredPublicKey, b);
+        ZeroFrameDecoderTestWrapper decoder = new(new FrameCipher(b.AesSecret), decoderMac);
+
+        byte[] frame = Bytes.FromHexString(BigNewBlockSingleFrame);
+        frame[Frame.HeaderSize + Frame.MacSize] ^= 0xff; // first byte of the frame ciphertext
+
+        IByteBuffer input = ReferenceCountUtil.ReleaseLater(Unpooled.WrappedBuffer(frame));
+        return decoder.Decode(input, throwOnCorruptedFrames);
+    }
+
     private void Test(string frame, Delivery delivery, string expectedOutput)
     {
         byte[] frameBytes = Bytes.FromHexString(frame);
