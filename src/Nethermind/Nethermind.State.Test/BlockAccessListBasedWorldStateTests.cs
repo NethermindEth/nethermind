@@ -156,6 +156,83 @@ public class BlockAccessListBasedWorldStateTests
 
     private sealed class ParentDecorator(IWorldState state) : WorldStateDecorator(state);
 
+    [Test]
+    public void CachedDeclaredRead_PreservesCoverageAcrossSlicesAndDeclarationChanges([Values] bool primeWithOriginal)
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.MaxValue);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject).TestObject;
+        using BalReadStoragePlan plan = new(bal);
+        BalReadCoverage coverage = plan.CreateCoverage();
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal, ws =>
+        {
+            ws.CreateAccount(cell.Address, 100);
+            ws.Set(in cell, (UInt256)17);
+        }, readCoverage: coverage);
+        using (scope)
+        {
+            if (primeWithOriginal) bws.GetOriginal(in cell, out _);
+            else bws.Get(in cell, out _);
+            for (uint index = 1; index <= 2; index++)
+            {
+                bws.SetBlockAccessIndex(index);
+                coverage.StartSlice();
+                bws.GetOriginal(in cell, out UInt256 original);
+                Assert.That(coverage.ChargeableReadCount, Is.Zero);
+                bws.Get(in cell, out UInt256 value);
+                bws.Get(in cell, out value);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(original, Is.EqualTo((UInt256)17));
+                    Assert.That(value, Is.EqualTo((UInt256)17));
+                    Assert.That(coverage.ChargeableReadCount, Is.EqualTo(1ul));
+                    Assert.That(plan.TryFindUncovered(out _), Is.False);
+                }
+            }
+
+            ReadOnlyBlockAccessList changed = Build.A.BlockAccessList.WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(cell.Address).WithStorageChanges(
+                    cell.Index, new StorageChange(0, 23), new StorageChange(1, 31)).TestObject).TestObject;
+            bws.Setup(Build.A.Block.WithBlockAccessList(changed).TestObject);
+            bws.Get(in cell, out UInt256 changedValue);
+            Assert.That(changedValue, Is.EqualTo((UInt256)31));
+            bws.SetBlockAccessIndex(1);
+            bws.GetOriginal(in cell, out changedValue);
+            Assert.That(changedValue, Is.EqualTo((UInt256)23));
+
+            bws.ClearParentReader();
+            Assert.Throws<InvalidOperationException>(() => bws.Get(in cell, out _));
+        }
+    }
+
+    [Test]
+    public void CachedDeclaredRead_DoesNotSurviveSetupThatRemovesDeclaration([Values] bool failSetup)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws => ws.CreateAccount(cell.Address, 100), logManager: new OneLoggerLogManager(new ILogger(logger)));
+        using (scope)
+        {
+            bws.Get(in cell, out _);
+            Block next = Build.A.Block.WithBlockAccessList(Build.A.BlockAccessList.WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(cell.Address).TestObject).TestObject).TestObject;
+            if (failSetup)
+            {
+                logger.When(log => log.Trace(Arg.Any<string>()))
+                    .Do(_ => throw new InvalidOperationException("Injected reset failure"));
+                Assert.Throws<InvalidOperationException>(() => bws.Setup(next));
+            }
+            else bws.Setup(next);
+
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.Get(in cell, out _));
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetOriginal(in cell, out _));
+        }
+    }
+
     [TestCase(false, false, 0)]
     [TestCase(true, false, 0)]
     [TestCase(false, true, 0)]

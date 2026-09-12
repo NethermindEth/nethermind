@@ -57,12 +57,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _readCoverage = readCoverage;
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
-        _codeChangesByHash = _suggestedBlockAccessList?.GetCodeChangesByHash();
         _pureReadValues.ClearAndTrim();
         _hasPureRead = false;
         _lastPureReadValue = default;
         _lastPureAccountAddress = null;
         _lastPureAccount = null;
+        _codeChangesByHash = _suggestedBlockAccessList?.GetCodeChangesByHash();
         _transientStorageProvider.Reset();
     }
 
@@ -104,6 +104,17 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
+        if (TryGetCachedDeclaredRead(in storageCell, out value))
+        {
+            _readCoverage?.TryMark(in storageCell);
+            return;
+        }
+        GetStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetStorageSlow(in StorageCell storageCell, out UInt256 value)
+    {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
         if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
@@ -115,7 +126,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                 return;
             }
 
-            if (slotChanges is null && TryReadDeclaredStorage(_parentReader!, storageCell, out value)) return;
+            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
             _parentReader!.Get(in storageCell, out value);
             return;
         }
@@ -125,6 +136,13 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
+    {
+        if (TryGetCachedDeclaredRead(in storageCell, out value)) return;
+        GetOriginalStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetOriginalStorageSlow(in StorageCell storageCell, out UInt256 value)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
@@ -136,7 +154,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
                 return;
             }
 
-            if (slotChanges is null && TryReadDeclaredStorage(_parentReader!, storageCell, out value)) return;
+            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
             _parentReader!.GetOriginal(in storageCell, out value);
             return;
         }
@@ -147,15 +165,20 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
 
+    /// <remarks>
+    /// Only read-only declarations against an immutable parent enter this cache; Setup and ClearParentReader invalidate it.
+    /// On a miss, the caller must overwrite the output through the slow path.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryReadDeclaredStorage(IWorldState parentReader, in StorageCell cell, out UInt256 value)
+    private bool TryGetCachedDeclaredRead(in StorageCell cell, out UInt256 value)
     {
         if (_hasPureRead && _lastPureRead.Index == cell.Index && _lastPureRead.Address == cell.Address)
         {
             value = _lastPureReadValue;
             return true;
         }
-        return ReadDeclaredStorageSlow(parentReader, cell, out value);
+        Unsafe.SkipInit(out value);
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
