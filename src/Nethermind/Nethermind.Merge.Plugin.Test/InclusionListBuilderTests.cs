@@ -76,12 +76,27 @@ public class InclusionListBuilderTests
         Assert.That(il, Is.Not.Empty);
     }
 
+    // An entry too big for the remaining budget is skipped rather than ending the encoding, so another
+    // sender's smaller transaction can still take the space. The skipped sender's own later nonces are
+    // excused whenever it is absent, so listing them spends the scarce byte budget for no extra coverage.
     [Test]
-    public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit()
+    public void Sender_run_ends_at_a_tx_skipped_for_the_remaining_budget()
     {
-        using InclusionListBytes il = BuildBuilder(PoolOf(TxOfSize(8000), TxOfSize(50, 1))).GetInclusionList();
+        Transaction head = TxOfSize(5 * 1024, 0, TestItem.PrivateKeyA);
+        Transaction skipped = TxOfSize(4 * 1024, 1, TestItem.PrivateKeyA);
+        Transaction afterSkipped = TxOfSize(50, 2, TestItem.PrivateKeyA);
+        Transaction otherSender = TxOfSize(50, 0, TestItem.PrivateKeyB);
 
-        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        using InclusionListBytes il = BuildBuilder(PoolOf(head, skipped, afterSkipped, otherSender)).GetInclusionList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The scenario is a short remaining budget, not a transaction too big for any list.
+            Assert.That(TxDecoder.Instance.GetLength(skipped, RlpBehaviors.SkipTypedWrapping),
+                Is.LessThan(Eip7805Constants.MaxBytesPerInclusionList));
+            Assert.That(il.Select(b => Decode(b).Hash), Is.EquivalentTo(new[] { head.Hash, otherSender.Hash }));
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     // Only what the next block could append belongs in the list, so the pool must do the readiness and
