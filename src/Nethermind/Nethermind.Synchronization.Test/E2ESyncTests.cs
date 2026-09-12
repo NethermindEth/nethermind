@@ -907,7 +907,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Block headBlock = otherBlockTree.Head!;
             blockCacheService.TryAddBlock(finalizedBlock);
             blockCacheService.TryAddBlock(headBlock);
-            blockCacheService.FinalizedHash = finalizedBlock.Hash!;
+            mergeSyncController.SetForkchoiceHashes(finalizedBlock.Hash!, headBlock.Hash!);
 
             // In fast sync the starting pivot is resolved from the finalized block (before the sync mode
             // selector starts); wait for that before kicking off beacon header sync. Full sync keeps the

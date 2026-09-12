@@ -15,16 +15,6 @@ public interface IBlockCacheService
     public IReadOnlyDictionary<Hash256AsKey, Block> BlockCache { get; }
 
     /// <summary>
-    /// Finalized block hash protected from cache pruning.
-    /// </summary>
-    Hash256? FinalizedHash { get; set; }
-
-    /// <summary>
-    /// Head block hash protected from cache pruning.
-    /// </summary>
-    Hash256? HeadBlockHash { get; set; }
-
-    /// <summary>
     /// Adds a block to the bounded cache.
     /// </summary>
     /// <param name="block">Block to add.</param>

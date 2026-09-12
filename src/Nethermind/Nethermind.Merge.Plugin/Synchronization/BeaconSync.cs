@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -8,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
@@ -17,24 +17,27 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IBeaconPivot beaconPivot,
         IBlockTree blockTree,
         ISyncConfig syncConfig,
-        IBlockCacheService blockCacheService,
         IPoSSwitcher poSSwitcher,
         ILogManager logManager) : IMergeSyncController, IBeaconSyncStrategy
     {
         private readonly IBeaconPivot _beaconPivot = beaconPivot;
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ISyncConfig _syncConfig = syncConfig;
-        private readonly IBlockCacheService _blockCacheService = blockCacheService;
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
         private bool _isInBeaconModeControl = false;
+        private volatile Hash256? _finalizedHash;
+        private volatile Hash256? _headBlockHash;
         private readonly ILogger _logger = logManager.GetClassLogger<BeaconSync>();
+
+        /// <inheritdoc />
+        public event Action? BeaconSyncStopped;
 
         public void StopSyncing()
         {
             if (!_isInBeaconModeControl)
             {
                 _beaconPivot.RemoveBeaconPivot();
-                _blockCacheService.Clear();
+                BeaconSyncStopped?.Invoke();
             }
 
             _isInBeaconModeControl = true;
@@ -108,22 +111,28 @@ namespace Nethermind.Merge.Plugin.Synchronization
         }
 
         /// <remarks>
-        /// Falls back to the finalized hash persisted by the block tree when the cache holds nothing usable
+        /// Falls back to the finalized hash persisted by the block tree when nothing usable has been set
         /// (no forkchoice update yet, or a zero finalized hash), so that a node restarted before its first
         /// pivot update can make progress. Safe because finalized blocks cannot be reorged and pivot updates
         /// enforce monotonicity, so a stale persisted value can only produce an older-but-valid pivot.
         /// </remarks>
         public Hash256? GetFinalizedHash()
         {
-            Hash256? cached = _blockCacheService.FinalizedHash;
-            return cached is not null && cached != Keccak.Zero ? cached : _blockTree.FinalizedHash;
+            Hash256? finalizedHash = _finalizedHash;
+            return finalizedHash is not null && finalizedHash != Keccak.Zero ? finalizedHash : _blockTree.FinalizedHash;
         }
 
         /// <remarks>
         /// Unlike <see cref="GetFinalizedHash"/>, there is no block tree fallback: a head can be reorged away,
         /// and the block tree's own head reflects local processing progress, not the CL forkchoice target.
         /// </remarks>
-        public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
+        public Hash256? GetHeadBlockHash() => _headBlockHash;
+
+        public void SetForkchoiceHashes(Hash256? finalizedHash, Hash256? headBlockHash)
+        {
+            _finalizedHash = finalizedHash;
+            _headBlockHash = headBlockHash;
+        }
     }
 
     public interface IMergeSyncController
@@ -133,5 +142,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
+
+        void SetForkchoiceHashes(Hash256? finalizedHash, Hash256? headBlockHash);
     }
 }

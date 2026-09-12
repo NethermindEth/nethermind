@@ -143,8 +143,7 @@ public class ForkchoiceUpdatedHandler(
             // Head not resolvable yet (e.g. no peers right after a restart): still record the forkchoice
             // state so StartingSyncPivotUpdater can derive a fresh pivot from the finalized hash once peers
             // appear, instead of waiting forever for an FCU with a resolvable head.
-            blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-            blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+            mergeSyncController.SetForkchoiceHashes(forkchoiceState.FinalizedBlockHash, forkchoiceState.HeadBlockHash);
 
             // The cache does not survive a restart, so persist the hashes like the resolved-head paths do.
             // Safe while the finalized header is unknown: finalized blocks cannot reorg, TryUpdateSyncPivot
@@ -212,8 +211,7 @@ public class ForkchoiceUpdatedHandler(
             if (processingQueueCount == 0)
             {
                 peerRefresher.RefreshPeers(newHeadHeader.Hash!, newHeadHeader.ParentHash!, finalizedBlockHash);
-                blockCacheService.FinalizedHash = finalizedBlockHash;
-                blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+                mergeSyncController.SetForkchoiceHashes(finalizedBlockHash, forkchoiceState.HeadBlockHash);
                 mergeSyncController.StopBeaconModeControl();
 
                 // Debug as already output in Received ForkChoice
@@ -351,8 +349,7 @@ public class ForkchoiceUpdatedHandler(
         mergeSyncController.InitBeaconHeaderSync(blockHeader);
         beaconPivot.ProcessDestination = blockHeader;
         peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
-        blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-        blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+        mergeSyncController.SetForkchoiceHashes(forkchoiceState.FinalizedBlockHash, forkchoiceState.HeadBlockHash);
 
         if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
