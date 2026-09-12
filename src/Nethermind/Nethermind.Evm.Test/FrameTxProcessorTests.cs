@@ -4401,27 +4401,19 @@ public class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer));
         tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
 
-        GethTraceOptions options = GethTraceOptions.Default with
-        {
-            Tracer = NativeCallTracer.CallTracer,
-            TracerConfig = onlyTopCall ? JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true}""") : null
-        };
-        using NativeCallTracer tracer = new(tx, Spec, options);
-        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
-        using GethLikeTxTrace trace = tracer.BuildResult();
-
-        AssertStorage(Observer, 0, 42, "the SENDER frame must have run");
-
-        using JsonDocument document = JsonDocument.Parse(
-            JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+        using JsonDocument document = TraceCall(tx, onlyTopCall).Trace;
         JsonElement root = document.RootElement;
         JsonElement frames = root.GetProperty("calls");
+
+        AssertStorage(Observer, 0, 42, "the SENDER frame must have run");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.GetProperty("type").GetString(), Is.EqualTo("CALL"));
             Assert.That(root.GetProperty("from").GetString(), Is.EqualTo(Sender.ToString()));
             Assert.That(root.GetProperty("to").GetString(), Is.EqualTo(Eip8141Constants.EntryPointAddress.ToString()));
+            Assert.That(root.TryGetProperty("value", out JsonElement rootValue) ? rootValue.GetString() : null, Is.EqualTo("0x0"),
+                "the synthetic root must carry the same value field every other transaction's root does");
             Assert.That(Convert.ToUInt64(root.GetProperty("gas").GetString()![2..], 16), Is.EqualTo(tx.GasLimit),
                 "the transaction-wide limit belongs to the synthetic root, not to a frame");
             Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "both executed frames belong in the trace");
@@ -4447,5 +4439,206 @@ public class FrameTxProcessorTests
                     Is.EqualTo(senderHelper.ToString()));
             }
         }
+    }
+
+    /// <summary>A <c>VERIFY</c> frame whose codeless target runs the EIP-8141 default code never enters the
+    /// VM, so a trace built from what the VM reported would show the transaction's second frame as its only
+    /// one.</summary>
+    [Test]
+    public void Execute_CodelessVerifyTargetTracedWithCallTracer_KeepsTheDefaultCodeFrame()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        DeployContract(Observer, Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+
+        using JsonDocument document = TraceCall(tx).Trace;
+        JsonElement frames = document.RootElement.GetProperty("calls");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "a default-code VERIFY frame is still a frame");
+            Assert.That(frames[0].GetProperty("type").GetString(), Is.EqualTo("STATICCALL"));
+            Assert.That(frames[0].GetProperty("to").GetString(), Is.EqualTo(Sender.ToString()));
+            Assert.That(frames[0].TryGetProperty("error", out _), Is.False, "the default code approved");
+            Assert.That(frames[1].GetProperty("to").GetString(), Is.EqualTo(Observer.ToString()));
+        }
+    }
+
+    /// <summary>Each of the pre-dispatch exits of <c>ExecuteFrame</c> ends a frame without the VM ever
+    /// reporting an action, and those are exactly the failed frames callTracer must render with an
+    /// <c>error</c>.</summary>
+    [TestCase(PreDispatchExit.EntryAccessCharge, "out of gas", TestName = "Execute_FrameFailingTheEntryAccessCharge_IsTracedWithItsError")]
+    [TestCase(PreDispatchExit.ValueTransfer, "execution reverted", TestName = "Execute_FrameFailingTheValueTransfer_IsTracedWithItsError")]
+    [TestCase(PreDispatchExit.EntryStateCharge, "out of gas", TestName = "Execute_FrameFailingTheEntryStateCharge_IsTracedWithItsError")]
+    [TestCase(PreDispatchExit.DelegationCharge, "out of gas", TestName = "Execute_FrameFailingTheDelegationCharge_IsTracedWithItsError")]
+    public void Execute_FrameFailingBeforeDispatch_IsTracedWithItsError(PreDispatchExit exit, string expectedError)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        TxFrame failing = UndispatchedFrame(exit, out Address target);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), failing);
+
+        using JsonDocument document = TraceCall(tx).Trace;
+        JsonElement frames = document.RootElement.GetProperty("calls");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "a frame failing before dispatch is still a frame");
+            Assert.That(frames[1].GetProperty("to").GetString(), Is.EqualTo(target.ToString()));
+            Assert.That(frames[1].GetProperty("error").GetString(), Is.EqualTo(expectedError));
+            Assert.That(document.RootElement.TryGetProperty("error", out _), Is.False,
+                "one failed body frame does not fail the transaction");
+        }
+    }
+
+    /// <summary>A <c>POST_TX</c> frame failing before dispatch reverts the transaction without the VM
+    /// reporting any error, so the root's <c>error</c> has to come from the processor's reason.</summary>
+    [Test]
+    public void Execute_PostTxFrameFailingBeforeDispatch_TracesTheTransactionAsFailed()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        // Cold access costs more than the whole execution budget, so the frame halts before dispatch.
+        TxFrame postTx = new(TxFrame.ModePostTx, flags: 0, Recipient,
+            executionGasLimit: Eip8038Constants.ColdAccountAccess - 1, stateGasLimit: 0, UInt256.Zero, default);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), postTx);
+
+        using JsonDocument document = TraceCall(tx).Trace;
+        JsonElement root = document.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.TryGetProperty("error", out JsonElement rootError) ? rootError.GetString() : null,
+                Is.EqualTo("POST_TX frame reverted"), "a reverted frame transaction must not serialise as a clean root");
+            Assert.That(root.GetProperty("calls").GetArrayLength(), Is.EqualTo(2));
+            Assert.That(root.GetProperty("calls")[1].GetProperty("error").GetString(), Is.EqualTo("out of gas"));
+        }
+    }
+
+    /// <summary>An unrolled atomic batch keeps its frames' success status while dropping their logs, so a
+    /// trace that renders logs by frame status shows events that never reached the receipt.</summary>
+    [Test]
+    public void Execute_AtomicBatchUnrollsAFrameThatLogged_TracesOnlyTheCommittedLogs()
+    {
+        Address afterBatch = TestItem.AddressD;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, LogEmitter(777));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(afterBatch, LogEmitter(888));
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Observer),
+            Frame(TxFrame.ModeSender, target: Recipient),
+            Frame(TxFrame.ModeSender, target: afterBatch));
+
+        (JsonDocument trace, TxFrameReceipt[] receipts) = TraceCall(tx, withLog: true);
+        using JsonDocument document = trace;
+        JsonElement frames = document.RootElement.GetProperty("calls");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the unroll keeps the frame's status, so status alone cannot identify it");
+            Assert.That(receipts[1].Logs, Is.Empty, "its log went back with its state");
+            Assert.That(frames[1].TryGetProperty("logs", out _), Is.False,
+                "an unrolled frame's logs must not survive in the trace either");
+            Assert.That(frames[3].GetProperty("logs").GetArrayLength(), Is.EqualTo(1),
+                "the frame after the batch committed its log");
+            Assert.That(CountLogs(document.RootElement), Is.EqualTo(TxFrameReceipt.ConcatLogs(receipts).Length),
+                "the trace's logs are the receipt's logs");
+        }
+    }
+
+
+    /// <summary>The pre-dispatch exits of <c>ExecuteFrame</c>, each of which ends a frame without entering the VM.</summary>
+    public enum PreDispatchExit
+    {
+        EntryAccessCharge,
+        ValueTransfer,
+        EntryStateCharge,
+        DelegationCharge
+    }
+
+    /// <summary>A <c>SENDER</c> frame taking <paramref name="exit"/>, with the state it needs deployed.</summary>
+    private TxFrame UndispatchedFrame(PreDispatchExit exit, out Address target)
+    {
+        target = exit == PreDispatchExit.EntryStateCharge ? TestItem.AddressF : Observer;
+        switch (exit)
+        {
+            case PreDispatchExit.EntryAccessCharge:
+                DeployContract(target, Prepare.EvmCode.Op(Instruction.STOP).Done);
+                return new TxFrame(TxFrame.ModeSender, flags: 0, target,
+                    executionGasLimit: Eip8038Constants.ColdAccountAccess - 1, stateGasLimit: 0, UInt256.Zero, default);
+            case PreDispatchExit.ValueTransfer:
+                DeployContract(target, Prepare.EvmCode.Op(Instruction.STOP).Done);
+                return Frame(TxFrame.ModeSender, target: target, value: 2.Ether);
+            case PreDispatchExit.EntryStateCharge:
+                // A value transfer to a dead account owes the new-account state cost, which the frame refuses to fund.
+                return Frame(TxFrame.ModeSender, target: target, value: 1, stateGasLimit: 0);
+            default:
+                DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+                DeployContract(target, [.. Eip7702Constants.DelegationHeader, .. Recipient.Bytes]);
+                return new TxFrame(TxFrame.ModeSender, flags: 0, target,
+                    gasLimit: Eip8038Constants.ColdAccountAccess, UInt256.Zero, default);
+        }
+    }
+
+    private static byte[] LogEmitter(UInt256 topic) => Prepare.EvmCode
+        .PushData(topic).PushData(0).PushData(0).Op(Instruction.LOG1)
+        .Op(Instruction.STOP).Done;
+
+    private static int CountLogs(JsonElement callFrame)
+    {
+        int count = callFrame.TryGetProperty("logs", out JsonElement logs) ? logs.GetArrayLength() : 0;
+        if (callFrame.TryGetProperty("calls", out JsonElement calls))
+        {
+            foreach (JsonElement child in calls.EnumerateArray())
+            {
+                count += CountLogs(child);
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c>, returning the serialized trace and the
+    /// per-frame receipts the processor reported alongside it.</summary>
+    private (JsonDocument Trace, TxFrameReceipt[] Receipts) TraceCall(Transaction tx, bool onlyTopCall = false, bool withLog = false)
+    {
+        string config = $$"""{"onlyTopCall":{{(onlyTopCall ? "true" : "false")}},"withLog":{{(withLog ? "true" : "false")}}}""";
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>(config)
+        };
+
+        using NativeCallTracer callTracer = new(tx, Spec, options);
+        FrameCallTracer tracer = new(callTracer);
+        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+
+        using GethLikeTxTrace trace = callTracer.BuildResult();
+        return (JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions)),
+            tracer.FrameReceipts);
+    }
+
+    /// <summary>A <c>callTracer</c> that also keeps the per-frame receipts, so a test can hold the trace
+    /// against what the receipt records.</summary>
+    private sealed class FrameCallTracer(NativeCallTracer callTracer) : CompositeTxTracer(callTracer), IFrameTxReceiptTracer
+    {
+        public TxFrameReceipt[] FrameReceipts { get; private set; } = [];
+
+        public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+        {
+            FrameReceipts = frameReceipts;
+            callTracer.ReportFrameTxReceipt(payer, frameReceipts);
+        }
+
+        public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
+            callTracer.ReportFrameEnd(frameIndex, error);
     }
 }
