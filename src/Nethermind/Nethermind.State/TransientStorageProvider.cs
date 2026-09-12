@@ -76,6 +76,19 @@ namespace Nethermind.State
 
         private void Set(in StorageCell storageCell, in Entry entry)
         {
+            // A zero word is indistinguishable from a cell that was never written, so store nothing at all.
+            // revm does the same. It matters for the set-then-clear shape a reentrancy guard produces: the
+            // table goes back to empty rather than filling with zeroes that still cost a lookup and a reset.
+            if (entry.Value == default)
+            {
+                ref Entry zeroed = ref CollectionsMarshal.GetValueRefOrNullRef(_values, storageCell);
+                if (Unsafe.IsNullRef(ref zeroed)) return;
+
+                _undo.Add(new Undo(in storageCell, zeroed, true));
+                _values.Remove(storageCell);
+                return;
+            }
+
             ref Entry slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_values, storageCell, out bool exists);
 
             // A write that changes nothing has nothing to roll back, and skipping it keeps the undo log
