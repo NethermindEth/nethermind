@@ -2034,13 +2034,13 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
 
-        CallOutputTracer firstTracer = new();
+        FrameReceiptTracer firstTracer = new();
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
         TransactionResult first = _transactionProcessor.CallAndRestore(tx, firstTracer);
         UInt256 nonceBetween = _stateProvider.GetNonce(Sender);
         UInt256 balanceBetween = _stateProvider.GetBalance(Sender);
 
-        CallOutputTracer secondTracer = new();
+        FrameReceiptTracer secondTracer = new();
         TransactionResult second = _transactionProcessor.CallAndRestore(tx, secondTracer);
 
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
@@ -2052,12 +2052,13 @@ public class FrameTxProcessorTests
             Assert.That(nonceBetween, Is.EqualTo(UInt256.Zero), "the first call left a nonce bump behind");
             Assert.That(balanceBetween, Is.EqualTo(1.Ether), "the first call left a payer charge behind");
             Assert.That(second.TransactionExecuted, Is.True, second.ErrorDescription ?? second.Error.ToString());
-            Assert.That(secondTracer.StatusCode, Is.EqualTo(firstTracer.StatusCode), "the repeat ended differently from the first call");
-            Assert.That(secondTracer.GasSpent, Is.EqualTo(firstTracer.GasSpent), "the repeat ran against a state the first call had moved");
+            Assert.That(firstTracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess), "the first call did not run the body to completion");
+            Assert.That(secondTracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess), "the repeat did not run the body to completion");
+            Assert.That(secondTracer.GasSpent, Is.EqualTo(firstTracer.GasSpent), "the repeat ended differently from the first call");
             Assert.That(error, Is.Null);
             Assert.That(estimate, Is.GreaterThan((ulong)GasCostOf.Transaction), "the estimate collapsed to the regular-path lower bound");
-            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0ul), "the estimation loop committed a nonce bump");
-            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the estimation loop committed a payer charge");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0ul), "the repeat or the estimate left a nonce bump behind");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the repeat or the estimate left a payer charge behind");
         }
     }
 
