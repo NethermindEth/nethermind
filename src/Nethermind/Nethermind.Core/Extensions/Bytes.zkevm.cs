@@ -87,4 +87,27 @@ public static unsafe partial class Bytes
         <= 0x00FF_FFFF_FFFF_FFFFUL => 1,
         _ => 0,
     };
+
+    /// <inheritdoc cref="LeadingZeroBits"/>
+    /// <remarks>Built on <see cref="LeadingZeroBytes"/> rather than
+    /// <see cref="BitOperations.LeadingZeroCount(ulong)"/> for the reason recorded there, then three
+    /// more comparisons resolve the bits inside the leading non-zero byte.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LeadingZeroBits(ulong value)
+    {
+        int zeroBytes = LeadingZeroBytes(value);
+        if (zeroBytes == sizeof(ulong)) return sizeof(ulong) * 8;
+
+        return (zeroBytes << 3) + (byte)(value >> ((sizeof(ulong) - 1 - zeroBytes) << 3)) switch
+        {
+            <= 0x01 => 7,
+            <= 0x03 => 6,
+            <= 0x07 => 5,
+            <= 0x0f => 4,
+            <= 0x1f => 3,
+            <= 0x3f => 2,
+            <= 0x7f => 1,
+            _ => 0,
+        };
+    }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -55,20 +54,20 @@ namespace Nethermind.Serialization.Rlp
 
         protected override BlockInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
             int lastCheck = position + sequenceLength;
 
-            position = RlpHelpers.DecodeKeccakOrNull(rlp, position, out Hash256? blockHash);
-            position = RlpHelpers.DecodeBool(rlp, position, out bool wasProcessed);
-            position = RlpHelpers.DecodeUInt256(rlp, position, out UInt256 totalDifficulty);
+            rlp.DecodeKeccakOrNull(ref position, out Hash256? blockHash);
+            rlp.DecodeBool(ref position, out bool wasProcessed);
+            rlp.DecodeUInt256(ref position, out UInt256 totalDifficulty);
 
             BlockMetadata metadata = BlockMetadata.None;
             // if we hadn't reached the end of the stream, assume we have metadata to decode
             if (position != lastCheck)
             {
-                position = RlpHelpers.DecodeUInt(rlp, position, out uint rawMetadata);
+                rlp.DecodeUInt(ref position, out uint rawMetadata);
                 metadata = (BlockMetadata)rawMetadata;
             }
 

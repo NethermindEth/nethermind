@@ -108,12 +108,18 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Synchronization.Test is chunked on every runner (see include block) — its unchunked variant hits the 15-min wall.
+        exclude: # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
           - runner: ubuntu-latest
             project: Nethermind.Synchronization.Test
+            chunk: ''
+          - runner: ubuntu-24.04-arm
+            project: Nethermind.Merge.Plugin.Test
+            chunk: ''
+          - runner: ubuntu-24.04-arm
+            project: Nethermind.Merge.AuRa.Test
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
@@ -133,6 +139,14 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
@@ -245,19 +259,6 @@ jobs:
           - Ethereum.Transaction.Test
           - Ethereum.Trie.Test
         chunk: ['']
-        exclude: # Legacy VM unchunked on ubuntu-latest is replaced by 8 chunks below (coverage makes it too slow)
-          - runner: ubuntu-latest
-            project: Ethereum.Legacy.VM.Test
-            chunk: ''
-        include:
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 1of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 2of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 3of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 4of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 5of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 6of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 7of8 }
-          - { runner: ubuntu-latest, project: Ethereum.Legacy.VM.Test, chunk: 8of8 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -283,7 +284,6 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           if [ "$RUNNER_OS" = "Linux" ]; then
             dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
           else
@@ -296,7 +296,7 @@ jobs:
           test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
 
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -308,7 +308,7 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
           fi
 
       - name: Upload hang dump
@@ -319,14 +319,6 @@ jobs:
           path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
           if-no-files-found: ignore
           retention-days: 3
-
-      - name: Upload coverage report
-        if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
-          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
-          retention-days: 1
 
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
@@ -415,15 +407,17 @@ jobs:
           retention-days: 3
 
   # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
-  # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
-  # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
-  # layout runs from nethermind-tests-flat.yml.
+  # through the reusable nethtest workflow: same fixture releases, all fixture formats.
+  # setup_group "all" runs both configuration groups - the sequential (patricia) baseline
+  # plus the Amsterdam variant toggles, and the flat layout with its own variants. The
+  # layout is passed by that workflow's matrix (--triedb), not by TEST_USE_TRIE, which does
+  # not propagate into called workflows, so nethermind-tests-trie.yml adds no EEST job.
   nethtest:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
-      setup_group: sequential
+      setup_group: all
 
   matrix-guard:
     name: Check test project matrix is exhaustive

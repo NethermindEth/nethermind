@@ -15,15 +15,19 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IInstructionTracingFilter
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
+    public bool IsCollectingLogs => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
     public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
+    public UInt256 InstructionMask => _currentTxTracer is IInstructionTracingFilter filter
+        ? filter.InstructionMask
+        : UInt256.MaxValue;
     public bool IsTracingRefunds => _currentTxTracer.IsTracingRefunds;
     public bool IsTracingReturnData => _currentTxTracer.IsTracingReturnData;
     public bool IsTracingCode => _currentTxTracer.IsTracingCode;
@@ -212,6 +216,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
+
+    public void ReportActionRemainingGas(ulong gas) =>
+        _currentTxTracer.ReportActionRemainingGas(gas);
 
     public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionRevert(gasLeft, output);
