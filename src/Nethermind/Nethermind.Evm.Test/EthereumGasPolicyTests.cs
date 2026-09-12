@@ -16,6 +16,53 @@ namespace Nethermind.Evm.Test;
 
 public class EthereumGasPolicyTests
 {
+    /// <summary>A cell warmed after a snapshot must read cold again once that snapshot is restored.</summary>
+    /// <remarks>
+    /// <see cref="StackAccessTracker.IsCold(in StorageCell)"/> remembers the last cell it found warm, so a
+    /// repeated read answers without probing the set. Only a restore or the pooled reset can take a cell
+    /// back out, and this pins that the memo is dropped there — were it not, a reverted warm-up would keep
+    /// reporting warm and the next access would be charged warm gas instead of cold.
+    /// </remarks>
+    [Test]
+    public void Reverted_warm_up_is_cold_again()
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        StorageCell other = new(TestItem.AddressB, UInt256.One);
+        using StackAccessTracker tracker = new();
+
+        tracker.TakeSnapshot();
+        tracker.WarmUp(in cell);
+
+        // Read it twice: the second read is the one served from the memo.
+        Assert.That(tracker.IsCold(in cell), Is.False);
+        Assert.That(tracker.IsCold(in cell), Is.False);
+
+        tracker.Restore();
+
+        Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
+        Assert.That(tracker.IsCold(in other), Is.True);
+    }
+
+    /// <summary>The memo must answer for the cell it remembers, not for a different one.</summary>
+    [Test]
+    public void Warm_cell_does_not_make_other_cells_warm()
+    {
+        StorageCell warm = new(TestItem.AddressA, UInt256.One);
+        StorageCell sameAddressOtherSlot = new(TestItem.AddressA, new UInt256(2));
+        StorageCell otherAddressSameSlot = new(TestItem.AddressB, UInt256.One);
+        using StackAccessTracker tracker = new();
+
+        tracker.WarmUp(in warm);
+        Assert.That(tracker.IsCold(in warm), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.IsCold(in sameAddressOtherSlot), Is.True);
+            Assert.That(tracker.IsCold(in otherAddressSameSlot), Is.True);
+            Assert.That(tracker.IsCold(in warm), Is.False, "still warm after the misses");
+        }
+    }
+
     [Test]
     public void Memory_cost_preserves_preexpanded_range_and_full_width_validation(
         [Values(0UL, 1UL, 31UL, 32UL, 33UL, ulong.MaxValue)] ulong offset,
