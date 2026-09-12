@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -326,7 +327,17 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
         deploy();
 
         (Block block, Transaction transaction) = PrepareTx(activation, 100_000UL, code, input, value);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+
+        // Recognition is deferred until code is called often enough to repay the scan, which a single
+        // transaction never is. Forcing it puts both arms in the state a warm node reaches, so the
+        // comparison is between the fast path and the dispatch loop rather than between two dispatch loops.
+        foreach (Address deployed in new[] { Recipient, Implementation, InnerImplementation })
+        {
+            CodeInfoRepository.GetCachedCodeInfo(deployed, spec).PrepareAnalysis();
+        }
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
     }
 
     /// <summary>Records the same result as <see cref="CallOutputTracer"/> while forcing the dispatch loop.</summary>

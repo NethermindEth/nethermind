@@ -18,7 +18,7 @@ public class CodeTemplateTests
     [Test]
     public void Recognizes_the_age_minimal_proxy_and_its_target()
     {
-        CodeTemplate template = new CodeInfo(TemplateCode.AgeMinimalProxy(ProxyTarget)).Template;
+        CodeTemplate template = new CodeInfo(TemplateCode.AgeMinimalProxy(ProxyTarget)).PrepareAnalysis();
 
         Assert.That(template.MinimalProxyTarget, Is.EqualTo(ProxyTarget));
         Assert.That(template.MinimalProxy, Is.Not.Null);
@@ -28,7 +28,7 @@ public class CodeTemplateTests
     [Test]
     public void Recognizes_canonical_minimal_proxy_and_its_target()
     {
-        CodeTemplate template = new CodeInfo(TemplateCode.MinimalProxy(ProxyTarget)).Template;
+        CodeTemplate template = new CodeInfo(TemplateCode.MinimalProxy(ProxyTarget)).PrepareAnalysis();
 
         Assert.That(template.MinimalProxyTarget, Is.EqualTo(ProxyTarget));
         Assert.That(template.SelectorDispatch, Is.Null);
@@ -42,7 +42,7 @@ public class CodeTemplateTests
         byte[] code = TemplateCode.MinimalProxy(ProxyTarget);
         code[index]++;
 
-        Assert.That(new CodeInfo(code).Template.MinimalProxyTarget, Is.Null);
+        Assert.That(new CodeInfo(code).PrepareAnalysis().MinimalProxyTarget, Is.Null);
     }
 
     [Test]
@@ -50,8 +50,8 @@ public class CodeTemplateTests
     {
         byte[] code = TemplateCode.MinimalProxy(ProxyTarget);
 
-        Assert.That(new CodeInfo(code.Append((byte)0).ToArray()).Template.MinimalProxyTarget, Is.Null);
-        Assert.That(new CodeInfo(code[..^1]).Template.MinimalProxyTarget, Is.Null);
+        Assert.That(new CodeInfo(code.Append((byte)0).ToArray()).PrepareAnalysis().MinimalProxyTarget, Is.Null);
+        Assert.That(new CodeInfo(code[..^1]).PrepareAnalysis().MinimalProxyTarget, Is.Null);
     }
 
     [TestCase(true)]
@@ -61,7 +61,7 @@ public class CodeTemplateTests
         uint[] selectors = [0xa9059cbb, 0x70a08231, 0x18160ddd];
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(selectors, withCallValueGuard);
 
-        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch;
+        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch;
 
         Assert.That(dispatch, Is.Not.Null);
         Assert.That(dispatch!.RejectsCallValue, Is.EqualTo(withCallValueGuard));
@@ -77,7 +77,7 @@ public class CodeTemplateTests
     {
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch([0xa9059cbb], withCallValueGuard: true);
 
-        Assert.That(new CodeInfo(dispatcher.Code).Template.SelectorDispatch!.TryResolve(0xdeadbeef, hasCallValue: false, out _, out _), Is.False);
+        Assert.That(new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch!.TryResolve(0xdeadbeef, hasCallValue: false, out _, out _), Is.False);
     }
 
     [Test]
@@ -89,12 +89,12 @@ public class CodeTemplateTests
         int targetOffset = Array.IndexOf(code, (byte)Instruction.PUSH4) + 6;
         code[targetOffset + 1] = (byte)(dispatcher.FallbackProgramCounter + 2);
 
-        Assert.That(new CodeInfo(code).Template.SelectorDispatch, Is.Null);
+        Assert.That(new CodeInfo(code).PrepareAnalysis().SelectorDispatch, Is.Null);
     }
 
     [Test]
     public void Rejects_code_that_is_neither_template() =>
-        Assert.That(new CodeInfo(Prepare.EvmCode.Op(Instruction.STOP).Done).Template, Is.SameAs(CodeTemplate.None));
+        Assert.That(new CodeInfo(Prepare.EvmCode.Op(Instruction.STOP).Done).PrepareAnalysis(), Is.SameAs(CodeTemplate.None));
 
     [TestCase(3, TestName = "Tree that is a single leaf run")]
     [TestCase(9, TestName = "Tree with several pivot levels")]
@@ -105,7 +105,7 @@ public class CodeTemplateTests
         TemplateCode.Dispatcher dispatcher =
             TemplateCode.SelectorDispatch(selectors, withCallValueGuard: true, DispatchShape.BinarySearch);
 
-        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch;
+        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch;
 
         Assert.That(dispatch, Is.Not.Null);
         foreach (uint selector in selectors)
@@ -124,7 +124,7 @@ public class CodeTemplateTests
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
             selectors, withCallValueGuard: true, DispatchShape.BinarySearch, lessThanPivots: true);
 
-        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch;
+        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch;
 
         Assert.That(dispatch, Is.Not.Null);
         foreach (uint selector in selectors)
@@ -156,7 +156,7 @@ public class CodeTemplateTests
         code[rootPivot + 2] = (byte)(lowered >> 8);
         code[rootPivot + 3] = (byte)lowered;
 
-        Assert.That(new CodeInfo(code).Template.SelectorDispatch, Is.Null);
+        Assert.That(new CodeInfo(code).PrepareAnalysis().SelectorDispatch, Is.Null);
     }
 
     [Test]
@@ -175,7 +175,7 @@ public class CodeTemplateTests
         code[rootPivot + 2] = 0x00;
         code[rootPivot + 3] = 0x01;
 
-        Assert.That(new CodeInfo(code).Template.SelectorDispatch, Is.Null);
+        Assert.That(new CodeInfo(code).PrepareAnalysis().SelectorDispatch, Is.Null);
     }
 
     [Test]
@@ -185,7 +185,7 @@ public class CodeTemplateTests
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
             selectors, withCallValueGuard: false, perFunctionCallValueGuard: true);
 
-        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch;
+        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch;
 
         Assert.That(dispatch, Is.Not.Null);
         foreach (uint selector in selectors)
@@ -204,7 +204,7 @@ public class CodeTemplateTests
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
             [0xa9059cbb], withCallValueGuard: false, perFunctionCallValueGuard: true);
 
-        SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch!;
+        SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch!;
 
         Assert.That(dispatch.TryResolve(0xa9059cbb, hasCallValue: true, out _, out _), Is.False);
         Assert.That(dispatch.TryResolve(0xa9059cbb, hasCallValue: false, out _, out _), Is.True);

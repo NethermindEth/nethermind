@@ -49,7 +49,7 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
             selectors, withCallValueGuard: !perFunctionGuard, perFunctionCallValueGuard: perFunctionGuard, push0: push0);
         uint selector = selectors[index];
 
-        SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch!;
+        SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).PrepareAnalysis().SelectorDispatch!;
         Assert.That(dispatch.TryResolve(selector, hasCallValue: false, out int bodyProgramCounter, out ulong reportedGas), Is.True);
 
         GethLikeTxTrace trace = TraceCall(dispatcher.Code, SelectorBytes(selector));
@@ -71,7 +71,7 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
         TestState.InsertCode(Implementation, implementation, SpecProvider.GenesisSpec);
         byte[] code = ProxyCode(variant, Implementation);
 
-        MinimalProxy proxy = new CodeInfo(code).Template.MinimalProxy!;
+        MinimalProxy proxy = new CodeInfo(code).PrepareAnalysis().MinimalProxy!;
         Assert.That(proxy.DelegateCallProgramCounter, Is.EqualTo(delegateCallProgramCounter));
 
         GethLikeTxTrace trace = TraceCall(code, SelectorBytes(0xa9059cbb));

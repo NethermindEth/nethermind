@@ -57,14 +57,20 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private CodeTemplate? _template;
     public ValueHash256 CodeHash { get; set; }
 
-    /// <summary>The compiler-emitted template this code matches, recognized on first use.</summary>
+    /// <summary>The compiler-emitted template this code matches, recognized ahead of execution where possible.</summary>
     /// <remarks>
-    /// Racing callers may each recognize the code; the results are equivalent, so the duplicate work is
-    /// preferred over synchronising a lookup that runs once per distinct code hash.
+    /// Normally resolved on the analysis thread before the code first runs; a caller that arrives first
+    /// recognizes it inline instead. Racing callers may each recognize the code, which is why the result
+    /// is idempotent: the duplicate work is preferred over synchronising a lookup that runs once per
+    /// distinct code hash. Which arm a given call takes is therefore timing-dependent, and can be,
+    /// because the two produce identical gas, state and output.
     /// </remarks>
     internal CodeTemplate Template => CodeAnalysisFlags.Templates
-        ? _template ??= CodeTemplate.Recognize(CodeSpan, ValidateJump)
+        ? _template ?? PrepareAnalysis()
         : CodeTemplate.None;
+
+    /// <summary>Recognizes the code now, rather than waiting for the analysis thread to reach it.</summary>
+    internal CodeTemplate PrepareAnalysis() => _template ??= CodeTemplate.Recognize(CodeSpan, ValidateJump);
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
@@ -83,7 +89,14 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     internal long[] JumpDestinationBitmap => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
     void IThreadPoolWorkItem.Execute()
-        => _analyzer?.Execute();
+    {
+        _analyzer?.Execute();
+
+        // Recognition costs a pass over the code; running it here keeps that pass off the thread that
+        // will execute the code, which is the whole reason this work item exists. Reading the property
+        // rather than calling recognition directly keeps the build that compiles templates out of this.
+        _ = Template;
+    }
 
     public void AnalyzeInBackgroundIfRequired()
     {
