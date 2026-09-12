@@ -4,7 +4,6 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -33,11 +32,12 @@ public class FlatStateReader(
         return false;
     }
 
-    public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+    public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out SlotValue? value);
-        return value is { } slot ? slot.AsReadOnlySpan.WithoutLeadingZeros().ToArrayWithSingleByteCache() : [];
+        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out SlotValue? slot);
+        if (slot is { } stored) stored.ToUInt256(out value);
+        else value = default;
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];

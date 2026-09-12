@@ -106,11 +106,13 @@ namespace Nethermind.State
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
-        public void Get(in UInt256 index, out UInt256 value)
+        public void Get(in UInt256 index, out UInt256 value) => Get(in index, out value, null);
+
+        internal void Get(in UInt256 index, out UInt256 value, Hash256? storageRoot)
         {
             ValueHash256 key = default;
             ComputeKeyWithLookup(in index, ref key);
-            ReadOnlySpan<byte> encoded = Get(key.Bytes);
+            ReadOnlySpan<byte> encoded = Get(key.Bytes, storageRoot);
             if (encoded.IsEmpty)
             {
                 value = default;
