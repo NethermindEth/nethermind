@@ -503,20 +503,23 @@ public class StorageProviderTests(bool useFlat)
         StorageCell cell = new(ctx.Address1, 2);
         byte[] word = new byte[32];
         word[31] = 7;
+        byte[] otherWord = new byte[32];
+        otherWord[31] = 9;
 
-        // Grow the undo log well past what either measured loop needs, then reset so it starts empty
-        // with that capacity retained.
+        // Alternate two words so no write takes the unchanged-value shortcut: every one journals, which
+        // is what grows the undo log past what either measured loop needs. The reset then leaves it
+        // empty with that capacity retained.
         for (int i = 0; i < Iterations * 4; i++)
         {
             provider.SetTransientState(in cell, (ReadOnlySpan<byte>)word);
-            provider.SetTransientState(in cell, CopyOf(word));
+            provider.SetTransientState(in cell, CopyOf(otherWord));
         }
 
         provider.Reset();
         long start = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < Iterations; i++)
         {
-            provider.SetTransientState(in cell, (ReadOnlySpan<byte>)word);
+            provider.SetTransientState(in cell, (ReadOnlySpan<byte>)((i & 1) == 0 ? word : otherWord));
         }
         long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
 
@@ -524,7 +527,7 @@ public class StorageProviderTests(bool useFlat)
         start = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < Iterations; i++)
         {
-            provider.SetTransientState(in cell, CopyOf(word));
+            provider.SetTransientState(in cell, CopyOf((i & 1) == 0 ? word : otherWord));
         }
         long arrayAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
 
