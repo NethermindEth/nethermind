@@ -110,6 +110,7 @@ jobs:
           provisioning_model: ${{ inputs.provisioning_model }}
           max_run_duration: ${{ inputs.max_run_duration }}
           zones: ${{ vars.GCP_ZONES }}
+          zone_order: rotate
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
@@ -202,4 +203,19 @@ jobs:
         env:
           TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
           PREEMPTED: ${{ steps.destroy.outputs.preempted }}
-        run: echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: |
+          echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
+          if [ "$PREEMPTED" = true ]; then
+            printf '%s' "$RUNNER_LABEL" > preempted.txt
+          fi
+
+      # An artifact, not a job output: a matrix clobbers outputs across its entries. The
+      # attempt is in the name because a re-run keeps the run id, and so its artifacts.
+      - name: Publish the preemption marker
+        if: ${{ always() && steps.destroy.outputs.preempted == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preempted-${{ github.run_attempt }}-${{ inputs.runner_label }}
+          path: preempted.txt
+          retention-days: 1

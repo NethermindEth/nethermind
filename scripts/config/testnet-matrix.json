@@ -47,7 +47,7 @@
     "timeout": 360,
     "machine_type": "c2-standard-8",
     "local_ssd_count": 2,
-    "spot": false
+    "spot": true
   },
   {
     "network": "op-sepolia",
