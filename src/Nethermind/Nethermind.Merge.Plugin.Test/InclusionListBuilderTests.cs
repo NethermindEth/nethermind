@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -189,10 +190,10 @@ public class InclusionListBuilderTests
     }
 
     /// <summary>A one-transaction sender, its pool index standing in for how long it has been pending.</summary>
-    private static Transaction SenderTx(int index, ulong poolIndex)
+    private static Transaction SenderTx(int index, ulong poolIndex, int payloadBytes = 50)
     {
         // A nonce per sender keeps every transaction distinct and every appendable run one entry long.
-        Transaction tx = TxOfSize(50, index);
+        Transaction tx = TxOfSize(payloadBytes, index);
         // The pool holds far more senders than there are test keys, and only the address is read here.
         tx.SenderAddress = Address.FromNumber((UInt256)(index + 1));
         tx.PoolIndex = poolIndex;
@@ -251,6 +252,29 @@ public class InclusionListBuilderTests
     [TestCase(0.5, TierPoolSenders, 0ul, 1ul, 0.20)]
     public void Reserved_share_is_a_floor_under_what_the_oldest_cohort_gets(double oldestShare, int oldestCount, ulong firstPoolIndex, ulong step, double expected) =>
         Assert.That(ListedOldestShare(oldestShare, oldestCount, firstPoolIndex, step), Is.EqualTo(expected).Within(0.04));
+
+    // A share worth less than one of the draw's slots must still reserve one: truncating it away would leave
+    // the tier off, and the shipped default running, on a knob an operator is calibrating.
+    [Test]
+    public void Reserves_a_slot_for_a_share_below_one_slot()
+    {
+        Transaction[] txs = new Transaction[TierPoolSenders];
+        txs[0] = SenderTx(0, 0);
+        // Nothing behind the cohort can be listed, so the list is non-empty exactly when the cohort is drawn.
+        for (int i = 1; i < txs.Length; i++) txs[i] = SenderTx(i, (ulong)i, Eip7805Constants.MaxBytesPerInclusionList);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs), oldestShare: 0.003, oldestCount: 1).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { txs[0].Hash }));
+    }
+
+    // A misconfigured share must fail loudly: clamping or truncating it hands back the shipped default.
+    [TestCase(double.NaN)]
+    [TestCase(double.PositiveInfinity)]
+    [TestCase(-0.1)]
+    [TestCase(1.5)]
+    public void Rejects_a_share_that_is_not_a_fraction(double oldestShare) =>
+        Assert.That(() => BuildBuilder(PoolOf(), oldestShare: oldestShare), Throws.InstanceOf<ArgumentOutOfRangeException>());
 
     /// <summary>Entries one draw fits in the byte cap, asserting no sender reached the list twice.</summary>
     private static int ListedCount(Transaction[] txs, double oldestShare, int oldestCount)

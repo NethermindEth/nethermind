@@ -23,8 +23,23 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     // Orders the age cohort newest first, so its head is the member an older sender displaces.
     private static readonly IComparer<ulong> NewestFirst = Comparer<ulong>.Create(static (a, b) => b.CompareTo(a));
 
-    private readonly int _oldestSenderDraw = (int)(double.Clamp(mergeConfig.InclusionListOldestSenderShare, 0, 1) * SenderSampleCapacity);
+    private readonly int _oldestSenderDraw = OldestSenderDraw(mergeConfig.InclusionListOldestSenderShare);
     private readonly int _oldestSenderCount = int.Max(0, mergeConfig.InclusionListOldestSenderCount);
+
+    /// <summary>Slots of the draw <see cref="IMergeConfig.InclusionListOldestSenderShare"/> reserves.</summary>
+    /// <remarks>Rounded up, so a share worth less than a whole slot still turns the tier on: truncating it to
+    /// zero would silently ship the default on a knob an operator is calibrating.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The share is not a number between 0 and 1.</exception>
+    private static int OldestSenderDraw(double share)
+    {
+        if (!double.IsFinite(share) || share is < 0 or > 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(IMergeConfig.InclusionListOldestSenderShare), share,
+                $"{nameof(IMergeConfig.InclusionListOldestSenderShare)} must be between 0 and 1.");
+        }
+
+        return (int)double.Ceiling(share * SenderSampleCapacity);
+    }
 
     /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
     /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
@@ -162,10 +177,11 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// whose next pending nonce reached this pool first.</summary>
     /// <remarks>
     /// A queue bounded to the cohort, so selecting it costs one pass and no sort of the pool. Selecting by rank
-    /// rather than against an absolute index keeps the cohort meaningful across the two ways the sequence lies:
+    /// rather than against an absolute index keeps the cohort well defined across the two ways the sequence lies:
     /// it restarts from zero with the process, and a reorg re-admits its transactions, re-stamping them as the
-    /// newest in the pool. Either only costs a transaction its place in the cohort, so neither can pass a new
-    /// arrival off as old.
+    /// newest in the pool. Neither can pass a new arrival off as old: a reorg costs its transactions their place
+    /// in the cohort, and a restart, since nothing persists the non-blob pool, ranks every sender by arrival
+    /// since startup until the pool turns over.
     /// </remarks>
     private static ulong OldestSenderBound(IDictionary<AddressAsKey, Transaction[]> pending, int cohortSize)
     {

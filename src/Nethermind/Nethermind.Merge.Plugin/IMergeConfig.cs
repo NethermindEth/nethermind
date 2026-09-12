@@ -77,7 +77,7 @@ public interface IMergeConfig : IConfig
     int? PostBlockGcDelayMs { get; set; }
 
     [ConfigItem(Description = """
-            [EXPERIMENTAL] The share, from `0` to `1`, of an EIP-7805 inclusion list drawn from the longest-pending senders. `0` draws the whole list uniformly over the transaction pool.
+            [EXPERIMENTAL] The share, from `0` to `1`, of an EIP-7805 inclusion list drawn from the longest-pending senders. `0` draws the whole list uniformly over the transaction pool; anything outside that range is rejected at startup.
 
             A floor rather than a quota: the cohort gets this share or the share a uniform draw would have given it, whichever is larger, so a share below `InclusionListOldestSenderCount` divided by the pool size changes nothing.
 
@@ -88,7 +88,7 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = """
             [EXPERIMENTAL] How many of the longest-pending senders `InclusionListOldestSenderShare` samples from. Ignored when that share is `0`, and pools no larger than this are drawn uniformly.
 
-            It sets both sides of the trade at once: it is what an attacker must outbid to crowd the cohort out, and it is the cohort's weight in the pool, which is the share below which the knob does nothing. Keep it well above the share's part of the 256 senders a list draws, or every committee member samples the same fixed set of senders.
+            It sets both sides of the trade at once: it is what an attacker must outbid to crowd the cohort out, and it is the cohort's weight in the pool, which is the share below which the knob does nothing. Keep it well above the share's part of the senders a list draws, or every committee member samples the same fixed set of senders.
             """, DefaultValue = "200", HiddenFromDocs = true)]
     int InclusionListOldestSenderCount { get; set; }
 }
