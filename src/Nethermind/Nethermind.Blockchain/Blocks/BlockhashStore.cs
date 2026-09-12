@@ -47,15 +47,44 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)
     {
-        if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
+        if (!TryGetHistoryCell(currentHeader, requiredBlockNumber, spec, out StorageCell blockHashStoreCell))
         {
             return null;
         }
-        UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
-        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
+
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
         return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
+    }
+
+    /// <inheritdoc/>
+    public bool TryGetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec, Span<byte> destination)
+    {
+        if (!TryGetHistoryCell(currentHeader, requiredBlockNumber, spec, out StorageCell blockHashStoreCell))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
+        if (data.SequenceEqual(EmptyBytes)) return false;
+
+        // Storage drops leading zeros, so the hash is right-aligned in the word.
+        destination[..^data.Length].Clear();
+        data.CopyTo(destination[^data.Length..]);
+        return true;
+    }
+
+    private static bool TryGetHistoryCell(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec, out StorageCell blockHashStoreCell)
+    {
+        if (requiredBlockNumber >= currentHeader.Number ||
+            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
+        {
+            blockHashStoreCell = default;
+            return false;
+        }
+
+        UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
+        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        blockHashStoreCell = new StorageCell(eip2935Account, blockIndex);
+        return true;
     }
 }
