@@ -13,13 +13,11 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 {
     private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
-    private readonly ITrieWarmer _trieCacheWarmer;
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
@@ -30,7 +28,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
-        ITrieWarmer trieCacheWarmer,
         SnapshotBundle bundle,
         IFlatDbConfig config,
         ConcurrencyController concurrencyQuota,
@@ -39,24 +36,17 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ILogManager logManager)
     {
         _scope = scope;
-        _trieCacheWarmer = trieCacheWarmer;
         _bundle = bundle;
         _address = address;
         _addressHash = address.ToAccountPath.ToHash256();
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
         _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
         {
             RootHash = storageRoot
         };
-
-        // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
 
         _config = config;
     }
@@ -91,54 +81,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintSet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
-
-    private void WarmUpSlot(UInt256 index)
-    {
-        if (_bundle.ShouldQueuePrewarm(_address, index))
-        {
-            // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
-            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
-                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
-                _scope.IncrementOutstandingWarmups();
-        }
-    }
-
-    // Called by trie warmer.
-    public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
-    {
-        try
-        {
-            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
-            {
-                return false;
-            }
-
-            if (!_bundle.TryLeaseReadOnlyBundle())
-            {
-                return false;
-            }
-
-            try
-            {
-                // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
-                // this is just to warm up the nodes.
-                ValueHash256 key = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(index, ref key);
-
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
-                return true;
-            }
-            finally
-            {
-                _bundle.ReleaseReadOnlyBundleLease();
-            }
-        }
-        finally
-        {
-            _scope.DecrementOutstandingWarmups();
-        }
-    }
+    public void HintSet(in UInt256 index, byte[]? value) =>
+        _scope.HintWarmSlot(new ValueAddress(_address.Bytes), in index, singleProducer: true);
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 

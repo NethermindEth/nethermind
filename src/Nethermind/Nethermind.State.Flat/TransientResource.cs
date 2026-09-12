@@ -25,8 +25,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
-    // Invariant: the pool return runs exactly once, at refcount zero, so an in-flight trie-warmer
-    // lookup can never overlap Reset/re-rent of this resource.
+    // The session retains a lease until its final borrower releases, preventing pool reuse under a traversal.
     private long _leases = RefCountingLease.Single;
     private IResourcePool? _returnPool;
     private ResourcePool.Usage _returnUsage;
@@ -42,19 +41,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     }
 
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
-
-    /// <summary>
-    /// Waits until this retired resource is held only by its owner, so in-flight warmer reads have drained before
-    /// retirement scans its caches.
-    /// </summary>
-    internal void WaitForExclusiveLease()
-    {
-        SpinWait spinWait = default;
-        while (Volatile.Read(ref _leases) != RefCountingLease.Single)
-        {
-            spinWait.SpinOnce();
-        }
-    }
 
     /// <summary>
     /// Releases one lease; the final release returns the resource to the pool it was checked out from.
