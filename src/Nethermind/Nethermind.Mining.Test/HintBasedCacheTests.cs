@@ -210,4 +210,22 @@ public class HintBasedCacheTests
         Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, 0, 1000000000));
     }
 
+    [Test]
+    public async Task Hint_at_the_maximum_epoch_terminates()
+    {
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        ulong blockNumber = (ulong)uint.MaxValue * Ethash.EpochLength;
+        Assert.That(Ethash.GetEpoch(blockNumber), Is.EqualTo(uint.MaxValue), "precondition: the epoch saturates uint");
+
+        Task hint = Task.Run(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
+        Assert.That(await Task.WhenAny(hint, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(hint),
+            "Hint did not terminate: the inclusive epoch loop wrapped past uint.MaxValue");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(1));
+            Assert.That(hintBasedCache.Get(uint.MaxValue), Is.Not.Null);
+        }
+    }
+
 }
