@@ -35,8 +35,8 @@ public class FlatStateReader(
     public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out SlotValue? slot);
-        if (slot is { } stored) value = stored.Value;
+        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
+        if (slot is { } stored) value = stored;
         else value = default;
     }
 

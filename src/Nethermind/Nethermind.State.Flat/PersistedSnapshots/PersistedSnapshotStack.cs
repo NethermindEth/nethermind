@@ -109,7 +109,7 @@ public sealed class PersistedSnapshotStack(
     /// <returns><c>true</c> when the stack resolved the slot definitively — either a stored
     /// value, or <c>null</c> because the self-destruct boundary was reached. <c>false</c>
     /// means the caller should fall through to persistence.</returns>
-    public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, long lookupStart, out SlotValue? value)
+    public bool TryGetSlot(Address address, in UInt256 index, int selfDestructStateIdx, long lookupStart, out UInt256? value)
     {
         long psw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         if (_snapshots.Count > 0)
@@ -122,7 +122,7 @@ public sealed class PersistedSnapshotStack(
                 BloomFilter bloom = snap.Bloom;
                 if (bloom.MightContain(addrBloomKey) && bloom.MightContain(slotBloomKey))
                 {
-                    SlotValue slotValue = default;
+                    UInt256 slotValue = default;
                     if (snap.TryGetSlot(address, in index, ref slotValue))
                     {
                         if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - lookupStart, _readStoragePersistedLabel);

@@ -326,10 +326,10 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_hitAccounts[_index++ % _hitAccounts.Length]);
 
     [Benchmark]
-    public SlotValue? GetSlot()
+    public UInt256? GetSlot()
     {
         (Address addr, UInt256 slot) = _hitSlots[_index++ % _hitSlots.Length];
-        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out SlotValue? value);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
         return value;
     }
 
@@ -355,10 +355,10 @@ public class ReadOnlySnapshotBundleBenchmark
     }
 
     [Benchmark]
-    public SlotValue? GetSlot_SameAccount()
+    public UInt256? GetSlot_SameAccount()
     {
         (Address addr, UInt256 slot) = _sameAccountSlots[_index++ % _sameAccountSlots.Length];
-        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out SlotValue? value);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
         return value;
     }
 
@@ -375,10 +375,10 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_missAccounts[_index++ % _missAccounts.Length]);
 
     [Benchmark]
-    public SlotValue? GetSlot_Miss()
+    public UInt256? GetSlot_Miss()
     {
         (Address addr, UInt256 slot) = _missSlots[_index++ % _missSlots.Length];
-        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out SlotValue? value);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
         return value;
     }
 

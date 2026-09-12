@@ -29,13 +29,13 @@ internal static class PersistedSnapshotUtils
         dump["accounts"] = accounts;
 
         Dictionary<string, string> storages = [];
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
         {
             (Address addr, UInt256 slot) = kv.Key.Key;
             // Slot serialized as decimal so it survives JSON round-trips without ambiguity.
             string key = $"{addr.Bytes.ToHexString(false)}:{slot}";
             storages[key] = kv.Value.HasValue
-                ? kv.Value.Value.Value.ToBigEndian().ToHexString(false)
+                ? kv.Value.Value.ToBigEndian().ToHexString(false)
                 : "";
         }
         dump["storages"] = storages;
@@ -98,15 +98,15 @@ internal static class PersistedSnapshotUtils
                 }
             }
 
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
-                SlotValue slotValue = default;
+                UInt256 slotValue = default;
                 if (!persisted.TryGetSlot(addr, slot, ref slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
-                SlotValue expected = kv.Value ?? default;
-                if (slotValue.Value != expected.Value)
+                UInt256 expected = kv.Value ?? default;
+                if (slotValue != expected)
                     throw new InvalidOperationException($"Storage {addr}:{slot} mismatch");
             }
 

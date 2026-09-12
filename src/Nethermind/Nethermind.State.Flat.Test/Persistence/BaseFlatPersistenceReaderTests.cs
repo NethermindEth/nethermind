@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
@@ -13,7 +14,7 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class BaseFlatPersistenceReaderTests
 {
-    // Regression: a slot value longer than SlotValue.ByteCount must fail loudly instead of underflowing
+    // Regression: a slot value longer than BaseFlatPersistence.StorageValueSize must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.
     // Cases use rlpWrapSlots:false (the corrupted-DB path). There is no rlpWrapSlots:true throwing case: the
@@ -35,20 +36,20 @@ public class BaseFlatPersistenceReaderTests
         {
             Assert.Throws<InvalidConfigurationException>(() =>
             {
-                SlotValue outValue = default;
+                UInt256 outValue = default;
                 reader.TryGetStorage(default, default, ref outValue);
             });
             return;
         }
 
-        SlotValue result = default;
+        UInt256 result = default;
         bool found = reader.TryGetStorage(default, default, ref result);
 
-        byte[] expected = new byte[SlotValue.ByteCount];
-        value.CopyTo(expected, SlotValue.ByteCount - valueLength);
+        byte[] expected = new byte[BaseFlatPersistence.StorageValueSize];
+        value.CopyTo(expected, BaseFlatPersistence.StorageValueSize - valueLength);
 
         Assert.That(found, Is.True);
-        Assert.That(result.Value.ToBigEndian(), Is.EqualTo(expected));
+        Assert.That(result.ToBigEndian(), Is.EqualTo(expected));
     }
 
     // Golden path: a correctly RLP-wrapped 32-byte value (0xa0 + 32 = 33 bytes on disk) decodes cleanly with
@@ -56,18 +57,18 @@ public class BaseFlatPersistenceReaderTests
     [Test]
     public void TryGetStorage_RlpWrapped_DecodesToSlotValue()
     {
-        byte[] payload = new byte[SlotValue.ByteCount];
+        byte[] payload = new byte[BaseFlatPersistence.StorageValueSize];
         for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i + 1);
         byte[] rlp = Rlp.Encode(payload).Bytes; // 0xa0 + 32 bytes
 
         FixedValueStore store = new(rlp);
         BaseFlatPersistence.Reader reader = new(store, store, isPreimageMode: false, rlpWrapSlots: true);
 
-        SlotValue result = default;
+        UInt256 result = default;
         bool found = reader.TryGetStorage(default, default, ref result);
 
         Assert.That(found, Is.True);
-        Assert.That(result.Value.ToBigEndian(), Is.EqualTo(payload));
+        Assert.That(result.ToBigEndian(), Is.EqualTo(payload));
     }
 
     /// <summary>Returns the same value for any key; enough to exercise <c>TryGetStorage</c>'s decode path.</summary>

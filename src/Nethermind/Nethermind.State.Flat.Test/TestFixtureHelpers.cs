@@ -152,7 +152,7 @@ internal static class TestFixtureHelpers
     public static void AddSequentialSlots(SnapshotContent content, Address address, int firstSlot, int count)
     {
         for (int slot = firstSlot; slot < firstSlot + count; slot++)
-            content.Storages[(address, (UInt256)slot)] = new SlotValue(new UInt256(SequentialSlotValue(slot), isBigEndian: true));
+            content.Storages[(address, (UInt256)slot)] = new UInt256(SequentialSlotValue(slot), isBigEndian: true);
     }
 
     /// <summary>

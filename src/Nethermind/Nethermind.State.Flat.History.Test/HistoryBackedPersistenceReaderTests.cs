@@ -64,15 +64,15 @@ public class HistoryBackedPersistenceReaderTests
     [Test]
     public void Resolves_storage_as_of_pinned_block()
     {
-        SlotValue present = default;
-        SlotValue absent = default;
+        UInt256 present = default;
+        UInt256 absent = default;
         bool foundPresent = Reader(10).TryGetSlot(Address, Slot, ref present);
         bool foundAbsent = Reader(3).TryGetSlot(Address, Slot, ref absent);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundPresent, Is.True);
-            Assert.That(present.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(present.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(foundAbsent, Is.False);
         }
     }
@@ -93,7 +93,7 @@ public class HistoryBackedPersistenceReaderTests
 
         Assert.That(() =>
         {
-            SlotValue value = default;
+            UInt256 value = default;
             Reader(10).TryGetSlot(Address, Slot, ref value);
         }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
     }
@@ -111,7 +111,7 @@ public class HistoryBackedPersistenceReaderTests
             Assert.That(() => reader.TryLoadStateRlp(default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.GetAccountRaw(default), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => { SlotValue raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => { UInt256 raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.CreateAccountIterator(default, default), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.CreateStorageIterator(default, default, default), Throws.InstanceOf<NotSupportedException>());
             Assert.That(reader.IsPreimageMode, Is.False);
@@ -248,18 +248,18 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
     [Test]
     public void TryGetSlot_ForAnAddressCoveredByASliceScope_Resolves()
     {
-        SlotValue value = default;
+        UInt256 value = default;
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
         Assert.That(found, Is.True);
-        Assert.That(value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+        Assert.That(value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
     }
 
     [Test]
     public void TryGetSlot_ForAnAddressNotCoveredByAnySliceScope_ThrowsMissingTrieNode() =>
         Assert.That(() =>
         {
-            SlotValue value = default;
+            UInt256 value = default;
             Reader(3).TryGetSlot(NonSlicedAddress, Slot, ref value);
         }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
 

@@ -95,10 +95,10 @@ public sealed class ReadOnlySnapshotBundle(
         return _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
-    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out SlotValue? value) =>
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out UInt256? value) =>
         GetSlot(selfDestructStateIdx, (address, index), out value);
 
-    public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out SlotValue? value)
+    public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)
     {
         GuardDispose();
 
@@ -106,7 +106,7 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(key, out UInt256? slotValue))
             {
                 value = slotValue;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
@@ -123,7 +123,7 @@ public sealed class ReadOnlySnapshotBundle(
         if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
             return;
 
-        SlotValue outSlotValue = new();
+        UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
@@ -131,7 +131,7 @@ public sealed class ReadOnlySnapshotBundle(
 
         if (recordDetailedMetrics)
         {
-            if (outSlotValue.Value.IsZero)
+            if (outSlotValue.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }

@@ -46,7 +46,7 @@ public class SnapshotTests
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
-            content.Storages[new((TestItem.AddressA, 1))] = new SlotValue(new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true));
+            content.Storages[new((TestItem.AddressA, 1))] = new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true);
         });
 
         long estimate = snapshot.EstimateMemory();

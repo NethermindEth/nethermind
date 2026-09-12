@@ -89,13 +89,13 @@ public class ReadOnlySnapshotBundleTests
     {
         Address address = TestItem.AddressA;
         UInt256 index = 42;
-        SlotValue stored = SlotValue.FromSpanWithoutLeadingZero([0x12, 0x34]);
+        UInt256 stored = BaseFlatPersistence.DecodeSlotValue([0x12, 0x34]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = stored)),
             recordDetailedMetrics: true);
 
-        bundle.GetSlot(address, index, selfDestructStateIdx: -1, out SlotValue? value);
+        bundle.GetSlot(address, index, selfDestructStateIdx: -1, out UInt256? value);
         Assert.That(value, Is.EqualTo(stored));
     }
 
@@ -107,22 +107,22 @@ public class ReadOnlySnapshotBundleTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot(), MakeSnapshot()), reader);
 
-        bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1, out SlotValue? value);
+        bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1, out UInt256? value);
         Assert.That(value, Is.Null);
-        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>());
     }
 
     [Test]
     public void GetSlot_FallsBackToPersistence_WithMetricBranches([Values] bool detailedMetrics)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        // Returning false leaves the SlotValue at default (zero) -> exercises the "value is zero" metric branch.
-        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>()).Returns(false);
+        // Returning false leaves the UInt256 at default (zero) -> exercises the "value is zero" metric branch.
+        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(false);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1, out SlotValue? value);
-        Assert.That(value, Is.EqualTo(default(SlotValue)));
+        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(default(UInt256)));
     }
 
     [Test]

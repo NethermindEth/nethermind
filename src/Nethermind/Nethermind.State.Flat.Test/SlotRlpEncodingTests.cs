@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -47,7 +48,7 @@ public class SlotRlpEncodingTests
         return new RocksDbPersistence(db, LimboLogs.Instance);
     }
 
-    private static void WriteSlot(IPersistence persistence, in SlotValue value)
+    private static void WriteSlot(IPersistence persistence, in UInt256 value)
     {
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         batch.SetStorage(Addr, Slot, value);
@@ -94,14 +95,19 @@ public class SlotRlpEncodingTests
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
-        SlotValue value = SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString(strippedHex));
+        UInt256 value = BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString(strippedHex));
 
         WriteSlot(persistence, value);
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        SlotValue read = default;
+        UInt256 read = default;
         Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-        Assert.That(read.Value.ToBigEndian(), Is.EqualTo(value.Value.ToBigEndian()));
+        byte[] stripped = Bytes.FromHexString(strippedHex);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read, Is.EqualTo(value));
+            Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpWrap ? Rlp.Encode((ReadOnlySpan<byte>)stripped).Bytes : stripped));
+        }
     }
 
     // The sync path feeds the trie-leaf RLP value (RLP(stripped)) directly via SetStorageRawEncoded.
@@ -119,9 +125,9 @@ public class SlotRlpEncodingTests
         WriteSlotEncoded(persistence, rlpLeaf);
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        SlotValue read = default;
+        UInt256 read = default;
         Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-        Assert.That(read.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(stripped));
+        Assert.That(read.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(stripped));
 
         // The leaf RLP is stored verbatim — byte-identical to our on-disk format.
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpLeaf));
@@ -143,7 +149,7 @@ public class SlotRlpEncodingTests
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = CreatePersistence(db, rlpWrap: true);
 
-        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0102")));
+        WriteSlot(persistence, BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString("0102")));
 
         Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
             Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
@@ -164,21 +170,21 @@ public class SlotRlpEncodingTests
         RocksDbPersistence persistence = new(db, LimboLogs.Instance); // no recorded SlotEncoding; raw slots win
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
-            SlotValue read = default;
+            UInt256 read = default;
             Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-            Assert.That(read.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("0102")));
+            Assert.That(read.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("0102")));
         }
 
         // Writes on the legacy DB stay raw and never stamp the metadata markers.
-        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("abcd")));
+        WriteSlot(persistence, BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString("abcd")));
         Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey), Is.Null);
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(Bytes.FromHexString("abcd"))); // raw, not RLP(0x82abcd)
 
         RocksDbPersistence reopened = new(db, LimboLogs.Instance);
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
-        SlotValue read2 = default;
+        UInt256 read2 = default;
         Assert.That(reader2.TryGetSlot(Addr, Slot, ref read2), Is.True);
-        Assert.That(read2.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("abcd")));
+        Assert.That(read2.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("abcd")));
     }
 
     // A Layout marker without slots (e.g. accounts synced but no storage yet) is still a brand-new DB — it wraps.
@@ -189,7 +195,7 @@ public class SlotRlpEncodingTests
         db.GetColumnDb(FlatDbColumns.Metadata).Set(LayoutKey, new[] { (byte)FlatLayout.Flat });
 
         RocksDbPersistence persistence = new(db, LimboLogs.Instance);
-        WriteSlot(persistence, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0102")));
+        WriteSlot(persistence, BaseFlatPersistence.DecodeSlotValue(Bytes.FromHexString("0102")));
 
         Assert.That(db.GetColumnDb(FlatDbColumns.Metadata).Get(SlotEncodingKey),
             Is.EqualTo(new[] { BasePersistence.SlotEncodingRlp }));
@@ -217,5 +223,46 @@ public class SlotRlpEncodingTests
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
         addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
         return db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey)!;
+    }
+
+    private static byte[] IncrementingBytes(int length)
+    {
+        byte[] data = new byte[length];
+        for (int i = 0; i < length; i++) data[i] = (byte)(i + 1);
+        return data;
+    }
+
+    [Test]
+    public void Decode_slot_rejects_oversized_input([Values(33, 64)] int length) =>
+        Assert.That(() => BaseFlatPersistence.DecodeSlotValue(new byte[length]), Throws.ArgumentException);
+
+    [Test]
+    public void Decode_full_width_slot()
+    {
+        byte[] data = Bytes.FromHexString("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        UInt256 value = BaseFlatPersistence.DecodeSlotValue(data);
+        Assert.That(value.ToBigEndian(), Is.EqualTo(data));
+    }
+
+    [Test]
+    public void Decode_slot_pads_leading_zeros([Values(0, 1, 16, 31)] int length)
+    {
+        byte[] data = IncrementingBytes(length);
+
+        UInt256 value = BaseFlatPersistence.DecodeSlotValue(data);
+        ReadOnlySpan<byte> bytes = value.ToBigEndian().AsSpan();
+
+        for (int i = 0; i < 32 - length; i++) Assert.That(bytes[i], Is.EqualTo(0));
+        for (int i = 0; i < length; i++) Assert.That(bytes[32 - length + i], Is.EqualTo(data[i]));
+    }
+
+    [Test]
+    public void Storage_value_layout_is_compact()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unsafe.SizeOf<UInt256>(), Is.EqualTo(32));
+            Assert.That(Unsafe.SizeOf<UInt256?>(), Is.EqualTo(40));
+        }
     }
 }

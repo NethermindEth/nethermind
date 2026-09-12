@@ -266,7 +266,7 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
-        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -280,7 +280,7 @@ public static class BasePersistence
 
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
 
-        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
+        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in UInt256? value);
 
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageEncoded(in ValueHash256 address, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
@@ -293,9 +293,9 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
-        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -307,7 +307,7 @@ public static class BasePersistence
 
         public void SetAccount(Address addr, Account? account);
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
 
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
@@ -357,7 +357,7 @@ public static class BasePersistence
             _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, ref hashBuffer);
@@ -403,7 +403,7 @@ public static class BasePersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
@@ -418,7 +418,7 @@ public static class BasePersistence
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
 
-        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
@@ -449,7 +449,7 @@ public static class BasePersistence
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
@@ -461,7 +461,7 @@ public static class BasePersistence
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);
 
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) =>
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref value);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
@@ -495,7 +495,7 @@ public static class BasePersistence
         public void SetAccount(Address addr, Account? account) =>
             _flatWriter.SetAccount(addr, account);
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) =>
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) =>
             _flatWriter.SetStorage(addr, slot, value);
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>

@@ -82,7 +82,7 @@ public class HistoryReaderTests
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 20, [0xBB, 0xCC]);
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 30, ReadOnlySpan<byte>.Empty);
 
-        bool found = _reader.TryGetStorage(block, Address, Slot, out SlotValue value);
+        bool found = _reader.TryGetStorage(block, Address, Slot, out UInt256 value);
 
         if (expectedHex is null)
         {
@@ -93,7 +93,7 @@ public class HistoryReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True);
-            Assert.That(value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
+            Assert.That(value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
         }
     }
 
@@ -165,12 +165,12 @@ public class HistoryReaderTests
 
         HistoryReader reader = new(hooked, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
-        bool found = reader.TryGetStorage(10, Address, Slot, out SlotValue value);
+        bool found = reader.TryGetStorage(10, Address, Slot, out UInt256 value);
 
         Assert.That(found, Is.EqualTo(expectedFound));
         if (expectedFound)
         {
-            Assert.That(value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x55 }));
+            Assert.That(value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x55 }));
         }
     }
 

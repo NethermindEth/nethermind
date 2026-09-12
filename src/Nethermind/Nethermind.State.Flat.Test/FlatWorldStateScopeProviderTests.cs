@@ -165,14 +165,14 @@ public class FlatWorldStateScopeProviderTests
         ctx.AddSnapshot(content =>
         {
             content.Accounts[testAddress] = olderAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(olderSlotValue);
+            content.Storages[(testAddress, slotIndex)] = BaseFlatPersistence.DecodeSlotValue(olderSlotValue);
         });
 
         // Layer 2: Newer snapshot (shadowing Layer 1)
         ctx.AddSnapshot(content =>
         {
             content.Accounts[testAddress] = newerAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(newerSlotValue);
+            content.Storages[(testAddress, slotIndex)] = BaseFlatPersistence.DecodeSlotValue(newerSlotValue);
         });
 
         // Layer 3: Another newer snapshot, but only for account
@@ -200,8 +200,8 @@ public class FlatWorldStateScopeProviderTests
 
         // Setup Persistence Reader
         ctx.PersistenceReader.GetAccount(testAddress).Returns(persistedAccount);
-        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue);
-        ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
+        UInt256 outValue = BaseFlatPersistence.DecodeSlotValue(persistedSlotValue);
+        ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<UInt256>())
             .Returns(x =>
             {
                 x[2] = outValue;
@@ -353,8 +353,8 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(slotValue));
+        ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out UInt256? committedSlot);
+        Assert.That(committedSlot!.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(slotValue));
     }
 
     #endregion
@@ -376,7 +376,7 @@ public class FlatWorldStateScopeProviderTests
         ctx.AddSnapshot(content =>
         {
             content.Accounts[testAddress] = oldAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(oldSlotValue);
+            content.Storages[(testAddress, slotIndex)] = BaseFlatPersistence.DecodeSlotValue(oldSlotValue);
         });
 
         // Layer 2: SELFDESTRUCT
@@ -405,13 +405,13 @@ public class FlatWorldStateScopeProviderTests
         byte[] slot2AfterValue = { 0x02 };
 
         // Snapshot 0: slot1 exists
-        ctx.AddSnapshot(content => content.Storages[(testAddress, slot1)] = SlotValue.FromSpanWithoutLeadingZero(slot1BeforeValue));
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slot1)] = BaseFlatPersistence.DecodeSlotValue(slot1BeforeValue));
 
         // Snapshot 1: selfdestruct happens at this index
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
 
         // Snapshot 2: slot2 is set after selfdestruct
-        ctx.AddSnapshot(content => content.Storages[(testAddress, slot2)] = SlotValue.FromSpanWithoutLeadingZero(slot2AfterValue));
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slot2)] = BaseFlatPersistence.DecodeSlotValue(slot2AfterValue));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
 
@@ -703,8 +703,8 @@ public class FlatWorldStateScopeProviderTests
         ctx.LastCommittedSnapshot!.TryGetAccount(addr2, out Account? committedAcc2);
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(val1));
+        ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out UInt256? committedSlot);
+        Assert.That(committedSlot!.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(val1));
     }
 
     [Test]
@@ -754,12 +754,12 @@ public class FlatWorldStateScopeProviderTests
 
         // Persistence setup
         ctx.PersistenceReader.GetAccount(addr).Returns(TestItem.GenerateRandomAccount());
-        SlotValue outVal = SlotValue.FromSpanWithoutLeadingZero(persistedVal);
-        ctx.PersistenceReader.TryGetSlot(addr, slot, ref Arg.Any<SlotValue>())
+        UInt256 outVal = BaseFlatPersistence.DecodeSlotValue(persistedVal);
+        ctx.PersistenceReader.TryGetSlot(addr, slot, ref Arg.Any<UInt256>())
             .Returns(x => { x[2] = outVal; return true; });
 
         // Snapshot Setup
-        ctx.AddSnapshot(content => content.Storages[(addr, slot)] = SlotValue.FromSpanWithoutLeadingZero(snapshotVal));
+        ctx.AddSnapshot(content => content.Storages[(addr, slot)] = BaseFlatPersistence.DecodeSlotValue(snapshotVal));
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = true);
         ctx.AddSnapshot(content => { });
 
@@ -792,7 +792,7 @@ public class FlatWorldStateScopeProviderTests
         // Add storage slot AND trie node for addr1 to ReadOnlySnapshots
         ctx.AddSnapshot(content =>
         {
-            content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
+            content.Storages[(addr1, slot1)] = BaseFlatPersistence.DecodeSlotValue(value1);
 
             // Also add a storage trie node for addr1 at root path
             TrieNode storageNode = new(NodeType.Leaf, Keccak.Zero);
@@ -903,7 +903,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Read-only snapshot 0: slot exists before self-destruct
         ctx.AddSnapshot(content =>
-            content.Storages[(addr, slotBefore)] = SlotValue.FromSpanWithoutLeadingZero(valueBeforeSelfDestruct));
+            content.Storages[(addr, slotBefore)] = BaseFlatPersistence.DecodeSlotValue(valueBeforeSelfDestruct));
 
         // Read-only snapshot 1: self-destruct marker (in ReadOnlySnapshotBundle)
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = false);
@@ -1294,11 +1294,11 @@ public class FlatWorldStateScopeProviderTests
         }
 
         public Account? GetAccount(Address address) => null;
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;

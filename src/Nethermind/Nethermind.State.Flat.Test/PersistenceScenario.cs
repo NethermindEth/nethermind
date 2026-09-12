@@ -35,10 +35,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     // Helper method to convert TryGetSlot to GetSlot-like behavior
     private static byte[]? GetSlot(IPersistence.IPersistenceReader reader, Address address, in UInt256 slot)
     {
-        SlotValue slotValue = default;
+        UInt256 slotValue = default;
         if (reader.TryGetSlot(address, in slot, ref slotValue))
         {
-            return slotValue.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray();
+            return slotValue.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray();
         }
         return null;
     }
@@ -157,14 +157,14 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
-            writer.SetStorage(address, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
-            writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
+            writer.SetStorage(address, UInt256.MinValue, BaseFlatPersistence.DecodeSlotValue([1]));
+            writer.SetStorage(address, 123, BaseFlatPersistence.DecodeSlotValue([2]));
+            writer.SetStorage(address, UInt256.MaxValue, BaseFlatPersistence.DecodeSlotValue([3]));
 
             writer.SetAccount(address2, acc2);
-            writer.SetStorage(address2, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1]));
-            writer.SetStorage(address2, 123, SlotValue.FromSpanWithoutLeadingZero([2]));
-            writer.SetStorage(address2, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([3]));
+            writer.SetStorage(address2, UInt256.MinValue, BaseFlatPersistence.DecodeSlotValue([1]));
+            writer.SetStorage(address2, 123, BaseFlatPersistence.DecodeSlotValue([2]));
+            writer.SetStorage(address2, UInt256.MaxValue, BaseFlatPersistence.DecodeSlotValue([3]));
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
@@ -215,10 +215,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write various storage slots
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, UInt256.MinValue, SlotValue.FromSpanWithoutLeadingZero([1, 2, 3]));
-            writer.SetStorage(address, 42, SlotValue.FromSpanWithoutLeadingZero([0x42]));
-            writer.SetStorage(address, 12345, SlotValue.FromSpanWithoutLeadingZero([0x10, 0x20, 0x30, 0x40]));
-            writer.SetStorage(address, UInt256.MaxValue, SlotValue.FromSpanWithoutLeadingZero([0xff, 0xfe, 0xfd]));
+            writer.SetStorage(address, UInt256.MinValue, BaseFlatPersistence.DecodeSlotValue([1, 2, 3]));
+            writer.SetStorage(address, 42, BaseFlatPersistence.DecodeSlotValue([0x42]));
+            writer.SetStorage(address, 12345, BaseFlatPersistence.DecodeSlotValue([0x10, 0x20, 0x30, 0x40]));
+            writer.SetStorage(address, UInt256.MaxValue, BaseFlatPersistence.DecodeSlotValue([0xff, 0xfe, 0xfd]));
         }
 
         // Verify all slots can be read back
@@ -242,21 +242,21 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([1]));
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([1]));
         }
 
         using IPersistence.IPersistenceReader reader1 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([2]));
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([2]));
         }
 
         using IPersistence.IPersistenceReader reader2 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero([3]));
+            writer.SetStorage(address, slot, BaseFlatPersistence.DecodeSlotValue([3]));
         }
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
@@ -278,8 +278,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, 1, SlotValue.FromSpanWithoutLeadingZero([0x01]));
-            writer.SetStorage(address, 2, SlotValue.FromSpanWithoutLeadingZero([0x02]));
+            writer.SetStorage(address, 1, BaseFlatPersistence.DecodeSlotValue([0x01]));
+            writer.SetStorage(address, 2, BaseFlatPersistence.DecodeSlotValue([0x02]));
         }
 
         // Verify account and storage exist
@@ -338,11 +338,11 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         {
-            SlotValue rawValue = default;
+            UInt256 rawValue = default;
             Assert.That(reader.TryGetStorageRaw(addrHash, slotHash, ref rawValue), Is.EqualTo(storageValue is not null));
             if (storageValue is not null)
             {
-                Assert.That(rawValue.Value.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
+                Assert.That(rawValue.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
             }
         }
     }
@@ -359,8 +359,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, acc);
-            writer.SetStorage(address, slot1, SlotValue.FromSpanWithoutLeadingZero([1]));
-            writer.SetStorage(address, slot2, SlotValue.FromSpanWithoutLeadingZero([10]));
+            writer.SetStorage(address, slot1, BaseFlatPersistence.DecodeSlotValue([1]));
+            writer.SetStorage(address, slot2, BaseFlatPersistence.DecodeSlotValue([10]));
         }
 
         using IPersistence.IPersistenceReader reader1 = _persistence.CreateReader();
@@ -369,7 +369,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(address, TestItem.GenerateIndexedAccount(1));
-            writer.SetStorage(address, slot1, SlotValue.FromSpanWithoutLeadingZero([2]));
+            writer.SetStorage(address, slot1, BaseFlatPersistence.DecodeSlotValue([2]));
         }
 
         using IPersistence.IPersistenceReader reader2 = _persistence.CreateReader();
@@ -377,7 +377,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Modify slot2
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(address, slot2, SlotValue.FromSpanWithoutLeadingZero([20]));
+            writer.SetStorage(address, slot2, BaseFlatPersistence.DecodeSlotValue([20]));
         }
 
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
@@ -416,9 +416,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             writer.SetAccount(addr2, TestItem.GenerateIndexedAccount(1));
             writer.SetAccount(addr3, TestItem.GenerateIndexedAccount(2));
 
-            writer.SetStorage(addr1, slot, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            writer.SetStorage(addr2, slot, SlotValue.FromSpanWithoutLeadingZero([0x22]));
-            writer.SetStorage(addr3, slot, SlotValue.FromSpanWithoutLeadingZero([0x33]));
+            writer.SetStorage(addr1, slot, BaseFlatPersistence.DecodeSlotValue([0x11]));
+            writer.SetStorage(addr2, slot, BaseFlatPersistence.DecodeSlotValue([0x22]));
+            writer.SetStorage(addr3, slot, BaseFlatPersistence.DecodeSlotValue([0x33]));
         }
 
         // Verify each account has its own isolated storage
@@ -433,7 +433,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Modify storage for addr2 only
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorage(addr2, slot, SlotValue.FromSpanWithoutLeadingZero([0xff]));
+            writer.SetStorage(addr2, slot, BaseFlatPersistence.DecodeSlotValue([0xff]));
         }
 
         // Verify only addr2's storage changed
@@ -882,9 +882,9 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(addr, acc);
-            writer.SetStorage(addr, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            writer.SetStorage(addr, 42, SlotValue.FromSpanWithoutLeadingZero([0x42]));
-            writer.SetStorage(addr, 100, SlotValue.FromSpanWithoutLeadingZero([0x64]));
+            writer.SetStorage(addr, 1, BaseFlatPersistence.DecodeSlotValue([0x11]));
+            writer.SetStorage(addr, 42, BaseFlatPersistence.DecodeSlotValue([0x42]));
+            writer.SetStorage(addr, 100, BaseFlatPersistence.DecodeSlotValue([0x64]));
         }
 
         // Use iterator to enumerate storage
@@ -948,13 +948,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             writer.SetAccount(addr1, TestItem.GenerateIndexedAccount(0));
-            writer.SetStorage(addr1, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            writer.SetStorage(addr1, 2, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+            writer.SetStorage(addr1, 1, BaseFlatPersistence.DecodeSlotValue([0x11]));
+            writer.SetStorage(addr1, 2, BaseFlatPersistence.DecodeSlotValue([0x22]));
 
             writer.SetAccount(addr2, TestItem.GenerateIndexedAccount(1));
-            writer.SetStorage(addr2, 10, SlotValue.FromSpanWithoutLeadingZero([0xaa]));
-            writer.SetStorage(addr2, 20, SlotValue.FromSpanWithoutLeadingZero([0xbb]));
-            writer.SetStorage(addr2, 30, SlotValue.FromSpanWithoutLeadingZero([0xcc]));
+            writer.SetStorage(addr2, 10, BaseFlatPersistence.DecodeSlotValue([0xaa]));
+            writer.SetStorage(addr2, 20, BaseFlatPersistence.DecodeSlotValue([0xbb]));
+            writer.SetStorage(addr2, 30, BaseFlatPersistence.DecodeSlotValue([0xcc]));
         }
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();

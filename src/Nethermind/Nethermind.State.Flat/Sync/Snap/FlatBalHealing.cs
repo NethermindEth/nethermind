@@ -211,7 +211,7 @@ public class FlatBalHealing(
                     word.ToBigEndian(slotValue);
                     ReadOnlySpan<byte> trimmed = slotValue.WithoutLeadingZeros();
                     storage.Set(slot, trimmed);
-                    batch.SetStorage(address, slot, word.IsZero ? null : new SlotValue(in word));
+                    batch.SetStorage(address, slot, word.IsZero ? null : word);
                 }
 
                 storage.Commit(false, WriteFlags.DisableWAL);

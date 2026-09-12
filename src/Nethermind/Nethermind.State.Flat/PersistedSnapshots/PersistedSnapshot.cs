@@ -9,6 +9,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -229,7 +230,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, ref SlotValue slotValue)
+    public bool TryGetSlot(Address address, in UInt256 index, ref UInt256 slotValue)
     {
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(
@@ -240,7 +241,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         reader.TryRead(b.Offset, raw);
         // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
         ReadOnlySpan<byte> value = raw.Length == 0 ? raw : new RlpReader(raw).DecodeByteArraySpan();
-        slotValue = SlotValue.FromSpanWithoutLeadingZero(value);
+        slotValue = BaseFlatPersistence.DecodeSlotValue(value);
         return true;
     }
 

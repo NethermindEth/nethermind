@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -45,6 +46,7 @@ namespace Nethermind.State.Flat.Persistence;
 public static class BaseFlatPersistence
 {
     internal const int AccountKeyLength = 20;
+    internal const int StorageValueSize = 32;
 
     private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int StorageSlotKeySize = 32;
@@ -52,7 +54,7 @@ public static class BaseFlatPersistence
     internal const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
-    internal const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+    internal const int RlpSlotValueBufferSize = StorageValueSize + 1;
 
     internal static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
@@ -100,16 +102,25 @@ public static class BaseFlatPersistence
     private static ReadOnlySpan<byte> StorageAddressSuffix(in ValueHash256 addrHash, bool fullAddressStorageKey) =>
         fullAddressStorageKey ? default : addrHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)];
 
+    internal static UInt256 DecodeSlotValue(ReadOnlySpan<byte> data)
+    {
+        if (data.Length > StorageValueSize) ThrowInvalidLength();
+        return new UInt256(data, isBigEndian: true);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidLength() => throw new ArgumentException("Slot value cannot exceed 32 bytes", nameof(data));
+    }
+
     /// <summary>
     /// Encodes a storage slot value into <paramref name="buffer"/> exactly as the flat Storage column stores it:
     /// the stripped (leading-zeros-removed) bytes, RLP-wrapped when <paramref name="rlpWrapSlots"/> is set.
     /// <paramref name="buffer"/> must be at least <see cref="RlpSlotValueBufferSize"/> bytes. Returns the number
     /// of bytes written. Shared so callers (flat writes and the history changeset) produce byte-identical values.
     /// </summary>
-    internal static int EncodeSlotValue(in SlotValue slot, bool rlpWrapSlots, Span<byte> buffer)
+    internal static int EncodeSlotValue(in UInt256 slot, bool rlpWrapSlots, Span<byte> buffer)
     {
-        EvmWord word = slot.Value.ToBigEndianWord();
-        ReadOnlySpan<byte> withoutLeadingZeros = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref word), SlotValue.ByteCount).WithoutLeadingZeros();
+        EvmWord word = slot.ToBigEndianWord();
+        ReadOnlySpan<byte> withoutLeadingZeros = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref word), StorageValueSize).WithoutLeadingZeros();
         if (!rlpWrapSlots)
         {
             withoutLeadingZeros.CopyTo(buffer);
@@ -122,7 +133,7 @@ public static class BaseFlatPersistence
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
         throw new InvalidConfigurationException(
-            $"Flat DB storage slot value is {length} bytes, exceeding the {SlotValue.ByteCount}-byte maximum " +
+            $"Flat DB storage slot value is {length} bytes, exceeding the {StorageValueSize}-byte maximum " +
             $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
             $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
 
@@ -143,7 +154,7 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue)
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, slot, fullAddressStorageKey);
 
@@ -158,8 +169,8 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
-            if (value.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
-            outValue = SlotValue.FromSpanWithoutLeadingZero(value);
+            if (value.Length > StorageValueSize) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
+            outValue = new UInt256(value, isBigEndian: true);
 
             return true;
         }
@@ -249,7 +260,7 @@ public static class BaseFlatPersistence
                 // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
                 // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
                 // bad value that would build wrong trie nodes.
-                if (slotValue.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
+                if (slotValue.Length > StorageValueSize) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
                 _currentValue = slotValue.ToArray();
                 return true;
             }
@@ -289,7 +300,7 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
+        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in UInt256? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash, fullAddressStorageKey);
 
