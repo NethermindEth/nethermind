@@ -82,31 +82,54 @@ public class StorageProviderTests(bool useFlat)
 
         provider.Set(in written, _values[3]);
 
-        Assert.That(provider.Get(in written).ToArray(), Is.EqualTo(_values[3]), "same transaction");
-        Assert.That(provider.Get(in untouched).IsZero(), Is.True, "never written");
-        Assert.That(provider.Get(in otherContract).ToArray(), Is.EqualTo(_values[2]), "other contract, committed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Get(in written).ToArray(), Is.EqualTo(_values[3]), "same transaction");
+            Assert.That(provider.Get(in untouched).IsZero(), Is.True, "never written");
+            Assert.That(provider.Get(in otherContract).ToArray(), Is.EqualTo(_values[2]), "other contract, committed");
+        }
 
         provider.Commit(Frontier.Instance);
 
         Assert.That(provider.Get(in written).ToArray(), Is.EqualTo(_values[3]), "after commit");
     }
 
-    /// <summary>A write by one contract must not make another contract's reads resolve through it.</summary>
+    /// <summary>A contract that never wrote in this block must read its committed values even while another
+    /// contract's writes sit in the journal.</summary>
+    /// <remarks>This is the branch the journal gate adds: the read-only contract is seeded in a completed
+    /// block, so reopening the committed root rents its state afresh with the flag genuinely false — a
+    /// same-block seed would have marked it and kept the reads on the journal-probe path.</remarks>
     [Test]
     public void Write_to_one_contract_does_not_disturb_another()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
 
         StorageCell seeded = new(ctx.Address2, (UInt256)7);
-        provider.Set(in seeded, _values[2]);
-        provider.Commit(Frontier.Instance);
+        StorageCell absent = new(ctx.Address2, (UInt256)8);
 
-        // Address1 writes, so the journal is non-empty, but nothing in it belongs to Address2.
-        provider.Set(new StorageCell(ctx.Address1, (UInt256)1), _values[1]);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.CreateAccount(ctx.Address2, 1);
+            provider.Set(in seeded, _values[2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
 
-        Assert.That(provider.Get(in seeded).ToArray(), Is.EqualTo(_values[2]));
-        Assert.That(provider.Get(new StorageCell(ctx.Address2, (UInt256)8)).IsZero(), Is.True);
+        using (provider.BeginScope(baseBlock))
+        {
+            // Address1 writes, so the journal is non-empty, but nothing in it belongs to Address2.
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)1), _values[1]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(in seeded).ToArray(), Is.EqualTo(_values[2]));
+                Assert.That(provider.Get(in absent).IsZero(), Is.True);
+            }
+        }
     }
 
     [Test]
