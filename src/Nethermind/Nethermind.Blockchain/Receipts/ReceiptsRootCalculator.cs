@@ -15,6 +15,11 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
     private static readonly IRlpDecoder<TxReceipt> _decoder = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
     private static readonly ReceiptMessageDecoder _skipStateDecoder = new(skipStateAndStatus: true);
 
+    /// <summary>Creates a streaming calculator when no alternate receipt encoding is required.</summary>
+    public ReceiptTrie.StreamingRoot? CreateStreamingRoot(IReceiptSpec spec, int receiptCount)
+        => spec.ValidateReceipts && _decoder is ReceiptMessageDecoder decoder
+            ? new ReceiptTrie.StreamingRoot(spec, receiptCount, decoder) : null;
+
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _decoder);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -36,6 +37,10 @@ public partial class BlockProcessor
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            => ProcessTransactions(block, processingOptions, receiptsTracer, token, null);
+
+        internal TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
+            CancellationToken token, Action<TxReceipt>? receiptProcessed)
         {
             Metrics.ResetBlockStats();
             SetupTxTimingMetrics(block);
@@ -52,6 +57,8 @@ public partial class BlockProcessor
                 {
                     ThrowInvalidBlockForGasLimit(block);
                 }
+
+                receiptProcessed?.Invoke(receiptsTracer.TxReceipts[i]);
             }
 
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);

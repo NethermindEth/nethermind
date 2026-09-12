@@ -39,6 +39,10 @@ public partial class BlockProcessor
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
         private int _pooledSlotsInUse;
 
+        internal BlockValidationTransactionsExecutor? ReceiptStreamingExecutor =>
+            !balManager.Enabled && inner.GetType() == typeof(BlockValidationTransactionsExecutor)
+                ? (BlockValidationTransactionsExecutor)inner : null;
+
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             balManager.SetBlockExecutionContext(blockExecutionContext);

@@ -31,6 +31,8 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.State.Proofs;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,6 +56,76 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    [Test]
+    public async Task ReceiptStream_WhenCompleted_MatchesBatchCommitments([Values(0, 1, 64, 129)] int count)
+    {
+        TxReceipt[] receipts = new TxReceipt[count];
+        for (int i = 0; i < count; i++)
+        {
+            receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal((ulong)(i + 1) * 21_000)
+                .WithTxType((TxType)(i % 5)).WithStatusCode((byte)(i % 2))
+                .WithLogs(new LogEntry(TestItem.AddressA, [(byte)i], [TestItem.KeccakA])).TestObject;
+        }
+        Hash256 expectedRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Prague.Instance, null);
+        Bloom expectedBloom = new();
+        foreach (TxReceipt receipt in receipts)
+        {
+            expectedBloom.Accumulate(receipt.Bloom);
+            receipt.Bloom = null;
+        }
+        using BlockProcessor.ReceiptCommitmentStream stream = new(
+            new ReceiptTrie.StreamingRoot(Prague.Instance, count, new ReceiptMessageDecoder()),
+            count, CancellationToken.None, LimboLogs.Instance.GetClassLogger<BlockProcessor>());
+
+        foreach (TxReceipt receipt in receipts) stream.Add(receipt);
+        stream.CompleteAdding();
+        (Bloom bloom, Hash256 root) = await stream.Result;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(expectedRoot), "streaming must preserve receipt commitments");
+            Assert.That(bloom, Is.EqualTo(expectedBloom), "streaming must preserve block blooms");
+        }
+    }
+
+    [Test]
+    public void ReceiptStream_WhenIncomplete_RejectsCompletion()
+    {
+        using BlockProcessor.ReceiptCommitmentStream stream = new(
+            new ReceiptTrie.StreamingRoot(Prague.Instance, 1, new ReceiptMessageDecoder()),
+            1, CancellationToken.None, LimboLogs.Instance.GetClassLogger<BlockProcessor>());
+
+        stream.CompleteAdding();
+
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await stream.Result,
+            "an incomplete stream must fail rather than publish a partial commitment");
+    }
+
+    [Test]
+    public void ReceiptStream_WhenCancelled_RejectsPublication()
+    {
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+        using BlockProcessor.ReceiptCommitmentStream stream = new(
+            new ReceiptTrie.StreamingRoot(Prague.Instance, 1, new ReceiptMessageDecoder()),
+            1, cancellation.Token, LimboLogs.Instance.GetClassLogger<BlockProcessor>());
+
+        Assert.That(() => stream.Add(Build.A.Receipt.WithAllFieldsFilled.TestObject), Throws.InstanceOf<OperationCanceledException>(),
+            "cancelled execution must not publish receipts");
+    }
+
+    [Test]
+    public void ReceiptStream_WhenDisposedWithoutCompletion_JoinsWorker()
+    {
+        BlockProcessor.ReceiptCommitmentStream stream = new(
+            new ReceiptTrie.StreamingRoot(Prague.Instance, 1, new ReceiptMessageDecoder()),
+            1, CancellationToken.None, LimboLogs.Instance.GetClassLogger<BlockProcessor>());
+
+        stream.Dispose();
+
+        Assert.That(stream.Result.IsCompleted, Is.True, "disposal must finish the worker before the block scope can be reused");
+    }
+
     [Test]
     public void Read_coverage_validates_system_slices_and_preserves_read_budget(
         [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
@@ -165,25 +237,42 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer()
+    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer([Values(1, 64, 129)] int receiptCount)
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
-        Transaction tx = Build.A.Transaction.WithTo(null)
-            .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
-            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-
-        Block block = await chain.AddBlock(tx);
-
-        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
-        Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].Logs, Has.Length.EqualTo(1));
-        using (Assert.EnterMultipleScope())
+        for (int blockIndex = 0; blockIndex < 2; blockIndex++)
         {
-            Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(receipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
-            Assert.That(receipts[0].Bloom, Is.Not.EqualTo(Bloom.Empty));
-            Assert.That(block.Header.Bloom, Is.Not.EqualTo(Bloom.Empty));
+            Transaction[] transactions = new Transaction[receiptCount];
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                transactions[i] = Build.A.Transaction.WithTo(null).WithNonce((ulong)(blockIndex * receiptCount + i))
+                    .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
+                    .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            }
+
+            Block block = await chain.AddBlock(transactions);
+            TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+            Assert.That(receipts, Has.Length.EqualTo(receiptCount), "every executed transaction must retain a receipt");
+            using TrackingCappedArrayPool pool = new();
+            ReceiptTrie trie = new(Prague.Instance, receipts, new ReceiptMessageDecoder(), pool, canBeParallel: false);
+            Bloom expectedBloom = new();
+            foreach (TxReceipt receipt in receipts)
+            {
+                Assert.That(receipt.Logs, Has.Length.EqualTo(1), "streaming must not consume receipt logs");
+                expectedBloom.Accumulate(new Bloom(receipt.Logs));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+                    Assert.That(receipt.Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+                    Assert.That(receipt.Bloom, Is.Not.EqualTo(Bloom.Empty));
+                }
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(trie.RootHash), "the mutable trie is the commitment oracle");
+                Assert.That(block.Header.Bloom, Is.EqualTo(expectedBloom), "block bloom must include every finalized receipt");
+            }
         }
     }
 

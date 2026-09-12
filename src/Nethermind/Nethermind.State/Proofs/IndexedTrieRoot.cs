@@ -38,7 +38,8 @@ internal static class IndexedTrieRoot
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
         public Hash256 Calculate(bool canBeParallel = true)
-            => _items.IsEmpty ? Keccak.EmptyTreeHash
+            => !_leaves.IsEmpty ? CalculateSequential()
+                : _items.IsEmpty ? Keccak.EmptyTreeHash
                 : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= MinItemsForParallelRootHash
                 ? CalculateSequential()
                 : CalculateParallel();
@@ -58,11 +59,7 @@ internal static class IndexedTrieRoot
                     int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
                     for (int position = start; position < end; position++)
                     {
-                        Key key = calculator.GetKey(position);
-                        int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
-                        if (position + 1 < inputs.Count)
-                            depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
-                        references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
+                        references[position] = calculator.CalculateLeafAtPosition(position, inputs[calculator.GetIndex(position)]);
                     }
                 });
             }
@@ -75,8 +72,27 @@ internal static class IndexedTrieRoot
 
         private Hash256 CalculateSequential()
         {
-            NodeReference root = Build(0, _items.Length, 0);
+            NodeReference root = Build(0, Count, 0);
             return root.Length == 32 ? new Hash256(root.Value) : Keccak.Compute(root.Value.Bytes[..root.Length]);
+        }
+
+        private int Count => _leaves.IsEmpty ? _items.Length : _leaves.Length;
+
+        internal int GetPosition(int index)
+            => index == 0 ? Math.Min(Count - 1, 127) : index <= 127 ? index - 1 : index;
+
+        internal NodeReference CalculateLeaf(int index, T item)
+            => CalculateLeafAtPosition(GetPosition(index), item);
+
+        private NodeReference CalculateLeafAtPosition(int position, T item)
+        {
+            Key key = GetKey(position);
+            if (Count == 1) return Leaf(key, 0, item);
+
+            int depth = position == 0 ? 0 : CommonPrefix(key, GetKey(position - 1), 0);
+            if (position + 1 < Count)
+                depth = Math.Max(depth, CommonPrefix(key, GetKey(position + 1), 0));
+            return Leaf(key, depth + 1, item);
         }
 
         [SkipLocalsInit]
@@ -170,7 +186,7 @@ internal static class IndexedTrieRoot
 
         private int GetIndex(int position)
         {
-            int zeroPosition = Math.Min(_items.Length - 1, 127);
+            int zeroPosition = Math.Min(Count - 1, 127);
             return position < zeroPosition ? position + 1 : position == zeroPosition ? 0 : position;
         }
 

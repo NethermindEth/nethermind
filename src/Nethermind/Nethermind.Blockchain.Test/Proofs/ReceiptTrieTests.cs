@@ -104,12 +104,37 @@ public class ReceiptTrieTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
+            if (decoder is ReceiptMessageDecoder messageDecoder)
+            {
+                using ReceiptTrie.StreamingRoot streaming = new(spec, receipts.Length, messageDecoder);
+                foreach (TxReceipt receipt in receipts) streaming.Add(receipt);
+                Assert.That(streaming.Complete(), Is.EqualTo(expected), "incremental leaves must preserve the mutable trie root");
+            }
             if (receipts.Length > 0)
             {
                 byte[][] proof = ReceiptTrie.CalculateReceiptProofs(spec, receipts, receipts.Length / 2, decoder);
                 Assert.That(Keccak.Compute(proof[0]), Is.EqualTo(actual), "proof root must match the streamed root");
             }
         }
+    }
+
+    [Test]
+    public void StreamingRoot_WhenReceiptsAreMissing_RejectsCompletion()
+    {
+        using ReceiptTrie.StreamingRoot streaming = new(Osaka.Instance, 2, _decoder);
+        streaming.Add(Build.A.Receipt.WithAllFieldsFilled.TestObject);
+
+        Assert.That(() => streaming.Complete(), Throws.InvalidOperationException,
+            "a partial receipt stream must never produce a block commitment");
+    }
+
+    [Test]
+    public void StreamingRoot_WhenReceiptsExceedBlockCount_RejectsAppend()
+    {
+        using ReceiptTrie.StreamingRoot streaming = new(Osaka.Instance, 0, _decoder);
+
+        Assert.That(() => streaming.Add(Build.A.Receipt.WithAllFieldsFilled.TestObject), Throws.InvalidOperationException,
+            "the block transaction count bounds receipt storage");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

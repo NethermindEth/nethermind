@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing;
 
 public partial class BlockProcessor
 {
+    private partial ReceiptCommitmentStream? CreateReceiptStream(Block block, IBlockTracer tracer,
+        ProcessingOptions options, IReleaseSpec spec, CancellationToken token, out BlockValidationTransactionsExecutor? executor)
+    {
+        executor = null;
+        return null;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts) => false;
 

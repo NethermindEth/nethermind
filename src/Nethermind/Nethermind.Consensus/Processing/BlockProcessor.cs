@@ -163,7 +163,12 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        using ReceiptCommitmentStream? receiptStream = CreateReceiptStream(block, blockTracer, options, spec, token,
+            out BlockValidationTransactionsExecutor? streamingExecutor);
+        TxReceipt[] receipts = receiptStream is null
+            ? _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token)
+            : streamingExecutor!.ProcessTransactions(block, options, ReceiptsTracer, token, receiptStream.Add);
+        receiptStream?.CompleteAdding();
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -176,8 +181,8 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
-        if (ShouldCalculateReceiptsInBackground(receipts))
+        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = receiptStream?.Result;
+        if (receiptStream is null && ShouldCalculateReceiptsInBackground(receipts))
         {
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
@@ -185,7 +190,7 @@ public partial class BlockProcessor(
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
             });
         }
-        else
+        else if (receiptStream is null)
         {
             CalculateBlooms(receipts);
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
