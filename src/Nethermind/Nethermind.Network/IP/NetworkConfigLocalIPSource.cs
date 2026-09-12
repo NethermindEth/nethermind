@@ -21,7 +21,7 @@ namespace Nethermind.Network.IP
 
                 if (result)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp}");
+                    if (_logger.IsInfo) _logger.Info($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp}");
                 }
                 else
                 {

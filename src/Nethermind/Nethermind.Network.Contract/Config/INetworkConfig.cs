@@ -17,27 +17,26 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = $"The external IP address used for the legacy enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries. On platforms with dual-mode wildcard support, keep this address IPv4 (or let it resolve automatically), set `{nameof(ExternalIpV6)}`, and leave `{nameof(LocalIp)}` unset or set it to `::` for dual-stack ENR advertisement.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
     /// <summary>
     /// Gets or sets the external IPv4 address to advertise.
     /// </summary>
     /// <remarks>
-    /// When unset, the resolved <see cref="ExternalIp"/> is used if it is an IPv4 address.
+    /// When unset, the external IPv4 address is resolved automatically.
     /// This address is advertised only when every currently bound inbound transport serves IPv4.
-    /// On platforms with dual-mode wildcard support, set this together with <see cref="ExternalIpV6"/>
-    /// and leave <see cref="LocalIp"/> unset or set it to <c>::</c> to advertise both families.
+    /// On platforms with dual-mode wildcard support, leave <see cref="LocalIp"/> unset or set it to
+    /// <c>::</c> to advertise both automatically resolved families.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries. On platforms with dual-mode wildcard support, use with `{nameof(ExternalIpV6)}` and leave `{nameof(LocalIp)}` unset or set it to `::` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
-    /// through <c>IIPResolver.Resolve</c>. When unset, the resolved <see cref="ExternalIp"/> is used
-    /// if it is an IPv6 address.
+    /// through <c>IIPResolver.Resolve</c>. When unset, the external IPv6 address is resolved automatically.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries. On platforms with dual-mode wildcard support, use with `{nameof(ExternalIpV4)}` and leave `{nameof(LocalIp)}` unset or set it to `::` for dual-stack advertisement. On an IPv6-only node, set `{nameof(ExternalIp)}` instead so existing consumers also use IPv6.", DefaultValue = "null")]
+    [ConfigItem(Description = "The external IPv6 address to advertise in the ENR. When unset, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
 
     /// <remarks>

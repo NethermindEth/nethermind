@@ -106,7 +106,7 @@ namespace Nethermind.Network
         {
             if (Peers.TryGetValue(node.Id, out Peer? existing))
             {
-                PromoteFlags(node, existing.Node);
+                MergeNodeState(node, existing.Node);
                 return existing;
             }
 
@@ -121,7 +121,7 @@ namespace Nethermind.Network
             }
             else
             {
-                PromoteFlags(node, peer.Node);
+                MergeNodeState(node, peer.Node);
             }
 
             return peer;
@@ -129,6 +129,12 @@ namespace Nethermind.Network
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAddingCandidatePeer(Node n)
                 => _logger.Trace($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
+        }
+
+        private void MergeNodeState(Node incoming, Node pooled)
+        {
+            PromoteFlags(incoming, pooled);
+            incoming.MergeEnrStateFrom(pooled);
         }
 
         // A node id can reach the pool through several sources (the persisted peers db, discovery, the
@@ -162,25 +168,11 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(NetworkNode networkNode)
         {
-            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing))
+            Node node = new(networkNode)
             {
-                if (!existing.Node.IsTrusted && networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode))
-                {
-                    existing.Node.IsTrusted = true;
-                    if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");
-                }
-
-                return existing;
-            }
-
-            Node node = new(networkNode) { IsTrusted = _trustedNodesManager.IsTrusted(networkNode.Enode) };
-            Peer created = new(node, _stats.GetOrAdd(node));
-            Peer peer = Peers.GetOrAdd(node.Id, created);
-            if (ReferenceEquals(peer, created))
-            {
-                PeerAdded?.Invoke(this, new PeerEventArgs(peer));
-            }
-            return peer;
+                IsTrusted = networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode)
+            };
+            return GetOrAdd(node);
         }
 
         public bool TryGet(PublicKey id, out Peer peer) => Peers.TryGetValue(id, out peer);

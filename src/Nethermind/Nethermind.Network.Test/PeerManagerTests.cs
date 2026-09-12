@@ -1100,7 +1100,7 @@ namespace Nethermind.Network.Test
 
             public Task Init() => Task.CompletedTask;
 
-            public Task<bool> ConnectAsync(Node node)
+            public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
             {
                 Interlocked.Increment(ref _connectAsyncCallsCount);
 

@@ -15,7 +15,6 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -785,7 +784,6 @@ namespace Nethermind.Network
             }
         }
 
-        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
@@ -868,7 +866,11 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) TraceConnectingToCandidate();
                 candidate.IsAwaitingConnection = true;
                 _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
-                return await _rlpxHost.ConnectAsync(candidate.Node);
+                return await _rlpxHost.ConnectAsync(candidate.Node, _cancellationTokenSource.Token);
+            }
+            catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
+            {
+                throw;
             }
             catch (NetworkingException ex)
             {

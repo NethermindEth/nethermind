@@ -14,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -314,12 +315,24 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                 //Add/Update peer to the storage and to sync manager
-                _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+                _peerStorage.UpdateNode(CreatePersistedNode(session.Node));
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
             }
+        }
+
+        private NetworkNode CreatePersistedNode(Node node)
+        {
+            long reputation = _stats.GetOrAdd(node).NewPersistedNodeReputation(DateTime.UtcNow);
+            NodeRecord? record = node.Enr;
+            if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence)
+            {
+                return new NetworkNode(record.ToString()) { Reputation = reputation };
+            }
+
+            return new NetworkNode(node.Id, node.Host, node.Port, reputation);
         }
 
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)
