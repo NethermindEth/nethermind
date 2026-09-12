@@ -226,7 +226,9 @@ public class InclusionListBuilderTests
     }
 
     // Every drawn sender costs one account-nonce read, so the reservoir must bound the reads whatever the pool size.
-    private static (ITxPool Pool, IReadOnlyStateProvider HeadState, InclusionListBuilder Builder) KeyedHeadSetup(int senderCount)
+    // The frame transaction no longer decides whether that read happens; it keeps each bucket on the copying
+    // branch of WithoutFrameTxs, which is what still makes this the worst case per drawn sender.
+    private static (ITxPool Pool, IReadOnlyStateProvider HeadState, InclusionListBuilder Builder) WorstCaseReadSetup(int senderCount)
     {
         Transaction[] txs = new Transaction[senderCount * 2];
         for (int i = 0; i < senderCount; i++)
@@ -259,7 +261,7 @@ public class InclusionListBuilderTests
     public void State_reads_are_bounded_by_the_sender_sample_capacity()
     {
         const int senderCount = 1024;
-        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = KeyedHeadSetup(senderCount);
+        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = WorstCaseReadSetup(senderCount);
 
         builder.GetInclusionList().Dispose();
 
@@ -275,7 +277,7 @@ public class InclusionListBuilderTests
     {
         const int senderCount = 1024;
         const int iterations = 50;
-        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = KeyedHeadSetup(senderCount);
+        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = WorstCaseReadSetup(senderCount);
 
         builder.GetInclusionList().Dispose();  // warm
         long before = headState.ReceivedCalls().Count();

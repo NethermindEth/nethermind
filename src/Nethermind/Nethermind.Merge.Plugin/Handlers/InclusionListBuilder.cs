@@ -115,7 +115,9 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
             length++;
         }
 
-        return start == 0 && length == bySender.Length ? bySender : bySender[start..(start + length)];
+        // The loop bounds length by bySender.Length - start, so a full-length run had nothing skipped and
+        // start is 0: the whole array is the run and needs no copy.
+        return length == bySender.Length ? bySender : bySender[start..(start + length)];
     }
 
     /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>
