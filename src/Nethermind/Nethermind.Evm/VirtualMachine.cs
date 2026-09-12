@@ -1281,6 +1281,8 @@ public partial class VirtualMachine<TGasPolicy>(
         // gas/state-gas accounting without needing interpreter-wide exception handling.
         ref TGasPolicy gas = ref vmState.Gas;
 
+        EvmExceptionType proxyFailure = EvmExceptionType.None;
+
         // Instruction tracing must observe every opcode, so templates are only skipped without it. A
         // template also stays unused until its skipped opcodes exist: the dispatch loop maps an opcode
         // introduced by a later fork to BadInstruction, and skipping past one would execute code that
@@ -1296,8 +1298,8 @@ public partial class VirtualMachine<TGasPolicy>(
                     if (vmState.IsContinuation)
                         return CompleteMinimalProxy(vmState, proxy, previousCallResult.Success.GetValueOrDefault(), ref gas);
 
-                    EvmExceptionType proxyEntry = EnterMinimalProxy(vmState, proxy, env.CodeInfo.Template.MinimalProxyTarget!, ref stack, ref gas);
-                    if (proxyEntry != EvmExceptionType.None) goto ProxyFailure;
+                    proxyFailure = EnterMinimalProxy(vmState, proxy, env.CodeInfo.Template.MinimalProxyTarget!, ref stack, ref gas);
+                    if (proxyFailure != EvmExceptionType.None) goto ProxyFailure;
                 }
             }
             else if (!vmState.IsContinuation)
@@ -1356,8 +1358,10 @@ public partial class VirtualMachine<TGasPolicy>(
         return CallResult.Empty();
 
     ProxyFailure:
-        TGasPolicy.ClearExecutionGas(ref gas);
-        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), EvmExceptionType.OutOfGas);
+        // Only an exhausting halt clears the frame's gas; a stack fault leaves it for the caller to see.
+        if (proxyFailure == EvmExceptionType.OutOfGas)
+            TGasPolicy.ClearExecutionGas(ref gas);
+        return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), proxyFailure);
     }
 
     /// <summary>

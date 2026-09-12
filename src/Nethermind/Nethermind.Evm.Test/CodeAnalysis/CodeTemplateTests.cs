@@ -115,6 +115,50 @@ public class CodeTemplateTests
         }
     }
 
+    [TestCase(3, TestName = "Tree that is a single leaf run")]
+    [TestCase(9, TestName = "Tree with several pivot levels")]
+    [TestCase(32, TestName = "Tree over a large interface")]
+    public void Resolves_every_selector_in_a_less_than_pivoted_tree(int count)
+    {
+        uint[] selectors = Selectors(count);
+        TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
+            selectors, withCallValueGuard: true, DispatchShape.BinarySearch, lessThanPivots: true);
+
+        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch;
+
+        Assert.That(dispatch, Is.Not.Null);
+        foreach (uint selector in selectors)
+        {
+            Assert.That(dispatch!.TryResolve(selector, hasCallValue: false, out int programCounter, out _), Is.True, $"selector {selector:x8}");
+            Assert.That(programCounter, Is.EqualTo(dispatcher.Bodies[selector]));
+        }
+    }
+
+    /// <summary>
+    /// An LT pivot is taken strictly above itself, so a selector equal to the pivot belongs on the
+    /// fall-through. A tree claiming otherwise must be rejected rather than resolved to the wrong body.
+    /// </summary>
+    [Test]
+    public void Rejects_a_less_than_tree_that_routes_its_own_pivot_to_the_taken_branch()
+    {
+        uint[] selectors = Selectors(9);
+        TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
+            selectors, withCallValueGuard: true, DispatchShape.BinarySearch, lessThanPivots: true);
+
+        // Lower the root pivot to the selector just below it, which leaves that selector sitting in the
+        // strictly-above subtree the pivot no longer sends it to.
+        byte[] code = dispatcher.Code;
+        int rootPivot = Array.IndexOf(code, (byte)Instruction.PUSH4) + 1;
+        uint pivot = (uint)((code[rootPivot] << 24) | (code[rootPivot + 1] << 16) | (code[rootPivot + 2] << 8) | code[rootPivot + 3]);
+        uint lowered = pivot - 1;
+        code[rootPivot] = (byte)(lowered >> 24);
+        code[rootPivot + 1] = (byte)(lowered >> 16);
+        code[rootPivot + 2] = (byte)(lowered >> 8);
+        code[rootPivot + 3] = (byte)lowered;
+
+        Assert.That(new CodeInfo(code).Template.SelectorDispatch, Is.Null);
+    }
+
     [Test]
     public void Rejects_a_tree_whose_pivot_contradicts_the_subtree_it_routes_to()
     {
@@ -150,7 +194,7 @@ public class CodeTemplateTests
 
             // The guard is nine opcodes wide, so resuming past it must land beyond the body's JUMPDEST.
             Assert.That(programCounter, Is.GreaterThan(dispatcher.Bodies[selector] + 1), "resumed inside the guard");
-            Assert.That(dispatcher.Code[programCounter], Is.EqualTo((byte)Instruction.STOP));
+            Assert.That(dispatcher.Code[programCounter], Is.EqualTo((byte)Instruction.MSIZE), "resumed at the body's first opcode");
         }
     }
 

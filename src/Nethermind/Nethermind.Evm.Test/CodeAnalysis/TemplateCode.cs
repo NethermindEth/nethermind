@@ -26,6 +26,25 @@ public static class TemplateCode
     /// <summary>Leaves of this size or smaller become a run of equality tests rather than splitting again.</summary>
     private const int MaxLeafSize = 2;
 
+    /// <summary>
+    /// A function body that returns everything the preamble is supposed to have left behind: the
+    /// free-memory pointer, the memory size on entry, and the selector.
+    /// </summary>
+    /// <remarks>
+    /// A body that merely stops cannot tell a correct fast path from one that writes the wrong pointer,
+    /// writes it at the wrong offset, or never writes it at all, because none of that reaches gas, status
+    /// or return data. Returning the three makes each of them a difference the equivalence tests can see.
+    /// </remarks>
+    private static ReadOnlySpan<byte> ObservableBody =>
+    [
+        (byte)Instruction.MSIZE,
+        (byte)Instruction.PUSH1, 0x40, (byte)Instruction.MLOAD,
+        (byte)Instruction.PUSH1, 0x80, (byte)Instruction.MSTORE,
+        (byte)Instruction.PUSH1, 0xA0, (byte)Instruction.MSTORE,
+        (byte)Instruction.PUSH1, 0xC0, (byte)Instruction.MSTORE,
+        (byte)Instruction.PUSH1, 0x60, (byte)Instruction.PUSH1, 0x80, (byte)Instruction.RETURN,
+    ];
+
     public static byte[] MinimalProxy(Address target) =>
     [
         0x36, 0x3d, 0x3d, 0x37, 0x3d, 0x3d, 0x3d, 0x36, 0x3d, 0x73,
@@ -89,13 +108,18 @@ public static class TemplateCode
     /// identical behaviour and gas, but a preamble the template match rejects, which lets a benchmark
     /// compare the fast path against the dispatch loop without a runtime switch.
     /// </param>
+    /// <param name="lessThanPivots">
+    /// Emit pivot tests as LT rather than GT. LT is taken strictly above the pivot where GT is taken
+    /// strictly below it, so the two route the pivot's own selector to opposite subtrees.
+    /// </param>
     public static Dispatcher SelectorDispatch(
         uint[] selectors,
         bool withCallValueGuard,
         DispatchShape shape = DispatchShape.Linear,
         bool recognized = true,
         bool perFunctionCallValueGuard = false,
-        bool push0 = false)
+        bool push0 = false,
+        bool lessThanPivots = false)
     {
         // Solc targeting Shanghai or later pushes its zeroes with PUSH0 instead of PUSH1 0x00.
         byte[] zero = push0 ? [(byte)Instruction.PUSH0] : [(byte)Instruction.PUSH1, 0x00];
@@ -130,7 +154,7 @@ public static class TemplateCode
         if (shape == DispatchShape.BinarySearch)
         {
             Array.Sort(ordered);
-            EmitBinarySearch(code, ordered, 0, ordered.Length, bodyPatches, fallbackPatches);
+            EmitBinarySearch(code, ordered, 0, ordered.Length, bodyPatches, fallbackPatches, lessThanPivots);
         }
         else
         {
@@ -164,7 +188,7 @@ public static class TemplateCode
                 code.AddRange([(byte)Instruction.JUMPDEST, (byte)Instruction.POP]);
             }
 
-            code.Add((byte)Instruction.STOP);
+            code.AddRange(ObservableBody);
         }
 
         return new Dispatcher([.. code], bodies, fallback);
@@ -180,7 +204,8 @@ public static class TemplateCode
         int low,
         int high,
         Dictionary<uint, int> bodyPatches,
-        List<int> fallbackPatches)
+        List<int> fallbackPatches,
+        bool lessThanPivots)
     {
         if (high - low <= MaxLeafSize)
         {
@@ -194,20 +219,27 @@ public static class TemplateCode
         }
 
         int middle = (low + high) / 2;
-        uint pivot = selectors[middle];
+
+        // GT jumps to the selectors below its pivot and falls through to those at or above it; LT is the
+        // mirror image, so its pivot sits one place further down to keep the same split.
+        uint pivot = lessThanPivots ? selectors[middle - 1] : selectors[middle];
+        int takenLow = lessThanPivots ? middle : low;
+        int takenHigh = lessThanPivots ? high : middle;
+        int fallThroughLow = lessThanPivots ? low : middle;
+        int fallThroughHigh = lessThanPivots ? middle : high;
 
         code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.PUSH4]);
         code.AddRange(SelectorBytes(pivot));
-        code.Add((byte)Instruction.GT);
+        code.Add((byte)(lessThanPivots ? Instruction.LT : Instruction.GT));
         int branchPatch = code.Count + 1;
         code.AddRange(Push2(0));
         code.Add((byte)Instruction.JUMPI);
 
-        EmitBinarySearch(code, selectors, middle, high, bodyPatches, fallbackPatches);
+        EmitBinarySearch(code, selectors, fallThroughLow, fallThroughHigh, bodyPatches, fallbackPatches, lessThanPivots);
 
         Patch(code, branchPatch, code.Count);
         code.Add((byte)Instruction.JUMPDEST);
-        EmitBinarySearch(code, selectors, low, middle, bodyPatches, fallbackPatches);
+        EmitBinarySearch(code, selectors, takenLow, takenHigh, bodyPatches, fallbackPatches, lessThanPivots);
     }
 
     private static void EmitEqualityRun(List<byte> code, uint[] selectors, int low, int high, Dictionary<uint, int> bodyPatches)

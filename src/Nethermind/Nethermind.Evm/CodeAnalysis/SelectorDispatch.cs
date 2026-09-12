@@ -88,22 +88,22 @@ internal sealed class SelectorDispatch
     /// <see langword="false"/> when no entry matches — the code would fall through to its fallback — or when the
     /// matched function's own guard would reject the call's value, which leaves the dispatch loop to run the revert.
     /// </returns>
+    /// <remarks>
+    /// Entries are held sorted so the lookup is a binary search. The shape being replaced for a large
+    /// interface is itself a binary search, so a linear scan here would make the fast path the slower arm
+    /// exactly where the template has most to give.
+    /// </remarks>
     public bool TryResolve(uint selector, bool hasCallValue, out int programCounter, out ulong gasCost)
     {
-        uint[] selectors = _selectors;
-        for (int i = 0; i < selectors.Length; i++)
-        {
-            if (selectors[i] != selector) continue;
-            if (hasCallValue && _guarded[i]) break;
-
-            programCounter = _targets[i];
-            gasCost = _gas[i];
-            return true;
-        }
-
         programCounter = 0;
         gasCost = 0;
-        return false;
+
+        int index = System.Array.BinarySearch(_selectors, selector);
+        if (index < 0 || (hasCallValue && _guarded[index])) return false;
+
+        programCounter = _targets[index];
+        gasCost = _gas[index];
+        return true;
     }
 
     /// <summary>Recognizes the dispatcher at the start of <paramref name="code"/>, or returns <see langword="null"/>.</summary>
@@ -139,6 +139,9 @@ internal sealed class SelectorDispatch
         if (!TryParseNode(code, isValidJumpDestination, entries, reader.Position, reader.Gas, depth: 0, ref usesPush0) ||
             entries.Count == 0 ||
             HasDuplicateSelectors(entries)) return null;
+
+        // Sorted so TryResolve can binary-search; the parse order carries no meaning past this point.
+        entries.Sort(static (left, right) => left.Selector.CompareTo(right.Selector));
 
         uint[] selectors = new uint[entries.Count];
         int[] targets = new int[entries.Count];
@@ -193,11 +196,14 @@ internal sealed class SelectorDispatch
             if (!TryParseNode(code, isValidJumpDestination, entries, reader.Position,
                     gas + ComparisonGas, depth + 1, ref usesPush0)) return false;
 
-            // GT computes "pivot > selector", LT computes "pivot < selector"; the taken branch is the side
-            // that comparison selects, and the fall-through takes everything else.
-            bool takenIsBelowPivot = comparison == Instruction.GT;
-            return AllSelectorsSatisfy(entries, takenFirst, fallThroughFirst, pivot, below: takenIsBelowPivot) &&
-                   AllSelectorsSatisfy(entries, fallThroughFirst, entries.Count, pivot, below: !takenIsBelowPivot);
+            // The PUSH4 leaves the pivot on top, so GT computes "pivot > selector" and LT "pivot < selector".
+            // Each is taken strictly to one side, which leaves the pivot itself on the fall-through.
+            bool isGreaterThan = comparison == Instruction.GT;
+            PivotSide takenSide = isGreaterThan ? PivotSide.Below : PivotSide.Above;
+            PivotSide fallThroughSide = isGreaterThan ? PivotSide.AboveOrEqual : PivotSide.BelowOrEqual;
+
+            return AllSelectorsSatisfy(entries, takenFirst, fallThroughFirst, pivot, takenSide) &&
+                   AllSelectorsSatisfy(entries, fallThroughFirst, entries.Count, pivot, fallThroughSide);
         }
 
         return TryParseEqualityRun(code, isValidJumpDestination, entries, position, gas, ref usesPush0);
@@ -289,12 +295,35 @@ internal sealed class SelectorDispatch
         return true;
     }
 
+    /// <summary>Where a subtree's selectors must sit relative to the pivot that routes them there.</summary>
+    private enum PivotSide
+    {
+        Below,
+        BelowOrEqual,
+        Above,
+        AboveOrEqual,
+    }
+
     /// <summary>Checks that every selector recorded in a subtree falls on the side the pivot routes it to.</summary>
-    private static bool AllSelectorsSatisfy(List<Entry> entries, int first, int last, uint pivot, bool below)
+    /// <remarks>
+    /// The strictness matters as much as the direction: a pivot's taken branch is strict on one side and
+    /// its fall-through inclusive on the other, and mixing the two would accept a tree that routes a
+    /// selector equal to the pivot somewhere other than where this parse recorded it.
+    /// </remarks>
+    private static bool AllSelectorsSatisfy(List<Entry> entries, int first, int last, uint pivot, PivotSide side)
     {
         for (int i = first; i < last; i++)
         {
-            if (below ? entries[i].Selector >= pivot : entries[i].Selector < pivot) return false;
+            uint selector = entries[i].Selector;
+            bool satisfied = side switch
+            {
+                PivotSide.Below => selector < pivot,
+                PivotSide.BelowOrEqual => selector <= pivot,
+                PivotSide.Above => selector > pivot,
+                _ => selector >= pivot,
+            };
+
+            if (!satisfied) return false;
         }
 
         return true;
