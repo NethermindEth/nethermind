@@ -480,9 +480,9 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Decoding_account_changes_with_unsorted_storage_reads_throws()
+    public void Decoding_account_changes_with_unsorted_or_duplicate_storage_reads_throws([Values(1UL, 2UL)] ulong firstSlot)
     {
-        UInt256[] storageReads = [new UInt256(2), UInt256.One];
+        UInt256[] storageReads = [new UInt256(firstSlot), UInt256.One];
         ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
@@ -496,6 +496,24 @@ public class BlockAccessListDecoderTests
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage reads were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_block_access_list_with_overlapping_storage_reads_and_changes_throws([Values(1UL, 2UL)] ulong writtenSlot)
+    {
+        ReadOnlyAccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [new ReadOnlySlotChanges(new UInt256(writtenSlot), [new StorageChange(1, 1)])],
+            [UInt256.One, new UInt256(2)],
+            [],
+            [],
+            []);
+        ReadOnlyBlockAccessList blockAccessList = new([accountChanges], 4);
+        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid storage read, already in storage changes."));
     }
 
     [Test]

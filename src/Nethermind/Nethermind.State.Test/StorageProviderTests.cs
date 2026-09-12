@@ -80,8 +80,7 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    [NonParallelizable]
-    public void Oversized_per_contract_state_dictionary_is_trimmed_when_returned([Values(1_024, 16_384)] int changeCount)
+    public void Oversized_per_contract_state_dictionary_is_trimmed_on_reset([Values(1_024, 16_384)] int changeCount)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -92,15 +91,16 @@ public class StorageProviderTests(bool useFlat)
 
         provider.Commit(Frontier.Instance);
         object blockChange = GetBlockChange(provider, ctx.Address1);
-        int capacityBeforeReturn = GetCapacity(blockChange);
+        int capacityBeforeReset = GetCapacity(blockChange);
 
-        provider.Reset();
+        // Exercise the pool's reset while we still own the state; returned objects can be rented by background work.
+        blockChange.GetType().GetMethod(nameof(provider.Reset))!.Invoke(blockChange, [512]);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(capacityBeforeReturn, Is.GreaterThan(512));
+            Assert.That(capacityBeforeReset, Is.GreaterThan(512));
             Assert.That(GetCapacity(blockChange), Is.GreaterThan(0));
-            Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReturn));
+            Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReset));
             Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
         }
     }

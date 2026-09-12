@@ -18,6 +18,7 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsJumpDestination(int destination)
     {
+        if ((uint)destination >= (uint)CodeLength) return false;
         long[] bitmap = _jumpDestinations ??= _codeInfo?.IncrementalJumpBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination) || (_codeInfo?.AnalyzeJump(destination) ?? false);
     }
