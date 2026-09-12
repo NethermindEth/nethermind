@@ -5,7 +5,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Nethermind.JsonRpc" />
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>

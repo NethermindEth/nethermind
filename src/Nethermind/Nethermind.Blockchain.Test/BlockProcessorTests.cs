@@ -60,7 +60,8 @@ public class BlockProcessorTests
     public async Task TransactionTraceBoundary_WhenTargetCompletes_PreservesTraceAndSkipsSuffix(
         [Values(-1, 0, 1, 2)] int targetIndex,
         [Values("callTracer", "prestateTracer")] string tracerName,
-        [Values] bool useBal)
+        [Values] bool useBal,
+        [Values] bool forceFullBal)
     {
         IReleaseSpec spec = useBal ? Amsterdam.Instance : Prague.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
@@ -78,14 +79,26 @@ public class BlockProcessorTests
         GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
 
         string expected = Replay(false, out int fullCount);
+        byte[][] executionRequests = [[0, 1, 2]];
+        GeneratedBlockAccessList generatedBlockAccessList = new();
+        byte[] encodedBlockAccessList = [0xc0];
+        block.ExecutionRequests = executionRequests;
+        block.GeneratedBlockAccessList = generatedBlockAccessList;
+        block.EncodedBlockAccessList = encodedBlockAccessList;
         string actual = Replay(true, out int prefixCount);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fullCount, Is.EqualTo(3), "the unbounded replay is the full-block oracle");
-            Assert.That(prefixCount, Is.EqualTo(targetIndex < 0 ? 3 : targetIndex + 1), "replay must stop only after the target completes");
+            Assert.That(prefixCount, Is.EqualTo(targetIndex < 0 || forceFullBal ? 3 : targetIndex + 1), "replay must stop only after the target completes unless full BAL construction is required");
             Assert.That(actual, Is.EqualTo(expected), "the selected trace must match full-block replay including its prestate");
             Assert.That(block.Transactions.Length, Is.EqualTo(3), "the original block body must not be truncated");
+            if (targetIndex >= 0 && !forceFullBal)
+            {
+                Assert.That(block.ExecutionRequests, Is.SameAs(executionRequests), "partial replay must not overwrite cached execution requests");
+                Assert.That(block.GeneratedBlockAccessList, Is.SameAs(generatedBlockAccessList), "partial replay must not overwrite the cached generated BAL");
+                Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBlockAccessList), "partial replay must not overwrite the cached encoded BAL");
+            }
         }
 
         string Replay(bool stopAtTarget, out int count)
@@ -94,6 +107,8 @@ public class BlockProcessorTests
             IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, chain.MainWorldState, chain.SpecProvider);
             RecordingPrefixTracer recording = new(tracer);
             IBlockTracer executionTracer = stopAtTarget ? TransactionTraceBoundary.Wrap(recording, target) : recording;
+            ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>()
+                .ForceConstructGeneratedBlockAccessList = forceFullBal;
             chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
                 executionTracer, spec, CancellationToken.None);
             count = recording.Started;

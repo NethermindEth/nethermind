@@ -10,13 +10,22 @@ using Nethermind.Int256;
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>Marks completion of a requested transaction without changing the block presented to tracers.</summary>
-internal sealed class TransactionTraceBoundary(IBlockTracer inner, Hash256 transactionHash) : IBlockTracer
+public sealed class TransactionTraceBoundary : IBlockTracer
 {
+    private readonly IBlockTracer _inner;
+    private readonly Hash256 _transactionHash;
+
+    private TransactionTraceBoundary(IBlockTracer inner, Hash256 transactionHash)
+    {
+        _inner = inner;
+        _transactionHash = transactionHash;
+    }
+
     private bool _isTarget;
     internal bool IsComplete { get; private set; }
-    internal IBlockTracer Inner => inner;
+    internal IBlockTracer Inner => _inner;
 
-    internal static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash) =>
+    public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash);
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
@@ -24,30 +33,30 @@ internal sealed class TransactionTraceBoundary(IBlockTracer inner, Hash256 trans
         && (options & (ProcessingOptions.StoreReceipts | ProcessingOptions.ForceSameBlock)) == 0
             ? tracer as TransactionTraceBoundary : null;
 
-    public bool IsTracingRewards => inner.IsTracingRewards;
+    public bool IsTracingRewards => _inner.IsTracingRewards;
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
-        inner.ReportReward(author, rewardType, rewardValue);
+        _inner.ReportReward(author, rewardType, rewardValue);
 
     public void StartNewBlockTrace(Block block)
     {
         IsComplete = false;
         _isTarget = false;
-        inner.StartNewBlockTrace(block);
+        _inner.StartNewBlockTrace(block);
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _isTarget = tx?.Hash == transactionHash;
-        return inner.StartNewTxTrace(tx);
+        _isTarget = tx?.Hash == _transactionHash;
+        return _inner.StartNewTxTrace(tx);
     }
 
     public void EndTxTrace()
     {
-        inner.EndTxTrace();
+        _inner.EndTxTrace();
         IsComplete |= _isTarget;
         _isTarget = false;
     }
 
-    public void EndBlockTrace() => inner.EndBlockTrace();
+    public void EndBlockTrace() => _inner.EndBlockTrace();
 }

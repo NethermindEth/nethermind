@@ -76,12 +76,7 @@ public partial class BlockProcessor(
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
-        // Chain-specific processors and custom executors may require complete receipts in finalization hooks.
-        if (blockTracer is TransactionTraceBoundary boundary
-            && (GetType() != typeof(BlockProcessor)
-                || !(_blockTransactionsExecutor.GetType() == typeof(BlockValidationTransactionsExecutor)
-                    || (_blockTransactionsExecutor.GetType() == typeof(ParallelBlockValidationTransactionsExecutor)
-                        && ((ParallelBlockValidationTransactionsExecutor)_blockTransactionsExecutor).SupportsTransactionTraceBoundary))))
+        if (blockTracer is TransactionTraceBoundary boundary && !SupportsTransactionTraceBoundary())
         {
             blockTracer = boundary.Inner;
         }
@@ -115,6 +110,11 @@ public partial class BlockProcessor(
         {
             if (!processed) block.DisposeAccountChanges();
         }
+        if (TransactionTraceBoundary.Get(blockTracer, options)?.IsComplete == true)
+        {
+            return (block, receipts);
+        }
+
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -123,6 +123,17 @@ public partial class BlockProcessor(
 
         return (block, receipts);
     }
+
+    private bool SupportsTransactionTraceBoundary() =>
+        GetType() == typeof(BlockProcessor)
+        && !_balManager.ForceConstructGeneratedBlockAccessList
+        && (_blockTransactionsExecutor switch
+        {
+            BlockValidationTransactionsExecutor executor => executor.GetType() == typeof(BlockValidationTransactionsExecutor),
+            ParallelBlockValidationTransactionsExecutor executor =>
+                executor.GetType() == typeof(ParallelBlockValidationTransactionsExecutor) && executor.SupportsTransactionTraceBoundary,
+            _ => false
+        });
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
