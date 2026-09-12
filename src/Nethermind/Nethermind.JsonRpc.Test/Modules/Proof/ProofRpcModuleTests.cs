@@ -54,6 +54,10 @@ public class ProofRpcModuleTests
     /// a prefix taken in block transaction order may count.</summary>
     private const int StaleReceiptIndexLogsBefore = 3;
 
+    /// <summary>Logs the stale-index arrangements put on the requested transaction itself; more than one, so the
+    /// offset the served receipt applies per log is pinned past its first entry.</summary>
+    private const int StaleReceiptIndexLogsOnRequested = 2;
+
     [SetUp]
     public async Task Setup()
     {
@@ -147,9 +151,11 @@ public class ProofRpcModuleTests
     }
 
     /// <remarks>
-    /// A transactionsRoot proof needs only the transaction's position in the resolved block, so a receipt set that
-    /// cannot serve the receipt does not stop this method — matching the eth_getTransactionByHash it mirrors, which
-    /// serves the same transaction from the same block.
+    /// A transactionsRoot proof needs only the transaction's position in the resolved block, and the receipt feeds
+    /// nothing but the optional Optimism deposit context, so a receipt set that cannot serve the receipt does not
+    /// stop this method. That is a deliberate divergence from <c>eth_getTransactionByHash</c>, which returns null
+    /// for both of these scenarios: <c>BlockchainBridge.TryGetCanonicalTransaction</c> fails whenever the receipt
+    /// at the transaction's index is absent or carries a different hash.
     /// </remarks>
     [Test]
     public void When_only_the_receipt_is_missing_transaction_by_hash_still_serves_the_transaction(
@@ -249,11 +255,15 @@ public class ProofRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receiptWithProof.Receipt.TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
-            // Identical under both scenarios, so the stale stored Index moves nothing; and non-zero, where the
-            // retraced block emits no logs at all, so the count came from the stored set the served logs
-            // themselves come from.
-            Assert.That(receiptWithProof.Receipt.Logs[0].LogIndex, Is.EqualTo(StaleReceiptIndexLogsBefore));
-            Assert.That(receiptWithProof.Receipt.Logs[0].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
+            Assert.That(receiptWithProof.Receipt.Logs, Has.Length.EqualTo(StaleReceiptIndexLogsOnRequested));
+            // The starting offset is identical under both scenarios, so the stale stored Index moves nothing; and
+            // non-zero, where the retraced block emits no logs at all, so the count came from the stored set the
+            // served logs themselves come from. Every log carries it, not just the first.
+            for (int i = 0; i < receiptWithProof.Receipt.Logs.Length; i++)
+            {
+                Assert.That(receiptWithProof.Receipt.Logs[i].LogIndex, Is.EqualTo(StaleReceiptIndexLogsBefore + i), $"log {i} index");
+                Assert.That(receiptWithProof.Receipt.Logs[i].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex), $"log {i} transaction index");
+            }
             Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
             Assert.That(receiptWithProof.ReceiptProof, Is.EqualTo(expectedReceiptProof));
         }
@@ -305,9 +315,12 @@ public class ProofRpcModuleTests
     /// A receipt whose stored <c>Index</c> disagrees with the requested transaction's position in the resolved block.
     /// </summary>
     /// <remarks>
-    /// Defensive: the substituted finder bypasses <c>FullInfoReceiptFinder</c>, which repairs <c>Index</c> to the
-    /// receipt's position in the array, so a stale index survives only in a legacy or partially written receipt blob.
-    /// The stored field must not be what decides which transaction gets proved.
+    /// Defensive, but reachable: <c>FullInfoReceiptFinder</c> rewrites <c>Index</c> to the receipt's position only
+    /// where <c>ReceiptsRecovery.TryRecover</c> reaches its recovery loop, which needs both the receipt count to
+    /// equal the block's transaction count and some receipt to be missing its <c>BlockHash</c>, <c>TxHash</c> or
+    /// <c>Sender</c>. A blob that fails either gate — a set no longer the size of the block, or one whose fields
+    /// are all populated — is returned with its stale <c>Index</c> intact, which is what the substituted finder
+    /// stands in for. The stored field must not be what decides which transaction gets proved.
     /// </remarks>
     public enum StaleReceiptIndexScenario
     {
@@ -392,8 +405,10 @@ public class ProofRpcModuleTests
     /// <remarks>
     /// The substituted set is wider than the block and carries logs the block never emitted, so counting over it
     /// answers non-zero where the retraced receipts answer 0, which makes the served <c>logIndex</c> evidence of
-    /// which of the two the receipt was served against. Both the requested receipt and the one for the dropped
-    /// transaction carry logs of their own, so a prefix that wrongly admits either is visible in that number.
+    /// which of the two the receipt was served against. It separates the readings of the prefix as well: neither
+    /// taking the array up to the requested position nor thresholding on the stored <c>Index</c> reaches the
+    /// block's first receipt, and both admit receipts carrying logs of their own, so only matching by transaction
+    /// hash answers <see cref="StaleReceiptIndexLogsBefore"/>.
     /// </remarks>
     /// <returns>The requested transaction's hash.</returns>
     private Hash256 ArrangeStaleReceiptIndex(StaleReceiptIndexScenario scenario)
@@ -402,7 +417,6 @@ public class ProofRpcModuleTests
         Hash256 txHash = block.Transactions[StaleReceiptIndexTxIndex].Hash!;
 
         const int logsOnDroppedTransaction = 5;
-        const int logsOnRequested = 1;
 
         int staleIndex = scenario switch
         {
@@ -411,13 +425,14 @@ public class ProofRpcModuleTests
             _ => throw new ArgumentOutOfRangeException(nameof(scenario))
         };
 
-        // A blob left by a block that carried a third transaction: the receipt stored at the position the
-        // requested transaction now occupies is for a transaction this block no longer contains.
+        // A blob left by a block that began with a transaction this one no longer contains: that receipt leads,
+        // so every receipt behind it sits one array position and one stored Index past where its transaction is,
+        // except the requested receipt, whose stored Index the scenario sets.
         TxReceipt[] receipts =
         [
-            ReceiptWithLogs(block.Transactions[0].Hash!, 0, StaleReceiptIndexLogsBefore),
-            ReceiptWithLogs(TestItem.KeccakF, StaleReceiptIndexTxIndex, logsOnDroppedTransaction),
-            ReceiptWithLogs(txHash, staleIndex, logsOnRequested)
+            ReceiptWithLogs(TestItem.KeccakF, 0, logsOnDroppedTransaction),
+            ReceiptWithLogs(block.Transactions[0].Hash!, 1, StaleReceiptIndexLogsBefore),
+            ReceiptWithLogs(txHash, staleIndex, StaleReceiptIndexLogsOnRequested)
         ];
 
         ArrangeReceiptFinder(block, txHash, receipts);

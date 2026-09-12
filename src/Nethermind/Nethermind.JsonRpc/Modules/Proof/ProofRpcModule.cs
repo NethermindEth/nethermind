@@ -192,6 +192,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             if (searchResult.IsError)
             {
                 // Unknown blocks yield null and mirror eth_; other search failures (e.g. pruned history) keep their error.
+                // Exact only if requireCanonical is false; InvalidInput reuses -32000 — canonical lookups must compare the message.
                 failure = searchResult.ErrorCode == ErrorCodes.ResourceNotFound ? default : searchResult;
                 return false;
             }
