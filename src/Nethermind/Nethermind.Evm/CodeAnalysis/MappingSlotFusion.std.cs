@@ -23,7 +23,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// skip an opcode the dispatch loop must halt on.
 /// </para>
 /// </remarks>
-internal sealed class MappingSlotFusion
+internal sealed partial class MappingSlotFusion
 {
     /// <summary>Window length when the trailing zero is PUSH0.</summary>
     private const int Push0WindowLength = 8;

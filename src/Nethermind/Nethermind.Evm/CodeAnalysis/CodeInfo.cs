@@ -54,27 +54,7 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    private MappingSlotFusion? _fusion;
-    private bool _fusionResolved;
     public ValueHash256 CodeHash { get; set; }
-
-    /// <summary>The fusable opcode runs this code contains, scanned for on first use.</summary>
-    /// <remarks>
-    /// Racing callers may each scan the code; the results are equivalent, so the duplicate work is
-    /// preferred over synchronising a scan that runs once per distinct code hash. The resolved flag is
-    /// published after the result so a reader never sees a resolved-but-absent scan.
-    /// </remarks>
-    internal MappingSlotFusion? Fusion => CodeAnalysisFlags.Fusion ? ResolveFusion() : null;
-
-    private MappingSlotFusion? ResolveFusion()
-    {
-        if (Volatile.Read(ref _fusionResolved)) return _fusion;
-
-        MappingSlotFusion? fusion = MappingSlotFusion.Find(CodeSpan);
-        _fusion = fusion;
-        Volatile.Write(ref _fusionResolved, true);
-        return fusion;
-    }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.

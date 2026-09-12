@@ -155,8 +155,10 @@ public partial class VirtualMachine<TGasPolicy>(
     public int OpCodeCount { get; set; }
     internal ExecutionMetricsCounters MetricsCounters;
 
+#if !ZK_EVM
     /// <summary>Fusable run sites for the frame's code, or <see langword="null"/> when it holds none.</summary>
     internal long[]? FusionSites;
+#endif
 
     public void FlushMetricsCounters() => MetricsCounters.Flush();
 
@@ -1258,11 +1260,11 @@ public partial class VirtualMachine<TGasPolicy>(
             GetExecutionHandlers().InitializeFrame(this, vmState);
         }
 
+#if !ZK_EVM
         // Resolved per frame rather than per opcode: the fork decides which runs may fuse, and a run
         // whose trailing zero is a PUSH0 must stay unfused until Shanghai defines it.
-        FusionSites = CodeAnalysisFlags.Fusion
-            ? env.CodeInfo.Fusion?.SitesFor(Spec.IncludePush0Instruction)
-            : null;
+        FusionSites = env.CodeInfo.Fusion?.SitesFor(Spec.IncludePush0Instruction);
+#endif
 
         ReadOnlySpan<byte> codeSpan = env.CodeInfo.CodeSpan;
         // If no machine code is present, treat the call as empty.
