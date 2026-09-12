@@ -3,9 +3,11 @@
 
 using System;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -682,6 +684,63 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(
             () => tracer.ReportLog(new LogEntry(TestItem.AddressA, [], [])),
             Throws.Nothing);
+    }
+
+    [Test]
+    public void Test_CallTrace_EveryTopLevelFrame_IsReturnedToThePool()
+    {
+#if DEBUG
+        // BuildResult asserts a single root, which aborts a checked build before reaching the disposal below.
+        Assert.Ignore("more than one root trips BuildResult's single-root Debug.Assert in a checked build");
+#endif
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+
+        // Two top-level invocations, which is what a transaction running more than one frame produces:
+        // each frame enters at depth 0, so each leaves its own root on the call stack.
+        ReportTopLevelInvocation(tracer, TestItem.AddressB);
+        ReportTopLevelInvocation(tracer, TestItem.AddressC);
+
+        NativeCallTracerCallFrame[] roots = TopLevelFramesOf(tracer);
+        Assert.That(roots, Has.Length.EqualTo(2), "both top-level invocations should be on the call stack");
+
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
+        GethLikeTxTrace trace = tracer.BuildResult();
+        tracer.Dispose();
+        trace.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < roots.Length; i++)
+            {
+                Assert.That(IsReturnedToPool(roots[i]), Is.True, $"top-level frame {i} never returned its pooled buffers");
+            }
+        }
+    }
+
+    private static void ReportTopLevelInvocation(NativeCallTracer tracer, Address to)
+    {
+        tracer.ReportAction(50000, 1, TestItem.AddressA, to, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportActionEnd(40000ul, ReadOnlyMemory<byte>.Empty);
+    }
+
+    private static NativeCallTracerCallFrame[] TopLevelFramesOf(NativeCallTracer tracer) =>
+        ((ArrayPoolList<NativeCallTracerCallFrame>)typeof(NativeCallTracer)
+            .GetField("_callStack", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(tracer)!).AsSpan().ToArray();
+
+    /// <summary>Reports whether a call frame's rented buffers went back to the pool, which is what disposing it does.</summary>
+    private static bool IsReturnedToPool(NativeCallTracerCallFrame callFrame)
+    {
+        try
+        {
+            _ = callFrame.Calls.AsSpan().Length;
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
     }
 
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)

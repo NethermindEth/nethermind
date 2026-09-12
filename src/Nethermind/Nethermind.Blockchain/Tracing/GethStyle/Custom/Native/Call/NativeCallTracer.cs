@@ -36,7 +36,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
-    private bool _resultBuilt = false;
 
     public NativeCallTracer(
         Transaction? tx,
@@ -75,7 +74,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
 
         result.TxHash = _txHash;
-        _resultBuilt = true;
 
         return result;
     }
@@ -83,12 +81,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override void Dispose()
     {
         base.Dispose();
-        for (int i = _resultBuilt ? 1 : 0; i < _callStack.Count; i++)
-        {
-            _callStack[i].Dispose();
-        }
 
-        _callStack.Dispose();
+        // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
+        _callStack.DisposeRecursive();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
