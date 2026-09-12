@@ -62,6 +62,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+            innerScope.CreateTrieWarmupSession();
+
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
             new StorageTreeWrapper(innerScope.CreateStorageTree(address), address, scopeId, logger);
 
@@ -88,6 +91,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     private class StorageTreeWrapper(IWorldStateScopeProvider.IStorageTree storageTree, Address address, long scopeId, ILogger logger) : IWorldStateScopeProvider.IStorageTree
     {
         public Hash256 RootHash => storageTree.RootHash;
+
+        public bool IsKnownEmpty => storageTree.IsKnownEmpty;
 
         public byte[] Get(in UInt256 index)
         {

@@ -157,8 +157,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                 && codeArray.Offset == 0
-                && codeArray.Count == code.Length
-                && codeArray.Array is { } array)
+                && codeArray.Array is { } array
+                && array.Length == code.Length)
             {
                 _codeBatchAlternate[codeHash] = array;
             }

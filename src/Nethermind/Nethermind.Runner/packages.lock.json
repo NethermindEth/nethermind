@@ -1181,6 +1181,25 @@
           "Nethermind.Trie": "[1.40.0-unstable, )"
         }
       },
+      "nethermind.state.pbt": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Blockchain": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[1.40.0-unstable, )",
+          "Nethermind.Core": "[1.40.0-unstable, )",
+          "Nethermind.Db": "[1.40.0-unstable, )",
+          "Nethermind.Evm": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
+          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
+          "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.State.Flat": "[1.40.0-unstable, )",
+          "Nethermind.Synchronization": "[1.40.0-unstable, )",
+          "Nethermind.Trie": "[1.40.0-unstable, )",
+          "Nethermind.Pbt": "[1.40.0-unstable, )"
+        }
+      },
       "nethermind.statediff.core": {
         "type": "Project",
         "dependencies": {
@@ -1711,6 +1730,13 @@
         "requested": "[0.8.8, )",
         "resolved": "0.8.8",
         "contentHash": "UIDFkA5DC3en3tOJ3Mof11yBx9kUQLsaeo/oFdvN6Bbkr9E9+VCqfIadHci8cu+I51K2Sl7XYWVl2R/mA75NBQ=="
+      },
+      "nethermind.pbt": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.40.0-unstable, )",
+          "Nethermind.Numerics.Int256": "[1.7.0, )"
+        }
       }
     },
     "net10.0/linux-arm64": {
