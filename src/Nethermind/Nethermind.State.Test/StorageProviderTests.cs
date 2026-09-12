@@ -194,7 +194,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(snapshots[snapshot + 1]);
 
         provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue2);
-        Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(_values[snapshot + 1]));
+        Assert.That(storageValue2, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     [Test]
@@ -212,7 +212,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
         provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue3);
-        Assert.That(storageValue3.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(storageValue3, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     [Test]
@@ -231,12 +231,12 @@ public class StorageProviderTests(bool useFlat)
         // across repeated same-slot writes (the case the removed chain walk resolved in O(N^2)).
         provider.TakeSnapshot(newTransactionStart: true);
         provider.GetOriginal(in cell, out UInt256 originalValue);
-        Assert.That(originalValue.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
         for (int i = 2; i <= 6; i++)
         {
             provider.Set(cell, new UInt256(_values[i], isBigEndian: true));
             provider.GetOriginal(in cell, out originalValue);
-            Assert.That(originalValue.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+            Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
         }
 
         // A revert within tx1 must leave the transaction original unchanged.
@@ -244,7 +244,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(cell, new UInt256(_values[7], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, mid, Snapshot.EmptyPosition);
         provider.GetOriginal(in cell, out originalValue);
-        Assert.That(originalValue.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     [Test]
@@ -293,7 +293,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
 
         provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue4);
-        Assert.That(storageValue4.ToMinimalBigEndian(), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
+        Assert.That(storageValue4, Is.EqualTo(new UInt256(_values[Math.Min(snapshot + 1, 1)], isBigEndian: true)));
     }
 
     [Test]
@@ -320,17 +320,17 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(Snapshot.Empty);
 
         provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue5);
-        Assert.That(storageValue5.ToMinimalBigEndian(), Is.EqualTo(_values[7]));
+        Assert.That(storageValue5, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
         provider.Get(new StorageCell(ctx.Address1, 2), out UInt256 storageValue6);
-        Assert.That(storageValue6.ToMinimalBigEndian(), Is.EqualTo(_values[8]));
+        Assert.That(storageValue6, Is.EqualTo(new UInt256(_values[8], isBigEndian: true)));
         provider.Get(new StorageCell(ctx.Address1, 3), out UInt256 storageValue7);
-        Assert.That(storageValue7.ToMinimalBigEndian(), Is.EqualTo(_values[9]));
+        Assert.That(storageValue7, Is.EqualTo(new UInt256(_values[9], isBigEndian: true)));
         provider.Get(new StorageCell(ctx.Address2, 1), out UInt256 storageValue8);
-        Assert.That(storageValue8.ToMinimalBigEndian(), Is.EqualTo(_values[10]));
+        Assert.That(storageValue8, Is.EqualTo(new UInt256(_values[10], isBigEndian: true)));
         provider.Get(new StorageCell(ctx.Address2, 2), out UInt256 storageValue9);
-        Assert.That(storageValue9.ToMinimalBigEndian(), Is.EqualTo(_values[11]));
+        Assert.That(storageValue9, Is.EqualTo(new UInt256(_values[11], isBigEndian: true)));
         provider.Get(new StorageCell(ctx.Address2, 3), out UInt256 storageValue10);
-        Assert.That(storageValue10.ToMinimalBigEndian(), Is.EqualTo(_values[12]));
+        Assert.That(storageValue10, Is.EqualTo(new UInt256(_values[12], isBigEndian: true)));
     }
 
     [Test]
@@ -465,7 +465,7 @@ public class StorageProviderTests(bool useFlat)
             for (int i = 0; i < written.Length; i++)
             {
                 provider.Get(new StorageCell(written[i], 1), out UInt256 storedValue);
-                Assert.That(storedValue.ToMinimalBigEndian(), Is.EqualTo(_values[i + 1]),
+                Assert.That(storedValue, Is.EqualTo(new UInt256(_values[i + 1], isBigEndian: true)),
                     $"storage for written contract {i} was not persisted");
             }
         }
@@ -523,7 +523,7 @@ public class StorageProviderTests(bool useFlat)
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
         provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue16);
-        Assert.That(storageValue16.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(storageValue16, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -551,7 +551,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(snapshots[snapshot + 1]);
 
         provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue17);
-        Assert.That(storageValue17.ToMinimalBigEndian(), Is.EqualTo(_values[snapshot + 1]));
+        Assert.That(storageValue17, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -565,7 +565,7 @@ public class StorageProviderTests(bool useFlat)
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
         provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue18);
-        Assert.That(storageValue18.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(storageValue18, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
 
         provider.Commit(Frontier.Instance);
         provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue19);
@@ -611,7 +611,7 @@ public class StorageProviderTests(bool useFlat)
         {
             Assert.That(decorator.Writes, Is.EqualTo(1));
             provider.GetTransientState(cell, out UInt256 storageValue22);
-            Assert.That(storageValue22.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+            Assert.That(storageValue22, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
         }
     }
 
@@ -718,7 +718,7 @@ public class StorageProviderTests(bool useFlat)
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
         provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue23);
-        Assert.That(storageValue23.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(storageValue23, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
 
         provider.Reset();
         provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue24);
@@ -765,7 +765,7 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
 
         provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue25);
-        Assert.That(_values[snapshot + 1], Is.EqualTo(storageValue25.ToMinimalBigEndian()));
+        Assert.That(storageValue25, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -806,7 +806,7 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(snapshots, Is.EqualTo(new[] { Snapshot.Empty, new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition), new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition), new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition) }));
 
         provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue26);
-        Assert.That(_values[snapshot + 1], Is.EqualTo(storageValue26.ToMinimalBigEndian()));
+        Assert.That(storageValue26, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -825,9 +825,9 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
         provider.Get(accessedStorageCell, out UInt256 storageValue27);
-        Assert.That(storageValue27.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageValue27, Is.EqualTo(UInt256.Zero));
         provider.Get(nonAccessedStorageCell, out UInt256 storageValue28);
-        Assert.That(storageValue28.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageValue28, Is.EqualTo(UInt256.Zero));
     }
 
     // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be
@@ -932,15 +932,15 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.Get(previouslyRead, out UInt256 storageValue29);
-            Assert.That(storageValue29.ToMinimalBigEndian(), Is.EqualTo(_values[7]));
+            Assert.That(storageValue29, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
             if (journaled) provider.Set(in previouslyRead, in storageValue29);
             Snapshot snapshot = provider.TakeSnapshot();
 
             provider.ClearStorage(TestItem.AddressA);
             provider.Get(previouslyRead, out UInt256 storageValue30);
-            Assert.That(storageValue30.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(storageValue30, Is.EqualTo(UInt256.Zero));
             provider.Get(readAfterClear, out UInt256 storageValue31);
-            Assert.That(storageValue31.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(storageValue31, Is.EqualTo(UInt256.Zero));
 
             if (rollback == StorageClearRollback.ResetKeepingBlockChanges)
             {
@@ -962,13 +962,13 @@ public class StorageProviderTests(bool useFlat)
             using (Assert.EnterMultipleScope())
             {
                 provider.Get(previouslyRead, out UInt256 storageValue32);
-                Assert.That(storageValue32.ToMinimalBigEndian(), Is.EqualTo(_values[7]));
+                Assert.That(storageValue32, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
                 provider.GetOriginal(in previouslyRead, out UInt256 previouslyReadOriginal);
-                Assert.That(previouslyReadOriginal.ToMinimalBigEndian(), Is.EqualTo(_values[7]));
+                Assert.That(previouslyReadOriginal, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
                 provider.Get(readAfterClear, out UInt256 storageValue33);
-                Assert.That(storageValue33.ToMinimalBigEndian(), Is.EqualTo(_values[8]));
+                Assert.That(storageValue33, Is.EqualTo(new UInt256(_values[8], isBigEndian: true)));
                 provider.GetOriginal(in readAfterClear, out UInt256 readAfterClearOriginal);
-                Assert.That(readAfterClearOriginal.ToMinimalBigEndian(), Is.EqualTo(_values[8]));
+                Assert.That(readAfterClearOriginal, Is.EqualTo(new UInt256(_values[8], isBigEndian: true)));
             }
 
             provider.Commit(Frontier.Instance);
@@ -1044,7 +1044,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance);
 
         provider.Get(cell, out UInt256 storageValue34);
-        Assert.That(storageValue34.ToMinimalBigEndian(), Is.EqualTo(_values[7]), "revived contract's write must survive the previous round's destroy mark");
+        Assert.That(storageValue34, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)), "revived contract's write must survive the previous round's destroy mark");
     }
 
     [Test]
@@ -1067,13 +1067,13 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.Get(cell, out UInt256 storageValue35);
-            Assert.That(storageValue35.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }), "precondition: committed value visible");
+            Assert.That(storageValue35, Is.EqualTo((UInt256)7), "precondition: committed value visible");
 
             provider.MarkStorageDestroyed(TestItem.AddressA);
             provider.Commit(Frontier.Instance);
 
             provider.Get(cell, out UInt256 storageValue36);
-            Assert.That(storageValue36.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes), "committed prior-block storage must read zero after destroy");
+            Assert.That(storageValue36, Is.EqualTo(UInt256.Zero), "committed prior-block storage must read zero after destroy");
         }
     }
 
@@ -1094,9 +1094,9 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance);
 
         provider.Get(rewritten, out UInt256 storageValue37);
-        Assert.That(storageValue37.ToMinimalBigEndian(), Is.EqualTo(_values[3]), "revived contract's rewritten slot must hold the new value");
+        Assert.That(storageValue37, Is.EqualTo(new UInt256(_values[3], isBigEndian: true)), "revived contract's rewritten slot must hold the new value");
         provider.Get(untouched, out UInt256 storageValue38);
-        Assert.That(storageValue38.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of a destroyed contract must read zero, not the pre-destroy write");
+        Assert.That(storageValue38, Is.EqualTo(UInt256.Zero), "un-rewritten slot of a destroyed contract must read zero, not the pre-destroy write");
     }
 
     [Test]
@@ -1143,7 +1143,7 @@ public class StorageProviderTests(bool useFlat)
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
             provider.Get(cell, out UInt256 storageValue39);
-            Assert.That(storageValue39.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes), "destroyed storage must be gone from the persisted store, not only from the in-block marker");
+            Assert.That(storageValue39, Is.EqualTo(UInt256.Zero), "destroyed storage must be gone from the persisted store, not only from the in-block marker");
         }
     }
 
@@ -1165,9 +1165,9 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance);
 
         provider.Get(rewritten, out UInt256 storageValue40);
-        Assert.That(storageValue40.ToMinimalBigEndian(), Is.EqualTo(_values[3]), "redeploy write after in-round destroy must survive the commit");
+        Assert.That(storageValue40, Is.EqualTo(new UInt256(_values[3], isBigEndian: true)), "redeploy write after in-round destroy must survive the commit");
         provider.Get(untouched, out UInt256 storageValue41);
-        Assert.That(storageValue41.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of the destroyed contract must stay zero");
+        Assert.That(storageValue41, Is.EqualTo(UInt256.Zero), "un-rewritten slot of the destroyed contract must stay zero");
     }
 
     [Test]
@@ -1269,7 +1269,7 @@ public class StorageProviderTests(bool useFlat)
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
             provider.Get(new StorageCell(TestItem.AddressA, 100), out UInt256 storageValue42);
-            Assert.That(storageValue42.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(storageValue42, Is.EqualTo(UInt256.Zero));
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
@@ -1310,11 +1310,11 @@ public class StorageProviderTests(bool useFlat)
 
         WorldState provider = BuildStorageProvider(ctx);
         provider.Get(accessedStorageCell, out UInt256 storageValue43);
-        Assert.That(storageValue43.ToMinimalBigEndian(), Is.EqualTo([1, 2, 3]));
+        Assert.That(storageValue43, Is.EqualTo((UInt256)0x010203));
         provider.ClearStorage(TestItem.AddressA);
         provider.Commit(Paris.Instance);
         provider.Get(accessedStorageCell, out UInt256 storageValue44);
-        Assert.That(storageValue44.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageValue44, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -1349,11 +1349,11 @@ public class StorageProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             provider.Get(first, out UInt256 storageValue45);
-            Assert.That(storageValue45.ToMinimalBigEndian(), Is.EqualTo(firstValue));
+            Assert.That(storageValue45, Is.EqualTo(new UInt256(firstValue, isBigEndian: true)));
             provider.Get(second, out UInt256 storageValue46);
-            Assert.That(storageValue46.ToMinimalBigEndian(), Is.EqualTo(secondValue));
+            Assert.That(storageValue46, Is.EqualTo(new UInt256(secondValue, isBigEndian: true)));
             provider.Get(untouched, out UInt256 storageValue47);
-            Assert.That(storageValue47.ToMinimalBigEndian(), Is.EqualTo(_values[clearStorage && !restore ? 0 : 3]));
+            Assert.That(storageValue47, Is.EqualTo(new UInt256(_values[clearStorage && !restore ? 0 : 3], isBigEndian: true)));
             Assert.That(tracer.Changes, Has.Count.EqualTo(clearStorage && !restore ? 3 : 2));
             Assert.That(tracer.Changes[0].Cell, Is.EqualTo(first), "storage changes follow surviving-head insertion order");
             Assert.That(tracer.Changes[1].Cell, Is.EqualTo(second));
@@ -1421,7 +1421,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Get(cell, out _);
 
         provider.GetOriginal(in cell, out UInt256 originalValue);
-        Assert.That(originalValue.ToMinimalBigEndian(), Is.EqualTo(_values[1]));
+        Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     [Test]
@@ -1491,7 +1491,7 @@ public class StorageProviderTests(bool useFlat)
             worldState.ClearStorage(TestItem.AddressA);
 
             worldState.Get(cell, out UInt256 storageValue49);
-            Assert.That(storageValue49.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(storageValue49, Is.EqualTo(UInt256.Zero));
         }
     }
 

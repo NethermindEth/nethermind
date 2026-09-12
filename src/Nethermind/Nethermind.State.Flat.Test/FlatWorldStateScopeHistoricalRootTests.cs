@@ -124,7 +124,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         {
             Assert.That(scope.Get(address), Is.Null);
             scope.CreateStorageTree(address).Get(in slot, out UInt256 slotRead124);
-            Assert.That(slotRead124.ToMinimalBigEndian(), Is.EqualTo(StorageTree.ZeroBytes));
+            Assert.That(slotRead124, Is.EqualTo(UInt256.Zero));
         }
     }
 
@@ -154,7 +154,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         {
             Assert.That(scope.Get(address), Is.Not.Null);
             scope.CreateStorageTree(address).Get(in slot, out UInt256 slotRead153);
-            Assert.That(slotRead153.ToMinimalBigEndian(), Is.EqualTo(slotValue));
+            Assert.That(slotRead153, Is.EqualTo(new UInt256(slotValue, isBigEndian: true)));
             Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
         }
     }

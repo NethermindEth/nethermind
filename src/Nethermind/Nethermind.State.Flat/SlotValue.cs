@@ -15,8 +15,6 @@ public readonly struct SlotValue
 
     public SlotValue(in UInt256 value) => Value = value;
 
-    public void ToUInt256(out UInt256 value) => value = Value;
-
     /// <summary>Reads big-endian bytes, padding a short input on the right.</summary>
     public SlotValue(ReadOnlySpan<byte> data)
     {
@@ -26,8 +24,6 @@ public readonly struct SlotValue
     }
 
     private static void ThrowInvalidLength() => throw new ArgumentException("Slot value cannot exceed 32 bytes", "data");
-
-    public static SlotValue? FromBytes(byte[]? data) => data is null ? null : new SlotValue(data);
 
     /// <summary>Reads a big-endian integer with omitted leading zero bytes.</summary>
     public static SlotValue FromSpanWithoutLeadingZero(ReadOnlySpan<byte> data)

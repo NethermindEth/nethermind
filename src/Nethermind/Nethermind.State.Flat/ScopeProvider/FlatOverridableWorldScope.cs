@@ -166,7 +166,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
             snapshotBundle.GetSlot(address, index, selfDestructIdx, out SlotValue? slot);
-            if (slot is { } stored) stored.ToUInt256(out value);
+            if (slot is { } stored) value = stored.Value;
             else value = default;
         }
 

@@ -68,7 +68,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx, out SlotValue? slotValue);
         value = default;
-        if (slotValue is { } slot) slot.ToUInt256(out value);
+        if (slotValue is { } slot) value = slot.Value;
 
         // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
         // access, and a historical value verified against the current trie would be wrong anyway.

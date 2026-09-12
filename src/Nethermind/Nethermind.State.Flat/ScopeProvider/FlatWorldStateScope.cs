@@ -342,7 +342,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!sink.StillNeeded(in cell)) return;
         _snapshotBundle.GetSlot(address, in slot, selfDestructIdx, out SlotValue? value);
         UInt256 numericValue = default;
-        if (value is { } stored) stored.ToUInt256(out numericValue);
+        if (value is { } stored) numericValue = stored.Value;
         sink.OnStorageRead(in cell, in numericValue);
     }
 

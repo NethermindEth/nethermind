@@ -20,7 +20,7 @@ public class SlotValueTests
     {
         UInt256 expected = new(Bytes.FromHexString(hex), isBigEndian: true);
         SlotValue slot = new(in expected);
-        slot.ToUInt256(out UInt256 actual);
+        UInt256 actual = slot.Value;
 
         using (Assert.EnterMultipleScope())
         {
@@ -78,20 +78,6 @@ public class SlotValueTests
     }
 
     [Test]
-    public void Test_FromBytes_ReturnsNullForNull() =>
-        Assert.That(SlotValue.FromBytes(null), Is.Null);
-
-    [Test]
     public void NullableSlotValue_IsCompact() =>
         Assert.That(Unsafe.SizeOf<SlotValue?>(), Is.EqualTo(40));
-
-    [Test]
-    public void Test_FromBytes_WrapsNonNull()
-    {
-        byte[] data = Bytes.FromHexString(FullSlotHex);
-        SlotValue? value = SlotValue.FromBytes(data);
-        Assert.That(value, Is.Not.Null);
-        Assert.That(value!.Value.Value.ToBigEndian(), Is.EqualTo(data));
-    }
-
 }

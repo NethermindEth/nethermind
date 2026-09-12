@@ -64,42 +64,6 @@ namespace Nethermind.State
         public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, ReadOnlySpan<byte> value) =>
             new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
 
-        [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
-        {
-            ValueHash256[] lookup = Lookup;
-            ulong u0 = index.u0;
-            if (index.IsUint64 && u0 < (uint)lookup.Length)
-            {
-                return GetArray(
-                    in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0),
-                    storageRoot);
-            }
-
-            return GetWithKeyGenerate(in index, storageRoot);
-
-            [SkipLocalsInit]
-            byte[] GetWithKeyGenerate(in UInt256 index, Hash256? storageRoot)
-            {
-                ComputeKey(index, out ValueHash256 key);
-                return GetArray(in key, storageRoot);
-            }
-        }
-
-        public byte[] GetArray(in ValueHash256 key, Hash256? rootHash = null)
-        {
-            ReadOnlySpan<byte> rawKey = key.Bytes;
-            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
-
-            if (value.IsEmpty)
-            {
-                return ZeroBytes;
-            }
-
-            RlpReader rlp = new(value);
-            return rlp.DecodeByteArray();
-        }
-
         public void Commit() => Commit(false, WriteFlags.None);
 
         public void Clear() => RootHash = EmptyTreeHash;
