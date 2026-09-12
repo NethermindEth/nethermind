@@ -539,6 +539,13 @@ jobs:
             )
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
             echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
+
+            # Every for_bogota fixture states inclusionListSatisfied, so a release that stopped stating it
+            # would leave the EIP-7805 fork-choice rule uncovered with the lane still green. An explicit
+            # `filter` input may legitimately narrow the run to nothing, so it opts out.
+            if [ -z "$FILTER" ]; then
+              echo "min_il_assertions=1" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
@@ -555,6 +562,7 @@ jobs:
           EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
           RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
           EXTRA_FILTER: ${{ steps.fixtures.outputs.extra_filter }}
+          MIN_IL_ASSERTIONS: ${{ steps.fixtures.outputs.min_il_assertions }}
         run: |
           # Empty for every test type that declares no known-failure exclusions.
           [ -z "$FILTER" ] && FILTER="$EXTRA_FILTER"
@@ -572,6 +580,10 @@ jobs:
           fi
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
+          fi
+          # Tripwire against fixtures that stop stating inclusionListSatisfied; see the fixtures step.
+          if [ -n "$MIN_IL_ASSERTIONS" ]; then
+            SETUP_ARGS="$SETUP_ARGS --minFcuInclusionListAssertions $MIN_IL_ASSERTIONS"
           fi
 
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"

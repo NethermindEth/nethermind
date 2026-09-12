@@ -5,6 +5,8 @@
 
 using System;
 using Ethereum.Test.Base;
+using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -12,7 +14,9 @@ namespace Ethereum.Basic.Test;
 
 // EIP-7805 compliance is reported twice: by engine_newPayloadV6 and again by the fork-choice update to
 // that head. The harness only ever asserted the first, so the fork-choice rule had no fixture coverage.
+// The assertion counter is process-wide, so these cases measure it one at a time.
 [TestFixture]
+[NonParallelizable]
 public class EngineInclusionListExpectationTests
 {
     private const string Unasserted = "unasserted";
@@ -40,4 +44,31 @@ public class EngineInclusionListExpectationTests
         Assert.That(() => JsonToEthereumTest.TryParseForkchoiceInclusionListSatisfied(
                 _serializer.Deserialize<TestEngineNewPayloadsJson>("""{"forkchoiceUpdatedInclusionListSatisfied": "yes"}"""), out _),
             Throws.TypeOf<FormatException>());
+
+    [TestCase("{}", true, ExpectedResult = null, TestName = "Silent fixture accepts any answer")]
+    [TestCase("""{"inclusionListSatisfied": true}""", true, ExpectedResult = null, TestName = "Reported value matches")]
+    [TestCase("""{"inclusionListSatisfied": true}""", false, ExpectedResult = "engine_forkchoiceUpdatedV5 reported inclusionListSatisfied=False, expected True", TestName = "Reported value contradicts")]
+    [TestCase("""{"inclusionListSatisfied": true}""", null, ExpectedResult = "engine_forkchoiceUpdatedV5 reported inclusionListSatisfied=null, expected True", TestName = "Field absent where one was expected")]
+    [TestCase("""{"inclusionListSatisfied": true, "forkchoiceUpdatedInclusionListSatisfied": null}""", null, ExpectedResult = null, TestName = "Field absent as demanded")]
+    public string? Forkchoice_response_is_checked_against_the_fixture(string json, bool? reported) =>
+        BlockchainTestBase.DescribeFcuInclusionListMismatch(ForkchoiceResponse(reported), _serializer.Deserialize<TestEngineNewPayloadsJson>(json), fcuVersion: 5);
+
+    // A release that dropped the field would leave the rule uncovered with every test still green, so the
+    // FOCIL lane gates on how many checks actually ran.
+    [TestCase("{}", ExpectedResult = 0, TestName = "Silent fixture is not counted")]
+    [TestCase("""{"newPayloadVersion": "6"}""", ExpectedResult = 0, TestName = "Pre-EIP-7805 fixture is not counted")]
+    [TestCase("""{"inclusionListSatisfied": true}""", ExpectedResult = 1, TestName = "Inherited expectation is counted")]
+    [TestCase("""{"forkchoiceUpdatedInclusionListSatisfied": null}""", ExpectedResult = 1, TestName = "Absent-field expectation is counted")]
+    public long Only_the_checks_that_run_are_counted(string json)
+    {
+        long before = BlockchainTestBase.FcuInclusionListAssertionCount;
+        BlockchainTestBase.DescribeFcuInclusionListMismatch(ForkchoiceResponse(true), _serializer.Deserialize<TestEngineNewPayloadsJson>(json), fcuVersion: 5);
+        return BlockchainTestBase.FcuInclusionListAssertionCount - before;
+    }
+
+    private static ResultWrapper<ForkchoiceUpdatedV2Result> ForkchoiceResponse(bool? inclusionListSatisfied) =>
+        ResultWrapper<ForkchoiceUpdatedV2Result>.Success(new ForkchoiceUpdatedV2Result
+        {
+            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, InclusionListSatisfied = inclusionListSatisfied }
+        });
 }

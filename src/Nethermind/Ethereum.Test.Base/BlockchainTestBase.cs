@@ -56,6 +56,19 @@ public abstract class BlockchainTestBase
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
 
+    private static long _fcuInclusionListAssertions;
+
+    /// <summary>
+    /// How many fork-choice responses have had their <c>inclusionListSatisfied</c> asserted in this process
+    /// (EIP-7805), counted across every test run so far.
+    /// </summary>
+    /// <remarks>
+    /// A fixture that states no expectation leaves the response unasserted, so a fixture release that stopped
+    /// stating one would return this rule to zero coverage with the lane still green. A run that is supposed
+    /// to cover the rule gates on this being non-zero — see nethtest's <c>--minFcuInclusionListAssertions</c>.
+    /// </remarks>
+    public static long FcuInclusionListAssertionCount => Volatile.Read(ref _fcuInclusionListAssertions);
+
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
     /// Null means use the default config value.
@@ -496,7 +509,9 @@ public abstract class BlockchainTestBase
                             CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                         }
 
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                        JsonRpcResponse fcuResponse = await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString());
+                        AssertRpcSuccess(fcuResponse);
+                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
                     }
                 }
                 else
@@ -612,24 +627,33 @@ public abstract class BlockchainTestBase
     }
 
     /// <summary>
-    /// Asserts the inclusion-list compliance reported by the fork-choice update that follows a payload,
-    /// when the fixture states an expectation for it (EIP-7805).
+    /// Describes why the inclusion-list compliance reported by the fork-choice update that follows a payload
+    /// contradicts the fixture (EIP-7805), or null when it matches or the fixture states no expectation.
     /// </summary>
     /// <remarks>
-    /// A response that is not of the V5 shape reads as an absent field rather than an error: answering a
-    /// fixture that expects a value with an older fork-choice version is itself the failure.
+    /// Counts every expectation it checks in <see cref="FcuInclusionListAssertionCount"/>, so a run can tell
+    /// the rule holding apart from the fixtures having stopped stating it. A response that is not of the V5
+    /// shape reads as an absent field, so a boolean expectation answered by an older fork-choice version
+    /// fails; a null expectation cannot tell that apart from V5 answering null, which is harmless while every
+    /// fixture stating one runs against V5.
     /// </remarks>
-    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
+    internal static string? DescribeFcuInclusionListMismatch(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
     {
-        if (!JsonToEthereumTest.TryParseForkchoiceInclusionListSatisfied(enginePayload, out bool? expected)) return;
+        if (!JsonToEthereumTest.TryParseForkchoiceInclusionListSatisfied(enginePayload, out bool? expected)) return null;
+
+        Interlocked.Increment(ref _fcuInclusionListAssertions);
 
         bool? actual = (response as IResultWrapper)?.Data is ForkchoiceUpdatedV2Result result
             ? result.PayloadStatus.InclusionListSatisfied
             : null;
 
-        Assert.That(actual, Is.EqualTo(expected),
-            $"engine_forkchoiceUpdatedV{fcuVersion} reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected?.ToString() ?? "null"}");
+        return actual == expected
+            ? null
+            : $"engine_forkchoiceUpdatedV{fcuVersion} reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected?.ToString() ?? "null"}";
     }
+
+    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>
+        Assert.That(DescribeFcuInclusionListMismatch(response, enginePayload, fcuVersion), Is.Null);
 
     private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
     {
