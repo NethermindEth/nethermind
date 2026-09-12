@@ -31,6 +31,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     }
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
+    public bool IsCollectingLogs => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;

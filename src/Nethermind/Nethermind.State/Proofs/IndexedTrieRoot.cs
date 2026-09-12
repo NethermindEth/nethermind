@@ -51,7 +51,7 @@ internal static class IndexedTrieRoot
             TEncoder leafEncoder = encoder;
             try
             {
-                Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16, batch =>
+                Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsLogicalCores, batch =>
                 {
                     Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
                     int start = batch * LeafBatchSize;

@@ -54,6 +54,29 @@ namespace Nethermind.Blockchain.Test;
 public class BlockProcessorTests
 {
     [Test]
+    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+        Transaction tx = Build.A.Transaction.WithTo(null)
+            .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        Block block = await chain.AddBlock(tx);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].Logs, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+            Assert.That(receipts[0].Bloom, Is.Not.EqualTo(Bloom.Empty));
+            Assert.That(block.Header.Bloom, Is.Not.EqualTo(Bloom.Empty));
+        }
+    }
+
+    [Test]
     public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
