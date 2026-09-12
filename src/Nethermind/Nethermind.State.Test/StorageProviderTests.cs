@@ -261,10 +261,12 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Original_value_cache_ends_with_the_capture_round([Values] bool write, [Values] bool reset)
+    public void Original_value_cache_ends_with_the_capture_round([Values] bool write, [Values] bool reset, [Values(1U, uint.MaxValue)] uint round)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
+        typeof(PersistentStorageProvider).GetField("_originalsRound", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(provider._persistentStorageProvider, round);
         StorageCell cell = new(ctx.Address1, 1);
         provider.Get(in cell, out _);
         provider.GetOriginal(in cell, out UInt256 original);

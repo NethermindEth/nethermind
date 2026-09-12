@@ -1028,7 +1028,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (valueChange.CapturedRound != round)
             {
                 provider.CaptureOriginalValue(storageCell, valueChange.After);
-                valueChange = valueChange.WithCapturedRound(round);
+                valueChange.SetCapturedRound(round);
             }
 
             value = valueChange.After;
@@ -1177,7 +1177,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         return Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..];
     }
 
-    private readonly struct StorageChangeTrace
+    private struct StorageChangeTrace
     {
         public static readonly StorageChangeTrace _zeroBytes = new(UInt256.Zero, UInt256.Zero);
         public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
@@ -1195,19 +1195,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             IsInitialValue = true;
         }
 
-        private StorageChangeTrace(in UInt256 before, in UInt256 after, bool isInitialValue, uint capturedRound)
-        {
-            Before = before;
-            After = after;
-            IsInitialValue = isInitialValue;
-            CapturedRound = capturedRound;
-        }
-
-        public StorageChangeTrace WithCapturedRound(uint round) => new(Before, After, IsInitialValue, round);
+        public void SetCapturedRound(uint round) => CapturedRound = round;
 
         public readonly UInt256 Before;
         public readonly UInt256 After;
         public readonly bool IsInitialValue;
-        public readonly uint CapturedRound;
+        public uint CapturedRound;
     }
 }
