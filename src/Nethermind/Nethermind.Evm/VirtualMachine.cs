@@ -1281,18 +1281,28 @@ public partial class VirtualMachine<TGasPolicy>(
         // gas/state-gas accounting without needing interpreter-wide exception handling.
         ref TGasPolicy gas = ref vmState.Gas;
 
-        // Instruction tracing must observe every opcode, so templates are only skipped without it.
+        // Instruction tracing must observe every opcode, so templates are only skipped without it. A
+        // template also stays unused until its skipped opcodes exist: the dispatch loop maps an opcode
+        // introduced by a later fork to BadInstruction, and skipping past one would execute code that
+        // the fork in force says must halt. Both flags are fixed for the transaction, so a frame that
+        // enters through a fast path always finishes through it.
         if (!TTracingInst.IsActive && !ReferenceEquals(env.CodeInfo.Template, CodeTemplate.None))
         {
-            if (env.CodeInfo.Template.MinimalProxyTarget is { } proxyTarget)
+            IReleaseSpec spec = Spec;
+            if (env.CodeInfo.Template.MinimalProxy is { } proxy)
             {
-                if (vmState.IsContinuation)
-                    return CompleteMinimalProxy(vmState, previousCallResult.Success.GetValueOrDefault(), ref gas);
+                // The forwarding preamble is built from RETURNDATASIZE, and bubbles failure with REVERT.
+                if (spec.ReturnDataOpcodesEnabled)
+                {
+                    if (vmState.IsContinuation)
+                        return CompleteMinimalProxy(vmState, proxy, previousCallResult.Success.GetValueOrDefault(), ref gas);
 
-                EvmExceptionType proxyEntry = EnterMinimalProxy(vmState, proxyTarget, ref stack, ref gas);
-                if (proxyEntry != EvmExceptionType.None) goto ProxyFailure;
+                    EvmExceptionType proxyEntry = EnterMinimalProxy(vmState, proxy, env.CodeInfo.Template.MinimalProxyTarget!, ref stack, ref gas);
+                    if (proxyEntry != EvmExceptionType.None) goto ProxyFailure;
+                }
             }
-            else if (!vmState.IsContinuation)
+            // The dispatcher extracts its selector with SHR.
+            else if (!vmState.IsContinuation && spec.ShiftOpcodesEnabled)
             {
                 TryEnterFunctionBody(vmState, ref stack, ref gas);
             }
@@ -1362,13 +1372,13 @@ public partial class VirtualMachine<TGasPolicy>(
     /// account access, EIP-7702 delegation and the 63/64 gas reservation keep following the fork's rules
     /// rather than a copy of them.
     /// </remarks>
-    private static EvmExceptionType EnterMinimalProxy(VmState<TGasPolicy> vmState, Address target, ref EvmStack stack, ref TGasPolicy gas)
+    private static EvmExceptionType EnterMinimalProxy(VmState<TGasPolicy> vmState, MinimalProxy proxy, Address target, ref EvmStack stack, ref TGasPolicy gas)
     {
         ExecutionEnvironment env = vmState.Env;
         ReadOnlySpan<byte> callData = env.InputData.Span;
         UInt256 callDataLength = (UInt256)(ulong)callData.Length;
 
-        if (!TGasPolicy.UpdateGas(ref gas, MinimalProxy.GasBeforeCall)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.UpdateGas(ref gas, proxy.GasBeforeCall)) return EvmExceptionType.OutOfGas;
 
         // CALLDATACOPY(0, 0, CALLDATASIZE), whose base cost is already part of GasBeforeCall.
         if (!TGasPolicy.TryConsumeMemoryCopy(ref gas, EvmCalculations.Div32Ceiling(in callDataLength, out _)))
@@ -1382,11 +1392,15 @@ public partial class VirtualMachine<TGasPolicy>(
             vmState.Memory.CopyFromZeroExtendedAfterGas(UInt256.Zero, callData, UInt256.Zero, callData.Length);
         }
 
-        // The skipped opcodes leave seven words: DELEGATECALL(GAS, target, 0, CALLDATASIZE, 0, 0) consumes
-        // six, and the seventh stays behind as the offset the trailing RETURN and REVERT both read. The GAS
-        // operand is the gas remaining at this point, which is what the skipped GAS opcode would push.
+        // Beneath DELEGATECALL(GAS, target, 0, CALLDATASIZE, 0, 0)'s six operands the preamble leaves the
+        // variant's own leading words, which the trailing RETURN and REVERT read as their offset and size.
+        // The GAS operand is the gas remaining here, which is what the skipped GAS opcode would push.
+        for (int i = 0; i < proxy.LeadingWords; i++)
+        {
+            if (stack.PushZero<OffFlag, OnFlag>() != EvmExceptionType.None) return EvmExceptionType.StackOverflow;
+        }
+
         if (stack.PushZero<OffFlag, OnFlag>() != EvmExceptionType.None ||
-            stack.PushZero<OffFlag, OnFlag>() != EvmExceptionType.None ||
             stack.PushZero<OffFlag, OnFlag>() != EvmExceptionType.None ||
             stack.PushUInt256<OffFlag>(in callDataLength) != EvmExceptionType.None ||
             stack.PushZero<OffFlag, OnFlag>() != EvmExceptionType.None ||
@@ -1396,7 +1410,7 @@ public partial class VirtualMachine<TGasPolicy>(
             return EvmExceptionType.StackOverflow;
         }
 
-        vmState.ProgramCounter = MinimalProxy.DelegateCallProgramCounter;
+        vmState.ProgramCounter = proxy.DelegateCallProgramCounter;
         return EvmExceptionType.None;
     }
 
@@ -1409,11 +1423,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// the bytes the RETURN immediately hands back — so the copy is charged but not performed, and the
     /// return buffer is bubbled up directly.
     /// </remarks>
-    private CallResult CompleteMinimalProxy(VmState<TGasPolicy> vmState, bool success, ref TGasPolicy gas)
+    private CallResult CompleteMinimalProxy(VmState<TGasPolicy> vmState, MinimalProxy proxy, bool success, ref TGasPolicy gas)
     {
         UInt256 returnDataLength = (UInt256)(ulong)ReturnDataBuffer.Length;
 
-        if (!TGasPolicy.UpdateGas(ref gas, MinimalProxy.GasAfterCall) ||
+        if (!TGasPolicy.UpdateGas(ref gas, proxy.GasAfterCall) ||
             !TGasPolicy.TryConsumeMemoryCopy(ref gas, EvmCalculations.Div32Ceiling(in returnDataLength, out _)))
             goto OutOfGas;
 
@@ -1456,7 +1470,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (dispatch.RejectsCallValue && !env.Value.IsZero) return;
 
         uint selector = BinaryPrimitives.ReadUInt32BigEndian(input);
-        if (!dispatch.TryResolve(selector, out int programCounter, out ulong gasCost)) return;
+        if (!dispatch.TryResolve(selector, !env.Value.IsZero, out int programCounter, out ulong gasCost)) return;
 
         // Checked up front so the charge below cannot fail once the frame has been moved to the body.
         if (TGasPolicy.GetRemainingGas(in gas) < gasCost) return;

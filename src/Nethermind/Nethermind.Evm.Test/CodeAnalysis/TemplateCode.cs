@@ -34,6 +34,18 @@ public static class TemplateCode
     ];
 
     /// <summary>
+    /// The 44-byte "0age" forwarder: four RETURNDATASIZE, CALLDATASIZE RETURNDATASIZE RETURNDATASIZE
+    /// CALLDATACOPY, CALLDATASIZE RETURNDATASIZE PUSH20 target GAS DELEGATECALL, then RETURNDATASIZE
+    /// RETURNDATASIZE SWAP4 DUP1 RETURNDATACOPY PUSH1 0x2a JUMPI REVERT JUMPDEST RETURN.
+    /// </summary>
+    public static byte[] AgeMinimalProxy(Address target) =>
+    [
+        0x3d, 0x3d, 0x3d, 0x3d, 0x36, 0x3d, 0x3d, 0x37, 0x36, 0x3d, 0x73,
+        .. target.Bytes,
+        0x5a, 0xf4, 0x3d, 0x3d, 0x93, 0x80, 0x3e, 0x60, 0x2a, 0x57, 0xfd, 0x5b, 0xf3,
+    ];
+
+    /// <summary>
     /// A minimal proxy that behaves identically and costs identical gas, but is not recognized, so a
     /// benchmark can compare the fast path against the dispatch loop without a runtime switch.
     /// </summary>
@@ -52,6 +64,10 @@ public static class TemplateCode
     /// Builds the Solidity preamble, the requested routing shape over <paramref name="selectors"/>, a
     /// reverting fallback, and a <c>JUMPDEST STOP</c> body per selector.
     /// </summary>
+    /// <param name="perFunctionCallValueGuard">
+    /// When <see langword="true"/>, each body opens with its own non-payable guard, as solc emits when
+    /// some other function in the contract is payable.
+    /// </param>
     /// <param name="recognized">
     /// When <see langword="false"/>, the leading <c>PUSH1 0x80</c> is emitted as <c>PUSH2 0x0080</c>:
     /// identical behaviour and gas, but a preamble the template match rejects, which lets a benchmark
@@ -61,7 +77,8 @@ public static class TemplateCode
         uint[] selectors,
         bool withCallValueGuard,
         DispatchShape shape = DispatchShape.Linear,
-        bool recognized = true)
+        bool recognized = true,
+        bool perFunctionCallValueGuard = false)
     {
         List<byte> code = recognized
             ? [(byte)Instruction.PUSH1, 0x80, (byte)Instruction.PUSH1, 0x40, (byte)Instruction.MSTORE]
@@ -109,7 +126,18 @@ public static class TemplateCode
         {
             bodies[selector] = code.Count;
             Patch(code, bodyPatches[selector], code.Count);
-            code.AddRange([(byte)Instruction.JUMPDEST, (byte)Instruction.STOP]);
+            code.Add((byte)Instruction.JUMPDEST);
+
+            if (perFunctionCallValueGuard)
+            {
+                // CALLVALUE DUP1 ISZERO PUSH2 body JUMPI PUSH1 0x00 DUP1 REVERT JUMPDEST POP
+                code.AddRange([(byte)Instruction.CALLVALUE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO]);
+                code.AddRange(Push2(code.Count + 8));
+                code.AddRange([(byte)Instruction.JUMPI, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.DUP1, (byte)Instruction.REVERT]);
+                code.AddRange([(byte)Instruction.JUMPDEST, (byte)Instruction.POP]);
+            }
+
+            code.Add((byte)Instruction.STOP);
         }
 
         return new Dispatcher([.. code], bodies, fallback);

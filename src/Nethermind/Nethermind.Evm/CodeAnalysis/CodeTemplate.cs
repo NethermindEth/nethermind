@@ -19,14 +19,21 @@ internal sealed class CodeTemplate
 {
     private CodeTemplate() { }
 
-    private CodeTemplate(Address minimalProxyTarget) => MinimalProxyTarget = minimalProxyTarget;
+    private CodeTemplate(MinimalProxy minimalProxy, Address minimalProxyTarget)
+    {
+        MinimalProxy = minimalProxy;
+        MinimalProxyTarget = minimalProxyTarget;
+    }
 
     private CodeTemplate(SelectorDispatch selectorDispatch) => SelectorDispatch = selectorDispatch;
 
     /// <summary>The shared result for code matching no template, so a resolved-but-empty lookup needs no allocation.</summary>
     public static CodeTemplate None { get; } = new();
 
-    /// <summary>The delegation target when the code is an EIP-1167 minimal proxy; otherwise <see langword="null"/>.</summary>
+    /// <summary>The matched forwarder shape when the code is a minimal proxy; otherwise <see langword="null"/>.</summary>
+    public MinimalProxy? MinimalProxy { get; }
+
+    /// <summary>The delegation target when the code is a minimal proxy; otherwise <see langword="null"/>.</summary>
     public Address? MinimalProxyTarget { get; }
 
     /// <summary>The resolved function-selector table when the code opens with a Solidity dispatcher; otherwise <see langword="null"/>.</summary>
@@ -41,8 +48,8 @@ internal sealed class CodeTemplate
     /// </remarks>
     public static CodeTemplate Recognize(ReadOnlySpan<byte> code, Func<int, bool> isValidJumpDestination)
     {
-        Address? proxyTarget = MinimalProxy.TryMatch(code);
-        if (proxyTarget is not null) return new CodeTemplate(proxyTarget);
+        if (MinimalProxy.TryMatch(code, out MinimalProxy? proxy, out Address? proxyTarget))
+            return new CodeTemplate(proxy!, proxyTarget!);
 
         SelectorDispatch? dispatch = SelectorDispatch.TryMatch(code, isValidJumpDestination);
         return dispatch is not null ? new CodeTemplate(dispatch) : None;

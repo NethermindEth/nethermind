@@ -87,6 +87,54 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
             SelectorBytes(0xdeadbeef),
             UInt256.Zero);
 
+    /// <summary>
+    /// A contract whose functions carry their own non-payable guard rather than a contract-wide one, which
+    /// is what solc emits once any function is payable.
+    /// </summary>
+    [TestCase(0xa9059cbbu, 0UL, TestName = "Guarded function, no call value")]
+    [TestCase(0x70a08231u, 0UL, TestName = "Guarded function further down the chain")]
+    [TestCase(0xa9059cbbu, 1UL, TestName = "Guarded function rejects the call value")]
+    [TestCase(0xdeadbeefu, 0UL, TestName = "Unknown selector still reaches the fallback")]
+    public void Matches_the_dispatch_loop_for_per_function_call_value_guards(uint selector, ulong value) =>
+        AssertBothPathsAgree(
+            Nothing,
+            TemplateCode.SelectorDispatch(Selectors, withCallValueGuard: false, perFunctionCallValueGuard: true).Code,
+            SelectorBytes(selector),
+            value);
+
+    [Test]
+    public void Matches_the_dispatch_loop_for_per_function_guards_in_a_binary_search_tree()
+    {
+        byte[] code = TemplateCode.SelectorDispatch(
+            TreeSelectors, withCallValueGuard: false, DispatchShape.BinarySearch, perFunctionCallValueGuard: true).Code;
+
+        foreach (uint selector in TreeSelectors)
+        {
+            AssertBothPathsAgree(Nothing, code, SelectorBytes(selector), UInt256.Zero);
+        }
+    }
+
+    /// <summary>The shorter "0age" forwarder, which leaves a different stack and costs different gas.</summary>
+    [Test]
+    public void Matches_the_dispatch_loop_for_an_age_proxy_returning_data() =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.StoreDataInMemory(0, TestItem.KeccakA.BytesToArray()).Return(32, 0).Done),
+            TemplateCode.AgeMinimalProxy(Implementation), new byte[4], UInt256.Zero);
+
+    [Test]
+    public void Matches_the_dispatch_loop_for_an_age_proxy_that_reverts() =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.StoreDataInMemory(0, TestItem.KeccakA.BytesToArray()).Revert(32, 0).Done),
+            TemplateCode.AgeMinimalProxy(Implementation), new byte[4], UInt256.Zero);
+
+    [TestCase(0, TestName = "Empty calldata")]
+    [TestCase(31, TestName = "Calldata below one word")]
+    [TestCase(256, TestName = "Calldata spanning several words")]
+    public void Matches_the_dispatch_loop_for_an_age_proxy_across_calldata_sizes(int length) =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.Op(Instruction.STOP).Done),
+            TemplateCode.AgeMinimalProxy(Implementation), new byte[length], UInt256.Zero);
+
     [Test]
     public void Matches_the_dispatch_loop_when_the_proxy_target_returns_data() =>
         AssertProxyPathsAgree(Prepare.EvmCode.StoreDataInMemory(0, TestItem.KeccakA.BytesToArray()).Return(32, 0).Done);
@@ -135,6 +183,29 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
     public void Matches_the_dispatch_loop_when_a_proxy_forwards_into_a_dispatcher() =>
         AssertProxyPathsAgree(Dispatcher(withCallValueGuard: true), SelectorBytes(Selectors[1]));
 
+    /// <summary>
+    /// A template's opcodes only exist from a given fork, and before it the dispatch loop halts on them.
+    /// Skipping past an opcode the fork in force rejects would run code that must not run, so these pin
+    /// both templates against the interpreter on the forks either side of their introduction.
+    /// </summary>
+    [Test]
+    public void Matches_the_dispatch_loop_for_a_proxy_before_return_data_opcodes_exist() =>
+        AssertBothPathsAgree(
+            () => Deploy(Implementation, Prepare.EvmCode.Op(Instruction.STOP).Done),
+            TemplateCode.MinimalProxy(Implementation),
+            new byte[4],
+            UInt256.Zero,
+            MainnetSpecProvider.SpuriousDragonBlockNumber);
+
+    [Test]
+    public void Matches_the_dispatch_loop_for_a_dispatcher_before_shift_opcodes_exist() =>
+        AssertBothPathsAgree(
+            Nothing,
+            Dispatcher(withCallValueGuard: true),
+            SelectorBytes(Selectors[0]),
+            UInt256.Zero,
+            MainnetSpecProvider.ByzantiumBlockNumber);
+
     private static void Nothing() { }
 
     private void AssertProxyPathsAgree(byte[] implementation, byte[]? input = null) =>
@@ -156,13 +227,15 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
     private static byte[] SelectorBytes(uint selector) =>
         [(byte)(selector >> 24), (byte)(selector >> 16), (byte)(selector >> 8), (byte)selector];
 
-    private void AssertBothPathsAgree(Action deploy, byte[] code, byte[] input, UInt256 value)
+    private void AssertBothPathsAgree(Action deploy, byte[] code, byte[] input, UInt256 value, ulong? blockNumber = null)
     {
+        ForkActivation activation = blockNumber is { } number ? new ForkActivation(number) : Activation;
+
         CallOutputTracer fastPath = new();
-        RunFromFreshState(deploy, code, input, value, fastPath);
+        RunFromFreshState(deploy, code, input, value, fastPath, activation);
 
         InstructionTracingCallOutputTracer dispatchLoop = new();
-        RunFromFreshState(deploy, code, input, value, dispatchLoop);
+        RunFromFreshState(deploy, code, input, value, dispatchLoop, activation);
 
         Assert.Multiple(() =>
         {
@@ -173,13 +246,13 @@ public class CodeTemplateEquivalenceTests : VirtualMachineTestsBase
         });
     }
 
-    private void RunFromFreshState(Action deploy, byte[] code, byte[] input, UInt256 value, ITxTracer tracer)
+    private void RunFromFreshState(Action deploy, byte[] code, byte[] input, UInt256 value, ITxTracer tracer, ForkActivation activation)
     {
         TearDown();
         Setup();
         deploy();
 
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code, input, value);
+        (Block block, Transaction transaction) = PrepareTx(activation, 100_000UL, code, input, value);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
     }
 

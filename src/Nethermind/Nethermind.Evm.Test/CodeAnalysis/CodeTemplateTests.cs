@@ -16,6 +16,16 @@ public class CodeTemplateTests
     private static readonly Address ProxyTarget = TestItem.AddressC;
 
     [Test]
+    public void Recognizes_the_age_minimal_proxy_and_its_target()
+    {
+        CodeTemplate template = new CodeInfo(TemplateCode.AgeMinimalProxy(ProxyTarget)).Template;
+
+        Assert.That(template.MinimalProxyTarget, Is.EqualTo(ProxyTarget));
+        Assert.That(template.MinimalProxy, Is.Not.Null);
+        Assert.That(template.SelectorDispatch, Is.Null);
+    }
+
+    [Test]
     public void Recognizes_canonical_minimal_proxy_and_its_target()
     {
         CodeTemplate template = new CodeInfo(TemplateCode.MinimalProxy(ProxyTarget)).Template;
@@ -57,7 +67,7 @@ public class CodeTemplateTests
         Assert.That(dispatch!.RejectsCallValue, Is.EqualTo(withCallValueGuard));
         foreach (uint selector in selectors)
         {
-            Assert.That(dispatch.TryResolve(selector, out int programCounter, out _), Is.True);
+            Assert.That(dispatch.TryResolve(selector, hasCallValue: false, out int programCounter, out _), Is.True);
             Assert.That(programCounter, Is.EqualTo(dispatcher.Bodies[selector]));
         }
     }
@@ -67,7 +77,7 @@ public class CodeTemplateTests
     {
         TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch([0xa9059cbb], withCallValueGuard: true);
 
-        Assert.That(new CodeInfo(dispatcher.Code).Template.SelectorDispatch!.TryResolve(0xdeadbeef, out _, out _), Is.False);
+        Assert.That(new CodeInfo(dispatcher.Code).Template.SelectorDispatch!.TryResolve(0xdeadbeef, hasCallValue: false, out _, out _), Is.False);
     }
 
     [Test]
@@ -100,7 +110,7 @@ public class CodeTemplateTests
         Assert.That(dispatch, Is.Not.Null);
         foreach (uint selector in selectors)
         {
-            Assert.That(dispatch!.TryResolve(selector, out int programCounter, out _), Is.True, $"selector {selector:x8}");
+            Assert.That(dispatch!.TryResolve(selector, hasCallValue: false, out int programCounter, out _), Is.True, $"selector {selector:x8}");
             Assert.That(programCounter, Is.EqualTo(dispatcher.Bodies[selector]));
         }
     }
@@ -122,6 +132,38 @@ public class CodeTemplateTests
         code[rootPivot + 3] = 0x01;
 
         Assert.That(new CodeInfo(code).Template.SelectorDispatch, Is.Null);
+    }
+
+    [Test]
+    public void Resumes_past_a_function_s_own_call_value_guard()
+    {
+        uint[] selectors = [0xa9059cbb, 0x70a08231];
+        TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
+            selectors, withCallValueGuard: false, perFunctionCallValueGuard: true);
+
+        SelectorDispatch? dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch;
+
+        Assert.That(dispatch, Is.Not.Null);
+        foreach (uint selector in selectors)
+        {
+            Assert.That(dispatch!.TryResolve(selector, hasCallValue: false, out int programCounter, out _), Is.True);
+
+            // The guard is nine opcodes wide, so resuming past it must land beyond the body's JUMPDEST.
+            Assert.That(programCounter, Is.GreaterThan(dispatcher.Bodies[selector] + 1), "resumed inside the guard");
+            Assert.That(dispatcher.Code[programCounter], Is.EqualTo((byte)Instruction.STOP));
+        }
+    }
+
+    [Test]
+    public void Declines_a_guarded_function_when_the_call_carries_value()
+    {
+        TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
+            [0xa9059cbb], withCallValueGuard: false, perFunctionCallValueGuard: true);
+
+        SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch!;
+
+        Assert.That(dispatch.TryResolve(0xa9059cbb, hasCallValue: true, out _, out _), Is.False);
+        Assert.That(dispatch.TryResolve(0xa9059cbb, hasCallValue: false, out _, out _), Is.True);
     }
 
     /// <summary>Spreads selectors across the 32-bit space so a binary search over them has real depth.</summary>

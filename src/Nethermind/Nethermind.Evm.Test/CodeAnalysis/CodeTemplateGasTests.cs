@@ -34,17 +34,20 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
     /// <summary>RETURNDATACOPY of nothing still costs the opcode's base, with no word or expansion gas.</summary>
     private const ulong EmptyReturnDataCopyCost = GasCostOf.VeryLow;
 
-    [TestCase(0u)]
-    [TestCase(1u)]
-    [TestCase(2u)]
-    public void Dispatcher_reports_the_gas_the_interpreter_charges_to_reach_the_body(uint index)
+    [TestCase(0u, false)]
+    [TestCase(1u, false)]
+    [TestCase(2u, false)]
+    [TestCase(0u, true, TestName = "Body opens with its own call value guard")]
+    [TestCase(2u, true, TestName = "Guarded body further down the chain")]
+    public void Dispatcher_reports_the_gas_the_interpreter_charges_to_reach_the_body(uint index, bool perFunctionGuard)
     {
         uint[] selectors = [0xa9059cbb, 0x70a08231, 0x18160ddd];
-        TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(selectors, withCallValueGuard: true);
+        TemplateCode.Dispatcher dispatcher = TemplateCode.SelectorDispatch(
+            selectors, withCallValueGuard: !perFunctionGuard, perFunctionCallValueGuard: perFunctionGuard);
         uint selector = selectors[index];
 
         SelectorDispatch dispatch = new CodeInfo(dispatcher.Code).Template.SelectorDispatch!;
-        Assert.That(dispatch.TryResolve(selector, out int bodyProgramCounter, out ulong reportedGas), Is.True);
+        Assert.That(dispatch.TryResolve(selector, hasCallValue: false, out int bodyProgramCounter, out ulong reportedGas), Is.True);
 
         GethLikeTxTrace trace = TraceCall(dispatcher.Code, SelectorBytes(selector));
 
@@ -53,28 +56,29 @@ public class CodeTemplateGasTests : VirtualMachineTestsBase
         Assert.That(gasAtEntry - gasAtBody, Is.EqualTo(reportedGas));
     }
 
-    [Test]
-    public void Minimal_proxy_reports_the_gas_the_interpreter_charges_around_the_delegate_call()
+    [TestCase(false, 31, 44, TestName = "Canonical EIP-1167 runtime")]
+    [TestCase(true, 32, 43, TestName = "The shorter 0age runtime")]
+    public void Minimal_proxy_reports_the_gas_the_interpreter_charges_around_the_delegate_call(
+        bool age, int delegateCallProgramCounter, int returnProgramCounter)
     {
         byte[] implementation = Prepare.EvmCode.Op(Instruction.STOP).Done;
         TestState.CreateAccount(Implementation, UInt256.Zero);
         TestState.InsertCode(Implementation, implementation, SpecProvider.GenesisSpec);
-        byte[] code = TemplateCode.MinimalProxy(Implementation);
+        byte[] code = age ? TemplateCode.AgeMinimalProxy(Implementation) : TemplateCode.MinimalProxy(Implementation);
+
+        MinimalProxy proxy = new CodeInfo(code).Template.MinimalProxy!;
+        Assert.That(proxy.DelegateCallProgramCounter, Is.EqualTo(delegateCallProgramCounter));
 
         GethLikeTxTrace trace = TraceCall(code, SelectorBytes(0xa9059cbb));
 
         // The implementation stops without returning data, so the RETURNDATACOPY costs neither
         // word nor expansion gas and memory never grows past the calldata copy.
-        ulong beforeCall = GasAt(trace, programCounter: 0) - GasAt(trace, MinimalProxyDelegateCallProgramCounter);
-        Assert.That(beforeCall, Is.EqualTo(MinimalProxy.GasBeforeCall + SelectorOnlyCallDataCopyCost));
+        ulong beforeCall = GasAt(trace, programCounter: 0) - GasAt(trace, delegateCallProgramCounter);
+        Assert.That(beforeCall, Is.EqualTo(proxy.GasBeforeCall + SelectorOnlyCallDataCopyCost));
 
-        ulong afterCall = GasAt(trace, MinimalProxyReturnDataSizeProgramCounter) - GasAt(trace, MinimalProxyReturnProgramCounter);
-        Assert.That(afterCall, Is.EqualTo(MinimalProxy.GasAfterCall + EmptyReturnDataCopyCost + MinimalProxy.GasOnSuccess));
+        ulong afterCall = GasAt(trace, delegateCallProgramCounter + 1) - GasAt(trace, returnProgramCounter);
+        Assert.That(afterCall, Is.EqualTo(proxy.GasAfterCall + EmptyReturnDataCopyCost + MinimalProxy.GasOnSuccess));
     }
-
-    private const int MinimalProxyDelegateCallProgramCounter = 31;
-    private const int MinimalProxyReturnDataSizeProgramCounter = 32;
-    private const int MinimalProxyReturnProgramCounter = 44;
 
     private static byte[] SelectorBytes(uint selector) =>
         [(byte)(selector >> 24), (byte)(selector >> 16), (byte)(selector >> 8), (byte)selector];

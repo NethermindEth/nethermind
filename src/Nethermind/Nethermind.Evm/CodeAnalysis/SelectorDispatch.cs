@@ -42,12 +42,14 @@ internal sealed class SelectorDispatch
     private readonly uint[] _selectors;
     private readonly int[] _targets;
     private readonly ulong[] _gas;
+    private readonly bool[] _guarded;
 
-    private SelectorDispatch(uint[] selectors, int[] targets, ulong[] gas, bool rejectsCallValue)
+    private SelectorDispatch(uint[] selectors, int[] targets, ulong[] gas, bool[] guarded, bool rejectsCallValue)
     {
         _selectors = selectors;
         _targets = targets;
         _gas = gas;
+        _guarded = guarded;
         RejectsCallValue = rejectsCallValue;
     }
 
@@ -58,17 +60,22 @@ internal sealed class SelectorDispatch
     /// </remarks>
     public bool RejectsCallValue { get; }
 
-    /// <summary>Resolves a selector to the function body to resume at and the gas the skipped opcodes cost.</summary>
+    /// <summary>Resolves a selector to the code to resume at and the gas the skipped opcodes cost.</summary>
     /// <param name="selector">The leading four calldata bytes, big-endian.</param>
-    /// <param name="programCounter">The matched function body's JUMPDEST offset.</param>
-    /// <param name="gasCost">Gas consumed by the preamble and every comparison on the selector's path.</param>
-    /// <returns><see langword="false"/> when no entry matches, which means the code would fall through to its fallback.</returns>
-    public bool TryResolve(uint selector, out int programCounter, out ulong gasCost)
+    /// <param name="hasCallValue">Whether the frame carries a non-zero value.</param>
+    /// <param name="programCounter">Where to resume: the function body, past its own non-payable guard when it has one.</param>
+    /// <param name="gasCost">Gas consumed by the preamble, every comparison on the selector's path, and any guard skipped.</param>
+    /// <returns>
+    /// <see langword="false"/> when no entry matches — the code would fall through to its fallback — or when the
+    /// matched function's own guard would reject the call's value, which leaves the dispatch loop to run the revert.
+    /// </returns>
+    public bool TryResolve(uint selector, bool hasCallValue, out int programCounter, out ulong gasCost)
     {
         uint[] selectors = _selectors;
         for (int i = 0; i < selectors.Length; i++)
         {
             if (selectors[i] != selector) continue;
+            if (hasCallValue && _guarded[i]) break;
 
             programCounter = _targets[i];
             gasCost = _gas[i];
@@ -116,18 +123,20 @@ internal sealed class SelectorDispatch
         uint[] selectors = new uint[entries.Count];
         int[] targets = new int[entries.Count];
         ulong[] gas = new ulong[entries.Count];
+        bool[] guarded = new bool[entries.Count];
         for (int i = 0; i < entries.Count; i++)
         {
             selectors[i] = entries[i].Selector;
             targets[i] = entries[i].Target;
             gas[i] = entries[i].Gas;
+            guarded[i] = entries[i].Guarded;
         }
 
-        return new SelectorDispatch(selectors, targets, gas, rejectsCallValue);
+        return new SelectorDispatch(selectors, targets, gas, guarded, rejectsCallValue);
     }
 
-    /// <summary>One selector's resolved body and the gas consumed reaching it.</summary>
-    private readonly record struct Entry(uint Selector, int Target, ulong Gas);
+    /// <summary>One selector's resolved body, the gas consumed reaching it, and whether it rejects call value.</summary>
+    private readonly record struct Entry(uint Selector, int Target, ulong Gas, bool Guarded);
 
     /// <summary>
     /// Parses one node of the comparison structure: either a pivot test that splits into two subtrees, or
@@ -190,12 +199,54 @@ internal sealed class SelectorDispatch
         {
             if (!isValidJumpDestination(target)) return false;
 
-            gas += ComparisonGas;
-            entries.Add(new Entry(selector, target, gas));
+            ulong bodyGas = gas + ComparisonGas;
+            bool guarded = TrySkipFunctionCallValueGuard(code, isValidJumpDestination, ref target, ref bodyGas);
+            entries.Add(new Entry(selector, target, bodyGas, guarded));
             matched++;
+            gas += ComparisonGas;
         }
 
         return matched > 0;
+    }
+
+    /// <summary>
+    /// Consumes a function's own non-payable guard when one opens its body, advancing past it.
+    /// </summary>
+    /// <remarks>
+    /// solc emits this per function instead of contract-wide whenever some other function is payable.
+    /// The guard reverts a value-bearing call, so an entry carrying one is only resolved for frames with
+    /// no value; on that path the guard's opcodes all run and are charged here. The resume point is past
+    /// the trailing POP that drops the duplicated call value, leaving the body's expected stack.
+    /// </remarks>
+    private static bool TrySkipFunctionCallValueGuard(
+        ReadOnlySpan<byte> code,
+        Func<int, bool> isValidJumpDestination,
+        ref int target,
+        ref ulong gas)
+    {
+        Reader reader = new(code) { Position = target };
+
+        // JUMPDEST CALLVALUE DUP1 ISZERO PUSH<n> body JUMPI PUSH1 0x00 DUP1 REVERT
+        if (!reader.TryOpcode(Instruction.JUMPDEST) ||
+            !reader.TryOpcode(Instruction.CALLVALUE) ||
+            !reader.TryOpcode(Instruction.DUP1) ||
+            !reader.TryOpcode(Instruction.ISZERO) ||
+            !reader.TryPushJumpTarget(out int body) ||
+            !reader.TryOpcode(Instruction.JUMPI)) return false;
+
+        // The revert arm is jumped over, so its opcodes are skipped rather than charged.
+        if (!reader.TrySkipPush1(0) ||
+            !reader.TrySkipOpcode(Instruction.DUP1) ||
+            !reader.TrySkipOpcode(Instruction.REVERT)) return false;
+
+        if (body != reader.Position || !isValidJumpDestination(body)) return false;
+
+        if (!reader.TryOpcode(Instruction.JUMPDEST) ||
+            !reader.TryOpcode(Instruction.POP)) return false;
+
+        target = reader.Position;
+        gas += reader.Gas;
+        return true;
     }
 
     /// <summary>Reads a DUP1 PUSH4 &lt;operand&gt; &lt;comparison&gt; PUSH&lt;n&gt; &lt;target&gt; JUMPI node.</summary>
