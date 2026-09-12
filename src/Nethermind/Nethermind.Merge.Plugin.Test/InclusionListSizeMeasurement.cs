@@ -11,9 +11,11 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -29,7 +31,8 @@ namespace Nethermind.Merge.Plugin.Test;
 /// per line — the form <c>eth_getRawTransactionByHash</c> returns — named by the <c>NETHERMIND_IL_TX_CORPUS</c>
 /// environment variable. Each entry is re-encoded through <see cref="InclusionListDecoder.EncodePooled"/> and
 /// checked byte-for-byte against the captured bytes, so the reported sizes are the builder's own units rather
-/// than a second encoder's.
+/// than a second encoder's. Blob transactions are dropped and their count reported, since the builder's
+/// snapshot cannot reach them.
 ///
 /// The list count comes from running <see cref="InclusionListBuilder"/> itself over a pool of one transaction
 /// per sender, which is the shape a live pool's ready set overwhelmingly takes. The builder draws senders
@@ -43,7 +46,7 @@ public class InclusionListSizeMeasurement
     private const int Draws = 2000;
     private const int SszOffsetBytes = 4;
 
-    // Below this fraction of the cap, a draw is corpus-bound rather than cap-bound and proves nothing.
+    // Below this fraction of the cap, the average draw is corpus-bound rather than cap-bound and proves nothing.
     private const double MinSaturationFraction = 0.95;
 
     [Test]
@@ -84,15 +87,11 @@ public class InclusionListSizeMeasurement
         InclusionListBuilder builder = BuildBuilder(PoolOfOneTxPerSender(txs));
         int[] counts = new int[Draws];
         long totalBytes = 0;
-        long maxBytes = 0;
         for (int i = 0; i < Draws; i++)
         {
             using InclusionListBytes list = builder.GetInclusionList();
             counts[i] = list.Count;
-            long listBytes = 0;
-            foreach (ArrayPoolList<byte> entry in list) listBytes += entry.Count;
-            totalBytes += listBytes;
-            if (listBytes > maxBytes) maxBytes = listBytes;
+            foreach (ArrayPoolList<byte> entry in list) totalBytes += entry.Count;
         }
 
         Array.Sort(counts);
@@ -106,10 +105,12 @@ public class InclusionListSizeMeasurement
                                   $"{Eip7805Constants.MaxBytesPerInclusionList}, " +
                                   $"with SSZ offsets {(double)(totalBytes + (long)SszOffsetBytes * sum) / Draws:F0}");
 
-        long saturationThreshold = (long)(Eip7805Constants.MaxBytesPerInclusionList * MinSaturationFraction);
-        if (maxBytes < saturationThreshold)
+        // On the mean, not the best draw: the statistics above describe the typical draw, so one lucky draw
+        // reaching the cap must not vouch for them.
+        long meanBytes = totalBytes / Draws;
+        if (meanBytes < (long)(Eip7805Constants.MaxBytesPerInclusionList * MinSaturationFraction))
         {
-            Assert.Inconclusive($"No draw exceeded {maxBytes}B of the {Eip7805Constants.MaxBytesPerInclusionList}B cap " +
+            Assert.Inconclusive($"Draws average {meanBytes}B of the {Eip7805Constants.MaxBytesPerInclusionList}B cap " +
                                  $"({MinSaturationFraction:P0} threshold) — draws are corpus-bound, not cap-bound. Supply a larger corpus.");
         }
     }
@@ -152,7 +153,13 @@ public class InclusionListSizeMeasurement
                 $"entry {i} does not re-encode to the bytes it was captured as");
         }
 
-        return txs;
+        // The builder draws from the pool's non-blob snapshot alone, so blob txs are outside its input domain.
+        // A mined-block capture carries them, so drop them here rather than reject the capture.
+        Transaction[] appendable = Array.FindAll(txs, static tx => !tx.SupportsBlobs);
+        TestContext.Out.WriteLine($"RESULT corpus blob transactions excluded={txs.Length - appendable.Length}");
+        Assert.That(appendable, Is.Not.Empty, $"{CorpusVariable} file '{path}' holds only blob transactions.");
+
+        return appendable;
     }
 
     /// <summary>A pool whose ready set is one transaction per sender, as the corpus was captured.</summary>
@@ -173,6 +180,13 @@ public class InclusionListSizeMeasurement
         return pool;
     }
 
-    private static InclusionListBuilder BuildBuilder(ITxPool pool) =>
-        new(pool, Substitute.For<IBlockTree>(), Substitute.For<ISpecProvider>());
+    /// <summary>A builder over a zero-base-fee head, so the corpus is priced in rather than filtered out.</summary>
+    private static InclusionListBuilder BuildBuilder(ITxPool pool)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(UInt256.Zero).TestObject);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
+        return new InclusionListBuilder(pool, blockTree, specProvider);
+    }
 }
