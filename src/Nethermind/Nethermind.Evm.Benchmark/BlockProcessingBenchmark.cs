@@ -107,6 +107,49 @@ public class BlockProcessingBenchmark
     // Minimal bytecode (STOP) for system contract stubs
     private static readonly byte[] StopCode = [0x00];
 
+    /// <summary>How many times the SLOAD scenario reads the same slot per call.</summary>
+    private const int SloadsPerCall = 2000;
+
+    /// <summary>Reads one warm slot over and over, the shape of the sload_same_key benchmark.</summary>
+    private static readonly byte[] SloadSameKeyCode = BuildSloadSameKeyCode();
+
+    /// <summary>The same loop without the SLOAD, so subtracting isolates what the read itself costs.</summary>
+    private static readonly byte[] PushPopOnlyCode = BuildPushPopOnlyCode();
+
+    private static byte[] BuildPushPopOnlyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(0).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    /// <summary>Same loop with TLOAD: 100 gas like a warm SLOAD, but no access-list check and no
+    /// persistent storage provider — so the difference isolates those two.</summary>
+    private static readonly byte[] TloadSameKeyCode = BuildTloadSameKeyCode();
+
+    private static byte[] BuildTloadSameKeyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(0).Op(Instruction.TLOAD).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static byte[] BuildSloadSameKeyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
     private static readonly AccessList SampleAccessList = new AccessList.Builder()
         .AddAddress(TestItem.AddressC)
         .AddStorage(UInt256.Zero)
@@ -138,6 +181,10 @@ public class BlockProcessingBenchmark
     private Block _accessList50Block = null!;
     private Block _contractDeploy10Block = null!;
     private Block _contractCall200Block = null!;
+    private Block _sloadSameKeyBlock = null!;
+    private Block _sloadSameKeyNoPrewarmBlock = null!;
+    private Block _pushPopOnlyBlock = null!;
+    private Block _tloadSameKeyBlock = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -168,6 +215,10 @@ public class BlockProcessingBenchmark
         _accessList50Block = BuildBlock(BuildAccessListTxs(50, 0));
         _contractDeploy10Block = BuildBlock(BuildContractDeploys(10, 0));
         _contractCall200Block = BuildBlock(BuildContractCalls(200, 0));
+        _sloadSameKeyBlock = BuildBlock(BuildSloadCalls(10, 0));
+        _sloadSameKeyNoPrewarmBlock = BuildBlock(BuildSloadCalls(2, 0));
+        _pushPopOnlyBlock = BuildBlock(BuildCallsTo(TestItem.AddressE, 10, 0));
+        _tloadSameKeyBlock = BuildBlock(BuildCallsTo(TestItem.AddressF, 10, 0));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -213,6 +264,16 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
+
+            stateProvider.CreateAccount(TestItem.AddressD, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressD, SloadSameKeyCode, Spec);
+            stateProvider.Set(new StorageCell(TestItem.AddressD, UInt256.Zero), [0x07]);
+
+            stateProvider.CreateAccount(TestItem.AddressE, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressE, PushPopOnlyCode, Spec);
+
+            stateProvider.CreateAccount(TestItem.AddressF, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressF, TloadSameKeyCode, Spec);
 
             stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
@@ -307,6 +368,52 @@ public class BlockProcessingBenchmark
         Block[] result = null!;
         for (int i = 0; i < N_LARGE; i++)
             result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    /// <summary>20,000 warm reads of one slot, so the per-SLOAD cost is the whole measurement.</summary>
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Sload_SameKey()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_sloadSameKeyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    /// <summary>The same reads in two transactions, which is under the pre-warmer's 3-transaction trigger.</summary>
+    /// <remarks>Per-SLOAD cost is comparable to <see cref="Sload_SameKey"/> even though the block is
+    /// smaller, because both are normalised by their own read count — and the fixed per-block cost is
+    /// amortised over fewer reads here, which biases against this one.</remarks>
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Sload_SameKey_NoPrewarm()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_sloadSameKeyNoPrewarmBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    /// <summary>The control for <see cref="Sload_SameKey"/>: identical loop, no SLOAD.</summary>
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] PushPop_Only()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_pushPopOnlyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Tload_SameKey()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_tloadSameKeyBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
@@ -406,6 +513,24 @@ public class BlockProcessingBenchmark
                 .WithTo(null)
                 .WithData(ContractCode)
                 .WithGasLimit(100_000)
+                .WithGasPrice(2.GWei)
+                .SignedAndResolved(_senderKey)
+                .TestObject;
+        }
+        return txs;
+    }
+
+    private Transaction[] BuildSloadCalls(int count, ulong startNonce) => BuildCallsTo(TestItem.AddressD, count, startNonce);
+
+    private Transaction[] BuildCallsTo(Address to, int count, ulong startNonce)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            txs[i] = Build.A.Transaction
+                .WithNonce(startNonce + (ulong)i)
+                .WithTo(to)
+                .WithGasLimit(300_000)
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
