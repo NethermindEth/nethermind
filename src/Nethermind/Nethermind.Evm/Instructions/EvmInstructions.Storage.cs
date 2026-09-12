@@ -94,14 +94,10 @@ public static partial class EvmInstructions
         // Deduct the gas cost for TSTORE.
         if (!TGasPolicy.UpdateGas<TStoreGasCost>(ref gas)) goto OutOfGas;
 
-        // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
 
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
-
-        // Pop the 32-byte value from the stack.
-        if (!stack.PopUInt256(out UInt256 newValue)) goto StackUnderflow;
 
         vm.WorldState.SetTransientState(in storageCell, in newValue);
 
@@ -375,9 +371,7 @@ public static partial class EvmInstructions
         if (!TGasPolicy.TryConsumeSStoreResetGas(ref gas, spec))
             goto OutOfGas;
 
-        // Pop the key and then the new value for storage; signal underflow if unavailable.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 newValue)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
         bool newIsZero = newValue.IsZero;
 
         // Construct the storage cell for the executing account.
@@ -486,9 +480,7 @@ public static partial class EvmInstructions
                 goto OutOfGas;
         }
 
-        // Pop the key and then the new value for storage; signal underflow if unavailable.
-        if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 newValue)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
         bool newIsZero = newValue.IsZero;
 
         // Construct the storage cell for the executing account.
