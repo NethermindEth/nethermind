@@ -111,12 +111,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
+        bool hintSlot = state.TakeSlotWarmHint(currentScope, in storageCell.Index);
+        bool hintAccount = state.TakeAccountWarmHint();
+        if (hintSlot || hintAccount) EmitStorageWarmHints(in storageCell, currentScope, hintSlot, hintAccount);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void EmitStorageWarmHints(in StorageCell storageCell, IWorldStateScopeProvider.IScope currentScope, bool hintSlot, bool hintAccount)
+    {
         ValueAddress address = new(storageCell.Address.Bytes);
-        currentScope.HintWarmSlot(in address, storageCell.Index);
+        if (hintSlot) currentScope.HintWarmSlot(in address, storageCell.Index);
         // The storage root lives in the account, so anything that moves it rewrites the account's leaf as well,
         // and the account write path never sees a contract the block only stores to. The same holds for
         // ResetContractState and ClearStorage, which move the root without writing a slot.
-        if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(in address);
+        if (hintAccount) currentScope.HintWarmAccount(in address);
     }
 
     /// <summary>
@@ -849,6 +857,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private bool _storageRootSeen;
         private bool _wasCleared;
         private bool _accountHinted;
+        private IWorldStateScopeProvider.IScope? _lastHintScope;
+        private UInt256 _lastHintSlot;
         private PersistentStorageProvider? _provider;
         private Address? _address;
 
@@ -869,6 +879,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _address ?? throw new InvalidOperationException("A returned storage state cannot be used.");
 
         public bool WasWritten => _wasWritten;
+
+        /// <summary>Claims a slot hint unless the preceding hint targeted the same slot and scope.</summary>
+        /// <remarks>Hints are best-effort, like account hints: a declined hint is also considered spent.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TakeSlotWarmHint(IWorldStateScopeProvider.IScope scope, in UInt256 slot)
+        {
+            if (ReferenceEquals(_lastHintScope, scope))
+            {
+                if (_lastHintSlot == slot) return false;
+            }
+            else
+            {
+                _lastHintScope = scope;
+            }
+            _lastHintSlot = slot;
+            return true;
+        }
 
         /// <summary>
         /// Claims the one account trie warm hint this contract needs for the block.
@@ -958,6 +985,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _storageRootSeen = false;
             _wasCleared = false;
             _accountHinted = false;
+            _lastHintScope = null;
             // A later block may never detach its changes, and would then read whatever this one left behind.
             BlockEndFate = AccountFate.Present;
             Pool.Return(this);

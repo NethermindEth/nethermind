@@ -1289,7 +1289,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_PopulatorStorageWrite_WarmsTheSlotAndTheContractsAccount()
+    public void Test_PopulatorStorageWrite_WarmsTheSlotAndTheContractsAccount([Values(1, 8)] int repetitions)
     {
         using Context ctx = new(useFlat);
         Hash256 baseRoot = CommitBaseState(ctx);
@@ -1299,13 +1299,37 @@ public class ScopeProviderTests(bool useFlat)
         StorageCell slotA2 = new(TestItem.AddressA, 2);
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
         {
-            ws.Set(in SlotA1, (UInt256)7);
-            ws.Set(in slotA2, (UInt256)8);
+            for (int i = 0; i < repetitions; i++) ws.Set(in SlotA1, (UInt256)(7 + i));
+            for (int i = 0; i < repetitions; i++) ws.Set(in slotA2, (UInt256)(8 + i));
         });
 
         mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
         mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slotA2.Index);
         mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorSlotHint_IsRenewedAfterScopeReuse()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        PreBlockCaches caches = NewCaches();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        WorldState state = new(populator, LimboLogs.Instance);
+
+        for (int round = 0; round < 2; round++)
+        {
+            using (state.BeginScope(HeaderAt(baseRoot, 1)))
+            {
+                Snapshot snapshot = state.TakeSnapshot();
+                state.Set(in SlotA1, (UInt256)7);
+                state.Restore(snapshot);
+                state.Set(in SlotA1, (UInt256)8);
+            }
+            mainScope.Received(round + 1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
+        }
     }
 
     [Test]
