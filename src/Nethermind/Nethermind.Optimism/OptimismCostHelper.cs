@@ -99,7 +99,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
         (uint scalar, ulong constant) operatorFee = ((uint)parameters[1], parameters[0]);
 
         return opSpecHelper.IsJovian(header)
-            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant // TODO: tests
+            ? (UInt256)gas * operatorFee.scalar * 100 + operatorFee.constant
             : (UInt256)gas * operatorFee.scalar / 1_000_000 + operatorFee.constant;
     }
 

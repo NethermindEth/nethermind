@@ -42,7 +42,11 @@ public static unsafe partial class Bytes
     }
 
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
-    /// <remarks>Loads are unaligned, so a caller may pass any byte offset.</remarks>
+    /// <remarks>
+    /// Loads are unaligned, so a caller may pass any byte offset.
+    /// See <c>Bytes.zkevm.cs</c> for the whole-word guest implementation: without SIMD,
+    /// byte-vector comparisons can expand into byte-at-a-time loops.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool AreEqual32(ref byte a, ref byte b)
         => Unsafe.ReadUnaligned<Vector256<ulong>>(ref a) == Unsafe.ReadUnaligned<Vector256<ulong>>(ref b);

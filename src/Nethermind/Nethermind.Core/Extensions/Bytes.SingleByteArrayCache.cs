@@ -9,7 +9,7 @@ public static partial class Bytes
 {
     /// <summary>Copies bytes into an array, reusing a shared array for single-byte values.</summary>
     /// <remarks>The returned array must not be modified.</remarks>
-    public static byte[] ToArrayWithSingleByteCache(this ReadOnlySpan<byte> value)
+    internal static byte[] ToArrayWithSingleByteCache(this ReadOnlySpan<byte> value)
         => value.Length == 1 ? SingleByteArrayCache.Values[value[0]] : value.ToArray();
 
     private static class SingleByteArrayCache
