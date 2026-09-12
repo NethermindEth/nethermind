@@ -49,14 +49,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly List<StorageClearChange> _storageClearJournal = [];
 
-    // Zero means never captured, which is what a default BlockChange entry carries.
-    private uint _originalsRound = 1;
+    // The low bit belongs to StorageChangeTrace.IsInitialValue; zero means never captured.
+    private ulong _originalsRound = 2;
 
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
         _originalValues.ClearAndTrim();
-        if (++_originalsRound == 0) _originalsRound = 1;
+        if ((_originalsRound += 2) == (1UL << 33)) _originalsRound = 2;
     }
 
     /// <summary>
@@ -1024,7 +1024,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             PersistentStorageProvider provider = Provider;
-            uint round = provider._originalsRound;
+            ulong round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
                 provider.CaptureOriginalValue(storageCell, valueChange.After);
@@ -1192,14 +1192,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             After = after;
             Before = UInt256.Zero;
-            IsInitialValue = true;
+            _metadata = 1;
         }
 
-        public void SetCapturedRound(uint round) => CapturedRound = round;
+        public void SetCapturedRound(ulong round) => _metadata = round | (_metadata & 1);
 
         public readonly UInt256 Before;
         public readonly UInt256 After;
-        public readonly bool IsInitialValue;
-        public uint CapturedRound;
+        private ulong _metadata;
+        public readonly bool IsInitialValue => (_metadata & 1) != 0;
+        public readonly ulong CapturedRound => _metadata & ~1UL;
     }
 }

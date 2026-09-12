@@ -261,7 +261,7 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Original_value_cache_ends_with_the_capture_round([Values] bool write, [Values] bool reset, [Values(1U, uint.MaxValue)] uint round)
+    public void Original_value_cache_ends_with_the_capture_round([Values] bool write, [Values] bool reset, [Values(2UL, (ulong)uint.MaxValue << 1)] ulong round)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
