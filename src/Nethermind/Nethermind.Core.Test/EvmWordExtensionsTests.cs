@@ -31,10 +31,11 @@ public class EvmWordExtensionsTests
         }
     }
     [Test]
-    public void Minimal_big_endian_preserves_each_byte_boundary([Range(0, 32)] int length)
+    public void Minimal_big_endian_preserves_each_byte_boundary([Range(0, 32)] int length, [Values(1, 128, 255)] byte leadingByte)
     {
         byte[] expected = new byte[Math.Max(1, length)];
         for (int i = 0; i < length; i++) expected[i] = (byte)(i + 1);
+        if (length != 0) expected[0] = leadingByte;
         UInt256 value = new(expected, isBigEndian: true);
         byte[] encoded = value.ToMinimalBigEndian();
         using (Assert.EnterMultipleScope())

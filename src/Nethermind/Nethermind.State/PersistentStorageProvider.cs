@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -1172,7 +1173,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (value.IsZero) return StorageTree.ZeroBytes;
         buffer = value.ToBigEndianWord();
-        return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1)).WithoutLeadingZeros();
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1));
+        return Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..];
     }
 
     private readonly struct StorageChangeTrace
