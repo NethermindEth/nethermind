@@ -85,12 +85,22 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// <summary>How many leading transactions of <paramref name="bySender"/> the next block could append.</summary>
     /// <remarks>Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a nonce gap is
     /// appendable, and nothing behind an entry the next block would price out is worth the byte cap either.
-    /// The pool vouches for the first entry alone, so both are re-checked from there.</remarks>
+    /// The pool vouches for the first entry alone, so both are re-checked from there.
+    /// Deliberately doesn't check gas limit or spendable balance like <see cref="Nethermind.Consensus.Validators.InclusionListValidator"/>
+    /// does: the pool already maintains both invariants (<c>GasLimitTxFilter</c> plus EIP-7825's cap; <c>BalanceTooLowFilter</c>
+    /// plus bottleneck eviction), so re-checking here would be redundant.</remarks>
     private static int AppendableRunLength(Transaction[] bySender, in UInt256 baseFee)
     {
+        // GetBucketSnapshot only prunes empty buckets when a predicate is supplied (SortedPool.cs); ITxPool's
+        // contract doesn't guarantee it otherwise, so guard rather than rely on the current caller's filter.
+        if (bySender.Length == 0) return 0;
+
         ulong anchor = bySender[0].Nonce;
         int length = 0;
-        while (length < bySender.Length
+        // The caller only ever consults round < SenderSampleCapacity, so a run longer than that is
+        // indistinguishable from one capped here — scanning further would just waste work.
+        int limit = Math.Min(bySender.Length, SenderSampleCapacity);
+        while (length < limit
             && bySender[length].Nonce == anchor + (ulong)length
             && bySender[length].CanPayBaseFee(baseFee))
         {
