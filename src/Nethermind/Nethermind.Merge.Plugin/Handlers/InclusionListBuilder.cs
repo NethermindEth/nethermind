@@ -87,8 +87,9 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// appendable, and nothing behind an entry the next block would price out is worth the byte cap either.
     /// The pool vouches for the first entry alone, so both are re-checked from there.
     /// Deliberately doesn't check gas limit or spendable balance like <see cref="Nethermind.Consensus.Validators.InclusionListValidator"/>
-    /// does: the pool already maintains both invariants (<c>GasLimitTxFilter</c> plus EIP-7825's cap; <c>BalanceTooLowFilter</c>
-    /// plus bottleneck eviction), so re-checking here would be redundant.</remarks>
+    /// does: the pool already evicts a run past the nonce its sender cannot fund (<c>BalanceTooLowFilter</c> plus the
+    /// cumulative-cost eviction in <c>UpdateGasBottleneckAndMarkForEviction</c>), and the validator's gas-limit check is
+    /// against the built block's remaining gas, which is not knowable here.</remarks>
     private static int AppendableRunLength(Transaction[] bySender, in UInt256 baseFee)
     {
         // GetBucketSnapshot only prunes empty buckets when a predicate is supplied (SortedPool.cs); ITxPool's
