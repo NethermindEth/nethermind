@@ -158,6 +158,16 @@ internal class Program
         bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
         bool? batchRead = parseResult.GetValue(Options.BatchRead);
 
+        int minFcuInclusionListAssertions = parseResult.GetValue(Options.MinFcuInclusionListAssertions);
+        if (minFcuInclusionListAssertions > 0 && !isEngineTest)
+        {
+            // No other mode drives engine_forkchoiceUpdated, so the count could only ever be zero and the
+            // coverage report below would blame the fixtures for a misuse of the option.
+            Console.Error.WriteLine("--minFcuInclusionListAssertions applies only to --engineTest.");
+            Console.Error.Flush();
+            return 1;
+        }
+
         if (parseResult.GetValue(Options.TrieDb))
         {
             Environment.SetEnvironmentVariable("TEST_USE_TRIE", "1");
@@ -217,7 +227,6 @@ internal class Program
 
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
-        int minFcuInclusionListAssertions = parseResult.GetValue(Options.MinFcuInclusionListAssertions);
         if (minFcuInclusionListAssertions > 0)
         {
             // stdout carries the JSON results, and FAIL/EXCEPTION are per-test markers the CI summary counts.

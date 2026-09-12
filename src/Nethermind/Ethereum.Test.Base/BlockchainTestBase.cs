@@ -490,6 +490,11 @@ public abstract class BlockchainTestBase
 
                 if (expectWitness)
                 {
+                    // The witness result has no PayloadStatusV2, so a payload-side expectation would be
+                    // skipped silently; the fork-choice update below still carries one.
+                    Assert.That(enginePayload.InclusionListSatisfied, Is.Null,
+                        $"engine_newPayloadWithWitnessV{newPayloadVersion} cannot report inclusionListSatisfied, which this fixture states");
+
                     using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
                     PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
                     AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
@@ -632,10 +637,11 @@ public abstract class BlockchainTestBase
     /// </summary>
     /// <remarks>
     /// Counts every expectation it checks in <see cref="FcuInclusionListAssertionCount"/>, so a run can tell
-    /// the rule holding apart from the fixtures having stopped stating it. A response that is not of the V5
-    /// shape reads as an absent field, so a boolean expectation answered by an older fork-choice version
-    /// fails; a null expectation cannot tell that apart from V5 answering null, which is harmless while every
-    /// fixture stating one runs against V5.
+    /// the rule holding apart from the fixtures having stopped stating it. A fork-choice version that cannot
+    /// carry the field is a mismatch in its own right rather than an absent field, so it can neither satisfy
+    /// an expectation nor pass a null one vacuously while still counting as a check that ran. The reported
+    /// payload status is named too: an FCU answering SYNCING also reports no compliance, and that is a
+    /// different failure from the head being VALID and disagreeing.
     /// </remarks>
     internal static string? DescribeFcuInclusionListMismatch(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
     {
@@ -643,13 +649,14 @@ public abstract class BlockchainTestBase
 
         Interlocked.Increment(ref _fcuInclusionListAssertions);
 
-        bool? actual = (response as IResultWrapper)?.Data is ForkchoiceUpdatedV2Result result
-            ? result.PayloadStatus.InclusionListSatisfied
-            : null;
+        if ((response as IResultWrapper)?.Data is not ForkchoiceUpdatedV2Result result)
+            return $"engine_forkchoiceUpdatedV{fcuVersion} answered with {((response as IResultWrapper)?.Data ?? response).GetType().Name}, which cannot report inclusionListSatisfied, expected {expected?.ToString() ?? "null"}";
+
+        bool? actual = result.PayloadStatus.InclusionListSatisfied;
 
         return actual == expected
             ? null
-            : $"engine_forkchoiceUpdatedV{fcuVersion} reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected?.ToString() ?? "null"}";
+            : $"engine_forkchoiceUpdatedV{fcuVersion} returned {result.PayloadStatus.Status} and reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected?.ToString() ?? "null"}";
     }
 
     private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>

@@ -649,6 +649,26 @@ jobs:
               echo "| Failed | **$FAILED** |"
             } >> "$GITHUB_STEP_SUMMARY"
 
+            # The inclusion-list tripwire reports on stderr and fails the run without failing a test, so
+            # without this a tripped lane is a red job above an all-green table.
+            IL_COVERAGE=$(sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null \
+              | grep -E "^(engine_forkchoiceUpdated inclusionListSatisfied asserted|COVERAGE GAP)" || true)
+            if [ -n "$IL_COVERAGE" ]; then
+              {
+                echo ""
+                echo "### EIP-7805 fork-choice assertion coverage"
+                echo ""
+                echo '```'
+                echo "$IL_COVERAGE"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+
+              COVERAGE_GAP=$(echo "$IL_COVERAGE" | grep "^COVERAGE GAP" || true)
+              if [ -n "$COVERAGE_GAP" ]; then
+                echo "::error::$COVERAGE_GAP"
+              fi
+            fi
+
             if [ "$FAILED" -gt 0 ]; then
               MAX_SUMMARY_FAILURES=500
               echo "" >> "$GITHUB_STEP_SUMMARY"
