@@ -75,13 +75,16 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         {
             builder
                 .AddSingleton<ILogIndexStorage, LogIndexStorage>()
-                .AddSingleton<ILogFinder, IndexedLogFinder>();
+                .AddSingleton<ILogFinder, IndexedLogFinder>()
+                // do not use range-limited version when index is enabled, regardless of queried range being covered
+                .AddSingleton<IRpcLogFinder>(ctx => ctx.Resolve<IndexedLogFinder>());
         }
         else
         {
             builder
                 .AddSingleton<ILogIndexStorage, DisabledLogIndexStorage>()
-                .AddSingleton<ILogFinder, LogFinder>();
+                .AddSingleton<ILogFinder, LogFinder>()
+                .AddSingleton<IRpcLogFinder, RangeLimitedLogFinder>();
         }
 
         if (!receiptConfig.StoreReceipts)
