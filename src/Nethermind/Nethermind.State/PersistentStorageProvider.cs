@@ -809,6 +809,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
 
+        private UInt256 _lastReadIndex;
+        private byte[]? _lastReadValue;
+        private uint _lastReadRound;
+        private bool _hasLastRead;
+
+        /// <summary>Drops the memo of the last slot read, for anything that can change what a read returns.</summary>
+        private void ForgetLastRead() => _hasLastRead = false;
+
         private PersistentStorageProvider Provider =>
             _provider ?? throw new InvalidOperationException("A returned storage state cannot be used.");
 
@@ -875,6 +883,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 // Slight optimization that skips the tree
                 BlockChange.ClearAndSetMissingAsDefault();
+                ForgetLastRead();
             }
         }
 
@@ -882,6 +891,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             EnsureStorageTree();
             _wasCleared = true;
+            ForgetLastRead();
             BlockChange.ClearAndSetMissingAsDefault();
         }
 
@@ -890,10 +900,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             EnsureStorageTree();
             // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
             _wasCleared = true;
+            ForgetLastRead();
             return BlockChange.ClearRevertibly();
         }
 
-        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot) => BlockChange.Restore(snapshot);
+        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot)
+        {
+            ForgetLastRead();
+            BlockChange.Restore(snapshot);
+        }
 
         public void Return()
         {
@@ -901,6 +916,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
+            ForgetLastRead();
             _hadStorageBeforeBlock = false;
             _storageRootSeen = false;
             _wasCleared = false;
@@ -912,6 +928,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
+            ForgetLastRead();
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
@@ -927,8 +944,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend.HintSet(storageCell.Index, value);
         }
 
+        /// <remarks>
+        /// A loop over one slot lands here every iteration with the same index. Written cells never reach
+        /// this method — the journal answers those first — so a value here cannot change under us while the
+        /// round holds, and the round is part of the key so the first read of each round still captures its
+        /// original. Everything that can rewrite <c>BlockChange</c> drops the memo.
+        /// </remarks>
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
+            if (_hasLastRead && _lastReadRound == Provider._originalsRound && _lastReadIndex.Equals(storageCell.Index))
+            {
+                return _lastReadValue;
+            }
+
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
@@ -948,6 +976,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 provider.CaptureOriginalValue(storageCell, valueChange.After);
                 valueChange = valueChange.WithCapturedRound(round);
             }
+
+            _lastReadIndex = storageCell.Index;
+            _lastReadValue = valueChange.After;
+            _lastReadRound = round;
+            _hasLastRead = true;
 
             return valueChange.After;
         }
