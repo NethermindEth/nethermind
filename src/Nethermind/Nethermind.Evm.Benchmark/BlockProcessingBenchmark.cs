@@ -121,9 +121,9 @@ public class BlockProcessingBenchmark
     /// <summary>How many times the SLOAD scenario reads the same slot per call.</summary>
     private const int SloadsPerCall = 2000;
 
-    /// <summary>Home of the SLOAD loop. Deliberately not a <see cref="TestItem"/> address:
-    /// <see cref="SampleAccessList"/> carries those, and giving one of them code and storage would
-    /// change what the pre-warmer does for the pre-existing access-list scenarios.</summary>
+    /// <summary>Home of the SLOAD loop. Deliberately not <see cref="TestItem.AddressD"/>:
+    /// <see cref="SampleAccessList"/> names it, and giving it code and storage would make the
+    /// pre-warmer load slots for the pre-existing access-list scenarios.</summary>
     private static readonly Address SloadCallerAddress = new("0x00000000000000000000000000000000000000ad");
 
     /// <summary>Reads one warm slot over and over, the shape of the sload_same_key benchmark.</summary>
@@ -142,8 +142,8 @@ public class BlockProcessingBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
-    /// <summary>Same loop with TLOAD: 100 gas like a warm SLOAD, but no access-list check and no
-    /// persistent storage provider — so the difference isolates those two.</summary>
+    /// <summary>Same loop with TLOAD: no access-list check and no persistent storage provider —
+    /// so the difference against the SLOAD loop isolates those two layers.</summary>
     private static readonly byte[] TloadSameKeyCode = BuildTloadSameKeyCode();
 
     private static byte[] BuildTloadSameKeyCode()
@@ -286,7 +286,8 @@ public class BlockProcessingBenchmark
 
     private static readonly Address SstoreCallerAddress = new("0x00000000000000000000000000000000000000ab");
 
-    /// <summary>Writes alternating values to one slot: the dirty-transition shape, 100 gas per write.</summary>
+    /// <summary>Writes alternating values to one slot, so every write after the first is a dirty
+    /// transition — the shape is fork-independent even where the write's price is not.</summary>
     private static readonly byte[] SstoreDirtyCode = BuildSstoreDirtyCode();
 
     private static byte[] BuildSstoreDirtyCode()
@@ -296,7 +297,12 @@ public class BlockProcessingBenchmark
         {
             code = code.PushData((i & 1) == 0 ? 7 : 9).PushData(0).Op(Instruction.SSTORE);
         }
-        return code.Op(Instruction.STOP).Done;
+
+        // Restore the seeded value so every transaction starts from the same EIP-2200 original.
+        // Without this, the slot ends at 9 and the next transaction's alternating writes swing
+        // around their own original, turning every other write into a fresh clean SSTORE — which
+        // multiplies the gas ~12x and quietly turned transactions 2..10 into out-of-gas burns.
+        return code.PushData(5).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
     }
 
     private static readonly Address Create2CallerAddress = new("0x00000000000000000000000000000000000000ac");
@@ -534,31 +540,33 @@ public class BlockProcessingBenchmark
         VerifyScenariosExecute();
     }
 
-    /// <summary>Refuses to benchmark a truncated execution.</summary>
-    /// <remarks>Everything runs under <see cref="ProcessingOptions.NoValidation"/>, where a transaction
-    /// that runs out of gas burns its whole limit and still produces a number — silently, as fork
-    /// repricing has already demonstrated on the create scenario. Every code-executing scenario is
-    /// sized with headroom, so a full burn there always means truncation. The pure-transfer blocks are
-    /// exempt: a 21k transfer burns exactly its limit when it succeeds.</remarks>
+    /// <summary>Refuses to benchmark a failed execution.</summary>
+    /// <remarks>Everything runs under <see cref="ProcessingOptions.NoValidation"/>, where a failed
+    /// transaction still produces a number — silently, as fork repricing has already demonstrated on
+    /// several scenarios. Receipt status is exact, so it also catches reverts, partial failures in a
+    /// heterogeneous block, and a CREATE2 collision, none of which an aggregate gas heuristic sees.</remarks>
     private void VerifyScenariosExecute()
     {
         foreach (Block block in (Block[])[
+            _singleTransferBlock, _transfers50Block, _transfers200Block, _eip1559_200Block,
             _accessList50Block, _contractDeploy10Block, _contractCall200Block,
             _sloadSameKeyBlock, _sloadSameKeyNoPrewarmBlock, _pushPopOnlyBlock, _tloadSameKeyBlock,
             _balanceSameAddressBlock, _extCodeSizeBlock, _extCodeHashBlock,
             _staticCallBlock, _staticCallEoaBlock, _staticCallPrecompileBlock,
-            _sstoreDirtyBlock, _create2Block])
+            _sstoreDirtyBlock, _create2Block, _mixedBlock])
         {
-            Block processed = _branchProcessor.Process(_parentHeader, [block],
-                ProcessingOptions.NoValidation, NullBlockTracer.Instance)[0];
+            BlockReceiptsTracer tracer = new();
+            _branchProcessor.Process(_parentHeader, [block], ProcessingOptions.NoValidation, tracer);
 
-            ulong limitSum = 0;
-            foreach (Transaction tx in block.Transactions) limitSum += tx.GasLimit;
-
-            if (processed.GasUsed == 0 || (ulong)processed.GasUsed >= limitSum)
+            foreach (TxReceipt receipt in tracer.TxReceipts)
             {
-                throw new InvalidOperationException(
-                    $"Scenario block used {processed.GasUsed} of {limitSum} gas under {Fork} - a zero or full burn means a transaction failed and the number would be meaningless.");
+                if (receipt.StatusCode != StatusCode.Success)
+                {
+
+
+                    throw new InvalidOperationException(
+                        $"Scenario transaction to {receipt.Recipient?.ToString() ?? "create"} failed under {Fork} ({receipt.Error}) - the benchmark number would be meaningless.");
+                }
             }
         }
     }
@@ -806,7 +814,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(21_000)
+                .WithGasLimit(300_000) // EIP-8037 sizes the state reservoir into the required intrinsic, so an Amsterdam transfer needs an outsized limit (fails at 100k); the setup guard verifies it executes
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
@@ -824,7 +832,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(21_000)
+                .WithGasLimit(300_000) // EIP-8037 sizes the state reservoir into the required intrinsic, so an Amsterdam transfer needs an outsized limit (fails at 100k); the setup guard verifies it executes
                 .WithMaxFeePerGas(2.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_senderKey)
@@ -861,7 +869,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(null)
                 .WithData(ContractCode)
-                .WithGasLimit(300_000) // an Amsterdam create is ~183k before the deposit (EIP-8037)
+                .WithGasLimit(600_000) // Amsterdam state gas makes a deploy several times Osaka's price; the setup guard verifies it executes
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
