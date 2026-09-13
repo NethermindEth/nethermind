@@ -37,7 +37,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 // Execute claims _analysisComplete before requesting the code span.
                 analysisStarted.TrySetResult();
-                Assert.That(continueAnalysis.Wait(timeout), Is.True, "analysis was not released");
+                // Finally releases this gate; throwing here would strand readers on the analyzer's completion event.
+                continueAnalysis.Wait();
             });
             JumpDestinationAnalyzer analyzer = new(new CodeInfo(memory.Memory));
             using Barrier start = new(Workers);
@@ -68,7 +69,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             finally
             {
                 continueAnalysis.Set();
-                await Task.WhenAll(workers);
+                await Task.WhenAll(workers).WaitAsync(timeout);
             }
         }
 
