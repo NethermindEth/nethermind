@@ -153,3 +153,18 @@ an open calibration task: recover ARM, fix and regression-test simulation reset,
 then repeat interleaved default/experimental settings on each runner with fixed
 startup history. Until then, use standard-mode single-pass screening with
 repeated baseline images and confirm candidate regressions with repeated runs.
+
+## Explicit amd64 low-CV verification
+
+[Run 34757630692](https://github.com/NethermindEth/nethermind/actions/runs/34757630692)
+ran the same pinned image and 1,000-payload Fusaka window on amd64 with
+`EXPB_EVM_WARMUP=1` and `--JsonRpc.GasCap=1000000000000`.
+Exactly 500 warmups succeeded and 500 failed with
+`System.InvalidOperationException: Cannot move unknown block ... to main`.
+This confirms the simulation-reset failure also occurs on amd64.
+
+All 1,000 measured payloads were delivered and 999 SSE timings were captured,
+but the failed warmups and 500 exception lines invalidate the sample. Normal
+Nethermind shutdown and snapshot cleanup were verified, and the complete
+campaign artifact uploaded successfully. The remaining two repetitions were
+skipped by the failed-warmup gate. No warmed CV is reported.
