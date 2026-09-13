@@ -36,12 +36,15 @@ namespace Nethermind.Blockchain
         private const int StateHashCacheSize = 8192;
         private CachedBlockhash?[]? _stateHashCache;
 
-        // The memo is armed by Prefetch, which branch processing calls once per block: the arming header
-        // is the only one served, and arming clears the table. A pooled RPC env that applies state
-        // overrides never prefetches, so it can neither populate nor read the memo — the discriminator
-        // that (header, number) alone cannot provide, since header caches serve the same instance to
-        // requests whose overridden states differ.
-        private BlockHeader? _stateMemoHeader;
+        // The memo is armed by Prefetch, which branch processing calls once per block: only the armed
+        // block is served, and arming clears the table. A pooled RPC env that applies state overrides
+        // never prefetches, so on its own scoped provider it can neither populate nor read the memo — the
+        // discriminator (header, number) alone cannot provide, since header caches serve the same instance
+        // to requests whose overridden states differ. Matched by (number, hash) not by reference, because
+        // BlockProcessor executes a CloneForProcessing of the suggested header — same number and hash, a
+        // different instance — so a reference check would never hit in real processing.
+        private ulong _armedNumber = ulong.MaxValue;
+        private Hash256? _armedHash;
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
@@ -84,9 +87,9 @@ namespace Nethermind.Blockchain
         /// <summary>Serves EIP-2935 lookups from a per-block memo of what state already returned.</summary>
         /// <remarks>
         /// Gated by EIP-7709 and armed only by <see cref="Prefetch"/>, which branch processing calls once
-        /// per block: an env that never prefetches (the pooled RPC envs, which may execute under state
-        /// overrides) reads the store directly, because the same header instance can then back different
-        /// states. The ring buffer is written once per block by the system call before any transaction
+        /// per block, matched by (number, hash) so it survives the header clone that BlockProcessor
+        /// executes with: an env that never prefetches (the pooled RPC envs, which may execute under state
+        /// overrides) reads the store directly, because the same block can then back different states. The ring buffer is written once per block by the system call before any transaction
         /// runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS, so no transaction can
         /// write to it — a chain pointing Eip2935ContractAddress at writable code would invalidate this,
         /// as would serving one header's resolution to a different state (see SimulateBlockhashProvider,
@@ -98,7 +101,7 @@ namespace Nethermind.Blockchain
         /// </remarks>
         private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
-            if (!ReferenceEquals(currentBlock, Volatile.Read(ref _stateMemoHeader)))
+            if (currentBlock.Number != Volatile.Read(ref _armedNumber) || currentBlock.Hash != Volatile.Read(ref _armedHash))
             {
                 // Unarmed caller (an RPC env that never prefetches, possibly executing under state
                 // overrides): read the store directly, costing one Hash256 per call.
@@ -164,7 +167,8 @@ namespace Nethermind.Blockchain
             // and misses the reference check, so the stale window closes itself.
             CachedBlockhash?[]? stateCache = Volatile.Read(ref _stateHashCache);
             if (stateCache is not null) Array.Clear(stateCache);
-            Volatile.Write(ref _stateMemoHeader, currentBlock);
+            Volatile.Write(ref _armedHash, currentBlock.Hash);
+            Volatile.Write(ref _armedNumber, currentBlock.Number);
 
             long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
             Volatile.Write(ref _hashes, null);

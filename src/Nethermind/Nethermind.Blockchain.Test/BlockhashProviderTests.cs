@@ -446,6 +446,33 @@ public class BlockhashProviderTests
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
     }
 
+        /// <summary>The memo must hit for the header the block actually executes with, which is a
+        /// CloneForProcessing of the suggested header — a different instance, same number and hash.</summary>
+        [Test, MaxTime(Timeout.MaxTestTime)]
+        public void Blockhash_memo_hits_the_processing_clone_not_only_the_armed_instance()
+        {
+            using BlockhashFixture fixture = new();
+            BlockHeader suggested = fixture.Current.Header;
+            fixture.Store.ApplyBlockhashStateChanges(suggested, fixture.Spec);
+            fixture.Provider.Prefetch(suggested, CancellationToken.None).GetAwaiter().GetResult();
+            ulong number = suggested.Number - 1;
+
+            // Block processing executes with the clone, never the armed instance.
+            BlockHeader processing = suggested.CloneForProcessing();
+            Assert.That(ReferenceEquals(processing, suggested), Is.False, "precondition: distinct instance");
+
+            Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
+
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++)
+            {
+                fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _);
+            }
+
+            Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero, "the clone must hit the armed memo");
+        }
+
+
 /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
     /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
     /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
