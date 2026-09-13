@@ -96,7 +96,9 @@ namespace Nethermind.Blockchain
         /// suggested-header run and a sequential-retry re-run from reading each other's entries.
         /// <para>
         /// Why the values cannot be stale: the ring buffer is written once per block by the system call
-        /// before any transaction runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS,
+        /// before any transaction runs — the only EVM execution between arming and that write is the
+        /// beacon-root system call, which the canonical EIP-4788 contract performs without BLOCKHASH — and
+        /// the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS,
         /// so no transaction can write to it — a chain pointing Eip2935ContractAddress at writable code would
         /// invalidate this. Cached values come from state rather than from the block tree, which matters at
         /// the fork boundary where the buffer is still filling and the two disagree.</para>

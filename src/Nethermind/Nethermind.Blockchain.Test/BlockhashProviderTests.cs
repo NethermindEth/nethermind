@@ -381,7 +381,8 @@ public class BlockhashProviderTests
 
         Hash256 firstParent = new("0x1111111111111111111111111111111111111111111111111111111111111111");
         fixture.StoreParentHash(header, firstParent);
-        // Arm the memo so the sibling case exercises the arming gate, not just the unarmed fallback.
+        // Arm the memo so the sibling is rejected by the per-entry reference check rather than by the
+        // unarmed fallback: the sibling is byte-identical to this header, so it shares the armed hash.
         fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> first), Is.True);
@@ -498,7 +499,11 @@ public class BlockhashProviderTests
         Assert.That(after.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "an unarmed read must reflect the rewrite, not a memoized value");
     }
 
-        [Test, MaxTime(Timeout.MaxTestTime)]
+    /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
+    /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
+    /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
+    /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Blockhash_span_lookup_does_not_allocate([Values(true, false)] bool blockHashInState)
     {
         const int Iterations = 1000;
