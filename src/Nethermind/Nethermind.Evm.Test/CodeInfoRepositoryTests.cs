@@ -45,7 +45,7 @@ public class CodeInfoRepositoryTests
         Address address = Address.FromNumber((UInt256)(ulong)number);
         CodeInfo expected = new(Substitute.For<IPrecompile>());
 
-        IPrecompileProvider provider = NoPrecompiles();
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
         provider.GetPrecompiles().Returns(new Dictionary<AddressAsKey, CodeInfo>
         {
             [Address.FromNumber(UInt256.One)] = new(Substitute.For<IPrecompile>()),
