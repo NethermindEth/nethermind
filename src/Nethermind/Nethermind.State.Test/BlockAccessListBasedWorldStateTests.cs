@@ -70,6 +70,46 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void Traced_repeated_storage_writes_use_current_transaction_value(
+        [Values] bool supplyCurrentValue, [Values(0ul, 2ul)] ulong finalValue)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(cell.Address).WithStorageReads(cell.Index).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal, ws =>
+        {
+            ws.CreateAccount(cell.Address, 0);
+            ws.Set(in cell, new UInt256(7));
+        });
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new());
+            traced.SetIndex(1);
+            traced.Get(in cell, out UInt256 current);
+            Assert.That(current, Is.EqualTo(new UInt256(7)));
+            traced.Set(in cell, UInt256.One, in current);
+            traced.Get(in cell, out current);
+            Assert.That(current, Is.EqualTo(UInt256.One));
+
+            UInt256 next = finalValue;
+            if (supplyCurrentValue)
+                traced.Set(in cell, in next, in current);
+            else
+                traced.Set(in cell, in next);
+
+            traced.Get(in cell, out UInt256 actual);
+            bws.Get(in cell, out UInt256 underlying);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(next));
+                Assert.That(underlying, Is.EqualTo(new UInt256(7)));
+                Assert.That(traced.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.EqualTo(1));
+            }
+        }
+    }
+
+    [Test]
     public void Transient_writes_use_worker_journal()
     {
         IWorldState parent = null!;

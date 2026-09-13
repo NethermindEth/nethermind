@@ -149,7 +149,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     [Conditional("DEBUG")]
     private void AssertCurrentStorageValue(in StorageCell cell, in UInt256 expected)
     {
-        State.Get(in cell, out UInt256 actual);
+        GetInternal(in cell, out UInt256 actual);
         Debug.Assert(actual == expected, "Storage must not change between reading the current value and recording the write.");
     }
 
