@@ -31,7 +31,9 @@ public sealed class SimulateBlockhashProvider(
     /// <remarks>The EIP-7709 path reads the store directly rather than the inner provider: simulate
     /// collapses distinct virtual blocks onto one header while state overrides can rewrite the history
     /// contract between them, so (header, number) does not identify the bytes here and the inner
-    /// provider's memo must not be populated or consulted.</remarks>
+    /// provider's memo must not be populated or consulted. Bypassing it costs one <see cref="Hash256"/>
+    /// per call, which simulate can afford — do not replace it with a shared scratch buffer, the span
+    /// must stay valid after the call returns.</remarks>
     public bool TryGetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
     {
         ulong bestKnown = blockTree.BestKnownNumber;

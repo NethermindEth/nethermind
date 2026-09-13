@@ -28,12 +28,20 @@ namespace Nethermind.Blockchain
         private Hash256[]? _hashes;
         private long _prefetchVersion;
 
-        /// <summary>Covers the whole EIP-2935 window (<see cref="Eip2935Constants.RingBufferSize"/> = 8191,
-        /// rounded to a power of two), so a contract sweeping BLOCKHASH across the full servable range takes
-        /// at most one miss per distinct number per block instead of conflict-missing on every call.
-        /// 8192 references = 64 KB per provider.</summary>
+        /// <summary>Covers the whole EIP-2935 window (the next power of two above
+        /// <see cref="Eip2935Constants.RingBufferSize"/> = 8191), so a contract sweeping BLOCKHASH across
+        /// the full servable range takes at most one miss per distinct number per block instead of
+        /// conflict-missing on every call. 8192 references = 64 KB per provider, allocated lazily on the
+        /// first armed resolution so the forks that never reach this path pay nothing.</summary>
         private const int StateHashCacheSize = 8192;
-        private readonly CachedBlockhash?[] _stateHashCache = new CachedBlockhash?[StateHashCacheSize];
+        private CachedBlockhash?[]? _stateHashCache;
+
+        // The memo is armed by Prefetch, which branch processing calls once per block: the arming header
+        // is the only one served, and arming clears the table. A pooled RPC env that applies state
+        // overrides never prefetches, so it can neither populate nor read the memo — the discriminator
+        // that (header, number) alone cannot provide, since header caches serve the same instance to
+        // requests whose overridden states differ.
+        private BlockHeader? _stateMemoHeader;
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
@@ -75,11 +83,14 @@ namespace Nethermind.Blockchain
 
         /// <summary>Serves EIP-2935 lookups from a per-block memo of what state already returned.</summary>
         /// <remarks>
-        /// Gated by EIP-7709. The ring buffer is written once per block by the system call before any
-        /// transaction runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS, so no
-        /// transaction can write to it — a chain pointing Eip2935ContractAddress at writable code would
-        /// invalidate this, as would serving one header's resolution to a different state (see
-        /// SimulateBlockhashProvider, which bypasses this memo for that reason). Entries
+        /// Gated by EIP-7709 and armed only by <see cref="Prefetch"/>, which branch processing calls once
+        /// per block: an env that never prefetches (the pooled RPC envs, which may execute under state
+        /// overrides) reads the store directly, because the same header instance can then back different
+        /// states. The ring buffer is written once per block by the system call before any transaction
+        /// runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS, so no transaction can
+        /// write to it — a chain pointing Eip2935ContractAddress at writable code would invalidate this,
+        /// as would serving one header's resolution to a different state (see SimulateBlockhashProvider,
+        /// which bypasses this memo for the same reason). Entries
         /// carry the header they were resolved against and are matched by reference, so anything resolved for
         /// a different block simply misses rather than being served stale — there is no invalidation step to
         /// get wrong. Cached values come from state rather than from the block tree, which matters at the
@@ -87,7 +98,17 @@ namespace Nethermind.Blockchain
         /// </remarks>
         private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
-            ref CachedBlockhash? slot = ref _stateHashCache[(int)(number & (StateHashCacheSize - 1))];
+            if (!ReferenceEquals(currentBlock, Volatile.Read(ref _stateMemoHeader)))
+            {
+                // Unarmed caller (an RPC env that never prefetches, possibly executing under state
+                // overrides): read the store directly, costing one Hash256 per call.
+                Hash256? unmemoized = _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
+                hash = unmemoized is null ? default : unmemoized.Bytes;
+                return unmemoized is not null;
+            }
+
+            CachedBlockhash?[] cache = _stateHashCache ?? InitializeStateHashCache();
+            ref CachedBlockhash? slot = ref cache[(int)(number & (StateHashCacheSize - 1))];
 
             CachedBlockhash? entry = Volatile.Read(ref slot);
             if (entry is not null && entry.Number == number && ReferenceEquals(entry.Header, currentBlock))
@@ -107,6 +128,14 @@ namespace Nethermind.Blockchain
             Volatile.Write(ref slot, entry);
             hash = entry.Bytes;
             return true;
+        }
+
+        private CachedBlockhash?[] InitializeStateHashCache()
+        {
+            // Racing initialisers may each publish an empty table; the worst case is a dropped memo
+            // entry, never a wrong answer.
+            CachedBlockhash?[] fresh = new CachedBlockhash?[StateHashCacheSize];
+            return Interlocked.CompareExchange(ref _stateHashCache, fresh, null) ?? fresh;
         }
 
         /// <summary>One resolved ring-buffer entry, immutable so that a racing reader sees all of it or none.</summary>
@@ -130,6 +159,13 @@ namespace Nethermind.Blockchain
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
+            // Arm the state memo for this block and drop the previous block's entries. A late writer from
+            // the previous block can still publish after the clear, but its entry carries the old header
+            // and misses the reference check, so the stale window closes itself.
+            CachedBlockhash?[]? stateCache = Volatile.Read(ref _stateHashCache);
+            if (stateCache is not null) Array.Clear(stateCache);
+            Volatile.Write(ref _stateMemoHeader, currentBlock);
+
             long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
             Volatile.Write(ref _hashes, null);
             Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);

@@ -17,7 +17,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Benchmarks.State;
 
-/// <summary>The three ways BLOCKHASH can resolve an EIP-2935 ring-buffer entry.</summary>
+/// <summary>The ways BLOCKHASH can resolve an EIP-2935 ring-buffer entry.</summary>
 /// <remarks>The opcode only needs the bytes, so the <see cref="Hash256"/> the first one builds is
 /// discarded by the next instruction. The block-tree path is not measured here — every input to it is
 /// loop-invariant, so a micro-loop hoists the lookup out; EvmOpcodesBenchmark covers it end to end.</remarks>
@@ -32,6 +32,7 @@ public class BlockhashLookupBenchmark
     private IReleaseSpec _spec = null!;
     private ulong _number;
     private ulong[] _sweepNumbers = null!;
+    private IDisposable _scope = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -66,10 +67,12 @@ public class BlockhashLookupBenchmark
         _provider = new BlockhashProvider(new BlockhashCache(builder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
         _store = new BlockhashStore(worldState);
 
-        worldState.BeginScope(_header);
+        _scope = worldState.BeginScope(_header);
         byte[] code = [1, 2, 3];
         worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, _spec);
         _store.ApplyBlockhashStateChanges(_header, _spec);
+        // Arm the memo the way branch processing does; unarmed callers read the store directly.
+        _provider.Prefetch(_header, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 
         // Fill the ring for the whole chain so the sweep row has distinct servable numbers.
         for (ulong k = 1; k < 42; k++)
@@ -86,6 +89,9 @@ public class BlockhashLookupBenchmark
 
         _provider.TryGetBlockhash(_header, _number, _spec, out _);
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _scope.Dispose();
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
     public int Allocating()
@@ -112,9 +118,9 @@ public class BlockhashLookupBenchmark
         return n;
     }
 
-    /// <summary>Distinct numbers per call — the miss-shape a BLOCKHASH sweep produces. Warmed in setup,
-    /// so this measures per-slot hits; the memo covers the full EIP-2935 window, so a sweep allocates at
-    /// most one entry per distinct number per block rather than conflict-missing.</summary>
+    /// <summary>Distinct numbers per call, warmed in setup: measures per-slot hit dispersion across the
+    /// table, not miss cost. The memo covers the full EIP-2935 window, so a sweep allocates at most one
+    /// entry per distinct number per block rather than conflict-missing.</summary>
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
     public int Memoized_DistinctNumbers()
     {

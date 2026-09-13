@@ -418,17 +418,15 @@ public class BlockhashProviderTests
         }
     }
 
-    /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
-    /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
-    /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
-    /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
     /// <summary>A sweep over distinct numbers allocates at most one memo entry per number per block:
     /// the second pass over the same distinct set must be allocation-free.</summary>
+        [Test, MaxTime(Timeout.MaxTestTime)]
     public void Blockhash_span_lookup_over_distinct_numbers_allocates_once_per_number()
     {
         using BlockhashFixture fixture = new();
         BlockHeader header = fixture.Current.Header;
         fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
         for (ulong k = 1; k < 42; k++)
         {
             fixture.Store.ApplyBlockhashStateChanges(fixture.Tree.FindHeader(k, BlockTreeLookupOptions.None)!, fixture.Spec);
@@ -448,7 +446,11 @@ public class BlockhashProviderTests
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
+/// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
+    /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
+    /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
+    /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
+        [Test, MaxTime(Timeout.MaxTestTime)]
     public void Blockhash_span_lookup_does_not_allocate([Values(true, false)] bool blockHashInState)
     {
         const int Iterations = 1000;
@@ -456,6 +458,7 @@ public class BlockhashProviderTests
         using BlockhashFixture fixture = new(blockHashInState);
         BlockHeader header = fixture.Current.Header;
         fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
         ulong number = header.Number - 1;
 
         for (int i = 0; i < Iterations; i++)
