@@ -162,9 +162,10 @@ internal sealed class EvmExecutionGate
         catch
         {
             // Still queued and unsettled - a failure setting the expiry up would otherwise leave it there and the
-            // next Release would hand its permit to nobody. Losing the settle race means a concurrent grant
-            // already transferred a permit to this waiter, and no Lease will carry it back - return it.
-            if (!waiter.Abandon()) Release();
+            // next Release would hand its permit to nobody. Losing the settle race to a concurrent grant
+            // leaves a permit behind with no Lease to carry it back - return it. Losing to the expiry
+            // callback moved no permit, and a blind Release there would widen the gate by one.
+            if (!waiter.Abandon() && waiter.WasGranted) Release();
             throw;
         }
         finally
@@ -250,6 +251,10 @@ internal sealed class EvmExecutionGate
         // Whichever of these wins TrySetResult owns the decrement, so the live count stays exact even though
         // Abandon runs on a timer thread without the lock.
         internal bool TryGrant() => Settle(true);
+
+        /// <summary>Whether this waiter's admission settled as a grant, i.e. a permit was transferred to it.</summary>
+        internal bool WasGranted => _admission.Task is { IsCompletedSuccessfully: true, Result: true };
+
         internal bool Abandon() => Settle(false);
 
         private bool Settle(bool granted)

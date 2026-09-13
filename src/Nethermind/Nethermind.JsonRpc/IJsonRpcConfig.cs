@@ -178,7 +178,8 @@ public interface IJsonRpcConfig : IConfig
             eight requests per slot are already waiting. A longer budget adds latency to the requests it serves without adding
             throughput. Waiting is skipped for batch items, authenticated requests (which includes IPC), and
             connections that process one request at a time, where it would only delay later calls on the same
-            connection.
+            connection - note this covers every WebSocket connection unless `WebSocketsProcessingConcurrency`
+            is raised above its default of `1`.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
