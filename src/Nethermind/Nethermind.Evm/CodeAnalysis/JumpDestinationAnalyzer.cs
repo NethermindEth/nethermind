@@ -29,7 +29,8 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
     /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
     internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
-    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
+    // Fast-path readers must acquire the initialized bitmap without observing _analysisComplete.
+    private volatile long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
@@ -40,12 +41,12 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
-        _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+        long[] bitmap = _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
 
         // Cast to uint to change negative numbers to very int high numbers
         // Then do length check, this both reduces check by 1 and eliminates the bounds
         // check from accessing the span.
-        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination);
+        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(bitmap, destination);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -63,6 +64,18 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
         if (previous is ManualResetEventSlim resetEvent)
         {
+            // Bound work at the caller's priority to non-yielding spins before the priority-dropping wait.
+            SpinWait spinWait = default;
+            while (true)
+            {
+                if (Volatile.Read(ref _analysisComplete) is long[] bitmap)
+                {
+                    return bitmap;
+                }
+                if (spinWait.NextSpinWillYield) break;
+                spinWait.SpinOnce();
+            }
+
             WaitForAnalysisToComplete(resetEvent);
 
             return _jumpDestinationBitmap;
@@ -354,7 +367,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
                 _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
                 // Release the MRES to be GC'd
-                _analysisComplete = _jumpDestinationBitmap;
+                Volatile.Write(ref _analysisComplete, _jumpDestinationBitmap);
                 // Signal complete.
                 analysisComplete.Set();
             }

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Linq;
 using System.Runtime.Intrinsics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -13,6 +16,62 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class CodeInfoTests
     {
+        [Test]
+        [Repeat(10)]
+        public async Task Concurrent_analysis_publishes_complete_bitmap([Values(64, 32768)] int length)
+        {
+            const int Workers = 4;
+            const int GroupSize = 4;
+            const int JumpDestOffset = 2;
+            TimeSpan timeout = TimeSpan.FromSeconds(30);
+            byte[] code = new byte[length];
+            for (int i = 0; i <= length - GroupSize; i += GroupSize)
+            {
+                code[i] = (byte)Instruction.PUSH1;
+                code[i + 1] = (byte)Instruction.JUMPDEST;
+                code[i + JumpDestOffset] = (byte)Instruction.JUMPDEST;
+            }
+            TaskCompletionSource analysisStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim continueAnalysis = new(false);
+            using GatedCodeMemory memory = new(code, () =>
+            {
+                // Execute claims _analysisComplete before requesting the code span.
+                analysisStarted.TrySetResult();
+                Assert.That(continueAnalysis.Wait(timeout), Is.True, "analysis was not released");
+            });
+            JumpDestinationAnalyzer analyzer = new(new CodeInfo(memory.Memory));
+            using Barrier start = new(Workers);
+            Task[] workers = new Task[Workers];
+            Array.Fill(workers, Task.CompletedTask);
+            workers[0] = Task.Factory.StartNew(analyzer.Execute,
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            try
+            {
+                await analysisStarted.Task.WaitAsync(timeout);
+                for (int worker = 1; worker < workers.Length; worker++)
+                {
+                    workers[worker] = Task.Factory.StartNew(() =>
+                    {
+                        Assert.That(start.SignalAndWait(timeout), Is.True, "readers did not reach the barrier");
+                        int mismatch = -1;
+                        for (int offset = 0; offset < length && mismatch < 0; offset++)
+                        {
+                            bool expected = offset < length - length % GroupSize && offset % GroupSize == JumpDestOffset;
+                            if (analyzer.ValidateJump(offset) != expected) mismatch = offset;
+                        }
+                        Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
+                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                }
+                // Ownership is deterministic; whether readers use the spin return or event wait is scheduling-dependent.
+                Assert.That(start.SignalAndWait(timeout), Is.True, "readers did not reach the barrier");
+            }
+            finally
+            {
+                continueAnalysis.Set();
+                await Task.WhenAll(workers);
+            }
+        }
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
@@ -258,6 +317,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     }
                 }
             }
+        }
+
+        // Every span read shares the same one-shot release; later reads do not introduce another gate.
+        private sealed class GatedCodeMemory(byte[] code, Action beforeRead) : MemoryManager<byte>
+        {
+            public override Memory<byte> Memory => CreateMemory(code.Length);
+            public override Span<byte> GetSpan()
+            {
+                beforeRead();
+                return code;
+            }
+            public override MemoryHandle Pin(int elementIndex = 0) =>
+                throw new NotSupportedException("The analyzer test supports span access only.");
+            public override void Unpin() { }
+            protected override void Dispose(bool disposing) { }
         }
     }
 }
