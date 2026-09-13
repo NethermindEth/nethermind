@@ -29,7 +29,7 @@ public class TrieNodeTests
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
-        [Values(0, 2, 4)] int dirtyBranchCount, [Values(1, 9, 15, 16)] int replacementCount)
+        [Values(0, 2, 4)] int dirtyBranchCount, [Values(1, 9, 15, 16)] int replacementCount, [Values] bool pooled)
     {
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
@@ -73,9 +73,17 @@ public class TrieNodeTests
 
         // Four materialized children select the parallel measuring path even without AVX-512VL;
         // two dirty branches select batched measuring on hosts that support it.
-        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: dirtyBranchCount == 4);
+        using TrackingCappedArrayPool? pool = pooled ? new() : null;
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, pool, canBeParallel: dirtyBranchCount == 4);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
-        Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+            if (pooled && dirtyBranchCount == 0)
+                Assert.That(actual.UnderlyingLength, Is.GreaterThanOrEqualTo(oldRlp.Length));
+            else if (!pooled)
+                Assert.That(actual.UnderlyingLength, Is.EqualTo(actual.Length));
+        }
     }
 
     // private TrieNode _tiniestLeaf;

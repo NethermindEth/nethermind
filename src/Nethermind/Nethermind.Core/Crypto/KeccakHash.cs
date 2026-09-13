@@ -582,7 +582,7 @@ public sealed partial class KeccakHash
 
         ref byte tail = ref MemoryMarshal.GetReference(input);
         nuint remaining = (nuint)input.Length;
-        // Fewer than eight bytes remain; consume each complete word without reading beyond the input.
+        // Fewer than eight bytes remain; use 4/2/1-byte chunks without reading beyond the input.
         if (remaining >= sizeof(uint))
         {
             Unsafe.WriteUnaligned(ref stateRef, Unsafe.ReadUnaligned<uint>(ref stateRef) ^ Unsafe.ReadUnaligned<uint>(ref tail));

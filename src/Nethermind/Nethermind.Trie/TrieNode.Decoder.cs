@@ -217,10 +217,11 @@ namespace Nethermind.Trie
                 }
 
                 Unsafe.SkipInit(out BranchScratch scratch);
-                const int fullBranchHeaderLength = 3;
-                bool reuseFullBranch = item.FullRlp.Length == FullBranchRlpLength;
+                const int fullBranchHeaderLength = FullBranchRlpLength - BranchesCount * Rlp.LengthOfKeccakRlp - valueRlpLength;
+                bool reuseFullBranch = pool is not null && item.FullRlp.Length == FullBranchRlpLength;
                 // A full branch can only stay the same size or shrink. Encode into its final buffer
-                // and compact only when the sequence header shrinks; other branches use scratch space.
+                // and compact only when the sequence header shrinks. Unpooled branches use scratch
+                // space to avoid retaining an oversized allocation when the encoding shrinks.
                 result = reuseFullBranch ? pool.SafeRent(FullBranchRlpLength) : default;
                 Span<byte> children = reuseFullBranch
                     ? result.AsSpan(fullBranchHeaderLength, BranchesCount * Rlp.LengthOfKeccakRlp)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -78,6 +79,7 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static partial ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
         {
+            Debug.Assert(HashLaneMask != 0, $"{nameof(SeedHashes)} must run before hashing.");
             ulong mask = HashLaneMask;
             ulong sum = MixLanes(u0, seeds, mask)
                 + MixLanes(u1, Unsafe.Add(ref seeds, 1), mask)
