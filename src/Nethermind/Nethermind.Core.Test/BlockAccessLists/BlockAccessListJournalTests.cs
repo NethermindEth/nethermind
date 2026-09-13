@@ -301,29 +301,42 @@ public class BlockAccessListJournalTests
     }
 
     [Test]
-    public void Restore_after_delete_account_restores_within_block_change_entries()
+    public void Restore_after_delete_account_restores_within_block_change_entries([Values(0, 1, 64)] int slotCount)
     {
-        UInt256 slot = 9;
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
         slice.AddNonceChange(TestItem.AddressA, 3);
         slice.AddCodeChange(TestItem.AddressA, before: [], after: new byte[] { 0x60, 0x01 });
-        slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 77);
+        slice.AddStorageRead(TestItem.AddressA, 999);
+        for (int i = 0; i < slotCount; i++)
+            slice.AddStorageChange(TestItem.AddressA, (UInt256)i, before: 0, after: (UInt256)(77 + i));
 
         int snapshot = slice.TakeSnapshot();
 
         slice.DeleteAccount(TestItem.AddressA, oldBalance: 50);
-        slice.Restore(snapshot);
-
         AccountChangesAtIndex accountChanges = slice.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges.StorageChangeCount, Is.Zero);
+            Assert.That(accountChanges.StorageReads, Has.Count.EqualTo(slotCount + 1));
+            for (int i = 0; i < slotCount; i++)
+                Assert.That(accountChanges.StorageReads, Does.Contain((UInt256)i));
+        }
+
+        slice.Restore(snapshot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)50));
             Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(3u));
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(new byte[] { 0x60, 0x01 }));
 
-            Assert.That(accountChanges.StorageChanges.TryGetValue(slot, out StorageChange slotChange), Is.True);
-            Assert.That(slotChange.Value, Is.EqualTo((UInt256)77));
+            Assert.That(accountChanges.StorageChangeCount, Is.EqualTo(slotCount));
+            Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new UInt256[] { 999 }));
+            for (int i = 0; i < slotCount; i++)
+            {
+                Assert.That(accountChanges.StorageChanges.TryGetValue((UInt256)i, out StorageChange slotChange), Is.True);
+                Assert.That(slotChange.Value, Is.EqualTo((UInt256)(77 + i)));
+            }
         }
     }
 

@@ -231,10 +231,9 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        using ArrayPoolListRef<UInt256> changedSlots = new(accountChanges.StorageChangeCount);
         foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
         {
-            changedSlots.Add(kv.Key);
+            accountChanges.AddStorageRead(kv.Key);
             _changes.Add(new Change(slot: kv.Key, previousValue: kv.Value.Value)
             {
                 Account = accountChanges,
@@ -267,11 +266,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
 
         // SELFDESTRUCT clears storage (changes become reads), nonce and code
-        foreach (UInt256 slot in changedSlots.AsSpan())
-        {
-            accountChanges.RemoveStorageChange(slot);
-            accountChanges.AddStorageRead(slot);
-        }
+        accountChanges.StorageChanges.Clear();
         accountChanges.NonceChange = null;
         accountChanges.CodeChange = null;
 
