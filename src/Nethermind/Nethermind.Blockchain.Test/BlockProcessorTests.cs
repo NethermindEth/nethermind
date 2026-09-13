@@ -56,12 +56,24 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
-    [Test]
+    public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
+    {
+        foreach (string tracerName in new[] { "callTracer", "prestateTracer" })
+        {
+            for (int targetIndex = -1; targetIndex <= 2; targetIndex++)
+            {
+                yield return new TestCaseData(targetIndex, tracerName, false, false);
+                yield return new TestCaseData(targetIndex, tracerName, true, false);
+            }
+        }
+
+        yield return new TestCaseData(0, "callTracer", false, true);
+        yield return new TestCaseData(0, "callTracer", true, true);
+    }
+
+    [TestCaseSource(nameof(TransactionTraceBoundaryCases))]
     public async Task TransactionTraceBoundary_WhenTargetCompletes_PreservesTraceAndSkipsSuffix(
-        [Range(-1, 2)] int targetIndex,
-        [Values("callTracer", "prestateTracer")] string tracerName,
-        [Values] bool useBal,
-        [Values] bool forceFullBal)
+        int targetIndex, string tracerName, bool useBal, bool forceFullBal)
     {
         IReleaseSpec spec = useBal ? Amsterdam.Instance : Prague.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder

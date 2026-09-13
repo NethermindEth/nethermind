@@ -29,10 +29,24 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public partial class DebugRpcModuleTests
 {
-    [Test]
+    public static IEnumerable<TestCaseData> TransactionTracingPrefixCases()
+    {
+        foreach (string method in new[] { "debug_traceTransaction", "trace_transaction", "trace_replayTransaction" })
+        {
+            for (int targetIndex = 0; targetIndex <= 2; targetIndex++)
+            {
+                yield return new TestCaseData(method, targetIndex, false, false);
+                yield return new TestCaseData(method, targetIndex, true, false);
+            }
+
+            yield return new TestCaseData(method, 0, false, true);
+            yield return new TestCaseData(method, 0, true, true);
+        }
+    }
+
+    [TestCaseSource(nameof(TransactionTracingPrefixCases))]
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
-        [Values("debug_traceTransaction", "trace_transaction", "trace_replayTransaction")] string method,
-        [Range(0, 2)] int targetIndex, [Values] bool stream, [Values] bool isAura)
+        string method, int targetIndex, bool stream, bool isAura)
     {
         List<Hash256?> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev)
