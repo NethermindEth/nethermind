@@ -61,6 +61,7 @@ namespace Nethermind.State
             return encoded;
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         internal static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, ReadOnlySpan<byte> value, bool isZero) =>
             new(in key, isZero ? [] : EncodeNonZeroValue(value));
 
@@ -158,6 +159,7 @@ namespace Nethermind.State
 
         private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value) => SetInternal(in hash, value, value.IsZero());
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value, bool isZero)
         {
             ReadOnlySpan<byte> rawKey = hash.Bytes;
