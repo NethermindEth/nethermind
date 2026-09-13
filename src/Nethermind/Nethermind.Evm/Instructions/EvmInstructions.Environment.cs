@@ -630,8 +630,9 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // An account with code cannot be dead, so reading its hash first settles both questions at once.
-        // The dead check is three more reads — balance, nonce, and the same code hash again — and EIP-1052
-        // only needs them to tell an empty account (push zero) from a codeless live one (push the empty hash).
+        // EIP-1052 needs the dead check only to tell an empty account (push zero) from a codeless live one
+        // (push the empty hash), and it costs another account lookup — one cached read on the production
+        // provider, three through the BAL wrappers, which read balance, nonce and the code hash separately.
         ValueHash256 hash = state.GetCodeHash(address);
         if (hash != ValueKeccak.OfAnEmptyString)
         {

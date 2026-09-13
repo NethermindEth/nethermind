@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -54,13 +56,27 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    /// <summary>The keccak of the code, assigned when the cache stores this instance.</summary>
-    /// <remarks>Written only by <see cref="StaticCodeCache"/> on insert; <c>CacheCodeInfoRepository</c>'s
-    /// last-resolved memo validates a hit against it, so the write must stay confined to the cache. An
-    /// instance that never passed through <c>ICodeCache.Set</c> — a precompile, <see cref="Empty"/>, or
-    /// anything resolved under <c>NoopCodeCache</c> — therefore reports <c>default</c> rather than its
-    /// own hash.</remarks>
-    public ValueHash256 CodeHash { get; internal set; }
+    /// <summary>The keccak of the code, stamped when a cache stores this instance.</summary>
+    /// <remarks>An instance that never passed through <c>ICodeCache.Set</c> — a precompile,
+    /// <see cref="Empty"/>, or anything resolved under <c>NoopCodeCache</c> — reports <c>default</c>
+    /// rather than its own hash. See <see cref="StampCodeHash"/> for why it cannot be re-pointed.</remarks>
+    public ValueHash256 CodeHash { get; private set; }
+
+    /// <summary>Stamps the keccak of this instance's code, as an <c>ICodeCache</c> does on insert.</summary>
+    /// <remarks><c>CacheCodeInfoRepository</c>'s last-resolved memo decides which bytecode executes from
+    /// this value alone, so a stamp that is not the keccak of <see cref="CodeSpan"/> would silently serve
+    /// the wrong contract. Re-stamping the same hash is allowed — two threads may race to cache the same
+    /// code — but re-pointing an instance at a different one is not.</remarks>
+    /// <exception cref="InvalidOperationException">The instance already carries a different hash.</exception>
+    internal void StampCodeHash(in ValueHash256 codeHash)
+    {
+        if (CodeHash != default && CodeHash != codeHash) ThrowRestamped(in codeHash);
+        CodeHash = codeHash;
+
+        [DoesNotReturn, StackTraceHidden]
+        void ThrowRestamped(in ValueHash256 attempted)
+            => throw new InvalidOperationException($"{nameof(CodeInfo)} carrying {CodeHash} cannot be re-stamped as {attempted}");
+    }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.

@@ -36,6 +36,13 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     /// </remarks>
     private CodeInfo? _lastResolved;
 
+    /// <summary>Memo hits served before one is spent refreshing the shared cache's eviction ticker.</summary>
+    /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
+    /// would age as though untouched and could be evicted out from under its own memo — costing a code-db
+    /// re-read and re-analysis on the next miss.</remarks>
+    private const int MemoHitsPerTickerRefresh = 64;
+    private int _memoHits;
+
     private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
@@ -44,13 +51,14 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         }
 
         CodeInfo? lastResolved = _lastResolved;
-        if (lastResolved is not null && lastResolved.CodeHash == codeHash)
+        if (lastResolved is not null && lastResolved.CodeHash == codeHash && ++_memoHits < MemoHitsPerTickerRefresh)
         {
             // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
             Metrics.IncrementCodeDbCache();
             return lastResolved;
         }
 
+        _memoHits = 0;
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {

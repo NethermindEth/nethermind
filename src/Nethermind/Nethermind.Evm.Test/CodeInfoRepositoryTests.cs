@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain;
 using Nethermind.Evm.State;
@@ -122,7 +123,26 @@ public class CodeInfoRepositoryTests
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+            // Alternating never produces a memo hit; repeating the last address is what pins that a hit
+            // answers for the right address rather than only that a miss is not confused.
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
         }
+    }
+
+    /// <summary>A cached instance must not be re-pointed at a different code hash.</summary>
+    /// <remarks>The last-resolved memo decides which bytecode executes from the stamped hash alone, so a
+    /// stamp that is not the keccak of the body would serve the wrong contract with no diagnostic.</remarks>
+    [Test]
+    public void Cached_code_cannot_be_re_stamped_with_another_hash()
+    {
+        byte[] code = [(byte)Instruction.STOP];
+        CodeInfo codeInfo = new(code);
+        StaticCodeCache cache = new(64);
+
+        cache.Set(ValueKeccak.Compute(code), codeInfo);
+
+        Assert.That(() => cache.Set(ValueKeccak.Compute([(byte)Instruction.JUMPDEST]), codeInfo),
+            Throws.InstanceOf<InvalidOperationException>());
     }
 
     [Test]

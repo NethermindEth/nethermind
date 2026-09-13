@@ -52,13 +52,18 @@ public class EthereumGasPolicyTests
     public void Pooled_reset_drops_the_remembered_cell()
     {
         StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        object returnedState;
         using (StackAccessTracker first = new())
         {
+            returnedState = first.AccessedAddresses;
             first.WarmUp(in cell);
             Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
         }
 
         using StackAccessTracker second = new();
+        // Without this the assertion below also holds for a fresh state, so it could not fail if the
+        // reuse it claims to exercise ever stopped happening.
+        Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
         Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
     }
 
