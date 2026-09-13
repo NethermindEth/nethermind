@@ -496,6 +496,9 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Transient_write_does_not_materialise_the_word()
     {
+        // Must stay <= CoreCollectionExtensions.DefaultTrimToCapacity: the warm-up does Iterations*4*2
+        // journaling writes, and if that pushes _undo past the trim bound, Reset() shrinks it and a larger
+        // measured loop would regrow the list, allocating for a reason unrelated to the write path.
         const int Iterations = 1000;
 
         using Context ctx = new(useFlat);
