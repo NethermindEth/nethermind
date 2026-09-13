@@ -136,8 +136,8 @@ public class WitnessGeneratingWorldState(
                 {
                     ValueHash256 slotKey = default;
                     StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
-                    base.Get(new StorageCell(address, slot), out UInt256 storageValue1);
-                    bool deleted = storageValue1.IsZero;
+                    base.Get(new StorageCell(address, slot), out UInt256 storageValue);
+                    bool deleted = storageValue.IsZero;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
                 PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(address), new Hash256(storageRoot), slotEntries.AsSpan(), sink);
