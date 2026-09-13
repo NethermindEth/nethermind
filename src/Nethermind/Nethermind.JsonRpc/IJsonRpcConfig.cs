@@ -185,18 +185,21 @@ public interface IJsonRpcConfig : IConfig
     int EvmExecutionMaxQueueWaitMs { get; set; }
 
     /// <summary>
-    /// Whether EVM-executing JSON-RPC methods are admitted through the execution gate. Defaults to <c>true</c>.
+    /// Whether EVM-executing JSON-RPC methods are admitted through the execution gate. Defaults to <c>false</c>
+    /// (opt-in) until the shedding policy is measured on the RPC-benchmark rig.
     /// </summary>
     [ConfigItem(
         Description = """
             Whether `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_fillTransaction`, `eth_simulateV1`
-            and `debug_simulateV1` are admitted through the EVM execution gate, which bounds how many of them run at once. Disabling it
-            restores the previous behaviour, where the number of concurrent calls without state overrides was
-            limited only by `MaxConcurrentSharedRequests`. Provided as an escape hatch for operators who would
-            rather serve every call slowly than shed some: with it off, a heavy enough call rate can starve block
-            processing.
+            and `debug_simulateV1` are admitted through the EVM execution gate, which bounds how many of them run at once.
+            Off by default: the gate answers `LimitExceeded` once every slot is busy and the queue budget is
+            spent, and that "faster because we shed" versus "faster because we scheduled better" tradeoff is not
+            yet measured — so it ships opt-in rather than changing the default shape of the service unproven.
+            Enabling it bounds concurrent EVM-executing RPC (to `EthModuleConcurrentInstances`) so a heavy call
+            rate cannot starve block processing; leaving it off keeps the previous behaviour, where such calls
+            were limited only by `MaxConcurrentSharedRequests`.
             """,
-        DefaultValue = "true")]
+        DefaultValue = "false")]
     bool EvmExecutionGateEnabled { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
