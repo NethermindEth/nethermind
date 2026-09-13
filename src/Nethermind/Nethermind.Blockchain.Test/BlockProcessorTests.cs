@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Module = Autofac.Module;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -77,7 +80,8 @@ public class BlockProcessorTests
     {
         IReleaseSpec spec = useBal ? Amsterdam.Instance : Prague.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Transaction[] transactions = new Transaction[3];
         for (int i = 0; i < transactions.Length; i++)
@@ -94,6 +98,9 @@ public class BlockProcessorTests
         byte[][] executionRequests = [[0, 1, 2]];
         GeneratedBlockAccessList generatedBlockAccessList = new();
         byte[] encodedBlockAccessList = [0xc0];
+        using ArrayPoolList<AddressAsKey> accountChanges = new(1);
+        accountChanges.Add(TestItem.AddressA);
+        block.AccountChanges = accountChanges;
         block.ExecutionRequests = executionRequests;
         block.GeneratedBlockAccessList = generatedBlockAccessList;
         block.EncodedBlockAccessList = encodedBlockAccessList;
@@ -105,12 +112,10 @@ public class BlockProcessorTests
             Assert.That(prefixCount, Is.EqualTo(targetIndex < 0 || forceFullBal ? 3 : targetIndex + 1), "replay must stop only after the target completes unless full BAL construction is required");
             Assert.That(actual, Is.EqualTo(expected), "the selected trace must match full-block replay including its prestate");
             Assert.That(block.Transactions.Length, Is.EqualTo(3), "the original block body must not be truncated");
-            if (targetIndex >= 0 && !forceFullBal)
-            {
-                Assert.That(block.ExecutionRequests, Is.SameAs(executionRequests), "partial replay must not overwrite cached execution requests");
-                Assert.That(block.GeneratedBlockAccessList, Is.SameAs(generatedBlockAccessList), "partial replay must not overwrite the cached generated BAL");
-                Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBlockAccessList), "partial replay must not overwrite the cached encoded BAL");
-            }
+            Assert.That(block.AccountChanges, Is.SameAs(accountChanges), "read-only replay must not overwrite cached account changes");
+            Assert.That(block.ExecutionRequests, Is.SameAs(executionRequests), "read-only replay must not overwrite cached execution requests");
+            Assert.That(block.GeneratedBlockAccessList, Is.SameAs(generatedBlockAccessList), "read-only replay must not overwrite the cached generated BAL");
+            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBlockAccessList), "read-only replay must not overwrite the cached encoded BAL");
         }
 
         string Replay(bool stopAtTarget, out int count)
@@ -154,6 +159,28 @@ public class BlockProcessorTests
         Assert.That(boundary.IsComplete, Is.True, "completion follows EndTxTrace");
         boundary.StartNewBlockTrace(block);
         Assert.That(boundary.IsComplete, Is.False, "a new block must reset the boundary");
+    }
+
+    private sealed class PrefixReplayValidationModule : Module, IBlockValidationModule
+    {
+        public bool SupportsTransactionTracePrefix => true;
+
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<IBlockProcessor, TransactionTraceBlockProcessor>()
+            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, TransactionTraceExecutor>();
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenRewardsEnabledAfterWrapping_DoesNotComplete()
+    {
+        CancellationBlockTracer tracer = new(NullBlockTracer.Instance);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(tracer, tx.Hash!);
+        boundary.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+        boundary.StartNewTxTrace(tx);
+        tracer.IsTracingRewards = true;
+        boundary.EndTxTrace();
+        Assert.That(boundary.IsComplete, Is.False);
     }
 
     [Test]

@@ -58,7 +58,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public void EndTxTrace()
     {
         _inner.EndTxTrace();
-        IsComplete |= _isTarget;
+        IsComplete |= _isTarget && !_inner.IsTracingRewards;
         _isTarget = false;
     }
 

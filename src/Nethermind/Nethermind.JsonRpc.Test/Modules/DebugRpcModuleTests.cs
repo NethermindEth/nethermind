@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
@@ -46,14 +47,17 @@ public partial class DebugRpcModuleTests
 
     [TestCaseSource(nameof(TransactionTracingPrefixCases))]
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
-        string method, int targetIndex, bool stream, bool useAuraHeaders)
+        string method, int targetIndex, bool stream, bool unsupportedValidationModule)
     {
         List<Hash256?> executed = [];
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(useAuraHeaders ? SealEngineType.AuRa : SealEngineType.NethDev)
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
-            .Build(builder => builder
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
-                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed)));
+            .Build(builder =>
+            {
+                builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                if (unsupportedValidationModule) builder.AddSingleton<IBlockValidationModule, UnsupportedTraceValidationModule>();
+            });
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
         Transaction[] transactions = new Transaction[3];
         for (int i = 0; i < transactions.Length; i++)
@@ -77,13 +81,14 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(json["error"], Is.Null, "the prefix must produce a successful RPC response");
             Assert.That(json["result"], Is.Not.Null, "the selected transaction must have a trace result");
-            // The AuRa fixture changes header handling, not the standard replay processor.
-            Assert.That(executed.Count, Is.EqualTo(targetIndex + 1),
-                "standard replay must skip the suffix with either header format");
+            Assert.That(executed.Count, Is.EqualTo(unsupportedValidationModule ? 3 : targetIndex + 1),
+                "an additional validation module without explicit prefix support must retain full replay");
         }
         for (int i = 0; i < executed.Count; i++)
             Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
     }
+
+    private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
     private class Context : IDisposable
     {

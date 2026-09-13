@@ -12,7 +12,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -43,8 +42,7 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager,
-    TransactionTraceCapabilities? traceCapabilities = null)
+    IBlockAccessListManager balManager)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
@@ -75,13 +73,8 @@ public partial class BlockProcessor(
 
     public event Action? TransactionsExecuted;
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
-        if (blockTracer is TransactionTraceBoundary boundary && !SupportsTransactionTraceBoundary())
-        {
-            blockTracer = boundary.Inner;
-        }
-
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
@@ -111,11 +104,6 @@ public partial class BlockProcessor(
         {
             if (!processed) block.DisposeAccountChanges();
         }
-        if (TransactionTraceBoundary.Get(blockTracer, options)?.IsComplete == true)
-        {
-            return (block, receipts);
-        }
-
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -124,9 +112,6 @@ public partial class BlockProcessor(
 
         return (block, receipts);
     }
-
-    private bool SupportsTransactionTraceBoundary() =>
-        traceCapabilities?.SupportsPrefixReplay == true && !_balManager.ForceConstructGeneratedBlockAccessList;
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
@@ -142,6 +127,8 @@ public partial class BlockProcessor(
 
     protected virtual void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
     {
+        if (options.ContainsFlag(ProcessingOptions.Trace)) return;
+
         // Block is valid, copy the execution artifacts back onto the suggested block.
         // Forward sync suggests blocks without BAL payloads, so the generated BAL needs to
         // follow the suggested block through main-chain updates and persistence.
@@ -184,12 +171,13 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
-        if (TransactionTraceBoundary.Get(blockTracer, options)?.IsComplete == true)
-        {
-            // A transaction-only replay must not apply block-final state changes to its partial state.
-            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: false);
-            return receipts;
-        }
+        return FinalizeBlock(block, blockTracer, options, spec, receipts);
+    }
+
+    protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
+        IReleaseSpec spec, TxReceipt[] receipts)
+    {
+        BlockHeader header = block.Header;
 
         CommitState(spec);
 
