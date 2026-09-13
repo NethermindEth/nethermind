@@ -46,6 +46,11 @@ namespace Nethermind.Blockchain
         private ulong _armedNumber = ulong.MaxValue;
         private Hash256? _armedHash;
 
+        // The header whose EIP-2935 ring-buffer write has been observed. Until that write lands the slot
+        // the block is about to overwrite still holds the occupant from a ring-size earlier, so nothing
+        // may be memoized against it. See RingBufferWritten.
+        private BlockHeader? _ringBufferWrittenFor;
+
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
             if (spec.IsBlockHashInStateAvailable)
@@ -96,19 +101,21 @@ namespace Nethermind.Blockchain
         /// suggested-header run and a sequential-retry re-run from reading each other's entries.
         /// <para>
         /// Why the values cannot be stale: the ring buffer is written once per block by the system call
-        /// before any transaction runs — the only EVM execution between arming and that write is the
-        /// beacon-root system call, which the canonical EIP-4788 contract performs without BLOCKHASH — and
-        /// the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS,
-        /// so no transaction can write to it — a chain pointing Eip2935ContractAddress at writable code would
-        /// invalidate this. Cached values come from state rather than from the block tree, which matters at
-        /// the fork boundary where the buffer is still filling and the two disagree.</para>
+        /// before any transaction runs, and <see cref="RingBufferWritten"/> holds the memo shut until that
+        /// write is observed — so the EIP-4788 beacon-root call, which is EVM and runs before it, cannot
+        /// memoize the slot's previous occupant. After it, the canonical EIP-2935 contract only stores for
+        /// SYSTEM_ADDRESS, so no transaction can write to it — a chain pointing Eip2935ContractAddress at
+        /// writable code would invalidate this. Cached values come from state rather than from the block
+        /// tree, which matters at the fork boundary where the buffer is still filling and the two disagree.</para>
         /// </remarks>
         private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
-            if (currentBlock.Number != Volatile.Read(ref _armedNumber) || currentBlock.Hash != Volatile.Read(ref _armedHash))
+            if (currentBlock.Number != Volatile.Read(ref _armedNumber) || currentBlock.Hash != Volatile.Read(ref _armedHash)
+                || !RingBufferWritten(currentBlock, spec))
             {
                 // Unarmed caller (an RPC env that never prefetches, possibly executing under state
-                // overrides): read the store directly, costing one Hash256 per call.
+                // overrides), or the block's own ring-buffer write has not landed yet: read the store
+                // directly, costing one Hash256 per call.
                 Hash256? unmemoized = _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
                 hash = unmemoized is null ? default : unmemoized.Bytes;
                 return unmemoized is not null;
@@ -134,6 +141,32 @@ namespace Nethermind.Blockchain
             entry = new CachedBlockhash(currentBlock, number, padded);
             Volatile.Write(ref slot, entry);
             hash = entry.Bytes;
+            return true;
+        }
+
+        /// <summary>Whether this block has already written its parent hash into the ring buffer.</summary>
+        /// <remarks>
+        /// EIP-2935 stores the parent hash at <c>(number - 1) % ring size</c> at the start of the block, but
+        /// the EIP-4788 beacon-root call runs before that — on this same header, and it is EVM. Were it to
+        /// execute BLOCKHASH for the parent under EIP-7709, the memo would capture that slot's previous
+        /// occupant (the block a ring size earlier, which is still servable) and every transaction in the
+        /// block would then read that instead of the parent. Observing the write rather than assuming no EVM
+        /// precedes it removes the dependency; it costs one state read per block, of the slot the parent
+        /// lookup reads anyway.
+        /// </remarks>
+        private bool RingBufferWritten(BlockHeader currentBlock, IReleaseSpec spec)
+        {
+            if (ReferenceEquals(Volatile.Read(ref _ringBufferWrittenFor), currentBlock)) return true;
+            if (currentBlock.Number == 0 || currentBlock.ParentHash is null) return false;
+
+            ValueHash256 parent = default;
+            if (!_blockhashStore.TryGetBlockHashFromState(currentBlock, (ulong)currentBlock.Number - 1, spec, parent.BytesAsSpan)
+                || parent != currentBlock.ParentHash.ValueHash256)
+            {
+                return false;
+            }
+
+            Volatile.Write(ref _ringBufferWrittenFor, currentBlock);
             return true;
         }
 
@@ -171,6 +204,7 @@ namespace Nethermind.Blockchain
             // and misses the reference check, so the stale window closes itself.
             CachedBlockhash?[]? stateCache = Volatile.Read(ref _stateHashCache);
             if (stateCache is not null) Array.Clear(stateCache);
+            Volatile.Write(ref _ringBufferWrittenFor, null);
             Volatile.Write(ref _armedHash, currentBlock.Hash);
             Volatile.Write(ref _armedNumber, currentBlock.Number);
 

@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -366,7 +367,87 @@ public class BlockhashProviderTests
         /// <summary>Another header at the same height, which therefore shares the ring slot.</summary>
         public BlockHeader BuildSibling() => Build.A.Block.WithParent(Head).WithStateRoot(StateRoot).TestObject.Header;
 
+        /// <summary>Plants <paramref name="hash"/> in the ring slot that <paramref name="number"/> reads from.</summary>
+        public void WriteRingSlot(ulong number, Hash256 hash)
+            => WorldState.Set(
+                new StorageCell(Eip2935Constants.BlockHashHistoryAddress, new UInt256(number % Spec.Eip2935RingBufferSize)),
+                hash.BytesToArray().WithoutLeadingZeros().ToArray());
+
         public void Dispose() => _scope.Dispose();
+    }
+
+    /// <summary>The memo must not answer with what the slot held before this block overwrote it.</summary>
+    /// <remarks>
+    /// EIP-4788's beacon-root call is EVM, runs on this header, and runs <em>before</em> the ring-buffer
+    /// write. A memo armed by Prefetch alone would capture the slot's previous occupant — the block a ring
+    /// size earlier, which is still servable — and every transaction in the block would then read that
+    /// instead of the parent.
+    /// </remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_memo_does_not_capture_the_slot_before_the_block_writes_it()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        ulong number = (ulong)header.Number - 1;
+
+        Hash256 previousOccupant = new("0x3333333333333333333333333333333333333333333333333333333333333333");
+        fixture.WriteRingSlot(number, previousOccupant);
+
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+
+        // Stands in for the beacon-root call: a BLOCKHASH on this header before the ring buffer is written.
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
+        Assert.That(before.ToArray(), Is.EqualTo(previousOccupant.Bytes.ToArray()), "precondition: the old occupant is still there");
+
+        fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
+        Assert.That(after.ToArray(), Is.EqualTo(header.ParentHash!.Bytes.ToArray()),
+            "the memo served what the slot held before the block wrote it");
+    }
+
+    /// <summary>Both ends of the EIP-2935 window, for both lookup overloads.</summary>
+    /// <remarks>The equivalence sweep cannot pin these: the overloads share one range helper, so a one-off
+    /// there shifts them together and they keep agreeing with each other.</remarks>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip2935_window_edges_are_served_exactly()
+    {
+        using BlockhashFixture fixture = new();
+        ulong ringSize = fixture.Spec.Eip2935RingBufferSize;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(ringSize + 10).TestObject;
+
+        ulong current = (ulong)header.Number;
+        ulong oldest = current - ringSize;
+        ulong tooOld = oldest - 1;
+        ulong newest = current - 1;
+
+        // tooOld and oldest land on adjacent slots, so a window off-by-one returns real bytes rather than
+        // nothing and the assertions below can tell the two cases apart.
+        fixture.WriteRingSlot(tooOld, TestItem.KeccakA);
+        fixture.WriteRingSlot(oldest, TestItem.KeccakB);
+        fixture.WriteRingSlot(newest, TestItem.KeccakC);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertServed(oldest, TestItem.KeccakB, "exactly the ring size back is the oldest servable block");
+            AssertServed(newest, TestItem.KeccakC, "the parent is the newest servable block");
+            AssertNotServed(tooOld, "one past the ring size is out of the window");
+            AssertNotServed(current, "the current block has no hash yet");
+            AssertNotServed(current + 1, "a future block has no hash");
+        }
+
+        void AssertServed(ulong number, Hash256 expected, string because)
+        {
+            Assert.That(fixture.Store.GetBlockHashFromState(header, number, fixture.Spec), Is.EqualTo(expected), because);
+            Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> span), Is.True, because);
+            Assert.That(span.ToArray(), Is.EqualTo(expected.Bytes.ToArray()), because);
+        }
+
+        void AssertNotServed(ulong number, string because)
+        {
+            Assert.That(fixture.Store.GetBlockHashFromState(header, number, fixture.Spec), Is.Null, because);
+            Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _), Is.False, because);
+        }
     }
 
     /// <summary>A cached entry must never outlive the block it was resolved for.</summary>
