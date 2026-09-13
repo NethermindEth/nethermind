@@ -581,9 +581,8 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [Test]
-    public void RepeatedStorageWrites_SameTx_UsesLatestValue_InParallel()
+    public void RepeatedStorageWrites_SameTx_UsesLatestValue([Values(0, 64)] int additionalSlots)
     {
-        if (!parallel) Assert.Ignore("Storage cache only used in parallel mode");
 
         StorageCell cell = new(TestItem.AddressA, 1);
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
@@ -593,6 +592,12 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
             tws.Get(cell, out UInt256 storageValue1);
             Assert.That(storageValue1, Is.EqualTo(UInt256.One));
+            for (int i = 0; i < additionalSlots; i++)
+            {
+                tws.Set(new StorageCell(cell.Address, (UInt256)(i + 2)), UInt256.MaxValue);
+            }
+            tws.Get(cell, out UInt256 valueAfterGrowth);
+            Assert.That(valueAfterGrowth, Is.EqualTo(UInt256.One));
             tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x02], isBigEndian: true));
             tws.Get(cell, out UInt256 storageValue2);
             Assert.That(storageValue2, Is.EqualTo((UInt256)2));
@@ -601,7 +606,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
+                Assert.That(ac!.StorageChangeCount, Is.EqualTo(additionalSlots + 1));
                 Assert.That(ac.StorageChanges.TryGetValue((UInt256)1, out StorageChange change), Is.True);
                 Assert.That(change.Value, Is.EqualTo((UInt256)2));
             }

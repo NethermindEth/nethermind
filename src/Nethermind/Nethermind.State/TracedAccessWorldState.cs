@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -98,7 +99,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         bool covered = ReadCoverage?.TryMark(storageCell) == true;
         AccountChangesAtIndex accountChanges = GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address);
-        bool hasChange = accountChanges.StorageChanges.TryGetValue(storageCell.Index, out StorageChange change);
+        ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+        bool hasChange = !Unsafe.IsNullRef(ref change);
         if (!covered && !hasChange) accountChanges.AddStorageRead(in storageCell.Index);
         _lastReadStorageCell = storageCell;
         _lastReadStorageChanges = accountChanges;
@@ -375,11 +377,14 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     private void GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell, out UInt256 value)
     {
-        if (parallel && accountChanges is not null &&
-            accountChanges.StorageChanges.TryGetValue(storageCell.Index, out StorageChange change))
+        if (parallel && accountChanges is not null)
         {
-            value = change.Value;
-            return;
+            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+            if (!Unsafe.IsNullRef(ref change))
+            {
+                value = change.Value;
+                return;
+            }
         }
 
         base.Get(in storageCell, out value);
