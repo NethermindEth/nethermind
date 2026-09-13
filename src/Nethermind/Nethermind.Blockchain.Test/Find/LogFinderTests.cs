@@ -339,22 +339,21 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
+    [Test]
     [NonParallelizable]
-    public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
+    public void FindLogs_WhenEnumerated_ObservesCancellation([Values] bool cancelBeforeEnumeration)
     {
-        TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
-        using CancellationTokenSource cancellationTokenSource = new(timeout);
+        using CancellationTokenSource cancellationTokenSource = new();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
         _logFinder = CreateLogFinder();
         LogFilter logFilter = AllBlockFilter().Build();
         IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
-        await Task.Delay(timeout * waitTime);
+        if (cancelBeforeEnumeration) cancellationTokenSource.Cancel();
 
         Action action = () => _ = logs.ToArray();
 
-        if (waitTime > 1)
+        if (cancelBeforeEnumeration)
         {
             Assert.That(action, Throws
                 .Exception.InstanceOf<OperationCanceledException>()
