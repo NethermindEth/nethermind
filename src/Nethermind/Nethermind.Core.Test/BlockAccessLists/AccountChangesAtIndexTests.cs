@@ -50,5 +50,10 @@ public class AccountChangesAtIndexTests
             Assert.That(reused, Is.SameAs(accountChanges));
             Assert.That(reused.Address, Is.EqualTo(TestItem.AddressB));
         }
+
+        Assert.That(reused.GetOrCapturePreTxStorage(UInt256.Zero, (UInt256)77, 0, out UInt256 original), Is.True);
+        Assert.That(original, Is.EqualTo((UInt256)77));
+        Assert.That(reused.GetOrCapturePreTxStorage(UInt256.Zero, (UInt256)99, 0, out original), Is.False);
+        Assert.That(original, Is.EqualTo((UInt256)77));
     }
 }

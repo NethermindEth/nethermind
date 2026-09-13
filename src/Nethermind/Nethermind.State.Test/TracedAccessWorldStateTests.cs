@@ -227,7 +227,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
-                Assert.That(ac.ChangedSlots, Does.Contain((UInt256)1));
+                Assert.That(ac.StorageChanges.ContainsKey((UInt256)1), Is.True);
                 Assert.That(decorator.Writes, Is.EqualTo(1));
                 Assert.That(decorator.Reads - reads, Is.EqualTo(expectedReads));
             }

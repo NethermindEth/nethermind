@@ -28,7 +28,6 @@ public class AccountChangesAtIndex(Address address)
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
     private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
 
-    public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
     public HashSet<UInt256> StorageReads => _storageReads;
@@ -60,13 +59,6 @@ public class AccountChangesAtIndex(Address address)
     {
         public readonly UInt256 Value = value;
         public ulong JournalEpoch = journalEpoch;
-    }
-
-    public void ClearStorage()
-    {
-        _storageChanges.Clear();
-        _storageReads.Clear();
-        _preTxStorage?.Clear();
     }
 
     public void Reset(Address address)
