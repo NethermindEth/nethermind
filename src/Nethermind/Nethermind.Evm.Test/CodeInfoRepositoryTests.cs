@@ -60,6 +60,71 @@ public class CodeInfoRepositoryTests
         Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
     }
 
+    private static IPrecompileProvider NoPrecompiles()
+    {
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(FrozenDictionary<AddressAsKey, CodeInfo>.Empty);
+        return provider;
+    }
+
+    /// <summary>Replacing an account's code must be visible immediately, not answered from the memo.</summary>
+    /// <remarks>
+    /// <see cref="CacheCodeInfoRepository"/> remembers the code it last resolved so a repeated query skips
+    /// the shared cache's probe. The memo is keyed on the code hash, which is re-read from the world state
+    /// on every call, so a changed or reverted deployment misses it — this pins that, since a stale hit
+    /// would run the wrong bytecode.
+    /// </remarks>
+    [Test]
+    public void Changed_code_is_not_answered_from_the_last_resolved_code()
+    {
+        byte[] first = [(byte)Instruction.STOP];
+        byte[] second = [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), new StaticCodeCache(64));
+
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, first, _releaseSpec);
+
+        // Resolve twice so the second answer is the one the memo serves.
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
+
+        stateProvider.InsertCode(TestItem.AddressA, second, _releaseSpec);
+
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(second));
+    }
+
+    /// <summary>Two accounts sharing a code hash share its body; a different one must not be confused.</summary>
+    [Test]
+    public void Different_accounts_resolve_their_own_code()
+    {
+        byte[] shared = [(byte)Instruction.STOP];
+        byte[] other = [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), new StaticCodeCache(64));
+
+        foreach (Address address in (Address[])[TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+        {
+            stateProvider.CreateAccount(address, 0);
+        }
+
+        stateProvider.InsertCode(TestItem.AddressA, shared, _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressB, shared, _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressC, other, _releaseSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+        }
+    }
+
     [Test]
     public void Ordinary_address_is_not_taken_for_a_precompile()
     {

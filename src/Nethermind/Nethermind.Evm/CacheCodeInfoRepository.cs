@@ -24,11 +24,31 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
     }
 
+    /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
+    /// <remarks>
+    /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
+    /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
+    /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
+    /// body. Anything that changes an account's code — including a reverted deployment — produces a
+    /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
+    /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
+    /// the every-lookup-through-the-world-state behaviour that mode requires.
+    /// </remarks>
+    private CodeInfo? _lastResolved;
+
     private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
             return CodeInfo.Empty;
+        }
+
+        CodeInfo? lastResolved = _lastResolved;
+        if (lastResolved is not null && lastResolved.CodeHash == codeHash)
+        {
+            // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
+            Metrics.IncrementCodeDbCache();
+            return lastResolved;
         }
 
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
@@ -42,6 +62,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             Metrics.IncrementCodeDbCache();
         }
 
+        _lastResolved = cachedCodeInfo;
         return cachedCodeInfo;
     }
 

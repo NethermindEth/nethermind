@@ -628,13 +628,19 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
-        // For dead accounts, the specification requires pushing zero.
-        if (state.IsDeadAccount(address))
-        {
-            return stack.PushZero<TTracingInst, OnFlag>();
-        }
+
+        // An account with code cannot be dead, so reading its hash first settles both questions at once.
+        // The dead check is three more reads — balance, nonce, and the same code hash again — and EIP-1052
+        // only needs them to tell an empty account (push zero) from a codeless live one (push the empty hash).
         ValueHash256 hash = state.GetCodeHash(address);
-        return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
+        if (hash != ValueKeccak.OfAnEmptyString)
+        {
+            return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
+        }
+
+        return state.IsDeadAccount(address)
+            ? stack.PushZero<TTracingInst, OnFlag>()
+            : stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
