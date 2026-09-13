@@ -379,7 +379,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             Unsafe.SkipInit(out EvmWord word);
             ReadOnlySpan<byte> encoded;
-            if (value.IsZero)
+            bool isZero = value.IsZero;
+            if (isZero)
             {
                 encoded = StorageTree.ZeroBytes;
             }
@@ -391,12 +392,12 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
-                storageTree.Set(index, encoded);
+                storageTree.Set(index, encoded, isZero);
             }
             else
             {
                 StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded));
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
             }
         }
 

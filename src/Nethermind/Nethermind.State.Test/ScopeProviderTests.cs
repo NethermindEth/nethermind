@@ -92,7 +92,7 @@ public class ScopeProviderTests(bool useFlat)
     public void Test_CanSaveToStorage(
         [Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries,
         [Values(1, 3, 32)] int valueLength,
-        [Values(1UL, 1023UL, 1024UL, ulong.MaxValue)] ulong index)
+        [Values(1UL, 1023UL, 1024UL, ulong.MaxValue)] ulong index, [Values] bool delete)
     {
         using Context ctx = new(useFlat);
 
@@ -112,20 +112,27 @@ public class ScopeProviderTests(bool useFlat)
                 value.Clear();
             }
 
+            if (delete)
+            {
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+                using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, estimatedEntries);
+                storageSet.Set(index, UInt256.Zero);
+            }
             scope.Commit(1);
             stateRoot = scope.RootHash;
         }
 
         Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(2));
+        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(delete ? 1 : 2));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            byte[] expected = new byte[valueLength];
-            expected.AsSpan().Fill(0xff);
+            byte[] expected = new byte[delete ? 1 : valueLength];
+            if (!delete) expected.AsSpan().Fill(0xff);
             storage.Get(index, out UInt256 slotRead124);
             Assert.That(slotRead124.ToMinimalBigEndian(), Is.EqualTo(expected));
+            if (delete) Assert.That(storage.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 

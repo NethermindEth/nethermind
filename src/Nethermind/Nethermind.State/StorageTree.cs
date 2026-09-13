@@ -61,8 +61,8 @@ namespace Nethermind.State
             return encoded;
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, ReadOnlySpan<byte> value) =>
-            new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
+        internal static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, ReadOnlySpan<byte> value, bool isZero) =>
+            new(in key, isZero ? [] : EncodeNonZeroValue(value));
 
         public void Commit() => Commit(false, WriteFlags.None);
 
@@ -116,24 +116,27 @@ namespace Nethermind.State
         }
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, ReadOnlySpan<byte> value)
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value) => Set(in index, value, value.IsZero());
+
+        [SkipLocalsInit]
+        internal void Set(in UInt256 index, ReadOnlySpan<byte> value, bool isZero)
         {
             ValueHash256[] lookup = Lookup;
             ulong u0 = index.u0;
             if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value);
+                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value, isZero);
             }
             else
             {
-                SetWithKeyGenerate(in index, value);
+                SetWithKeyGenerate(in index, value, isZero);
             }
 
             [SkipLocalsInit]
-            void SetWithKeyGenerate(in UInt256 index, ReadOnlySpan<byte> value)
+            void SetWithKeyGenerate(in UInt256 index, ReadOnlySpan<byte> value, bool isZero)
             {
                 ComputeKey(index, out ValueHash256 key);
-                SetInternal(in key, value);
+                SetInternal(in key, value, isZero);
             }
         }
 
@@ -153,10 +156,12 @@ namespace Nethermind.State
             }
         }
 
-        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value)
+        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value) => SetInternal(in hash, value, value.IsZero());
+
+        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value, bool isZero)
         {
             ReadOnlySpan<byte> rawKey = hash.Bytes;
-            if (value.IsZero())
+            if (isZero)
             {
                 Set(rawKey, []);
             }
