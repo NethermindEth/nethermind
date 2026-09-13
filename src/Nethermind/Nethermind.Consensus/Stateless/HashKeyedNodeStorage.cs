@@ -27,18 +27,22 @@ namespace Nethermind.Consensus.Stateless;
 /// storage tries can be committed concurrently.
 /// </para>
 /// </remarks>
-internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
+internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
 {
     private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
 
-    private readonly Dictionary<NodeKey, byte[]?> _nodes = [];
     private readonly Dictionary<NodeKey, byte[]> _overflow = [];
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
     private readonly int[] _starts;
     private readonly int _bucketMask;
     private const int MaxBucketLength = 8;
-    private readonly object? _syncRoot;
+
+    private partial void InitializeOverlay(bool threadSafe);
+
+    private partial bool TryGetOverlay(NodeKey key, out byte[]? value);
+
+    private partial void SetOverlay(NodeKey key, byte[]? value);
 
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
     public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state, bool threadSafe = false)
@@ -68,18 +72,16 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             _values[slot] = value;
             if (_starts[bucket + 1] - _starts[bucket] > MaxBucketLength) _overflow[key] = value;
         }
-        _syncRoot = threadSafe ? new object() : null;
+        InitializeOverlay(threadSafe);
     }
 
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-    {
-        if (_syncRoot is null) return Find(new NodeKey(keccak));
-        lock (_syncRoot) return Find(new NodeKey(keccak));
-    }
+        => Find(new NodeKey(keccak));
 
-    private byte[]? Find(NodeKey key)
+    private byte[]? Find(NodeKey key) => TryGetOverlay(key, out byte[]? value) ? value : FindImmutable(key);
+
+    private byte[]? FindImmutable(NodeKey key)
     {
-        if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
         int bucket = key.Bucket(_bucketMask);
         int start = _starts[bucket];
         int end = _starts[bucket + 1];
@@ -91,17 +93,6 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
-        if (_syncRoot is not null)
-        {
-            lock (_syncRoot) SetCore(keccak, data);
-            return;
-        }
-
-        SetCore(keccak, data);
-    }
-
-    private void SetCore(in ValueHash256 keccak, ReadOnlySpan<byte> data)
-    {
         NodeKey key = new(keccak);
         if (key.Equals(EmptyRootKey))
         {
@@ -110,23 +101,19 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
         if (data.IsNull())
         {
-            _nodes[key] = null;
+            SetOverlay(key, null);
         }
         else
         {
-            _nodes[key] = data.ToArray();
+            SetOverlay(key, data.ToArray());
         }
     }
 
     // The empty root is seeded, so it needs no special case here.
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
-    {
-        NodeKey key = new(keccak);
-        if (_syncRoot is null) return Exists(key);
-        lock (_syncRoot) return Exists(key);
-    }
+        => Exists(new NodeKey(keccak));
 
-    private bool Exists(NodeKey key) => _nodes.TryGetValue(key, out byte[]? value) ? value is not null : Find(key) is not null;
+    private bool Exists(NodeKey key) => TryGetOverlay(key, out byte[]? value) ? value is not null : FindImmutable(key) is not null;
 
     public INodeStorage.IWriteBatch StartWriteBatch() => this;
 

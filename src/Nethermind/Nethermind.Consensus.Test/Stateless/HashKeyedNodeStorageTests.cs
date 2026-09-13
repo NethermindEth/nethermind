@@ -32,6 +32,8 @@ public class HashKeyedNodeStorageTests
 
     private static HashKeyedNodeStorage Storage(params byte[][] state) => new(state);
 
+    private static HashKeyedNodeStorage Storage(bool threadSafe, params byte[][] state) => new(state, threadSafe);
+
     private static ValueHash256 HashOf(byte[] node) => ValueKeccak.Compute(node);
 
     [Test]
@@ -66,9 +68,9 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Round_trips_a_written_node([Values] bool throughBatch)
+    public void Round_trips_a_written_node([Values] bool throughBatch, [Values] bool threadSafe)
     {
-        HashKeyedNodeStorage storage = Storage();
+        HashKeyedNodeStorage storage = Storage(threadSafe);
         byte[] node = [0xc2, 0x01, 0x02];
         ValueHash256 hash = HashOf(node);
 
@@ -79,11 +81,11 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Evicts_a_node_written_with_no_data([Values] bool throughBatch)
+    public void Evicts_a_node_written_with_no_data([Values] bool throughBatch, [Values] bool threadSafe)
     {
         byte[] node = Nodes[2];
         ValueHash256 hash = HashOf(node);
-        HashKeyedNodeStorage storage = Storage(node);
+        HashKeyedNodeStorage storage = Storage(threadSafe, node);
 
         Write(storage, throughBatch, hash, null);
 
@@ -92,9 +94,9 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Keeps_the_seeded_empty_root_whatever_is_written_to_it([Values] bool remove)
+    public void Keeps_the_seeded_empty_root_whatever_is_written_to_it([Values] bool remove, [Values] bool threadSafe)
     {
-        HashKeyedNodeStorage storage = Storage();
+        HashKeyedNodeStorage storage = Storage(threadSafe);
 
         byte[] data = remove ? null : [0xff];
 
@@ -104,11 +106,11 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Separates_keys_that_share_a_hash_code([Range(0, 7)] int half)
+    public void Separates_keys_that_share_a_hash_code([Range(0, 7)] int half, [Values] bool threadSafe)
     {
         (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision(half);
 
-        HashKeyedNodeStorage storage = Storage();
+        HashKeyedNodeStorage storage = Storage(threadSafe);
         storage.Set(null, TreePath.Empty, first, [0x01]);
         storage.Set(null, TreePath.Empty, second, [0x02]);
 
@@ -117,7 +119,7 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count)
+    public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count, [Values] bool threadSafe)
     {
         int mask = (int)BitOperations.RoundUpToPowerOf2((uint)count + 1) - 1;
         int bucket = ((int)(BitConverter.ToUInt32(Keccak.EmptyTreeHash.Bytes) & (uint)mask) + 1) & mask;
@@ -128,7 +130,7 @@ public class HashKeyedNodeStorageTests
             byte[] node = BitConverter.GetBytes(candidate);
             if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
         }
-        HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
+        HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count), threadSafe);
 
         for (int phase = 0; phase < 2; phase++)
         {
@@ -149,11 +151,11 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Duplicate_witness_nodes_resolve_and_can_be_evicted([Values(1, 9)] int count)
+    public void Duplicate_witness_nodes_resolve_and_can_be_evicted([Values(1, 9)] int count, [Values] bool threadSafe)
     {
         byte[][] nodes = new byte[count][];
         Array.Fill(nodes, Nodes[1]);
-        HashKeyedNodeStorage storage = Storage(nodes);
+        HashKeyedNodeStorage storage = Storage(threadSafe, nodes);
         ValueHash256 hash = HashOf(Nodes[1]);
         Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(Nodes[1]));
         storage.Set(null, TreePath.Empty, hash, null);
@@ -161,7 +163,7 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Host_witness_storage_supports_concurrent_reads_and_writes()
+    public void Host_witness_storage_supports_concurrent_reads_writes_and_deletes()
     {
         const int NodeCount = 4096;
         byte[][] nodes = new byte[NodeCount][];
@@ -171,13 +173,14 @@ public class HashKeyedNodeStorageTests
         INodeStorage storage = WitnessNodeStorage.Create(witness);
         ValueHash256[] hashes = Array.ConvertAll(nodes, HashOf);
 
-        Parallel.For(0, nodes.Length, i =>
-        {
-            using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
-            _ = storage.Get(null, TreePath.Empty, hashes[i]);
-            batch.Set(null, TreePath.Empty, hashes[i], null, WriteFlags.None);
-            _ = storage.KeyExists(null, TreePath.Empty, hashes[i]);
-        });
+        Parallel.Invoke(
+            () => Parallel.For(0, nodes.Length, i => _ = storage.Get(null, TreePath.Empty, hashes[i])),
+            () => Parallel.For(0, nodes.Length, i =>
+            {
+                using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
+                batch.Set(null, TreePath.Empty, hashes[i], null, WriteFlags.None);
+            }),
+            () => Parallel.For(0, nodes.Length, i => _ = storage.KeyExists(null, TreePath.Empty, hashes[i])));
 
         for (int i = 0; i < nodes.Length; i++)
         {
@@ -185,13 +188,14 @@ public class HashKeyedNodeStorageTests
             Assert.That(storage.KeyExists(null, TreePath.Empty, hashes[i]), Is.False);
         }
 
-        Parallel.For(0, nodes.Length, i =>
-        {
-            using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
-            batch.Set(null, TreePath.Empty, hashes[i], nodes[i], WriteFlags.None);
-            _ = storage.Get(null, TreePath.Empty, hashes[i]);
-            _ = storage.KeyExists(null, TreePath.Empty, hashes[i]);
-        });
+        Parallel.Invoke(
+            () => Parallel.For(0, nodes.Length, i => _ = storage.Get(null, TreePath.Empty, hashes[i])),
+            () => Parallel.For(0, nodes.Length, i =>
+            {
+                using INodeStorage.IWriteBatch batch = storage.StartWriteBatch();
+                batch.Set(null, TreePath.Empty, hashes[i], nodes[i], WriteFlags.None);
+            }),
+            () => Parallel.For(0, nodes.Length, i => _ = storage.KeyExists(null, TreePath.Empty, hashes[i])));
 
         for (int i = 0; i < nodes.Length; i++)
         {

@@ -7,9 +7,9 @@ using System.Threading;
 namespace Nethermind.Trie
 {
     /// <summary>
-    /// Per-call counters populated while a single <see cref="PatriciaTree.Accept{TNodeContext}"/> traversal runs with a non-null
-    /// <c>diagnostics</c> argument. Values aggregate across the account and any storage tries
-    /// visited during that traversal.
+    /// Per-call counters populated by <see cref="PatriciaTree.Accept{TNodeContext}"/> while a single
+    /// traversal runs with a non-null <c>diagnostics</c> argument. Values aggregate across the account
+    /// and any storage tries visited during that traversal.
     /// </summary>
     /// <remarks>
     /// Counter mutations use <see cref="Interlocked"/> so the same instance is safe to share
@@ -29,12 +29,14 @@ namespace Nethermind.Trie
         private int _maxDepth;
 
         /// <summary>
-        /// Total number of <c>FindCachedOrUnknown</c> calls observed during the traversal.
+        /// Total number of <c>FindCachedOrUnknown</c> calls observed during the traversal — one for
+        /// each node that had to be obtained through the resolver.
         /// </summary>
         public long NodeLookups => Interlocked.Read(ref _nodeLookups);
 
         /// <summary>
-        /// Number of <c>LoadRlp</c> / <c>TryLoadRlp</c> calls observed during the traversal.
+        /// Number of <c>LoadRlp</c> / <c>TryLoadRlp</c> calls observed during the traversal — node
+        /// fetches that required reading from the underlying store.
         /// </summary>
         public long CacheMisses => Interlocked.Read(ref _cacheMisses);
 

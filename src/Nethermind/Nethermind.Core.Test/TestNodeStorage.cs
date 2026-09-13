@@ -113,7 +113,14 @@ public sealed class TestNodeStorage(IKeyValueStoreWithBatching keyValueStore) : 
 
             lock (lockObject)
             {
-                writeBatch.PutSpan(hash.Bytes, data, writeFlags);
+                if (data.IsNull())
+                {
+                    writeBatch.Remove(hash.Bytes);
+                }
+                else
+                {
+                    writeBatch.PutSpan(hash.Bytes, data, writeFlags);
+                }
             }
         }
 

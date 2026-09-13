@@ -25,6 +25,7 @@ internal sealed class XdcSyncNodeStorage(IPersistence.IPersistenceReader reader)
             ? reader.TryLoadStateRlp(path, readFlags)
             : reader.TryLoadStorageRlp(address, path, readFlags);
 
+        // The path-keyed sync view may contain a node from a different root at this path.
         return rlp is not null && ValueKeccak.Compute(rlp) == keccak ? rlp : null;
     }
 

@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test;
 using Nethermind.Db;
-using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -124,7 +120,7 @@ public class SeedFlatHistoryGenesisTests
     }
 
     private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true) =>
-        new(CreatePolicy(), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
+        new(chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
 
     private static IBlockTree BlockTree(int headBlockNumber = 100, bool hasGenesis = true)
     {
@@ -134,30 +130,4 @@ public class SeedFlatHistoryGenesisTests
         return blockTree;
     }
 
-    private static FlatStateActivationPolicy CreatePolicy()
-    {
-        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(true);
-        flatDbConfig.ImportFromPruningTrieState.Returns(false);
-        flatDbConfig.Layout.Returns(FlatLayout.Flat);
-
-        IInitConfig initConfig = Substitute.For<IInitConfig>();
-        initConfig.StateDbKeyScheme.Returns("Current");
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(new StateId(1, Keccak.Zero));
-        IPersistence flatPersistence = Substitute.For<IPersistence>();
-        flatPersistence.CreateReader().Returns(reader);
-
-        IDbFactory dbFactory = Substitute.For<IDbFactory>();
-        IFileSystem fileSystem = Substitute.For<IFileSystem>();
-
-        return new FlatStateActivationPolicy(
-            flatDbConfig,
-            initConfig,
-            new TestHardwareInfo(32L * 1024 * 1024 * 1024),
-            new Lazy<IPersistence>(() => flatPersistence),
-            dbFactory,
-            fileSystem,
-            LimboLogs.Instance);
-    }
 }

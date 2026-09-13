@@ -4,23 +4,27 @@
 namespace Nethermind.State;
 
 /// <summary>
-/// Read-only view of the persisted state window. Registered per backend so it can be
-/// injected into components built before the world-state manager.
+/// Read-only view of the persisted state window. Registered with the active backend rather than off
+/// <see cref="IWorldStateManager"/>, so it can be injected into components built before the manager
+/// (e.g. the block tree).
 /// </summary>
 public interface IStateBoundary
 {
     /// <summary>
-    /// Absolute lower bound of the persisted state window. Null if never set.
+    /// Absolute lower bound of the persisted state window. Null when unknown. Separately retained
+    /// historical data does not extend this state availability boundary.
     /// </summary>
     ulong? OldestStateBlock { get; }
 
     /// <summary>
-    /// Configured rolling-window retention in blocks, or null when no rolling window is configured.
+    /// Configured rolling-window retention in blocks. Null when there is no rolling window;
+    /// the absolute floor is reported via <see cref="OldestStateBlock"/> instead.
     /// </summary>
     ulong? RetentionWindowBlocks { get; }
 
     /// <summary>
-    /// Highest block whose state is durably persisted, or null when unknown.
+    /// Highest block whose state is durably persisted; null when unknown (fresh node or still
+    /// syncing). The ceiling counterpart to the <see cref="OldestStateBlock"/> floor.
     /// </summary>
     ulong? BestPersistedState { get; }
 }

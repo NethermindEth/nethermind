@@ -32,8 +32,6 @@ public sealed class FlatStateActivationPolicy
 
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
-    private readonly bool _result;
-
     public FlatStateActivationPolicy(
         IFlatDbConfig flatDbConfig,
         IInitConfig initConfig,
@@ -58,38 +56,38 @@ public sealed class FlatStateActivationPolicy
         if (reader.CurrentState != StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
-            _result = true;
-        }
-        else if (ContainsLegacyState(fileSystem, dbFactory.GetFullDbPath(new DbSettings("State", DbNames.State))))
-        {
-            throw new InvalidConfigurationException(LegacySchemaMessage, -1);
         }
         else
         {
+            string statePath = dbFactory.GetFullDbPath(new DbSettings("State", DbNames.State));
+            if (ContainsLegacyState(fileSystem, statePath))
+            {
+                throw new InvalidConfigurationException(
+                    $"Legacy state database files detected at '{statePath}'. {LegacySchemaMessage}", -1);
+            }
+
             if (logger.IsInfo) logger.Info("State backend: flat (fresh node, flat DB enabled).");
-            _result = true;
         }
 
         AdviseLayoutForMemory(flatDbConfig, hardwareInfo, logger);
     }
 
-    /// <summary>Returns whether FlatDB passed startup validation.</summary>
-    public bool ShouldTurnOnFlatDb() => _result;
-
     internal static void ValidateLegacyConfiguration(IFlatDbConfig flatDbConfig, IInitConfig initConfig)
     {
         if (!flatDbConfig.Enabled)
-            throw new InvalidConfigurationException(LegacySchemaMessage, -1);
+            throw new InvalidConfigurationException(
+                $"FlatDb.Enabled=false is no longer supported. {LegacySchemaMessage}", -1);
 
         if (flatDbConfig.ImportFromPruningTrieState)
-            throw new InvalidConfigurationException(LegacySchemaMessage, -1);
+            throw new InvalidConfigurationException(
+                $"FlatDb.ImportFromPruningTrieState=true is no longer supported. {LegacySchemaMessage}", -1);
 
-        string? keyScheme = initConfig.StateDbKeyScheme?.Trim();
-        if (string.Equals(keyScheme, "Hash", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(keyScheme, "HalfPath", StringComparison.OrdinalIgnoreCase)
-            || keyScheme is "0" or "1")
+        string? configuredKeyScheme = initConfig.StateDbKeyScheme;
+        string? keyScheme = configuredKeyScheme?.Trim();
+        if (!string.IsNullOrEmpty(keyScheme) && !string.Equals(keyScheme, "Current", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidConfigurationException(LegacySchemaMessage, -1);
+            throw new InvalidConfigurationException(
+                $"Init.StateDbKeyScheme is unsupported: '{configuredKeyScheme}'. {LegacySchemaMessage}", -1);
         }
     }
 

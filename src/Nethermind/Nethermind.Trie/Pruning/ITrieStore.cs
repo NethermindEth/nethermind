@@ -15,7 +15,9 @@ namespace Nethermind.Trie.Pruning
         bool HasRoot(Hash256 stateRoot);
 
         /// <summary>
-        /// Checks whether the state root is available for the given block.
+        /// Checks if the state root exists and the state for the given block number is still available
+        /// (i.e., not partially pruned). Implementations that retain only a state window should reject
+        /// blocks whose state may be partially pruned.
         /// </summary>
         bool HasRoot(Hash256 stateRoot, ulong blockNumber) => HasRoot(stateRoot);
 

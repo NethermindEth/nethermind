@@ -31,36 +31,35 @@ namespace Nethermind.Runner.Test.Module;
 public class FlatStateActivationPolicyTests
 {
     [Test]
-    public void FreshFlatDbStarts()
-    {
-        FlatStateActivationPolicy policy = CreatePolicy();
-
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
-    }
+    public void FreshFlatDbStarts() => Assert.DoesNotThrow(() => CreatePolicy());
 
     [Test]
     public void ExistingFlatDbIsPreservedWhenLegacyFilesRemain()
     {
         (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001");
-        FlatStateActivationPolicy policy = CreatePolicy(
+        CreatePolicy(
             fileSystem: fileSystem,
             dbFactory: dbFactory,
             flatState: new StateId(1, Nethermind.Core.Crypto.Keccak.Zero));
 
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
         fileSystem.Directory.Received(0).EnumerateFiles(Arg.Any<string>(), "*", SearchOption.AllDirectories);
     }
 
     [Test]
     public void LegacyFilesInNestedStateDirectoryAreRejected()
     {
-        (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001");
+        const string statePath = "C:\\data\\nethermind\\state";
+        (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001", statePath);
 
         InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
             CreatePolicy(fileSystem: fileSystem, dbFactory: dbFactory))!;
 
-        Assert.That(exception.Message, Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
-        dbFactory.Received().GetFullDbPath(Arg.Is<DbSettings>(s => s.DbName == "State" && s.DbPath == DbNames.State));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.StartWith("Legacy state database files detected at 'C:\\data\\nethermind\\state'."));
+            Assert.That(exception.Message, Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+            dbFactory.Received().GetFullDbPath(Arg.Is<DbSettings>(s => s.DbName == "State" && s.DbPath == DbNames.State));
+        }
     }
 
     [Test]
@@ -90,8 +89,11 @@ public class FlatStateActivationPolicyTests
             .Build();
 
         DependencyResolutionException exception = Assert.Throws<DependencyResolutionException>(() => container.Resolve<IStateBoundary>())!;
-        Assert.That(exception.GetBaseException(), Is.TypeOf<InvalidConfigurationException>());
-        Assert.That(exception.ToString(), Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.GetBaseException(), Is.TypeOf<InvalidConfigurationException>());
+            Assert.That(exception.ToString(), Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+        }
     }
 
     [TestCase("Hash")]
@@ -99,7 +101,9 @@ public class FlatStateActivationPolicyTests
     [TestCase("HALFPATH")]
     [TestCase("0")]
     [TestCase("1")]
-    public void ExplicitLegacyStateSchemaIsRejected(string schema)
+    [TestCase("2")]
+    [TestCase("Patricia")]
+    public void UnsupportedStateDbKeySchemeIsRejected(string schema)
     {
         IInitConfig initConfig = Substitute.For<IInitConfig>();
         initConfig.StateDbKeyScheme.Returns(schema);
@@ -107,22 +111,43 @@ public class FlatStateActivationPolicyTests
         InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
             CreatePolicy(initConfig: initConfig))!;
 
-        Assert.That(exception.Message, Does.Contain("Hash and HalfPath schemas"));
-        Assert.That(exception.Message, Does.Contain("flatdbimportfrompruningtriestate"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.StartWith("Init.StateDbKeyScheme is unsupported:"));
+            Assert.That(exception.Message, Does.Contain($"'{schema}'"));
+            Assert.That(exception.Message, Does.Contain("flatdbimportfrompruningtriestate"));
+        }
     }
 
-    [TestCase("Enabled")]
-    [TestCase("ImportFromPruningTrieState")]
-    public void ExplicitLegacyFlatDbSettingIsRejected(string setting)
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    [TestCase(" current ")]
+    [TestCase("CURRENT")]
+    public void MissingOrCurrentStateDbKeySchemeIsAllowed(string? schema)
+    {
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.StateDbKeyScheme.Returns(schema);
+
+        Assert.DoesNotThrow(() => CreatePolicy(initConfig: initConfig));
+    }
+
+    [TestCase(false, false, "FlatDb.Enabled=false is no longer supported.")]
+    [TestCase(true, true, "FlatDb.ImportFromPruningTrieState=true is no longer supported.")]
+    public void ExplicitLegacyFlatDbSettingIsRejected(bool enabled, bool importFromPruningTrieState, string prefix)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(setting != nameof(IFlatDbConfig.Enabled));
-        flatDbConfig.ImportFromPruningTrieState.Returns(setting == nameof(IFlatDbConfig.ImportFromPruningTrieState));
+        flatDbConfig.Enabled.Returns(enabled);
+        flatDbConfig.ImportFromPruningTrieState.Returns(importFromPruningTrieState);
 
-        Assert.That(
-            () => CreatePolicy(flatDbConfig: flatDbConfig),
-            Throws.TypeOf<InvalidConfigurationException>()
-                .With.Message.Contains(FlatStateActivationPolicy.LegacySchemaMessage));
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
+            CreatePolicy(flatDbConfig: flatDbConfig))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.StartWith(prefix));
+            Assert.That(exception.Message, Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+        }
     }
 
     [Test]
@@ -131,10 +156,14 @@ public class FlatStateActivationPolicyTests
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(false);
 
-        Assert.That(
-            () => CreatePolicy(flatDbConfig: flatDbConfig),
-            Throws.TypeOf<InvalidConfigurationException>()
-                .With.Message.Contains(FlatStateActivationPolicy.LegacySchemaMessage));
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
+            CreatePolicy(flatDbConfig: flatDbConfig))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.StartWith("FlatDb.Enabled=false is no longer supported."));
+            Assert.That(exception.Message, Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
+        }
     }
 
     [TestCase(true, FlatLayout.Flat, 8, true)]
@@ -146,12 +175,11 @@ public class FlatStateActivationPolicyTests
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
         flatDbConfig.Layout.Returns(layout);
-        FlatStateActivationPolicy policy = CreatePolicy(
+        CreatePolicy(
             flatDbConfig: flatDbConfig,
             availableMemoryBytes: availableMemoryGiB.GiB,
             logManager: new OneLoggerLogManager(new ILogger(testLogger)));
 
-        _ = policy.ShouldTurnOnFlatDb();
         bool warned = testLogger.LogList.Any(l => l.Contains("--FlatDb.Layout") && l.Contains(nameof(FlatLayout.FlatInTrie)));
         Assert.That(warned, Is.EqualTo(expectWarn));
     }
@@ -208,7 +236,7 @@ public class FlatStateActivationPolicyTests
             logManager ?? LimboLogs.Instance);
     }
 
-    private static (IFileSystem FileSystem, IDbFactory DbFactory) CreateLegacyFileSystem(string marker)
+    private static (IFileSystem FileSystem, IDbFactory DbFactory) CreateLegacyFileSystem(string marker, string statePath = "state")
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IDirectory directory = Substitute.For<IDirectory>();
@@ -217,7 +245,7 @@ public class FlatStateActivationPolicyTests
         directory.EnumerateFiles(Arg.Any<string>(), "*", SearchOption.AllDirectories).Returns([marker]);
 
         IDbFactory dbFactory = Substitute.For<IDbFactory>();
-        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns("state");
+        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(statePath);
         return (fileSystem, dbFactory);
     }
 }

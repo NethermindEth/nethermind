@@ -32,7 +32,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
 
-            // Apply FlatStateActivationPolicy when the state boundary is resolved during startup.
+            // Resolve the policy before FlatStateBoundary opens FlatDB so startup validation runs first.
             .AddSingleton<FlatStateBoundary>()
             .AddSingleton<IStateBoundary, FlatStateActivationPolicy, FlatStateBoundary>((_, boundary) => boundary)
 

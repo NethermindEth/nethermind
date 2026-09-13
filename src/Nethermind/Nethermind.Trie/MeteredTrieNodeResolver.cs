@@ -12,7 +12,6 @@ namespace Nethermind.Trie
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
         {
             diagnostics.RecordLookup();
-            diagnostics.ObserveDepth(path.Length);
             return inner.FindCachedOrUnknown(path, hash);
         }
 

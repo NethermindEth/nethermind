@@ -382,6 +382,18 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportActionError(EvmExceptionType evmExceptionType);
 
     /// <summary>
+    /// Reports the remaining gas observed at an execution-segment boundary.
+    /// </summary>
+    /// <param name="gas">Gas remaining in the frame.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. Checkpoints are emitted when execution suspends,
+    /// resumes, completes or fails, before the corresponding action completion or error notification
+    /// where applicable. These are not per-opcode updates; early action failures can occur without
+    /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
+    /// </remarks>
+    void ReportActionRemainingGas(ulong gas) { }
+
+    /// <summary>
     ///
     /// </summary>
     /// <param name="gas"></param>

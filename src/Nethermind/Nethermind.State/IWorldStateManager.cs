@@ -25,7 +25,8 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
 
     /// <summary>
-    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations such as witness generation.
+    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
+    /// For flat state, returns an adapter over the flat database's trie node data.
     /// </summary>
     IReadOnlyTrieStore CreateReadOnlyTrieStore();
 

@@ -21,7 +21,7 @@ public sealed class MemoryNodeStorage : INodeStorage
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
         {
-            return EmptyTreeRlp;
+            return [.. EmptyTreeRlp];
         }
 
         return _nodes.TryGetValue(keccak, out byte[]? data) ? data : null;
