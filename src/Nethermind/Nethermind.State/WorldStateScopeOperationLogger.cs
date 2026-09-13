@@ -22,6 +22,22 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
+    public bool HasStateForTarget(BlockHeader targetBlock) =>
+        baseScopeProvider.HasStateForTarget(targetBlock);
+
+    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseScopeProvider.TryBeginScope(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        long scopeId = Interlocked.Increment(ref _currentScopeId);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
+    }
+
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         long scopeId = Interlocked.Increment(ref _currentScopeId);

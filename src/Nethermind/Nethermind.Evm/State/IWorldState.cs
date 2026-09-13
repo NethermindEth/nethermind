@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -26,6 +27,19 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
+
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <param name="targetBlock">The target block; its parent state is opened.</param>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the parent state was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScope(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser) => throw new NotSupportedException();
+
+    /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
+    /// <remarks>This check is advisory and does not reserve or pin state.</remarks>
+    bool HasStateForTarget(BlockHeader targetBlock) => throw new NotSupportedException();
+
     Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }

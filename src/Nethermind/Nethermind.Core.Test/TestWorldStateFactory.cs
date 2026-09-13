@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
@@ -30,7 +31,7 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, UnavailableParentHeaderProvider.Instance, logManager), logManager);
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
@@ -48,12 +49,12 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, UnavailableParentHeaderProvider.Instance, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
-    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider()
+    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IParentHeaderProvider parentHeaderProvider)
     {
-        IContainer container = BuildFlatContainer();
+        IContainer container = BuildFlatContainer(parentHeaderProvider);
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (wsm.GlobalWorldState, container);
     }
@@ -61,18 +62,19 @@ public static class TestWorldStateFactory
     public static (IWorldState worldState, IStateReader reader, IContainer container) CreateFlatForTestWithStateReader(ILogManager? logManager = null)
     {
         logManager ??= LimboLogs.Instance;
-        IContainer container = BuildFlatContainer();
+        IContainer container = BuildFlatContainer(UnavailableParentHeaderProvider.Instance);
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (new WorldState(wsm.GlobalWorldState, logManager), wsm.GlobalStateReader, container);
     }
 
-    private static IContainer BuildFlatContainer()
+    private static IContainer BuildFlatContainer(IParentHeaderProvider parentHeaderProvider)
     {
         ConfigProvider configProvider = new();
         configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
-        return new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider))
-            .Build();
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider));
+        if (parentHeaderProvider is not null) builder.AddSingleton(parentHeaderProvider);
+        return builder.Build();
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
@@ -87,9 +89,10 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, logManager);
+        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, UnavailableParentHeaderProvider.Instance, logManager);
 
-        return new WorldStateManager(worldState, trieStore, dbProvider, logManager,
-            new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null, logManager));
+        return new WorldStateManager(worldState, trieStore, dbProvider,
+            new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null, logManager),
+            UnavailableParentHeaderProvider.Instance, logManager);
     }
 }

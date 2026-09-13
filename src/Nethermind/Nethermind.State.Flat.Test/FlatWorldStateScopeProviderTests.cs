@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -19,8 +21,10 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -31,6 +35,126 @@ namespace Nethermind.State.Flat.Test;
 
 public class FlatWorldStateScopeProviderTests
 {
+    [Test]
+    public void TryBeginScope_ReturnsFalseWhenStateIsRemovedAfterAdvisoryCheck()
+    {
+        bool stateAvailable = true;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(1234).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+
+        using TestContext context = new(blockTree);
+        IWorldStateManager manager = context.WorldStateManager;
+        context.FlatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(_ => stateAvailable);
+        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>()).Returns(_ =>
+        {
+            if (!stateAvailable) throw CreateStateUnavailableException();
+            return CreateSnapshotBundle(context.ResourcePool);
+        });
+
+        IWorldStateScopeProvider provider = manager.GlobalWorldState;
+        Assert.That(provider.HasStateForTarget(target), Is.True);
+
+        stateAvailable = false;
+        Assert.That(provider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+        Assert.That(scope, Is.Null);
+    }
+
+    [Test]
+    public void ManagerCreatedProviders_OpenTargetAtSameParent()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(1).TestObject;
+        BlockHeader sameParentDifferentTimestamp = Build.A.BlockHeader.WithParent(parent).WithTimestamp(2).TestObject;
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+
+        using TestContext context = new(blockTree);
+        IWorldStateManager manager = context.WorldStateManager;
+        IWorldStateScopeProvider[] providers =
+        [
+            manager.GlobalWorldState,
+            manager.CreateResettableWorldState(),
+        ];
+        using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
+        providers = [.. providers, overridable.WorldState];
+
+        foreach (IWorldStateScopeProvider provider in providers)
+        {
+            Assert.That(provider.HasStateForTarget(target), Is.True);
+            Assert.That(provider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+            scope!.Dispose();
+        }
+
+        Assert.That(manager.GlobalWorldState.HasStateForTarget(sameParentDifferentTimestamp), Is.True);
+        Assert.That(manager.GlobalWorldState.TryBeginScope(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
+        secondScope!.Dispose();
+        blockTree.Received(8).FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+    }
+
+    [Test]
+    public void TryBeginScope_RetainsReaderUntilActiveScopeIsDisposed()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(5678).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
+        bool readerDisposed = false;
+        persistenceReader.When(reader => reader.Dispose()).Do(_ => readerDisposed = true);
+
+        using TestContext context = new(blockTree);
+        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+            .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
+
+        Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+        Assert.That(readerDisposed, Is.False);
+
+        scope!.Dispose();
+        Assert.That(readerDisposed, Is.True);
+    }
+
+    [Test]
+    public void TargetAcquisitionFailureAfterLocalLeaseReleasesSnapshots()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).TestObject;
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        using TestContext context = new(blockTree);
+        Snapshot local = context.ResourcePool.CreateSnapshot(StateId.PreGenesis, new StateId(parent), ResourcePool.Usage.MainBlockProcessing);
+        TransientResource resource = context.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        IOverridableWorldScope overridable = context.WorldStateManager.CreateOverridableWorldScope();
+        ((FlatOverridableWorldScope)overridable).AddSnapshot(local, resource);
+        context.FlatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
+            .Returns(_ => throw CreateStateUnavailableException());
+
+        Assert.That(overridable.WorldState.TryBeginScope(target, new LocalMetrics(), out _), Is.False);
+        Assert.That(local.ToString(), Is.EqualTo("Leases: 1"));
+        overridable.Dispose();
+    }
+
+    private static Exception CreateStateUnavailableException()
+    {
+        Type exceptionType = typeof(FlatScopeProvider).Assembly.GetType("Nethermind.State.Flat.StateUnavailableException")!;
+        return (Exception)Activator.CreateInstance(
+            exceptionType,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
+            binder: null,
+            args: ["state removed during acquisition"],
+            culture: null)!;
+    }
+
+    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, IPersistence.IPersistenceReader? persistenceReader = null)
+    {
+        persistenceReader ??= Substitute.For<IPersistence.IPersistenceReader>();
+        return new SnapshotBundle(
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
+            Substitute.For<ITrieNodeCache>(),
+            resourcePool,
+            ResourcePool.Usage.ReadOnlyProcessingEnv);
+    }
 
     private class TestContext : IDisposable
     {
@@ -41,17 +165,27 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
+        public IWorldStateManager WorldStateManager => field ??= Container.Resolve<IWorldStateManager>();
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
+        public List<Snapshot> LocalSnapshots { get; } = [];
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
+                    .Bind<IWorldStateManager, FlatWorldStateManager>()
+                    .AddSingleton<IPersistence>(Substitute.For<IPersistence>())
+                    .AddSingleton<IFlatStateRootIndex>(Substitute.For<IFlatStateRootIndex>())
+                    .AddSingleton<IParentHeaderProvider>(new BlockTreeParentHeaderProvider(blockTree ?? Substitute.For<IBlockTree>()))
+                    .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
+                    .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
+                    .AddSingleton<ITrieWarmer, NoopTrieWarmer>()
                     .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
@@ -74,6 +208,11 @@ public class FlatWorldStateScopeProviderTests
                                 transientResource.ReleaseLease();
                             });
 
+                        flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>()));
+                        flatDiff.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
+                            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty()));
+                        flatDiff.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
                         return flatDiff;
                     })
                     .Bind<IFlatCommitTarget, IFlatDbManager>()
@@ -118,6 +257,7 @@ public class FlatWorldStateScopeProviderTests
             _cancellationTokenSource.Cancel();
 
             LastCommittedSnapshot?.Dispose();
+            foreach (Snapshot snapshot in LocalSnapshots) snapshot.Dispose();
 
             _container?.Dispose();
             _cancellationTokenSource.Dispose();

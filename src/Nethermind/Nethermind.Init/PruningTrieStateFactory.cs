@@ -36,6 +36,7 @@ public class PruningTrieStateFactory(
     Lazy<IPathRecovery> pathRecovery,
     Lazy<ICodeRecovery> codeRecovery,
     StateBoundaryStore boundaryStore,
+    IParentHeaderProvider parentHeaderProvider,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
 )
@@ -61,10 +62,12 @@ public class PruningTrieStateFactory(
                 mainNodeStorage,
                 pathRecovery,
                 codeRecovery,
+                parentHeaderProvider,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
+                parentHeaderProvider,
                 logManager,
                 codeDbIsPersistent: true);
 
@@ -72,8 +75,9 @@ public class PruningTrieStateFactory(
             scopeProvider,
             trieStore,
             dbProvider,
-            logManager,
             boundaryStore,
+            parentHeaderProvider,
+            logManager,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);

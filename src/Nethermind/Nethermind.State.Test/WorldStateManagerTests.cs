@@ -27,21 +27,42 @@ namespace Nethermind.Store.Test;
 
 public class WorldStateManagerTests
 {
-    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager()
+    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager(IParentHeaderProvider parentHeaderProvider)
     {
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
+        IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
+        readOnlyTrieStore.HasRoot(Arg.Any<Hash256>()).Returns(true);
+        trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
-        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance, boundary);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, parentHeaderProvider ?? TestParentHeaderProvider.Unavailable, LimboLogs.Instance);
         return (worldState, trieStore, manager, boundary);
     }
 
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager();
+        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager(TestParentHeaderProvider.Unavailable);
         Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
+    }
+
+    [Test]
+    public void CreatedWorldStateScopesUseTargetParentLookup()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(12345).TestObject;
+        (_, _, WorldStateManager manager, _) = CreateWorldStateManager(new TestParentHeaderProvider { Parent = parent });
+
+        IWorldStateScopeProvider resettable = manager.CreateResettableWorldState();
+        Assert.That(resettable.HasStateForTarget(target), Is.True);
+        Assert.That(resettable.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope resettableScope), Is.True);
+        resettableScope!.Dispose();
+
+        using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
+        Assert.That(overridable.WorldState.HasStateForTarget(target), Is.True);
+        Assert.That(overridable.WorldState.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope overridableScope), Is.True);
+        overridableScope!.Dispose();
     }
 
     [Test]
@@ -50,7 +71,7 @@ public class WorldStateManagerTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, LimboLogs.Instance, boundary);
+        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, TestParentHeaderProvider.Unavailable, LimboLogs.Instance);
 
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
@@ -63,7 +84,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager();
+        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager(TestParentHeaderProvider.Unavailable);
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);

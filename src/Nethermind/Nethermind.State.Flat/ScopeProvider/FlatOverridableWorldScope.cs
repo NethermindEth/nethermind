@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,6 +35,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
+        IParentHeaderProvider parentHeaderProvider,
         ILogManager logManager)
     {
         GlobalStateReader = new OverridableStateReader(this);
@@ -45,6 +48,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             configuration,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
+            parentHeaderProvider,
             logManager);
     }
 
@@ -126,10 +130,52 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
+        IParentHeaderProvider parentHeaderProvider,
         ILogManager logManager)
         : IWorldStateScopeProvider
     {
+        private readonly IParentHeaderProvider _parentHeaderProvider = parentHeaderProvider;
+
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
+
+        public bool HasStateForTarget(BlockHeader targetBlock)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+        }
+
+        public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))
+            {
+                scope = null;
+                return false;
+            }
+
+            try
+            {
+                scope = BeginScope(parent, metrics);
+                return true;
+            }
+            catch (StateUnavailableException)
+            {
+                scope = null;
+                return false;
+            }
+        }
+
+        private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
+        {
+            if (targetBlock.IsGenesis)
+            {
+                parent = null;
+                return true;
+            }
+
+            parent = _parentHeaderProvider.FindParentHeader(targetBlock);
+            return parent is not null;
+        }
 
         public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
         {
