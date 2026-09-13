@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
@@ -68,48 +69,52 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
             SpinWait spinWait = default;
             while (true)
             {
-                if (Volatile.Read(ref _analysisComplete) is long[] bitmap)
-                {
-                    return bitmap;
-                }
+                if (_jumpDestinationBitmap is { } bitmap) return bitmap;
                 if (spinWait.NextSpinWillYield) break;
                 spinWait.SpinOnce();
             }
 
             WaitForAnalysisToComplete(resetEvent);
-
-            return _jumpDestinationBitmap;
+            previous = Volatile.Read(ref _analysisComplete)!;
         }
+
+        if (previous is ExceptionDispatchInfo failure) failure.Throw();
 
         // Must be the bitmap, and lost check->create benign data race
         return (long[])previous;
     }
 
-    [MemberNotNull(nameof(_jumpDestinationBitmap))]
     private void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
         // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
-        Debug.Assert(_jumpDestinationBitmap is not null);
     }
 
     private void AnalyzeJumpDestinations([NotNull] out object? previous)
     {
         ManualResetEventSlim analysisComplete = new(initialState: false);
         previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
-        if (previous is null)
+        previous ??= CompleteAnalysis(analysisComplete);
+    }
+
+    private object CompleteAnalysis(ManualResetEventSlim analysisComplete)
+    {
+        object result;
+        try
         {
-            // Not already in progress, so start it.
-            long[] bitmap = CreateJumpDestinationBitmap();
-            _jumpDestinationBitmap = bitmap;
-            // Release the MRES to be GC'd
-            Volatile.Write(ref _analysisComplete, bitmap);
-            // Signal complete.
-            analysisComplete.Set();
-            previous = bitmap;
+            long[] bitmap = _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
+            result = bitmap;
         }
+        catch (Exception exception)
+        {
+            // Readers must observe the original failure rather than wait on an event that can never complete.
+            result = ExceptionDispatchInfo.Capture(exception);
+        }
+        Volatile.Write(ref _analysisComplete, result);
+        analysisComplete.Set();
+        return result;
     }
 
     /// <summary>
@@ -365,11 +370,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
                 // Boost the priority of the thread as block processing may be waiting on this.
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
 
-                _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
-                // Release the MRES to be GC'd
-                Volatile.Write(ref _analysisComplete, _jumpDestinationBitmap);
-                // Signal complete.
-                analysisComplete.Set();
+                CompleteAnalysis(analysisComplete);
             }
         }
     }

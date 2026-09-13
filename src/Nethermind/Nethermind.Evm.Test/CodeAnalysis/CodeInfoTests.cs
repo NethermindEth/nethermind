@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +19,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     {
         [Test]
         [Repeat(10)]
-        public async Task Concurrent_analysis_publishes_complete_bitmap([Values(64, 32768)] int length)
+        public async Task Concurrent_analysis_publishes_complete_bitmap(
+            [Values(64, 66, 32768)] int length, [Values] bool analysisCompletesFirst)
         {
             const int Workers = 4;
             const int GroupSize = 4;
@@ -32,44 +34,85 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 code[i + JumpDestOffset] = (byte)Instruction.JUMPDEST;
             }
             TaskCompletionSource analysisStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            using ManualResetEventSlim continueAnalysis = new(false);
+            TaskCompletionSource continueAnalysis = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource startReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
             using GatedCodeMemory memory = new(code, () =>
             {
-                // Execute claims _analysisComplete before requesting the code span.
+                // Execute claims analysis before requesting the code span.
                 analysisStarted.TrySetResult();
-                // Finally releases this gate; throwing here would strand readers on the analyzer's completion event.
-                continueAnalysis.Wait();
+                continueAnalysis.Task.GetAwaiter().GetResult();
             });
-            JumpDestinationAnalyzer analyzer = new(new CodeInfo(memory.Memory));
-            using Barrier start = new(Workers);
+            CodeInfo codeInfo = new(memory.Memory);
             Task[] workers = new Task[Workers];
             Array.Fill(workers, Task.CompletedTask);
-            workers[0] = Task.Factory.StartNew(analyzer.Execute,
-                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            ExceptionDispatchInfo? failure = null;
             try
             {
+                workers[0] = Task.Factory.StartNew(((IThreadPoolWorkItem)codeInfo).Execute,
+                    CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
                 await analysisStarted.Task.WaitAsync(timeout);
                 for (int worker = 1; worker < workers.Length; worker++)
                 {
-                    workers[worker] = Task.Factory.StartNew(() =>
+                    workers[worker] = Task.Run(async () =>
                     {
-                        Assert.That(start.SignalAndWait(timeout), Is.True, "readers did not reach the barrier");
+                        await startReaders.Task;
                         int mismatch = -1;
                         for (int offset = 0; offset < length && mismatch < 0; offset++)
                         {
                             bool expected = offset < length - length % GroupSize && offset % GroupSize == JumpDestOffset;
-                            if (analyzer.ValidateJump(offset) != expected) mismatch = offset;
+                            if (codeInfo.ValidateJump(offset) != expected) mismatch = offset;
                         }
                         Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
-                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                    });
                 }
-                // Ownership is deterministic; whether readers use the spin return or event wait is scheduling-dependent.
-                Assert.That(start.SignalAndWait(timeout), Is.True, "readers did not reach the barrier");
+                continueAnalysis.TrySetResult();
+                // Cover completed fast-path reads separately from scheduling-dependent publication races.
+                if (analysisCompletesFirst) await workers[0].WaitAsync(timeout);
+            }
+            catch (Exception exception)
+            {
+                failure = ExceptionDispatchInfo.Capture(exception);
             }
             finally
             {
-                continueAnalysis.Set();
+                continueAnalysis.TrySetResult();
+                startReaders.TrySetResult();
+            }
+
+            try
+            {
                 await Task.WhenAll(workers).WaitAsync(timeout);
+            }
+            catch (Exception exception)
+            {
+                failure ??= ExceptionDispatchInfo.Capture(exception);
+            }
+            failure?.Throw();
+        }
+
+        [Test]
+        public async Task Analysis_failure_is_reported_to_later_readers([Values] bool background)
+        {
+            InvalidOperationException expected = new("analysis failed");
+            using GatedCodeMemory memory = new([(byte)Instruction.JUMPDEST], () => throw expected);
+            CodeInfo codeInfo = new(memory.Memory);
+            if (background) ((IThreadPoolWorkItem)codeInfo).Execute();
+
+            for (int reader = 0; reader < 2; reader++)
+            {
+                Exception? actual = await Task.Run(() =>
+                {
+                    try
+                    {
+                        codeInfo.ValidateJump(0);
+                        return null;
+                    }
+                    catch (Exception exception)
+                    {
+                        return exception;
+                    }
+                }).WaitAsync(TimeSpan.FromSeconds(30));
+                Assert.That(actual, Is.SameAs(expected));
             }
         }
 
@@ -320,7 +363,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
-        // Every span read shares the same one-shot release; later reads do not introduce another gate.
+        // Span callbacks control analysis without adding a production test hook; disposal owns no resources.
         private sealed class GatedCodeMemory(byte[] code, Action beforeRead) : MemoryManager<byte>
         {
             public override Memory<byte> Memory => CreateMemory(code.Length);
