@@ -514,6 +514,10 @@ public class StateProviderTests(bool useFlat)
 
         Assert.That(CodeBatchContains((WorldState)provider, codeHash), Is.False,
             "the re-stage outlived the changes it was made under");
+
+        // Dropping the re-stage is only safe because the code is already durable, which is what lets
+        // the account keep carrying its hash.
+        Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
     }
 
     [Test]
