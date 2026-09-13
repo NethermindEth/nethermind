@@ -217,6 +217,11 @@ public class TracedAccessWorldStateTests(bool parallel)
             else
                 tws.Set(in cell, UInt256.One);
 
+            int expectedReads = supplyCurrentValue ? 0 : 1;
+#if DEBUG
+            // The supplied-current-value assertion reads the underlying state in checked builds.
+            expectedReads++;
+#endif
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -224,7 +229,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
                 Assert.That(ac.ChangedSlots, Does.Contain((UInt256)1));
                 Assert.That(decorator.Writes, Is.EqualTo(1));
-                Assert.That(decorator.Reads - reads, Is.EqualTo(supplyCurrentValue ? 0 : 1));
+                Assert.That(decorator.Reads - reads, Is.EqualTo(expectedReads));
             }
         }
     }
