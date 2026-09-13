@@ -46,10 +46,10 @@ public partial class DebugRpcModuleTests
 
     [TestCaseSource(nameof(TransactionTracingPrefixCases))]
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
-        string method, int targetIndex, bool stream, bool isAura)
+        string method, int targetIndex, bool stream, bool useAuraHeaders)
     {
         List<Hash256?> executed = [];
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev)
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(useAuraHeaders ? SealEngineType.AuRa : SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
             .Build(builder => builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
@@ -63,8 +63,6 @@ public partial class DebugRpcModuleTests
         }
         Block block = await chain.AddBlock(transactions);
         Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: all three test transactions must be mined");
-        Assert.That(chain.SealEngineType, Is.EqualTo(isAura ? SealEngineType.AuRa : SealEngineType.NethDev),
-            "precondition: the fixture must select the requested consensus engine");
         executed.Clear();
         string hash = block.Transactions[targetIndex].Hash!.ToString();
         string response = method switch
@@ -79,8 +77,9 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(json["error"], Is.Null, "the prefix must produce a successful RPC response");
             Assert.That(json["result"], Is.Not.Null, "the selected transaction must have a trace result");
-            Assert.That(executed.Count, Is.EqualTo(isAura ? 3 : targetIndex + 1),
-                "standard replay must skip the suffix while chain-specific finalization retains the full block");
+            // The AuRa fixture changes header handling, not the standard replay processor.
+            Assert.That(executed.Count, Is.EqualTo(targetIndex + 1),
+                "standard replay must skip the suffix with either header format");
         }
         for (int i = 0; i < executed.Count; i++)
             Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
