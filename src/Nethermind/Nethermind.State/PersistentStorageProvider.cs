@@ -1057,7 +1057,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
 
-            using ArrayPoolListRef<KeyValuePair<UInt256, StorageChangeTrace>> deferredDeletes = new(0);
+            using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
@@ -1066,7 +1066,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 {
                     if (after.IsZero)
                     {
-                        deferredDeletes.Add(kvp);
+                        deferredDeletes.Add(kvp.Key);
                     }
                     else
                     {
@@ -1083,11 +1083,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 }
             }
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes.AsSpan())
+            foreach (ref readonly UInt256 key in deferredDeletes.AsSpan())
             {
-                UInt256 after = kvp.Value.After;
-                BlockChange[kvp.Key] = new(after, after);
-                storageWriteBatch.Set(kvp.Key, in after);
+                BlockChange[key] = default;
+                storageWriteBatch.Set(in key, UInt256.Zero);
 
                 writes++;
             }

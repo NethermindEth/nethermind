@@ -53,6 +53,47 @@ public class StorageProviderTests(bool useFlat)
     ];
 
     [Test]
+    public void Mixed_storage_deletes_updates_and_inserts_survive_persistence()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 100);
+            for (uint slot = 1; slot <= 3; slot++)
+                provider.Set(new StorageCell(TestItem.AddressA, slot), (UInt256)(slot + 6));
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Set(new StorageCell(TestItem.AddressA, 1), UInt256.Zero);
+            provider.Set(new StorageCell(TestItem.AddressA, 2), UInt256.Zero);
+            provider.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)10);
+            provider.Set(new StorageCell(TestItem.AddressA, 4), (UInt256)11);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            uint[] expected = [0, 0, 10, 11];
+            using (Assert.EnterMultipleScope())
+            {
+                for (uint slot = 1; slot <= expected.Length; slot++)
+                {
+                    provider.Get(new StorageCell(TestItem.AddressA, slot), out UInt256 value);
+                    Assert.That(value, Is.EqualTo((UInt256)expected[slot - 1]), $"slot {slot}");
+                }
+            }
+        }
+    }
+
+    [Test]
     public void Empty_commit_restore()
     {
         using Context ctx = new(useFlat);
