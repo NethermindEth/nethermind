@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Metrics = Nethermind.Evm.Metrics;
 

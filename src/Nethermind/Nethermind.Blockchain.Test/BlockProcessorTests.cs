@@ -167,7 +167,7 @@ public class BlockProcessorTests
 
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<IBlockProcessor, TransactionTraceBlockProcessor>()
-            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, TransactionTraceExecutor>();
+            .AddScoped<TransactionTraceExecutor>();
     }
 
     [Test]

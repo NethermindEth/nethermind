@@ -19,6 +19,6 @@ public sealed class TransactionTraceModule(IEnumerable<IBlockValidationModule> v
         if (modules.Length == 0 || !modules.All(static module => module.SupportsTransactionTracePrefix)) return;
 
         builder.AddScoped<IBlockProcessor, TransactionTraceBlockProcessor>()
-            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, TransactionTraceExecutor>();
+            .AddScoped<TransactionTraceExecutor>();
     }
 }
