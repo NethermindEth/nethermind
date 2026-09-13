@@ -62,6 +62,76 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
+    /// <summary>A write must be visible to a later read of the same cell, in the same and in later transactions.</summary>
+    /// <remarks>Reads consult the write journal only for contracts known to have journaled a write. This pins
+    /// that gate: were it ever to answer false for a contract that has written, reads would fall through to
+    /// the committed tree value and silently lose the write.</remarks>
+    [Test]
+    public void Write_is_visible_to_later_reads_of_the_same_contract()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        StorageCell written = new(ctx.Address1, (UInt256)1);
+        StorageCell untouched = new(ctx.Address1, (UInt256)2);
+        StorageCell otherContract = new(ctx.Address2, (UInt256)1);
+
+        provider.Set(in written, _values[1]);
+        provider.Set(in otherContract, _values[2]);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(in written, _values[3]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Get(in written).ToArray(), Is.EqualTo(_values[3]), "same transaction");
+            Assert.That(provider.Get(in untouched).IsZero(), Is.True, "never written");
+            Assert.That(provider.Get(in otherContract).ToArray(), Is.EqualTo(_values[2]), "other contract, committed");
+        }
+
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(in written).ToArray(), Is.EqualTo(_values[3]), "after commit");
+    }
+
+    /// <summary>A contract that never wrote in this block must read its committed values even while another
+    /// contract's writes sit in the journal.</summary>
+    /// <remarks>This is the branch the journal gate adds: the read-only contract is seeded in a completed
+    /// block, so reopening the committed root rents its state afresh with the flag genuinely false — a
+    /// same-block seed would have marked it and kept the reads on the journal-probe path.</remarks>
+    [Test]
+    public void Write_to_one_contract_does_not_disturb_another()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        StorageCell seeded = new(ctx.Address2, (UInt256)7);
+        StorageCell absent = new(ctx.Address2, (UInt256)8);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.CreateAccount(ctx.Address2, 1);
+            provider.Set(in seeded, _values[2]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            // Address1 writes, so the journal is non-empty, but nothing in it belongs to Address2.
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)1), _values[1]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.Get(in seeded).ToArray(), Is.EqualTo(_values[2]));
+                Assert.That(provider.Get(in absent).IsZero(), Is.True);
+            }
+        }
+    }
+
     [Test]
     public void Storage_access_after_scope_disposal_throws()
     {

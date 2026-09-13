@@ -89,7 +89,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         _metrics.IncrementStorageWrites();
         // Pair with HasStorageToClear: cached writes can bypass LoadFromTree, so register before journaling.
+        // The mark precedes the journal add so no order of operations can observe a journalled cell
+        // behind a false flag, which would read the pre-write value.
         PerContractState state = GetOrCreateStorage(storageCell.Address);
+        state.MarkJournalled();
         base.Set(in storageCell, newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
@@ -106,8 +109,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes : LoadFromTree(storageCell);
+    /// <remarks>
+    /// The journal only ever holds cells this contract has written, so for one that has written nothing
+    /// the probe cannot hit and is pure cost — and it is the more expensive of the two lookups, hashing
+    /// the whole <see cref="StorageCell"/> rather than just the index. The trade: a journal hit used to
+    /// return without resolving the contract at all, and now pays <see cref="GetOrCreateStorage"/> first —
+    /// a reference compare when the address repeats, a map probe when execution alternates contracts.
+    /// Note this makes even a journal-hit read mutating: the resolution writes the last-contract memo
+    /// and can grow the contract map.
+    /// </remarks>
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        PerContractState state = GetOrCreateStorage(storageCell.Address);
+
+        return state.HasJournalledWrites && TryGetCachedValue(storageCell, out byte[]? bytes)
+            ? bytes
+            : state.LoadFromTree(storageCell);
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -343,6 +361,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
+    /// <summary>Rejects pooling a contract state whose cells the write journal still holds.</summary>
+    /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
+    /// per block, and the journal gate's safety rests on this ordering.</remarks>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowJournalNotEmpty()
+        => throw new InvalidOperationException("storage states must not be pooled while the write journal holds their cells");
+
     /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
     /// <remarks>
     /// Only a block that took no snapshot has states to return here, and it pays for them on its own thread. One that
@@ -351,6 +376,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </remarks>
     public void ClearStorageMap()
     {
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
         _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
@@ -367,6 +393,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns>The changes; the caller owns the snapshot and must dispose it.</returns>
     internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
     {
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
             storage.Value.BlockEndFate = FateOf(storage);
@@ -790,6 +817,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
+        private bool _hasJournalledWrites = false;
         // Whether the contract held storage before the block and whether the block cleared it: together they say if a
         // cache of pre-block slots must drop them. Captured at the first tree creation, before any flush moves the root.
         private bool _hadStorageBeforeBlock;
@@ -901,6 +929,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
+            _hasJournalledWrites = false;
             _hadStorageBeforeBlock = false;
             _storageRootSeen = false;
             _wasCleared = false;
@@ -909,6 +938,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             BlockEndFate = AccountFate.Present;
             Pool.Return(this);
         }
+
+        /// <summary>Whether the write journal may hold a cell belonging to this contract.</summary>
+        /// <remarks>
+        /// Distinct from <c>_wasWritten</c>, which is set when a change is applied at commit time and so is
+        /// still false while the block executes. This one is set on the <see cref="PersistentStorageProvider.Set"/>
+        /// path before the cell is journaled, which is the only way a cell enters the journal.
+        /// It is never cleared while the journal could still hold an entry: a revert leaves it set, costing
+        /// only a probe that misses, and contracts are dropped only once the journal is empty.
+        /// </remarks>
+        public bool HasJournalledWrites => _hasJournalledWrites;
+
+        /// <summary>Marks that this contract has journalled at least one write this block.</summary>
+        /// <remarks>Also runs off the block thread: the sequential BAL apply executes as iteration 0 of the
+        /// parallel executor's loop, whose join publishes the flag before the block thread reads it.</remarks>
+        public void MarkJournalled() => _hasJournalledWrites = true;
 
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
