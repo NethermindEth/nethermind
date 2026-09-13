@@ -204,7 +204,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         if (preTxStorage != after)
         {
             slotChange = new StorageChange(Index, after);
-            accountChanges.RemoveStorageRead(key);
+            // An existing change already excludes this slot from the read set.
+            if (!hasPrevious) accountChanges.RemoveStorageRead(key);
         }
         else
         {

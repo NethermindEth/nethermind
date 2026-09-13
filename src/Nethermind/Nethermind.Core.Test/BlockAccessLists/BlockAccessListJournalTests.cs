@@ -370,7 +370,9 @@ public class BlockAccessListJournalTests
     {
         BlockAccessListAtIndex slice = new() { Index = 3 };
         UInt256 key = UInt256.MaxValue;
+        slice.AddStorageRead(TestItem.AddressA, in key);
         slice.AddStorageChange(TestItem.AddressA, in key, 7, 11);
+        slice.AddStorageRead(TestItem.AddressA, in key);
         int snapshot = slice.TakeSnapshot();
         slice.AddStorageChange(TestItem.AddressA, in key, 11, 13);
         UInt256 last = returnToOriginal ? 7u : 17u;
@@ -383,6 +385,13 @@ public class BlockAccessListJournalTests
             Assert.That(account.StorageReads.Contains(key), Is.EqualTo(returnToOriginal));
         }
         if (!returnToOriginal) Assert.That(account.StorageChanges[key].Value, Is.EqualTo(last));
+
+        slice.AddStorageChange(TestItem.AddressA, in key, in last, 19);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)19));
+            Assert.That(account.StorageReads, Does.Not.Contain(key));
+        }
 
         slice.Restore(snapshot);
         using (Assert.EnterMultipleScope())
