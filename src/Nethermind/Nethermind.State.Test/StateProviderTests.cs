@@ -545,6 +545,11 @@ public class StateProviderTests(bool useFlat)
         // Drops the uncommitted changes while keeping block-level state, as CallAndRestore does.
         provider.Reset(resetBlockChanges: false);
 
+        // The reset is the second RestoreCodeInserts caller, so it rolls the counters back too.
+        (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
+        Assert.That(codeWrites, Is.Zero);
+        Assert.That(codeBytesWritten, Is.Zero);
+
         provider.Commit(spec);
 
         Assert.That(provider.AccountExists(TestItem.AddressB), Is.False);

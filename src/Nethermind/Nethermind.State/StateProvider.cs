@@ -490,7 +490,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             _codeBatchAlternate.Remove(entry.CodeHash);
             _blockCodeInsertFilter.Delete(entry.CodeHash);
-            _metrics.DecrementCodeWrite(entry.Length);
+            _metrics.DecrementCodeWrites(entry.Length);
             keep--;
         }
 

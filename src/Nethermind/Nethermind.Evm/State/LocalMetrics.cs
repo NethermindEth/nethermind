@@ -95,7 +95,7 @@ public sealed class LocalMetrics
     /// <see cref="IncrementCodeBytesWritten"/>, for code staged by a deployment that was later reverted.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void DecrementCodeWrite(int bytes)
+    public void DecrementCodeWrites(int bytes)
     {
         if (ExecutionMetricsFlag.IsActive)
         {
