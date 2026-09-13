@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -109,7 +108,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Reset_trims_oversized_round_collections()
     {
-        const int OversizedCapacity = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity + 1;
+        const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
 
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -134,7 +133,7 @@ public class StorageProviderTests(bool useFlat)
         {
             for (int i = 0; i < collections.Length; i++)
             {
-                Assert.That(capacitiesBeforeReset[i], Is.GreaterThan(Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity));
+                Assert.That(capacitiesBeforeReset[i], Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
                 Assert.That(GetCollectionCapacity(collections[i]), Is.GreaterThan(0));
                 Assert.That(GetCollectionCapacity(collections[i]), Is.LessThan(capacitiesBeforeReset[i]));
             }
@@ -551,7 +550,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Transient_reset_trims_the_tables_a_heavy_transaction_grew()
     {
-        const int Cells = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity + 1000;
+        const int Cells = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1000;
 
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -564,22 +563,14 @@ public class StorageProviderTests(bool useFlat)
 
         provider.Reset();
 
-        object transientProvider = typeof(WorldState)
-            .GetField("_transientStorageProvider", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(provider)!;
-        object values = transientProvider.GetType()
-            .GetField("_values", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(transientProvider)!;
-        object undo = transientProvider.GetType()
-            .GetField("_undo", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(transientProvider)!;
-        int valuesCapacity = (int)values.GetType().GetProperty("Capacity")!.GetValue(values)!;
-        int undoCapacity = (int)undo.GetType().GetProperty("Capacity")!.GetValue(undo)!;
+        object transientProvider = GetPrivateField(provider, "_transientStorageProvider");
+        int valuesCapacity = GetCollectionCapacity(GetPrivateField(transientProvider, "_values"));
+        int undoCapacity = GetCollectionCapacity(GetPrivateField(transientProvider, "_undo"));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(valuesCapacity, Is.LessThanOrEqualTo(Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity), "value map");
-            Assert.That(undoCapacity, Is.LessThanOrEqualTo(Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity), "undo log");
+            Assert.That(valuesCapacity, Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity), "value map");
+            Assert.That(undoCapacity, Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity), "undo log");
         }
     }
 
