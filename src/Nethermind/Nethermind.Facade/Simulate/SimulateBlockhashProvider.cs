@@ -51,5 +51,8 @@ public sealed class SimulateBlockhashProvider(
         return blockhashProvider.TryGetBlockhash(header, target, spec, out hash);
     }
 
+    /// <remarks>Forwards to the inner provider for its block-tree prefetch. That also arms the inner
+    /// EIP-2935 memo, which is inert here: the 7709 path above reads the store directly and never consults
+    /// the inner provider, so the armed memo is never read.</remarks>
     public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => blockhashProvider.Prefetch(currentBlock, token);
 }

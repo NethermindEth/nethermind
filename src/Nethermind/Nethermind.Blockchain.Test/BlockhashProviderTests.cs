@@ -381,6 +381,8 @@ public class BlockhashProviderTests
 
         Hash256 firstParent = new("0x1111111111111111111111111111111111111111111111111111111111111111");
         fixture.StoreParentHash(header, firstParent);
+        // Arm the memo so the sibling case exercises the arming gate, not just the unarmed fallback.
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> first), Is.True);
         Assert.That(first.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()), "first block");
@@ -401,6 +403,7 @@ public class BlockhashProviderTests
         using BlockhashFixture fixture = new();
         BlockHeader header = fixture.Current.Header;
         fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
 
         for (int round = 0; round < 3; round++)
         {
@@ -420,7 +423,7 @@ public class BlockhashProviderTests
 
     /// <summary>A sweep over distinct numbers allocates at most one memo entry per number per block:
     /// the second pass over the same distinct set must be allocation-free.</summary>
-        [Test, MaxTime(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Blockhash_span_lookup_over_distinct_numbers_allocates_once_per_number()
     {
         using BlockhashFixture fixture = new();
@@ -446,37 +449,55 @@ public class BlockhashProviderTests
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
     }
 
-        /// <summary>The memo must hit for the header the block actually executes with, which is a
-        /// CloneForProcessing of the suggested header — a different instance, same number and hash.</summary>
-        [Test, MaxTime(Timeout.MaxTestTime)]
-        public void Blockhash_memo_hits_the_processing_clone_not_only_the_armed_instance()
+    /// <summary>The memo must hit for the header the block actually executes with, which is a
+    /// CloneForProcessing of the suggested header — a different instance, same number and hash.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_memo_hits_the_processing_clone_not_only_the_armed_instance()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader suggested = fixture.Current.Header;
+        fixture.Store.ApplyBlockhashStateChanges(suggested, fixture.Spec);
+        fixture.Provider.Prefetch(suggested, CancellationToken.None).GetAwaiter().GetResult();
+        ulong number = suggested.Number - 1;
+
+        // Block processing executes with the clone, never the armed instance.
+        BlockHeader processing = suggested.CloneForProcessing();
+        Assert.That(ReferenceEquals(processing, suggested), Is.False, "precondition: distinct instance");
+
+        Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
+
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
         {
-            using BlockhashFixture fixture = new();
-            BlockHeader suggested = fixture.Current.Header;
-            fixture.Store.ApplyBlockhashStateChanges(suggested, fixture.Spec);
-            fixture.Provider.Prefetch(suggested, CancellationToken.None).GetAwaiter().GetResult();
-            ulong number = suggested.Number - 1;
-
-            // Block processing executes with the clone, never the armed instance.
-            BlockHeader processing = suggested.CloneForProcessing();
-            Assert.That(ReferenceEquals(processing, suggested), Is.False, "precondition: distinct instance");
-
-            Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
-
-            long start = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
-            {
-                fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _);
-            }
-
-            Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero, "the clone must hit the armed memo");
+            fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _);
         }
 
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero, "the clone must hit the armed memo");
+    }
 
-/// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
-    /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
-    /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
-    /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
+    /// <summary>An unarmed provider (one that never prefetched) must never serve the memo — it re-reads
+    /// state every call, which is what protects the pooled RPC envs that execute under state overrides.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_unarmed_provider_reflects_a_state_rewrite()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        ulong number = header.Number - 1;
+
+        Hash256 firstParent = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        fixture.StoreParentHash(header, firstParent);
+        // No Prefetch: this provider is unarmed, exactly like a pooled eth_call env.
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
+        Assert.That(before.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()));
+
+        // Rewrite the history slot through the same world state (the shape a stateOverride produces).
+        Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        fixture.StoreParentHash(header, secondParent);
+
+        Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
+        Assert.That(after.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "an unarmed read must reflect the rewrite, not a memoized value");
+    }
+
         [Test, MaxTime(Timeout.MaxTestTime)]
     public void Blockhash_span_lookup_does_not_allocate([Values(true, false)] bool blockHashInState)
     {

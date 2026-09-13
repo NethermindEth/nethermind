@@ -38,11 +38,11 @@ namespace Nethermind.Blockchain
 
         // The memo is armed by Prefetch, which branch processing calls once per block: only the armed
         // block is served, and arming clears the table. A pooled RPC env that applies state overrides
-        // never prefetches, so on its own scoped provider it can neither populate nor read the memo — the
-        // discriminator (header, number) alone cannot provide, since header caches serve the same instance
-        // to requests whose overridden states differ. Matched by (number, hash) not by reference, because
-        // BlockProcessor executes a CloneForProcessing of the suggested header — same number and hash, a
-        // different instance — so a reference check would never hit in real processing.
+        // never prefetches, so on its own scoped provider it can neither populate nor read the memo. The
+        // arming gate is keyed (number, hash), not by reference, because BlockProcessor executes a
+        // CloneForProcessing of the suggested header — same number and hash, a different instance — so a
+        // reference gate would never hit in real processing. The per-entry check below is the separate,
+        // reference-based half: it decides whether a stored slot belongs to this exact header instance.
         private ulong _armedNumber = ulong.MaxValue;
         private Hash256? _armedHash;
 
@@ -86,18 +86,20 @@ namespace Nethermind.Blockchain
 
         /// <summary>Serves EIP-2935 lookups from a per-block memo of what state already returned.</summary>
         /// <remarks>
-        /// Gated by EIP-7709 and armed only by <see cref="Prefetch"/>, which branch processing calls once
-        /// per block, matched by (number, hash) so it survives the header clone that BlockProcessor
-        /// executes with: an env that never prefetches (the pooled RPC envs, which may execute under state
-        /// overrides) reads the store directly, because the same block can then back different states. The ring buffer is written once per block by the system call before any transaction
-        /// runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS, so no transaction can
-        /// write to it — a chain pointing Eip2935ContractAddress at writable code would invalidate this,
-        /// as would serving one header's resolution to a different state (see SimulateBlockhashProvider,
-        /// which bypasses this memo for the same reason). Entries
-        /// carry the header they were resolved against and are matched by reference, so anything resolved for
-        /// a different block simply misses rather than being served stale — there is no invalidation step to
-        /// get wrong. Cached values come from state rather than from the block tree, which matters at the
-        /// fork boundary where the buffer is still filling and the two disagree.
+        /// Two independent checks guard a hit. The <b>arming gate</b>, keyed (number, hash), decides whether
+        /// the caller is a prefetching block processor at all: only <see cref="Prefetch"/> arms it, so an env
+        /// that never prefetches (the pooled RPC envs, which may execute under state overrides on their own
+        /// scoped provider) reads the store directly — the same block can back different states there. It is
+        /// keyed by value, not reference, so it survives the <c>CloneForProcessing</c> that BlockProcessor
+        /// executes with. The <b>per-entry check</b> is separate and reference-based: a stored slot is served
+        /// only to the exact header instance it was resolved against, which keeps the prewarmer's
+        /// suggested-header run and a sequential-retry re-run from reading each other's entries.
+        /// <para>
+        /// Why the values cannot be stale: the ring buffer is written once per block by the system call
+        /// before any transaction runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS,
+        /// so no transaction can write to it — a chain pointing Eip2935ContractAddress at writable code would
+        /// invalidate this. Cached values come from state rather than from the block tree, which matters at
+        /// the fork boundary where the buffer is still filling and the two disagree.</para>
         /// </remarks>
         private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
