@@ -54,8 +54,12 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
+    /// <summary>The keccak of the code, assigned when the cache stores this instance.</summary>
     /// <remarks>Written only by <see cref="StaticCodeCache"/> on insert; <c>CacheCodeInfoRepository</c>'s
-    /// last-resolved memo validates a hit against it, so the write must stay confined to the cache.</remarks>
+    /// last-resolved memo validates a hit against it, so the write must stay confined to the cache. An
+    /// instance that never passed through <c>ICodeCache.Set</c> — a precompile, <see cref="Empty"/>, or
+    /// anything resolved under <c>NoopCodeCache</c> — therefore reports <c>default</c> rather than its
+    /// own hash.</remarks>
     public ValueHash256 CodeHash { get; internal set; }
 
     /// <summary>

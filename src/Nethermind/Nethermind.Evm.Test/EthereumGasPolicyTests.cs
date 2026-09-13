@@ -43,6 +43,25 @@ public class EthereumGasPolicyTests
         Assert.That(tracker.IsCold(in other), Is.True);
     }
 
+    /// <summary>Returning a tracker to the pool must drop the remembered warm cell, or the next rental
+    /// serves a cold cell as warm across a transaction boundary — a genuinely cold SLOAD charged 100
+    /// instead of 2100.</summary>
+    /// <remarks>The pool's localCapacity is 1, so a same-thread dispose-then-rent reuses the one state
+    /// deterministically; this pins the Clear() -> ForgetWarm() path that Restore()'s test does not.</remarks>
+    [Test]
+    public void Pooled_reset_drops_the_remembered_cell()
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        using (StackAccessTracker first = new())
+        {
+            first.WarmUp(in cell);
+            Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
+        }
+
+        using StackAccessTracker second = new();
+        Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
+    }
+
     /// <summary>The memo must answer for the cell it remembers, not for a different one.</summary>
     [Test]
     public void Warm_cell_does_not_make_other_cells_warm()
