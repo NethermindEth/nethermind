@@ -4,15 +4,6 @@ set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "$0")/lib.sh"
 
-case "${SYNC_MODE,,}" in
-  halfpath) flatdb_enabled=false ;;
-  flat)     flatdb_enabled=true ;;
-  *)
-    echo "Unsupported sync mode: ${SYNC_MODE}"
-    exit 1
-    ;;
-esac
-
 ./build/sedge deps install
 
 GENERIC_METRICS_FLAGS=(
@@ -67,7 +58,7 @@ if [[ "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
     --network "$stripped_network" \
     --consensus-url "$consensus_url" \
     --execution-api-url "$execution_url" \
-    --el-op-extra-flag "FlatDb.Enabled=${flatdb_enabled}" \
+    --el-op-extra-flag FlatDb.Enabled=true \
     --el-op-extra-flag Sync.NonValidatorNode=true \
     --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
     --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -107,7 +98,7 @@ elif [[ "$NETWORK" == taiko-* ]]; then
     --network "$stripped_network" \
     --consensus-url "$consensus_url" \
     --execution-api-url "$execution_url" \
-    --el-l2-extra-flag "FlatDb.Enabled=${flatdb_enabled}" \
+    --el-l2-extra-flag FlatDb.Enabled=true \
     --el-l2-extra-flag Sync.NonValidatorNode=true \
     --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
     --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -134,7 +125,7 @@ else
     --no-mev-boost \
     --no-validator \
     --network "$NETWORK" \
-    --el-extra-flag "FlatDb.Enabled=${flatdb_enabled}" \
+    --el-extra-flag FlatDb.Enabled=true \
     --el-extra-flag Sync.NonValidatorNode=true \
     --el-extra-flag Sync.DownloadBodiesInFastSync=false \
     --el-extra-flag Sync.DownloadReceiptsInFastSync=false \

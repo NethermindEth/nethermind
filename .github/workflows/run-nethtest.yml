@@ -6,7 +6,7 @@ name: Run nethtest (EEST tests)
 #
 # The fixture set is split into deterministic interleaved file chunks (--chunk NofM) so
 # every job fits on a standard ubuntu-latest runner, and the configuration matrix mirrors
-# the pyspec fixture classes: sequential, flat_sequential, and the Amsterdam BAL
+# the pyspec fixture classes: sequential and the Amsterdam BAL
 # parallel-execution / batch-read variants.
 
 on:
@@ -18,7 +18,7 @@ on:
         default: engineTest
         type: string
       setup_group:
-        description: Which configuration group to run (sequential, flat, all)
+        description: Which configuration group to run (sequential, all)
         required: false
         default: sequential
         type: string
@@ -71,7 +71,6 @@ on:
         type: choice
         options:
           - sequential
-          - flat
           - all
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
@@ -188,112 +187,79 @@ jobs:
           ENTRIES_FILE="$(mktemp)"
 
           emit() {
-            local type=$1 setup=$2 scope=$3 flatdb=$4 parallel=$5 batchread=$6 workers=$7 chunks=$8
+            local type=$1 setup=$2 scope=$3 parallel=$4 batchread=$5 workers=$6 chunks=$7
             for i in $(seq 1 "$chunks"); do
               jq -nc \
                 --arg type "$type" --arg setup "$setup" --arg chunk "${i}of${chunks}" \
-                --arg scope "$scope" --arg flatdb "$flatdb" --arg parallel "$parallel" \
+                --arg scope "$scope" --arg parallel "$parallel" \
                 --arg batchread "$batchread" --arg workers "$workers" \
-                '{test_type: $type, test_setup: $setup, chunk: $chunk, scope: $scope, flatdb: $flatdb, parallel: $parallel, batchread: $batchread, workers: $workers}' \
+                '{test_type: $type, test_setup: $setup, chunk: $chunk, scope: $scope, parallel: $parallel, batchread: $batchread, workers: $workers}' \
                 >> "$ENTRIES_FILE"
             done
           }
 
           run_sequential() { [ "$SETUP_GROUP" = "sequential" ] || [ "$SETUP_GROUP" = "all" ]; }
-          run_flat() { [ "$SETUP_GROUP" = "flat" ] || [ "$SETUP_GROUP" = "all" ]; }
 
           IFS=',' read -ra TYPES <<< "$TEST_TYPES"
           for raw_type in "${TYPES[@]}"; do
             type="$(echo "$raw_type" | tr -d '[:space:]')"
             case "$type" in
               engineTest|blockTest)
-                # Mirrors the pyspec fixture classes: sequential merkle baseline over the
-                # full set, plus the flat layout and its Amsterdam BAL parallel/batch-read
-                # variants (the toggles are EIP-7928-gated, hence the amsterdam scope).
-                # The default (patricia) layout disposes its state store per test, so these
-                # jobs never approach the 16 GB runner limit; chunk counts here are sized for
-                # wall-clock, not memory.
+                # Mirrors the pyspec fixture classes: sequential execution over the full set,
+                # plus the Amsterdam BAL parallel/batch-read variants (the toggles are
+                # EIP-7928-gated, hence the amsterdam scope). Chunk counts are sized for
+                # FlatDB's memory use and wall-clock time.
                 if [ -n "$VARIANT" ] && run_sequential; then
                   # Build-variant coverage (checked / no-intrinsics): only the plain
                   # sequential config, coarsely chunked. The variant exercises arithmetic
-                  # and SIMD-fallback code paths, which are independent of the BAL/parallel
-                  # and flat sub-variants, so those add no coverage here. Variant builds run
-                  # slower, so chunks are kept modest but under the job timeout.
+                  # and SIMD-fallback code paths, which are independent of the BAL variants.
+                  # Variant builds run slower, so chunks are kept modest but under the job timeout.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" sequential full '' false false 4 3
+                    emit "$type" sequential full false false 2 9
                   else
-                    emit "$type" sequential full '' false false 4 2
+                    emit "$type" sequential full false false 4 6
                   fi
                 elif run_sequential; then
                   # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
-                  # unfiltered, so the Amsterdam parallel/batch-read variant classes also
-                  # ran under the default (patricia) layout — including parallel-full,
-                  # which is the production configuration. Mirror that coverage here.
+                  # unfiltered, so the Amsterdam parallel/batch-read variant classes also run
+                  # under the default FlatDB configuration, including parallel-full. Mirror
+                  # that coverage here.
                   # Chunk counts are sized to keep every job under ~8 min wall (measured):
                   # engineTest fixtures run ~2x slower than blockTest, so engine gets more.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" sequential   full      '' false false 4 7
-                    emit "$type" parallel     amsterdam '' true  false 1 4
-                    emit "$type" batchread    amsterdam '' false true  4 2
-                    emit "$type" parallelfull amsterdam '' true  true  1 4
+                    emit "$type" sequential   full      false false 2 9
+                    emit "$type" parallel     amsterdam true  false 1 6
+                    emit "$type" batchread    amsterdam false true  4 3
+                    emit "$type" parallelfull amsterdam true  true  1 5
                   else
-                    emit "$type" sequential   full      '' false false 4 4
-                    emit "$type" parallel     amsterdam '' true  false 1 1
-                    emit "$type" batchread    amsterdam '' false true  4 1
-                    emit "$type" parallelfull amsterdam '' true  true  1 1
-                  fi
-                fi
-                if run_flat; then
-                  # The flat in-memory backend NEVER PRUNES, so state accumulates across a
-                  # chunk: it is both slower per test (heap grows -> GC pressure) and bounded
-                  # by the 16 GB runner limit, hence the denser split than patricia. The
-                  # parallel-exec chunks run short (~2-4 min) but each job pays ~50s fixed
-                  # overhead, so they are merged down to the memory floor: on this v7.3.2 set
-                  # parallel OOMed at 5 chunks and parallel-full at 4, so 6 / 5 are the safe
-                  # minimums. Engine is the heaviest combination.
-                  if [ "$type" = "engineTest" ]; then
-                    emit "$type" flat_sequential  full      1 false false 2 9
-                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
-                    emit "$type" flat_batchread   amsterdam 1 false true  4 3
-                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
-                  else
-                    emit "$type" flat_sequential  full      1 false false 4 6
-                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
-                    emit "$type" flat_batchread   amsterdam 1 false true  4 2
-                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
+                    emit "$type" sequential   full      false false 4 6
+                    emit "$type" parallel     amsterdam true  false 1 6
+                    emit "$type" batchread    amsterdam false true  4 2
+                    emit "$type" parallelfull amsterdam true  true  1 5
                   fi
                 fi
                 ;;
               stateTest)
                 # State tests execute a single tx via the tx processor - the block-level
-                # parallel/batch-read toggles do not apply, only the state layout does.
+                # parallel/batch-read toggles do not apply.
                 if run_sequential; then
-                  # The state set is memory-heavy even on patricia: 1 chunk GC-thrashed into
-                  # the idle watchdog (same failure as flat state at 3 chunks), so keep 2 -
-                  # the proven-stable floor.
-                  emit "$type" sequential full '' '' '' 4 2
-                fi
-                if run_flat; then
-                  # Flat + 4 workers is memory-heavy for the state set; 3 chunks GC-thrashed
-                  # until the idle watchdog killed a chunk, 4 is the proven-stable floor.
-                  emit "$type" flat_sequential full 1 '' '' 4 4
+                  # The state set is memory-heavy, so keep the proven-stable floor of four
+                  # chunks.
+                  emit "$type" sequential full '' '' 4 4
                 fi
                 ;;
               syncTest)
                 # Sync fixtures share the engine-payload format; the sync-specific payload
                 # is not exercised yet (same coverage the NUnit sync fixtures provided).
                 if run_sequential; then
-                  emit "$type" sequential full '' false false 4 1
-                fi
-                if run_flat; then
-                  emit "$type" flat_sequential full 1 false false 4 1
+                  emit "$type" sequential full false false 4 1
                 fi
                 ;;
               txTest)
                 # Raw-tx validation touches neither the state layout nor block execution,
-                # so it only runs in the sequential group (flat would be a duplicate).
+                # so it only runs in the sequential group.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 1
+                  emit "$type" sequential full '' '' 4 1
                 fi
                 ;;
               zkevmTest)
@@ -301,14 +267,13 @@ jobs:
                 # layout and BAL toggles are irrelevant - sequential group only.
                 # ~20s per chunk, so a single runner is plenty.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 1
+                  emit "$type" sequential full '' '' 4 1
                 fi
                 ;;
               focilTest)
-                # Single-fork engine fixtures, so the BAL toggles do not apply and the flat layout
-                # adds nothing over the Amsterdam corpus the flat lane already runs.
+                # Single-fork engine fixtures, so the BAL toggles do not apply.
                 if run_sequential; then
-                  emit "$type" sequential bogota '' false false 4 2
+                  emit "$type" sequential bogota false false 4 2
                 fi
                 ;;
               *)
@@ -385,7 +350,6 @@ jobs:
       TEST_SETUP: ${{ matrix.test_setup }}
       CHUNK: ${{ matrix.chunk }}
       SCOPE: ${{ matrix.scope }}
-      FLATDB: ${{ matrix.flatdb }}
       PARALLEL: ${{ matrix.parallel }}
       BATCHREAD: ${{ matrix.batchread }}
       WORKERS: ${{ matrix.workers }}
@@ -564,9 +528,6 @@ jobs:
           fi
 
           SETUP_ARGS="--chunk $CHUNK"
-          if [ "$FLATDB" != "1" ]; then
-            SETUP_ARGS="$SETUP_ARGS --triedb"
-          fi
           if [ -n "$PARALLEL" ]; then
             SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"
           fi

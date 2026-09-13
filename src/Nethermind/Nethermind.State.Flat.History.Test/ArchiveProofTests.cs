@@ -1296,7 +1296,7 @@ public class ArchiveProofTests
         CommitmentDepthPolicy policy = CommitmentDepthPolicy.Default;
         TreePath parent = TreePath.FromHexString("abc");
         Address[] accounts = AddressesUnderPrefix(0xab, 0xc, count: 48);
-        RawScopedTrieStore store = new(new MemDb());
+        RawScopedTrieStore store = new(new MemoryNodeStorage());
         StateTree tree = new(store, LimboLogs.Instance);
         ushort presence = 0;
         for (int i = 0; i < accounts.Length; i++)
@@ -1390,7 +1390,7 @@ public class ArchiveProofTests
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(columns, new FlatDbConfig { HistoryEnabled = true });
         ISortedKeyValueStore accountRows = (ISortedKeyValueStore)columns.GetColumnDb(FlatHistoryColumns.AccountHistory);
         CommitmentStore commitments = new(columns.GetColumnDb(FlatHistoryColumns.AccountCommitments), CommitmentDepthPolicy.Default, 0);
-        RawScopedTrieStore store = new(new MemDb());
+        RawScopedTrieStore store = new(new MemoryNodeStorage());
         StateTree tree = new(store, LimboLogs.Instance);
         for (int i = 0; i < accounts.Length; i++) tree.Set(accounts[i], new Account((ulong)(i + 1), (UInt256)(1000 + i)));
         tree.UpdateRootHash();

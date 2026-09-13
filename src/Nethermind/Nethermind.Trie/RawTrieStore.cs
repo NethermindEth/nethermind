@@ -9,14 +9,11 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie;
 
 /// <summary>
-/// Expose <see cref="ITrieStore"/> interface directly backed by <see cref="INodeStorage"/> without any pruning
-/// or buffering.
+/// Exposes <see cref="ITrieStore"/> directly backed by <see cref="INodeStorage"/> without buffering.
 /// </summary>
 /// <param name="nodeStorage"></param>
 public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
 {
-    public RawTrieStore(IKeyValueStoreWithBatching kv) : this(new NodeStorage(kv)) { }
-
     void IDisposable.Dispose() { }
 
     public virtual ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) =>
@@ -31,8 +28,6 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
         nodeStorage.Get(address, path, hash, flags);
-
-    public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
 
     public bool HasRoot(Hash256 stateRoot) => nodeStorage.KeyExists(null, TreePath.Empty, stateRoot);
 

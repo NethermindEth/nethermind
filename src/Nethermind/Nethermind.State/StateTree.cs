@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -23,7 +22,7 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool) => TrieType = TrieType.State;
+            : base(new RawScopedTrieStore(new MemoryNodeStorage()), NullLogManager.Instance, bufferPool: bufferPool) => TrieType = TrieType.State;
 
         [DebuggerStepThrough]
         public StateTree(IScopedTrieStore store, ILogManager logManager)

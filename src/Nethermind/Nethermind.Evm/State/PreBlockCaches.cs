@@ -529,7 +529,5 @@ public enum CacheType
     None = 0,
     Storage = 0b1,
     State = 0b10,
-    /// <summary>RLP node-storage caching was enabled when cleared; this does not indicate whether it contained entries.</summary>
-    Rlp = 0b100,
-    Precompile = 0b1000
+    Precompile = 0b100
 }

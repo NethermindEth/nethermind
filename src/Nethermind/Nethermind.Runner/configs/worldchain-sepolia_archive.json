@@ -17,9 +17,6 @@
     "Port": 8545,
     "EnginePort": 8551
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Receipt": {
     "TxLookupLimit": 0
   },
@@ -33,6 +30,8 @@
     "SequencerUrl": "https://worldchain-sepolia-sequencer.g.alchemy.com"
   },
   "FlatDb": {
+    "Enabled": true,
+    "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }
 }

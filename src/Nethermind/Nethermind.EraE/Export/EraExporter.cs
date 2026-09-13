@@ -195,7 +195,7 @@ public sealed class EraExporter(
         }
     }
 
-    // Follows the same convention as FullPruningMaxDegreeOfParallelism / VisitingOptions.AdjustMaxDegreeOfParallelism:
+    // Keep the same convention as VisitingOptions.AdjustMaxDegreeOfParallelism:
     //   0  → ProcessorCount / 4 (default: background-friendly, leaves 75% of CPU for the live node)
     //  -1  → ProcessorCount     (aggressive: fastest export, use when the node has no other responsibilities)
     //  >0  → exact value

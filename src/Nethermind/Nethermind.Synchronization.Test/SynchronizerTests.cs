@@ -22,7 +22,6 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -281,17 +280,13 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             _logger = _logManager.GetClassLogger<ContainerDependencies>();
             ISyncConfig syncConfig = GetSyncConfig();
             IMergeConfig mergeConfig = new MergeConfig();
-            IPruningConfig pruningConfig = new PruningConfig()
-            {
-                Mode = PruningMode.Full, // Memory pruning is slow to start, relatively speaking
-            };
             if (WithTTD(synchronizerType))
             {
                 mergeConfig.Enabled = true;
                 mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
             }
 
-            IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig, pruningConfig);
+            IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig);
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)

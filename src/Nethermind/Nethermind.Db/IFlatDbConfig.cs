@@ -16,7 +16,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Compact size", DefaultValue = "32")]
     ulong CompactSize { get; set; }
 
-    [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
+    [ConfigItem(Description = "FlatDB is always enabled. The false value is retained as a migration tombstone and rejected.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
@@ -79,7 +79,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of most recent commitment epochs to keep the per-block rows for. Older epochs keep only their checkpoint rows: proofs there are still served and still verified, rebuilt from the window rows, which costs about a second instead of a hundred milliseconds and is most of the column's size. 0 keeps the per-block rows for every epoch.", DefaultValue = "0")]
     int ArchiveProofFineEpochs { get; set; }
 
-    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    [ConfigItem(Description = "Deprecated migration flag. Use the supported Nethermind 2.1 binary or a fresh FlatDB sync.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ImportFromPruningTrieState { get; set; }
 
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]

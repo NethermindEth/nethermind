@@ -77,8 +77,9 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
+            // FlatDB is the only supported state layout.
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-            flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
+            flatDbConfig.Enabled = true;
             // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
             // run, and a fire-and-forget background convert from one test can race another test's files. Long
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.

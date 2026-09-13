@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -13,12 +12,10 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
@@ -44,12 +41,6 @@ namespace Nethermind.Synchronization.Test
             ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
             syncConfig.FastSync = false;
 
-            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-            initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
-
-            IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
-            pruningConfig.Mode = PruningMode.Full;
-
             IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IHistoryPruner>(Substitute.For<IHistoryPruner>())
@@ -64,7 +55,6 @@ namespace Nethermind.Synchronization.Test
         public Task TearDown() =>
             _container.DisposeAsync().AsTask();
 
-        private IDb _stateDb => _container.Resolve<IDbProvider>().StateDb;
         private IBlockTree _blockTree = null!;
         private IBlockTree _remoteBlockTree = null!;
         private Block _genesisBlock = null!;
@@ -304,18 +294,6 @@ namespace Nethermind.Synchronization.Test
             resetEvent.WaitOne(_standardTimeoutUnit);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default);
-        }
-
-        [Test]
-        public void Can_retrieve_node_values()
-        {
-            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            using IByteArrayList data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
-
-            Assert.That(data, Is.Not.Null);
-            Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0].ToArray(), Is.EqualTo(TestItem.RandomDataA), "data[0]");
-            Assert.That(data[1].IsEmpty, Is.True, "data[1]");
         }
 
         [Test]

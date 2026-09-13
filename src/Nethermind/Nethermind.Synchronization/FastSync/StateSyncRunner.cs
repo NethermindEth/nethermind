@@ -32,7 +32,6 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
-    [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
     IVerifyTrieStarter? verifyTrieStarter = null) : IStateSyncRunner
@@ -50,7 +49,7 @@ public class StateSyncRunner(
             }
 
             await StateSyncPrecursorWait(token);
-            TuneStateDb(syncConfig.TuneDbMode);
+            TuneCodeDb(syncConfig.TuneDbMode);
 
             try
             {
@@ -74,7 +73,7 @@ public class StateSyncRunner(
             finally
             {
                 // Skip on shutdown so we don't touch DBs that may already be disposed.
-                if (!token.IsCancellationRequested) TuneStateDb(ITunableDb.TuneType.Default);
+                if (!token.IsCancellationRequested) TuneCodeDb(ITunableDb.TuneType.Default);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -251,11 +250,7 @@ public class StateSyncRunner(
             verifyTrieStarter?.TryStartVerifyTrie(finalPivot);
     }
 
-    private void TuneStateDb(ITunableDb.TuneType tuneType)
-    {
-        stateDb?.Tune(tuneType);
-        codeDb?.Tune(tuneType);
-    }
+    private void TuneCodeDb(ITunableDb.TuneType tuneType) => codeDb?.Tune(tuneType);
 
     private sealed class PivotReorgedException(BlockHeader pivot)
         : Exception($"State sync pivot {pivot.Number} ({pivot.Hash}) was reorged out.");

@@ -15,7 +15,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -26,6 +25,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly ProgressTracker _progressTracker = progressTracker;
         private readonly ISnapTrieFactory _trieFactory = trieFactory;
+        private readonly ISnapTrieFactory _proofTrieFactory = new ProofOnlySnapTrieFactory(logManager);
 
         // This is actually close to 97% effective.
         private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
@@ -414,8 +414,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 // Empty-backed isolated factory: a proof node that cannot be resolved from the proof itself fails
                 // verification instead of being completed from (or racing) the live client state DB.
-                ISnapTrieFactory factory = new PatriciaSnapTrieFactory(new NodeStorage(new MemDb()), NullDb.Instance, logManager);
-                result = SnapProviderHelper.VerifyAccountRange(factory, stateRoot, path, path.IncrementPath(), accounts, response.Proofs);
+                result = SnapProviderHelper.VerifyAccountRange(_proofTrieFactory, stateRoot, path, path.IncrementPath(), accounts, response.Proofs);
             }
             catch (Exception)
             {

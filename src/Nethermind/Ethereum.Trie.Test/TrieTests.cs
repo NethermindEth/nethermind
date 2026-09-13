@@ -8,23 +8,20 @@ using System.Text;
 using Ethereum.Test.Base;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Ethereum.Trie.Test
 {
     public class TrieTests
     {
-        private MemDb _db;
+        private MemoryNodeStorage _db;
         private readonly ILogger _logger = new TestLogManager().GetClassLogger<TrieTests>();
 
         [SetUp]
-        public void Setup() => _db = new MemDb();
-
-        [TearDown]
-        public void TearDown() => _db?.Dispose();
+        public void Setup() => _db = new MemoryNodeStorage();
 
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests) =>
             tests.SelectMany(t =>
@@ -78,7 +75,7 @@ namespace Ethereum.Trie.Test
 
             TestContext.Out.WriteLine(Surrounded(permutationDescription));
 
-            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             foreach (KeyValuePair<string, string> keyValuePair in test.Input)
             {
                 string keyString = keyValuePair.Key;
@@ -105,14 +102,14 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Quick_empty()
         {
-            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
 
         [Test]
         public void Delete_on_empty()
         {
-            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1").Bytes, Array.Empty<byte>());
             patriciaTree.Commit();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
@@ -121,7 +118,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Delete_missing_resolved_on_branch()
         {
-            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1123").Bytes, [1]);
             patriciaTree.Set(Keccak.Compute("1124").Bytes, [2]);
             Hash256 rootBefore = patriciaTree.RootHash;
@@ -132,7 +129,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Delete_missing_resolved_on_extension()
         {
-            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }.ToPackedByteArray(), [1]);
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), [2]);
             patriciaTree.UpdateRootHash();
@@ -145,7 +142,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Delete_missing_resolved_on_leaf()
         {
-            PatriciaTree patriciaTree = new(_db, Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree patriciaTree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1234567").Bytes, [1]);
             patriciaTree.Set(Keccak.Compute("1234501").Bytes, [2]);
             patriciaTree.UpdateRootHash();
@@ -158,7 +155,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Lookup_in_empty_tree()
         {
-            PatriciaTree tree = new(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
+            PatriciaTree tree = new(new RawScopedTrieStore(_db), Keccak.EmptyTreeHash, true, NullLogManager.Instance);
             Assert.That(tree.RootRef, Is.Null);
             tree.Get([1]);
             Assert.That(tree.RootRef, Is.Null);

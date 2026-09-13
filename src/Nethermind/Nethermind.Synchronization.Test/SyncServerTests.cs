@@ -16,9 +16,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -32,15 +30,11 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -195,7 +189,6 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
@@ -405,7 +398,6 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
             new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
@@ -684,7 +676,6 @@ public class SyncServerTests
         blockTree.GetLowestBlock().Returns(lowestStored);
 
         SyncServer syncServer = new(
-            Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
             NullReceiptStorage.Instance,
@@ -799,49 +790,6 @@ public class SyncServerTests
 
         Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
         Assert.That(notifiedEarliest, Is.EqualTo(64UL));
-    }
-
-    [Test]
-    public void GetNodeData_returns_cached_trie_nodes()
-    {
-        Context ctx = new();
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
-        MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB), NoPersistence.Instance, LimboLogs.Instance);
-
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);
-
-        ctx.SyncServer = new SyncServer(
-            worldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Substitute.For<IBlockAccessListStore>(),
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
-
-        Hash256 nodeKey = TestItem.KeccakA;
-        TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
-        IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
-        using (IBlockCommitter _ = trieStore.BeginBlockCommit(1))
-        {
-            using ICommitter committer = scopedTrieStore.BeginCommit(node);
-            TreePath path = TreePath.Empty;
-            committer.CommitNode(ref path, node);
-        }
-
-        Assert.That(stateDb.KeyExists(nodeKey), Is.False);
-        using IByteArrayList nodeData = ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All);
-        Assert.That(nodeData.Count, Is.EqualTo(1));
-        Assert.That(nodeData[0].ToArray(), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
     }
 
     [Test]
@@ -962,7 +910,6 @@ public class SyncServerTests
 
         // Block-scoped using: roots the server and its event subscriptions for the whole concurrent run.
         using (new SyncServer(
-            Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
             NullReceiptStorage.Instance,
@@ -1060,13 +1007,11 @@ public class SyncServerTests
             PeerPool = Substitute.For<ISyncPeerPool>();
 
             BlockTree = Substitute.For<IBlockTree>();
-            WorldStateManager = Substitute.For<IWorldStateManager>();
             HistoryPruner = Substitute.For<IHistoryPruner>();
             SyncPointers = Substitute.For<ISyncPointers>();
 
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
-                WorldStateManager,
                 new MemDb(),
                 BlockTree,
                 NullReceiptStorage.Instance,
@@ -1086,7 +1031,6 @@ public class SyncServerTests
         public IBlockTree BlockTree { get; }
         public IHistoryPruner HistoryPruner { get; }
         public ISyncPointers SyncPointers { get; }
-        public IWorldStateManager WorldStateManager { get; }
         public ISyncPeerPool PeerPool { get; }
         public SyncServer SyncServer { get; set; }
         public ISpecProvider SpecProvider { get; set; } = null!;
@@ -1101,7 +1045,6 @@ public class SyncServerTests
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null) =>
             new(
-                WorldStateManager,
                 new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
@@ -1118,7 +1061,6 @@ public class SyncServerTests
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
             new(
-                WorldStateManager,
                 new MemDb(),
                 BlockTree,
                 NullReceiptStorage.Instance,

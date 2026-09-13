@@ -236,8 +236,7 @@ namespace Nethermind.Store.Test
             /* Now we are testing scenario where the storage is being changed by the block processor.
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
-            // Note: There is only one global IWorldState and IStateReader now. With pruning trie store, the data is
-            // not written to db immediately.
+            // The processor and blockchain bridge share one IWorldState and IStateReader.
 
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 

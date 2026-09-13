@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -23,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -83,7 +85,7 @@ public abstract class StateSyncFeedTestsBase(
             {
                 EthDetails = "eth68",
             };
-            SyncPeerMock mock = new(remote.StateDb, remote.CodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
+            SyncPeerMock mock = new(remote.StateDb, remote.TrieStore, remote.CodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
             mockMutator?.Invoke(mock);
             syncPeers[i] = mock;
         }
@@ -111,12 +113,12 @@ public abstract class StateSyncFeedTestsBase(
     protected ContainerBuilder BuildTestContainerBuilder(RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
     {
         ContainerBuilder containerBuilder = new ContainerBuilder()
-            // These tests exercise the patricia state-sync feed (trie-node download) directly and verify via
-            // PatriciaSnapTrieFactory/LocalDbContext, so they pin the patricia backend.
+            // State sync writes through the production FlatDB tree-sync store. The remote side remains a
+            // content-addressed test trie so the feed still receives real trie node responses.
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
                 FastSync = true
-            }, new FlatDbConfig { Enabled = false })))
+            }, new FlatDbConfig { Enabled = true })))
             .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
             {
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
@@ -133,12 +135,7 @@ public abstract class StateSyncFeedTestsBase(
 
             .Add<SafeContext>()
 
-            // State DB and INodeStorage are needed by SynchronizerModule components (e.g. PathNodeRecovery)
-            .AddKeyedSingleton<IDb>(DbNames.State, (_) => new TestMemDb())
-            .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
-
-            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<IStateSyncTestOperation, LocalDbContext>()
+            .AddSingleton<IStateSyncTestOperation, FlatLocalDbContext>()
 
             // Substitute the sync mode selector so StateSyncRunner.RunStateSyncRounds'
             // WaitUntilMode(StateNodes) returns immediately in tests rather than
@@ -187,12 +184,18 @@ public abstract class StateSyncFeedTestsBase(
         {
             Assert.Fail($"State sync did not complete within {timeout}ms.");
         }
+
+        if (completed == feedTask)
+        {
+            await feedTask;
+        }
     }
 
     protected class SafeContext(
         Lazy<SyncPeerMock[]> syncPeerMocks,
         Lazy<ISyncPeerPool> syncPeerPool,
         Lazy<TreeSync> treeSync,
+        Lazy<SimpleDispatcher<StateSyncBatch>> stateSyncDispatcher,
         Lazy<IStateSyncRunner> stateSyncRunner,
         Lazy<IBlockProcessingQueue> blockProcessingQueue,
         IBlockTree blockTree,
@@ -227,7 +230,17 @@ public abstract class StateSyncFeedTestsBase(
             treeSync.Value.ResetStateRootToBestSuggested();
         }
 
-        public Task RunFeed(CancellationToken cancellationToken) => stateSyncRunner.Value.RunStateSyncRounds(cancellationToken);
+        public async Task RunFeed(CancellationToken cancellationToken)
+        {
+            // Feed tests exercise multiple state rounds against one database. FlatDB finalization is deliberately
+            // one-shot, so leave finalization to StateSyncRunner tests and drive each round through the real
+            // dispatcher directly here.
+            treeSync.Value.ResetStateRootToBestSuggested();
+            await stateSyncDispatcher.Value.Run(cancellationToken);
+            treeSync.Value.VerifyPostSyncCleanUp();
+        }
+
+        public Task RunFinalizingFeed(CancellationToken cancellationToken) => stateSyncRunner.Value.RunStateSyncRounds(cancellationToken);
 
         public void Dispose()
         {
@@ -244,7 +257,6 @@ public abstract class StateSyncFeedTestsBase(
         private readonly IDb _codeDb;
         private readonly IReadOnlyKeyValueStore _stateDb;
         private readonly ISnapServer _snapServer;
-
         private Hash256[]? _filter;
         private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
         private readonly long _maxRandomizedLatencyMs;
@@ -254,6 +266,7 @@ public abstract class StateSyncFeedTestsBase(
 
         public SyncPeerMock(
             IDb stateDb,
+            ITrieStore stateTrieStore,
             IDb codeDb,
             Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? executorResultFunction = null,
             long? maxRandomizedLatencyMs = null,
@@ -266,13 +279,9 @@ public abstract class StateSyncFeedTestsBase(
             Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth68" };
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
-            PruningConfig pruningConfig = new();
-            TestFinalizedStateProvider testFinalizedStateProvider = new(pruningConfig.PruningBoundary);
-            TrieStore trieStore = new(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
-                Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
-            _stateDb = trieStore.TrieNodeRlpStore;
+            _stateDb = stateDb;
             _snapServer = new SnapServer(
-                new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance),
+                new RawTrieSnapStateServer(stateTrieStore, LimboLogs.Instance),
                 codeDb,
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IBlockAccessListStore>());
@@ -345,6 +354,119 @@ public abstract class StateSyncFeedTestsBase(
                 request.AccountAndStoragePaths,
                 request.RootHash,
                 token) ?? EmptyByteArrayList.Instance);
+
+    }
+
+    /// <summary>
+    /// Serves trie-node requests from the raw trie used by the remote state fixture.
+    /// </summary>
+    private sealed class RawTrieSnapStateServer(ITrieStore store, ILogManager logManager) : ISnapStateServer
+    {
+        private readonly ITrieStore _store = store;
+        private readonly AccountDecoder _decoder = new();
+
+        public bool CanServe => true;
+
+        public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken)
+        {
+            if (!_store.HasRoot(rootHash)) return EmptyByteArrayList.Instance;
+
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapStateServer.HardResponseByteLimit), 1);
+            using DeferredRlpItemList.Builder builder = new(pathSet.Count);
+            DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
+            StateTree tree = new(_store, logManager);
+            long responseSize = 0;
+
+            for (int i = 0; i < pathSet.Count && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; i++)
+            {
+                byte[][] requestedPath = pathSet[i].Group;
+                switch (requestedPath.Length)
+                {
+                    case 0:
+                        writer.Dispose();
+                        return null;
+                    case 1:
+                        try
+                        {
+                            byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                            writer.WriteValue(rlp);
+                            responseSize += rlp?.Length ?? 0;
+                        }
+                        catch (MissingTrieNodeException)
+                        {
+                            return Finish(builder, writer);
+                        }
+                        break;
+                    default:
+                        try
+                        {
+                            byte[] accountPath = requestedPath[0];
+                            Hash256 storagePath = new(accountPath.Length == Hash256.Size ? accountPath : accountPath.PadRight(Hash256.Size));
+                            Account? account = GetAccountByPath(tree, rootHash, accountPath);
+                            if (account is not null)
+                            {
+                                StorageTree storageTree = new(_store.GetTrieStore(storagePath), account.StorageRoot, logManager);
+                                for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                                {
+                                    byte[]? rlp = storageTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                    writer.WriteValue(rlp);
+                                    responseSize += rlp?.Length ?? 0;
+                                }
+                            }
+                        }
+                        catch (MissingTrieNodeException)
+                        {
+                            return Finish(builder, writer);
+                        }
+                        break;
+                }
+            }
+
+            return Finish(builder, writer);
+        }
+
+        public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(
+            Hash256 rootHash,
+            in ValueHash256 startingHash,
+            in ValueHash256? limitHash,
+            long byteLimit,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The state-sync feed fixture serves trie nodes only.");
+
+        public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList?) GetStorageRanges(
+            Hash256 rootHash,
+            IReadOnlyList<PathWithAccount> accounts,
+            in ValueHash256? startingHash,
+            in ValueHash256? limitHash,
+            long byteLimit,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The state-sync feed fixture serves trie nodes only.");
+
+        private static IByteArrayList Finish(DeferredRlpItemList.Builder builder, DeferredRlpItemList.Builder.Writer writer)
+        {
+            writer.Dispose();
+            return new RlpByteArrayList(builder.ToRlpItemList());
+        }
+
+        private Account? GetAccountByPath(StateTree tree, Hash256 rootHash, byte[] accountPath)
+        {
+            try
+            {
+                ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash);
+                if (bytes.IsEmpty) return null;
+
+                RlpReader reader = new(bytes);
+                return _decoder.Decode(ref reader);
+            }
+            catch (TrieNodeException)
+            {
+                return null;
+            }
+            catch (MissingTrieNodeException)
+            {
+                return null;
+            }
+        }
     }
 }
 

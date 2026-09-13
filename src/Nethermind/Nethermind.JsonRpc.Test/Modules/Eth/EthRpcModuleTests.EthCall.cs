@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,7 +15,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Init;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -289,25 +286,6 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_call_missing_state_after_fast_sync()
-    {
-        // Simulates pruned/missing patricia state (clears StateDb, persists the pruning trie store); flat has no equivalent.
-        using Context ctx = await Context.Create(useFlatDb: false);
-        LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
-        {
-            From = TestItem.AddressA,
-            To = TestItem.AddressB
-        };
-
-        ctx.Test.Container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PersistCache(CancellationToken.None);
-        ctx.Test.StateDb.Clear();
-
-        string serialized =
-            await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        Assert.That(serialized, Does.StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,"));
     }
 
     [Test]
@@ -1135,8 +1113,7 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
         object? blockOverride = JsonSerializer.Deserialize<object>(blockOverrideJson);
 
-        // Pin to flat to validate the block-override fix under flat's (number, root)-keyed state addressing.
-        using Context ctx = await Context.Create(useFlatDb: true);
+        using Context ctx = await Context.Create();
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 

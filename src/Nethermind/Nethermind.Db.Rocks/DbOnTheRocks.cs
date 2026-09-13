@@ -1807,9 +1807,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
                 break;
-            case ITunableDb.TuneType.HashDb:
-                ApplyOptions(GetHashDbOptions());
-                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1844,18 +1841,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             { "soft_pending_compaction_bytes_limit", 64.GiB.ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB.ToString() },
-        };
-
-    private static Dictionary<string, string> GetHashDbOptions() =>
-        new()
-        {
-            // Some database config is slightly faster on a hash db database. These are applied when hash db is detected
-            // to prevent unexpected regression.
-            { "table_factory.block_size", "4096" },
-            { "table_factory.block_restart_interval", "16" },
-            { "compression", "kSnappyCompression" },
-            { "max_bytes_for_level_multiplier", "10" },
-            { "max_bytes_for_level_base", "256000000" },
         };
 
     /// <summary>

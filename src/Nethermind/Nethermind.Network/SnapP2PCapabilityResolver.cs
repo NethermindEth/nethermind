@@ -58,7 +58,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     public void Resolve(ISet<Capability> capabilities)
     {
-        bool snapServingEnabled = _syncConfig.SnapServingEnabled == true;
+        bool snapServingEnabled = _syncConfig.SnapServingEnabled != false;
         bool stateDownloaded = _stateDownloaded;
         bool requiresSnapForSync = _syncConfig.SnapSync && !stateDownloaded;
 

@@ -1320,7 +1320,6 @@ public class TrieNodeTests
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
 
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
 
         private class Committer(InMemoryScopedTrieStore trieStore) : ICommitter

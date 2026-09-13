@@ -660,7 +660,7 @@ namespace Nethermind.Blockchain.Receipts
             !_receiptConfig.DeriveFromState
             || !spec.IsEip658Enabled
             // A skipped body is permanently lost once its block leaves the in-memory tier: follow live capture
-            // health, and treat absent status (patricia backend) as unhealthy.
+            // health, and treat absent capture status as unhealthy.
             || _historyCaptureStatus?.CaptureHealthy != true
             || IsRetentionSaturated();
 

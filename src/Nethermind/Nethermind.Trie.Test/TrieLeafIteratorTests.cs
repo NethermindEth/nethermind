@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -21,6 +22,7 @@ namespace Nethermind.Trie.Test;
 public class TrieLeafIteratorTests
 {
     private MemDb _db = null!;
+    private TestNodeStorage _storage = null!;
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
 
@@ -28,7 +30,8 @@ public class TrieLeafIteratorTests
     public void SetUp()
     {
         _db = new MemDb();
-        _trieStore = new RawScopedTrieStore(_db);
+        _storage = new TestNodeStorage(_db);
+        _trieStore = new RawScopedTrieStore(_storage);
         _stateTree = new StateTree(_trieStore, LimboLogs.Instance);
     }
 

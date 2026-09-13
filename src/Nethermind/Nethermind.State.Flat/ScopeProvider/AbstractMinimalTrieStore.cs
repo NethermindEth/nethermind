@@ -29,8 +29,6 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");
 
-    public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
-
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
         private const int InitialNodeBufferCapacity = 128;

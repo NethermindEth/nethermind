@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Core.Extensions;
+using Nethermind.Trie;
 
 namespace Nethermind.Xdc;
 
@@ -19,11 +20,13 @@ public class XdcStateSyncPivot(
     ISyncConfig syncConfig,
     IStateReader stateReader,
     IXdcStateSyncSnapshotManager syncSnapshotManager,
-    ILogManager logManager) : IStateSyncPivot
+    ILogManager logManager,
+    ITreeSyncStore? treeSyncStore = null) : IStateSyncPivot
 {
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ISyncConfig _syncConfig = syncConfig;
     private readonly IStateReader _stateReader = stateReader;
+    private readonly ITreeSyncStore? _treeSyncStore = treeSyncStore;
     private readonly ILogger _logger = logManager.GetClassLogger<XdcStateSyncPivot>();
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
@@ -36,7 +39,7 @@ public class XdcStateSyncPivot(
     {
         EnsureInitialized();
 
-        while (_targets.Count > 0 && _stateReader.HasStateForBlock(_targets.Peek()))
+        while (_targets.Count > 0 && HasStateFor(_targets.Peek()))
         {
             XdcBlockHeader completed = _targets.Dequeue();
             _syncSnapshotManager.StoreSnapshot(completed);
@@ -48,6 +51,17 @@ public class XdcStateSyncPivot(
         }
 
         return _pivotHeader;
+    }
+
+    private bool HasStateFor(XdcBlockHeader target)
+    {
+        if (_stateReader.HasStateForBlock(target)) return true;
+        if (_treeSyncStore is null || target.StateRoot is not { } stateRoot) return false;
+
+        if (stateRoot == Keccak.EmptyTreeHash) return true;
+
+        ValueHash256 rootHash = stateRoot.ValueHash256;
+        return _treeSyncStore.NodeExists(null, TreePath.Empty, rootHash);
     }
 
     public void UpdateHeaderForcefully() { }

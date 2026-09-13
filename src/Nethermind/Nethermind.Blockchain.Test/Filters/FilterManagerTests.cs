@@ -318,22 +318,21 @@ public class FilterManagerTests
             });
         }
 
+        Task production = Task.WhenAll(producers);
         Task consumer = Task.Run(async () =>
         {
-            while (totalPolled < blockCount)
+            while (!production.IsCompleted)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
                 totalPolled += polled.Length;
-                if (polled.Length == 0) await Task.Yield();
+                if (polled.Length == 0) await Task.Delay(1, cancellationToken);
             }
+            await production;
+            totalPolled += _filterManager.PollBlockHashes(blockFilter.Id).Length;
         }, cancellationToken);
 
-        List<Task> allTasks = new(producerCount + 1);
-        for (int p = 0; p < producerCount; p++)
-            allTasks.Add(producers[p]);
-        allTasks.Add(consumer);
-        await Task.WhenAll(allTasks);
+        await Task.WhenAll(production, consumer);
 
         Assert.That(totalPolled, Is.EqualTo(blockCount));
     }

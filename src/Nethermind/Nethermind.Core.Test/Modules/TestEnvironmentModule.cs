@@ -113,14 +113,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
                 return networkConfig;
             })
-            .AddDecorator<IPruningConfig>((_, pruningConfig) =>
-            {
-                pruningConfig.CacheMb = 8;
-                pruningConfig.DirtyCacheMb = 4;
-                pruningConfig.DirtyNodeShardBit = 1;
-                return pruningConfig;
-            })
-
             .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
     }

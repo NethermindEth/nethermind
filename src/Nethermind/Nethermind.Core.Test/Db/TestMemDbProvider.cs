@@ -23,6 +23,9 @@ namespace Nethermind.Core.Test.Db
                     new ReceiptConfig(),
                     new SyncConfig()
                 ))
+                // The production flat backend does not expose a state IDb. Keep this standalone
+                // provider useful for generic trie fixtures by supplying its own ephemeral state DB.
+                .AddKeyedSingleton<IDb>(DbNames.State, _ => new TestMemDb())
                 .AddSingleton<IDbProvider, ContainerOwningDbProvider>()
                 .Build()
                 .Resolve<IDbProvider>();

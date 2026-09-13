@@ -26,9 +26,6 @@
   "Metrics": {
     "NodeName": "Gnosis Archive"
   },
-  "Pruning": {
-    "Mode": "None"
-  },
   "Merge": {
     "FinalTotalDifficulty": "8626000110427538733349499292577475819600160930"
   },

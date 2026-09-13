@@ -3,8 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -14,13 +12,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs.Forks;
-using Nethermind.Evm.State;
-using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using Nethermind.Trie.Test.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -60,35 +53,31 @@ namespace Nethermind.Trie.Test
         private static readonly byte[] _keyC = Bytes.FromHexString("00000000001aa");
         private static readonly byte[] _keyD = Bytes.FromHexString("00000000001bb");
 
-        private IPruningTrieStore CreateTrieStore(IDb? memDb = null) => TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
+        private ITrieStore CreateTrieStore(IDb? memDb = null) => TestTrieStoreFactory.Build(memDb ?? new MemDb(), _logManager);
 
         [Test]
         public void Single_leaf()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(1));
         }
 
         [Test]
         public void Single_leaf_update_same_block()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, _longLeaf2);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(1));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Not.EqualTo(_longLeaf1));
@@ -99,7 +88,7 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_update_next_blocks()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
@@ -108,8 +97,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(2));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Not.EqualTo(_longLeaf1));
@@ -120,15 +107,13 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_delete_same_block()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, []);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(0));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
@@ -138,7 +123,7 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_delete_next_block()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
@@ -147,8 +132,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(1));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
@@ -158,7 +141,7 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_and_keep_for_multiple_dispatches_then_delete()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
             trieStore.CommitPatriciaTrie(1, patriciaTree);
@@ -181,8 +164,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(2));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
@@ -193,7 +174,7 @@ namespace Nethermind.Trie.Test
         public void Branch_with_branch_and_leaf()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
@@ -201,8 +182,6 @@ namespace Nethermind.Trie.Test
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -228,7 +207,7 @@ namespace Nethermind.Trie.Test
                     "e98700000000000000a0651f4a047389788364f9da07e907614238cbbe902d722c9b3333a4300308a5ae");
 
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keysA, _longLeaf1);
             patriciaTree.Set(_keysB, _longLeaf1);
@@ -264,7 +243,7 @@ namespace Nethermind.Trie.Test
         public void Branch_with_branch_and_leaf_then_deleted()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
@@ -277,8 +256,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
@@ -288,8 +265,8 @@ namespace Nethermind.Trie.Test
         public void Test_add_many(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
-            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -314,8 +291,8 @@ namespace Nethermind.Trie.Test
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
-            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -355,7 +332,7 @@ namespace Nethermind.Trie.Test
         public void Test_update_many(int i)
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -387,7 +364,7 @@ namespace Nethermind.Trie.Test
         public void Test_update_many_next_block(int i)
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -424,7 +401,7 @@ namespace Nethermind.Trie.Test
         public void Test_add_and_delete_many_same_block(int i)
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -456,7 +433,7 @@ namespace Nethermind.Trie.Test
         public void Test_add_and_delete_many_next_block(int i)
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -506,7 +483,7 @@ namespace Nethermind.Trie.Test
         public void Two_branches_exactly_same_leaf()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
@@ -515,8 +492,6 @@ namespace Nethermind.Trie.Test
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(8));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -528,7 +503,7 @@ namespace Nethermind.Trie.Test
         public void Two_branches_exactly_same_leaf_then_one_removed()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
@@ -538,8 +513,6 @@ namespace Nethermind.Trie.Test
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // leaf (root)
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -558,13 +531,11 @@ namespace Nethermind.Trie.Test
         public void Extension_with_branch_with_two_different_children()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(4));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf2));
@@ -574,13 +545,11 @@ namespace Nethermind.Trie.Test
         public void Extension_with_branch_with_two_same_children()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(4));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -590,7 +559,7 @@ namespace Nethermind.Trie.Test
         public void When_branch_with_two_different_children_change_one_and_change_back_next_block()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
@@ -604,15 +573,13 @@ namespace Nethermind.Trie.Test
             // extension
             // branch
             // leaf x 2
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(4));
         }
 
         [Test]
         public void When_branch_with_two_same_children_change_one_and_change_back_next_block()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
@@ -623,8 +590,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
             trieStore.CommitPatriciaTrie(1, patriciaTree);
 
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(4));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -646,7 +611,7 @@ namespace Nethermind.Trie.Test
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
 
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
@@ -654,8 +619,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(7));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(key2).ToArray(), Is.EqualTo(_longLeaf1));
@@ -695,7 +658,7 @@ namespace Nethermind.Trie.Test
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
 
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
@@ -706,8 +669,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
             trieStore.CommitPatriciaTrie(1, patriciaTree);
 
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(8));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(key2).ToArray(), Is.EqualTo(_longLeaf1));
@@ -718,7 +679,7 @@ namespace Nethermind.Trie.Test
         public void When_two_branches_with_two_same_children_change_one_and_change_back_next_block()
         {
             MemDb memDb = new();
-            using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+            using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
@@ -731,8 +692,6 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
             trieStore.CommitPatriciaTrie(1, patriciaTree);
 
-            trieStore.PersistCache(CancellationToken.None);
-            Assert.That(memDb.Keys, Has.Count.EqualTo(8));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -740,530 +699,13 @@ namespace Nethermind.Trie.Test
             Assert.That(checkTree.Get(_keyD).ToArray(), Is.EqualTo(_longLeaf1));
         }
 
-        public record TrieStoreConfigurations(
-            long dirtyNodeSize,
-            int PersistEveryN,
-            int LookupLimit,
-            bool TrackPastKeys
-        )
-        {
-            public TrieStore CreateTrieStore()
-            {
-                IPruningStrategy pruneStrategy = dirtyNodeSize == -1
-                    ? No.Pruning
-                    : Prune.WhenCacheReaches(dirtyNodeSize);
-
-                IPruningConfig pruningConfig = new PruningConfig()
-                {
-                    TrackPastKeys = TrackPastKeys,
-                    PruningBoundary = (ulong)LookupLimit,
-                };
-                TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
-                TrieStore trieStore = new(
-                    new NodeStorage(new MemDb()),
-                    pruneStrategy,
-                    Persist.EveryNBlock(PersistEveryN),
-                    finalizedStateProvider,
-                    pruningConfig,
-                    LimboLogs.Instance);
-                finalizedStateProvider.TrieStore = trieStore;
-
-                return trieStore;
-            }
-            public override string ToString() => (
-                    $"persistEveryN: {PersistEveryN}, " +
-                    $"lookup: {LookupLimit}");
-
-            public bool IsMissingAccountExpected(int depth)
-            {
-                if (TrackPastKeys)
-                {
-                    return depth > LookupLimit;
-                }
-                else
-                {
-                    return depth % PersistEveryN != 0;
-                }
-            }
-        }
-
-        private static IEnumerable<TrieStoreConfigurations> CreateTrieStoreConfigurations()
-        {
-            yield return new TrieStoreConfigurations(1.MiB, 8, 8, false);
-            yield return new TrieStoreConfigurations(1.MiB, 8, 8, true);
-            yield return new TrieStoreConfigurations(-1, 1, 8, false);
-        }
-
-        private static IEnumerable<(TrieStoreConfigurations, int, int, int)> FuzzAccountScenarios()
-        {
-            foreach (TrieStoreConfigurations trieStoreConfigurations in CreateTrieStoreConfigurations())
-            {
-                yield return new(trieStoreConfigurations, 128, 128, 8);
-            }
-        }
-
-        [TestCaseSource(nameof(FuzzAccountScenarios))]
-        [Repeat(10)]
-        public void Fuzz_accounts(
-            (TrieStoreConfigurations trieStoreConfig,
-                int accountsCount,
-                int blocksCount,
-                int uniqueValuesCount) test)
-        {
-            (TrieStoreConfigurations trieStoreConfig, int accountsCount, int blocksCount, int uniqueValuesCount) = test;
-
-            string fileName = Path.GetTempFileName();
-            _logger.Info(
-                $"Fuzzing with accounts: {accountsCount}, " +
-                $"blocks {blocksCount}, " +
-                $"values: {uniqueValuesCount}, " +
-                $"{trieStoreConfig} into file {fileName}");
-
-            using FileStream fileStream = new(fileName, FileMode.Create);
-            using StreamWriter streamWriter = new(fileStream);
-
-            Queue<Hash256> rootQueue = new();
-
-            using TrieStore trieStore = trieStoreConfig.CreateTrieStore();
-            StateTree patriciaTree = new(trieStore, _logManager);
-
-            byte[][] accounts = new byte[accountsCount][];
-            byte[][] randomValues = new byte[uniqueValuesCount][];
-
-            for (int i = 0; i < randomValues.Length; i++)
-            {
-                bool isEmptyValue = _random.Next(0, 2) == 0;
-                if (isEmptyValue)
-                {
-                    randomValues[i] = [];
-                }
-                else
-                {
-                    randomValues[i] = TestItem.GenerateRandomAccountRlp();
-                }
-            }
-
-            for (int accountIndex = 0; accountIndex < accounts.Length; accountIndex++)
-            {
-                byte[] key = new byte[32];
-                ((UInt256)accountIndex).ToBigEndian(key);
-                accounts[accountIndex] = key;
-            }
-
-            for (uint blockNumber = 0; blockNumber < blocksCount; blockNumber++)
-            {
-                bool isEmptyBlock = _random.Next(5) == 0;
-                if (!isEmptyBlock)
-                {
-                    for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
-                    {
-                        int randomAccountIndex = _random.Next(accounts.Length);
-                        int randomValueIndex = _random.Next(randomValues.Length);
-
-                        byte[] account = accounts[randomAccountIndex];
-                        byte[] value = randomValues[randomValueIndex];
-
-                        streamWriter.WriteLine(
-                            $"Block {blockNumber} - setting {account.ToHexString()} = {value.ToHexString()}");
-                        patriciaTree.Set(account, value);
-                    }
-                }
-
-                streamWriter.WriteLine(
-                    $"Commit block {blockNumber} | empty: {isEmptyBlock}");
-                patriciaTree.UpdateRootHash();
-                trieStore.CommitPatriciaTrie(blockNumber, patriciaTree);
-                rootQueue.Enqueue(patriciaTree.RootHash);
-            }
-
-            streamWriter.Flush();
-            fileStream.Seek(0, SeekOrigin.Begin);
-
-            int verifiedBlocks = 0;
-
-            while (rootQueue.TryDequeue(out Hash256 currentRoot))
-            {
-                try
-                {
-                    patriciaTree.RootHash = currentRoot;
-                    for (int i = 0; i < accounts.Length; i++)
-                    {
-                        patriciaTree.Get(accounts[i]);
-                    }
-
-                    _logger.Info($"Verified positive {verifiedBlocks}");
-                }
-                catch (MissingTrieNodeException)
-                {
-                    if (!trieStoreConfig.IsMissingAccountExpected(blocksCount - verifiedBlocks))
-                        throw;
-
-                    _logger.Info($"Verified negative {verifiedBlocks}");
-                }
-
-                verifiedBlocks++;
-            }
-        }
-
-        private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int uniqueValuesCount, int? seed)> FuzzAccountsWithReorganizationsScenarios()
-        {
-            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
-            {
-                yield return (trieStoreConfiguration, 4, 16, 4, null);
-            }
-        }
-
-        [TestCaseSource(nameof(FuzzAccountsWithReorganizationsScenarios))]
-        public void Fuzz_accounts_with_reorganizations(
-            (TrieStoreConfigurations trieStoreConfig,
-                int accountsCount,
-                int blocksCount,
-                int uniqueValuesCount,
-                int? seed) scenario)
-        {
-            (TrieStoreConfigurations trieStoreConfig,
-                int accountsCount,
-                int blocksCount,
-                int uniqueValuesCount,
-                int? seed) = scenario;
-
-            int usedSeed = seed ?? _random.Next(int.MaxValue);
-            _random = new Random(usedSeed);
-
-            _logger.Info($"RANDOM SEED {usedSeed}");
-            string fileName = Path.GetTempFileName();
-            //string fileName = "C:\\Temp\\fuzz.txt";
-            _logger.Info(
-                $"Fuzzing with accounts: {accountsCount}, " +
-                $"blocks {blocksCount}, " +
-                $"values: {uniqueValuesCount}, " +
-                $"{trieStoreConfig} into file {fileName}");
-
-            using FileStream fileStream = new(fileName, FileMode.Create);
-            using StreamWriter streamWriter = new(fileStream);
-
-            Queue<Hash256> rootQueue = new();
-            Stack<Hash256> rootStack = new();
-
-            using TrieStore trieStore = trieStoreConfig.CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
-
-            byte[][] accounts = new byte[accountsCount][];
-            byte[][] randomValues = new byte[uniqueValuesCount][];
-
-            for (int i = 0; i < randomValues.Length; i++)
-            {
-                bool isEmptyValue = _random.Next(0, 2) == 0;
-                if (isEmptyValue)
-                {
-                    randomValues[i] = [];
-                }
-                else
-                {
-                    randomValues[i] = TestItem.GenerateRandomAccountRlp();
-                }
-            }
-
-            for (int accountIndex = 0; accountIndex < accounts.Length; accountIndex++)
-            {
-                byte[] key = new byte[32];
-                ((UInt256)accountIndex).ToBigEndian(key);
-                accounts[accountIndex] = key;
-            }
-
-            int blockCount = 0;
-            for (uint blockNumber = 0; blockNumber < blocksCount; blockNumber++)
-            {
-                int reorgDepth = _random.Next(Math.Min(5, blockCount));
-                _logger.Debug($"Reorganizing {reorgDepth}");
-
-                for (int i = 0; i < reorgDepth; i++)
-                {
-                    try
-                    {
-                        // no longer need undo?
-                        // trieStore.UndoOneBlock();
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        // if memory limit hits in
-                        blockCount = 0;
-                    }
-
-                    rootStack.Pop();
-                    patriciaTree.RootHash = rootStack.Peek();
-                }
-
-                blockCount = Math.Max(0, blockCount - reorgDepth);
-                _logger.Debug($"Setting block count to {blockCount}");
-
-                bool isEmptyBlock = _random.Next(5) == 0;
-                if (!isEmptyBlock)
-                {
-                    for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
-                    {
-                        int randomAccountIndex = _random.Next(accounts.Length);
-                        int randomValueIndex = _random.Next(randomValues.Length);
-
-                        byte[] account = accounts[randomAccountIndex];
-                        byte[] value = randomValues[randomValueIndex];
-
-                        streamWriter.WriteLine(
-                            $"Block {blockCount} - setting {account.ToHexString()} = {value.ToHexString()}");
-                        patriciaTree.Set(account, value);
-                    }
-                }
-
-                streamWriter.WriteLine(
-                    $"Commit block {blockCount} | empty: {isEmptyBlock}");
-                patriciaTree.UpdateRootHash();
-                trieStore.CommitPatriciaTrie(blockNumber, patriciaTree);
-                rootQueue.Enqueue(patriciaTree.RootHash);
-                rootStack.Push(patriciaTree.RootHash);
-                blockCount++;
-                _logger.Debug($"Setting block count to {blockCount}");
-            }
-
-            streamWriter.Flush();
-            fileStream.Seek(0, SeekOrigin.Begin);
-
-            int verifiedBlocks = 0;
-
-            rootQueue.Clear();
-            Stack<Hash256> stackCopy = new();
-            while (rootStack.Count != 0)
-            {
-                stackCopy.Push(rootStack.Pop());
-            }
-
-            rootStack = stackCopy;
-
-            while (rootStack.TryPop(out Hash256 currentRoot))
-            {
-                try
-                {
-                    patriciaTree.RootHash = currentRoot;
-                    for (int i = 0; i < accounts.Length; i++)
-                    {
-                        patriciaTree.Get(accounts[i]);
-                    }
-
-                    _logger.Info($"Verified positive {verifiedBlocks}");
-                }
-                catch (MissingTrieNodeException)
-                {
-                    if (!trieStoreConfig.IsMissingAccountExpected(blocksCount - verifiedBlocks))
-                    {
-                        throw;
-                    }
-
-                    _logger.Info($"Verified negative {verifiedBlocks} (which is ok on block {verifiedBlocks})");
-                }
-
-                verifiedBlocks++;
-            }
-        }
-
-        private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int? seed)> FuzzAccountsWithStorageScenarios()
-        {
-            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
-            {
-                yield return (trieStoreConfiguration, 96, 192, 1541344441);
-                yield return (trieStoreConfiguration, 128, 2568, 988091870);
-                yield return (trieStoreConfiguration, 128, 2568, 2107374965);
-                yield return (trieStoreConfiguration, 4, 16, 1242692908);
-                yield return (trieStoreConfiguration, 8, 32, 1543322391);
-            }
-        }
-
-        [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
-        [NonParallelizable]
-        public void Fuzz_accounts_with_storage(
-            (TrieStoreConfigurations trieStoreConfigurations,
-                int accountsCount,
-                int blocksCount,
-                int? seed) scenario)
-        {
-            (TrieStoreConfigurations trieStoreConfigurations, int accountsCount, int blocksCount, int? seed) = scenario;
-
-            int usedSeed = seed ?? _random.Next(int.MaxValue);
-            _random = new Random(usedSeed);
-            _logger.Info($"RANDOM SEED {usedSeed}");
-
-            string fileName = Path.GetTempFileName();
-            //string fileName = "C:\\Temp\\fuzz.txt";
-            _logger.Info(
-                $"Fuzzing with accounts: {accountsCount}, " +
-                $"blocks {blocksCount}, " +
-                $"{trieStoreConfigurations} into file {fileName}");
-
-            using FileStream fileStream = new(fileName, FileMode.Create);
-            using StreamWriter streamWriter = new(fileStream);
-
-            Queue<BlockHeader> rootQueue = new();
-
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-
-            Account[] accounts = new Account[accountsCount];
-            Address[] addresses = new Address[accountsCount];
-
-            for (int i = 0; i < accounts.Length; i++)
-            {
-                bool isEmptyValue = _random.Next(0, 2) == 0;
-                if (isEmptyValue)
-                {
-                    accounts[i] = Account.TotallyEmpty;
-                }
-                else
-                {
-                    accounts[i] = TestItem.GenerateRandomAccount(_random);
-                }
-
-                addresses[i] = TestItem.GetRandomAddress(_random);
-            }
-
-            BlockHeader? baseBlock = null;
-            for (uint blockNumber = 0; blockNumber < blocksCount; blockNumber++)
-            {
-                using IDisposable _ = stateProvider.BeginScope(baseBlock);
-
-                bool isEmptyBlock = _random.Next(5) == 0;
-                if (!isEmptyBlock)
-                {
-                    for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
-                    {
-                        int randomAddressIndex = _random.Next(addresses.Length);
-                        int randomAccountIndex = _random.Next(accounts.Length);
-
-                        Address address = addresses[randomAddressIndex];
-                        Account account = accounts[randomAccountIndex];
-
-                        if (stateProvider.AccountExists(address))
-                        {
-                            stateProvider.TryGetAccount(address, out AccountStruct existingStruct);
-                            Account existing = new(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
-                            if (existing.Balance != account.Balance)
-                            {
-                                if (account.Balance > existing.Balance)
-                                {
-                                    stateProvider.AddToBalance(
-                                        address, account.Balance - existing.Balance, MuirGlacier.Instance);
-                                }
-                                else
-                                {
-                                    stateProvider.SubtractFromBalance(
-                                        address, existing.Balance - account.Balance, MuirGlacier.Instance);
-                                }
-
-                                stateProvider.IncrementNonce(address, 1UL);
-                            }
-
-                            byte[] storage = new byte[1];
-                            _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
-                        }
-                        else if (!account.IsTotallyEmpty)
-                        {
-                            stateProvider.CreateAccount(address, account.Balance);
-
-                            byte[] storage = new byte[1];
-                            _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
-                        }
-                    }
-                }
-
-                streamWriter.WriteLine(
-                    $"Commit block {blockNumber} | empty: {isEmptyBlock}");
-
-                stateProvider.Commit(MuirGlacier.Instance);
-
-                stateProvider.CommitTree(blockNumber);
-
-                baseBlock = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithNumber(blockNumber)
-                    .TestObject;
-
-                if (blockNumber > (ulong)blocksCount - Reorganization.MaxDepth)
-                {
-                    rootQueue.Enqueue(baseBlock);
-                }
-            }
-
-            streamWriter.Flush();
-            fileStream.Seek(0, SeekOrigin.Begin);
-
-            int verifiedBlocks = 0;
-
-            while (rootQueue.TryDequeue(out baseBlock))
-            {
-                try
-                {
-                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
-                    for (int i = 0; i < addresses.Length; i++)
-                    {
-                        if (stateProvider.AccountExists(addresses[i]))
-                        {
-                            for (int j = 0; j < 256; j++)
-                            {
-                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
-                            }
-                        }
-                    }
-
-                    _logger.Info($"Verified positive {verifiedBlocks}");
-                }
-                catch (MissingTrieNodeException)
-                {
-                    if (!trieStoreConfigurations.IsMissingAccountExpected(blocksCount - verifiedBlocks))
-                    {
-                        throw;
-                    }
-
-                    _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
-                }
-
-                verifiedBlocks++;
-            }
-        }
-
-        // Local-only fuzz driver: feed it any seed via env var or pick a fresh one.
-        // Excluded from CI because random seeds can hit known pruning-corner-case bugs
-        // that need targeted fixes rather than a Retry mask.
-        private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int? seed)> RandomSeedFuzzScenarios()
-        {
-            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
-            {
-                yield return (trieStoreConfiguration, 128, 2568, null);
-            }
-        }
-
-        [Explicit("Random-seed fuzz; runs locally to surface trie/pruning bugs. See FuzzAccountsWithStorageScenarios for deterministic CI coverage.")]
-        [TestCaseSource(nameof(RandomSeedFuzzScenarios))]
-        [NonParallelizable]
-        public void Fuzz_accounts_with_storage_random_seed(
-            (TrieStoreConfigurations trieStoreConfigurations,
-                int accountsCount,
-                int blocksCount,
-                int? seed) scenario) =>
-            Fuzz_accounts_with_storage(scenario);
-
         [Test]
         public void Can_parallel_read_trees()
         {
             int itemCount = 1024;
             int repetition = 100;
 
-            PruningConfig pruningConfig = new();
-            TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
-            using TrieStore trieStore = new(
-                new NodeStorage(new MemDb()),
-                new TestPruningStrategy(shouldPrune: true),
-                Persist.EveryBlock,
-                finalizedStateProvider,
-                pruningConfig,
-                LimboLogs.Instance
-            );
-            finalizedStateProvider.TrieStore = trieStore;
+            using ITrieStore trieStore = CreateTrieStore();
 
             PatriciaTree tree = new(trieStore, LimboLogs.Instance);
 
@@ -1303,7 +745,7 @@ namespace Nethermind.Trie.Test
         public void WarmUpPath_DoesNotThrow()
         {
             // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
-            using IPruningTrieStore trieStore = CreateTrieStore();
+            using ITrieStore trieStore = CreateTrieStore();
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
@@ -1339,7 +781,7 @@ namespace Nethermind.Trie.Test
             Task task = Task.Factory.StartNew(() =>
             {
                 MemDb memDb = new();
-                using IPruningTrieStore trieStore = CreateTrieStore(memDb);
+                using ITrieStore trieStore = CreateTrieStore(memDb);
                 PatriciaTree tree = new(trieStore, _logManager);
 
                 Span<byte> buffer = stackalloc byte[32];
@@ -1389,8 +831,6 @@ namespace Nethermind.Trie.Test
             public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _rlpOfAnotherNode;
 
             public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
-
-            public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
             public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
                 throw new NotSupportedException();

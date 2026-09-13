@@ -57,7 +57,6 @@ public class DbModule(
                 return sortedKeyValue;
             })
 
-            .AddDatabase(DbNames.State)
             .AddDatabase(DbNames.Code)
             .AddDatabase(DbNames.Metadata)
             .AddDatabase(DbNames.BlockNumbers)
@@ -118,5 +117,7 @@ public class DbModule(
         public IDb CreateDb(DbSettings dbSettings) => baseDbFactory.CreateDb(dbSettings).AsReadOnly(true);
 
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
+
+        public string GetFullDbPath(DbSettings dbSettings) => baseDbFactory.GetFullDbPath(dbSettings);
     }
 }

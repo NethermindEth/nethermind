@@ -74,7 +74,6 @@ public class TestBlockchain : IDisposable
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState => ChainHeadInfoProvider.ReadOnlyStateProvider;
     public IChainHeadInfoProvider ChainHeadInfoProvider => _fromContainer.ChainHeadInfoProvider;
-    public IDb StateDb => DbProvider.StateDb;
     public IBlockProducer BlockProducer { get; protected set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider => _fromContainer.DbProvider;
@@ -202,14 +201,7 @@ public class TestBlockchain : IDisposable
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfig[] configs = [.. CreateConfigs()];
-        IConfigProvider configProvider = new ConfigProvider(configs);
-        // A fixture that returns its own IFlatDbConfig from CreateConfigs has pinned the backend (and often
-        // HistoryEnabled with it), so UseFlatDb must not be stamped over it.
-        if (!TestStateBackend.PinsBackend(configs))
-        {
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
-        }
+        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
@@ -241,20 +233,6 @@ public class TestBlockchain : IDisposable
 
         return this;
     }
-
-    /// <summary>
-    /// Whether this test chain uses the flat state backend. Defaults to the suite-wide selection
-    /// (<see cref="TestStateBackend.UseFlatDb"/>, i.e. flat unless <c>TEST_USE_TRIE=1</c>); set this to
-    /// <c>true</c>/<c>false</c> per fixture to pin a backend.
-    /// </summary>
-    /// <remarks>
-    /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
-    /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
-    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix. A fixture that
-    /// returns its own <see cref="IFlatDbConfig"/> from <see cref="CreateConfigs"/> pins the backend that way
-    /// instead, and this property is not applied over it.
-    /// </remarks>
-    public bool UseFlatDb { get; set; } = TestStateBackend.UseFlatDb;
 
     protected virtual ChainSpec CreateChainSpec() => new();
 
@@ -493,8 +471,8 @@ public class TestBlockchain : IDisposable
 
     public virtual void Dispose()
     {
-        BlockProducerRunner.StopAsync();
-        Container.Dispose();
+        BlockProducerRunner?.StopAsync();
+        Container?.Dispose();
     }
 
     /// <summary>

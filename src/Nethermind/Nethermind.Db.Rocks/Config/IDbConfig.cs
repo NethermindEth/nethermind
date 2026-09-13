@@ -87,22 +87,6 @@ public interface IDbConfig : IConfig
     string CodeDbRocksDbOptions { get; set; }
     string? CodeDbAdditionalRocksDbOptions { get; set; }
 
-
-    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
-    ulong StateDbWriteBufferSize { get; set; }
-    ulong StateDbWriteBufferNumber { get; set; }
-    bool? StateDbVerifyChecksum { get; set; }
-    ulong? StateDbRowCacheSize { get; set; }
-    bool StateDbEnableFileWarmer { get; set; }
-    double StateDbCompressibilityHint { get; set; }
-    string StateDbRocksDbOptions { get; set; }
-    string? StateDbAdditionalRocksDbOptions { get; set; }
-    string StateDbLargeMemoryRocksDbOptions { get; set; }
-    string StateDbArchiveModeRocksDbOptions { get; set; }
-    ulong StateDbLargeMemoryWriteBufferSize { get; set; }
-    ulong StateDbArchiveModeWriteBufferSize { get; set; }
-
-
     string L1OriginDbRocksDbOptions { get; set; }
     string? L1OriginDbAdditionalRocksDbOptions { get; set; }
 
@@ -157,6 +141,30 @@ public interface IDbConfig : IConfig
     /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> (later keys win). Unset by default.</summary>
     string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
 
+    /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the AccountHistory column. Unset by default.</summary>
+    string? FlatHistoryAccountHistoryDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryAccountHistoryDbRocksDbOptions"/> for the AccountHistory column. Unset by default.</summary>
+    string? FlatHistoryAccountHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the StorageHistory column. Unset by default.</summary>
+    string? FlatHistoryStorageHistoryDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryStorageHistoryDbRocksDbOptions"/> for the StorageHistory column. Unset by default.</summary>
+    string? FlatHistoryStorageHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the AccountCommitments column. Unset by default.</summary>
+    string? FlatHistoryAccountCommitmentsDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryAccountCommitmentsDbRocksDbOptions"/> for the AccountCommitments column. Unset by default.</summary>
+    string? FlatHistoryAccountCommitmentsDbAdditionalRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the StorageCommitments column. Unset by default.</summary>
+    string? FlatHistoryStorageCommitmentsDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryStorageCommitmentsDbRocksDbOptions"/> for the StorageCommitments column. Unset by default.</summary>
+    string? FlatHistoryStorageCommitmentsDbAdditionalRocksDbOptions { get; set; }
+
     /// <summary>
     /// Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the AvailableBlocks column (per-block
     /// availability markers and the watermark). Defaults to 8 MB write buffers: the column is tiny, so the
@@ -164,12 +172,18 @@ public interface IDbConfig : IConfig
     /// </summary>
     string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; }
 
+    /// <summary>Options appended after <see cref="FlatHistoryAvailableBlocksDbRocksDbOptions"/> for the AvailableBlocks column. Unset by default.</summary>
+    string? FlatHistoryAvailableBlocksDbAdditionalRocksDbOptions { get; set; }
+
     /// <summary>
     /// Options appended after <see cref="FlatHistoryDbRocksDbOptions"/> for the StorageClears column (per-block
     /// storage-clear markers for self-destructed accounts). Defaults to 8 MB write buffers, like
     /// <see cref="FlatHistoryAvailableBlocksDbRocksDbOptions"/>.
     /// </summary>
     string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
+
+    /// <summary>Options appended after <see cref="FlatHistoryStorageClearsDbRocksDbOptions"/> for the StorageClears column. Unset by default.</summary>
+    string? FlatHistoryStorageClearsDbAdditionalRocksDbOptions { get; set; }
 
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }

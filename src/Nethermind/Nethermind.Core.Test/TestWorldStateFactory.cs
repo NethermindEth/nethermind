@@ -9,8 +9,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test;
 
@@ -18,18 +16,9 @@ public static class TestWorldStateFactory
 {
     public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
-        PruningConfig pruningConfig = new();
-        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
-        TrieStore trieStore = new(
-            new NodeStorage(dbProvider.StateDb),
-            No.Pruning,
-            Persist.EveryBlock,
-            finalizedStateProvider,
-            pruningConfig,
-            LimboLogs.Instance);
-        finalizedStateProvider.TrieStore = trieStore;
+        TestRawTrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.GetDb<IDb>(DbNames.State), logManager);
         return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
     }
 
@@ -38,16 +27,7 @@ public static class TestWorldStateFactory
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
 
-        PruningConfig pruningConfig = new();
-        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
-        TrieStore trieStore = new(
-            new NodeStorage(dbProvider.StateDb),
-            No.Pruning,
-            Persist.EveryBlock,
-            finalizedStateProvider,
-            pruningConfig,
-            LimboLogs.Instance);
-        finalizedStateProvider.TrieStore = trieStore;
+        TestRawTrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.GetDb<IDb>(DbNames.State), logManager);
         return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
@@ -75,21 +55,4 @@ public static class TestWorldStateFactory
             .Build();
     }
 
-    public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
-    {
-        PruningConfig pruningConfig = new();
-        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
-        TrieStore trieStore = new(
-            new NodeStorage(dbProvider.StateDb),
-            No.Pruning,
-            Persist.EveryBlock,
-            finalizedStateProvider,
-            pruningConfig,
-            LimboLogs.Instance);
-        finalizedStateProvider.TrieStore = trieStore;
-        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, logManager);
-
-        return new WorldStateManager(worldState, trieStore, dbProvider, logManager,
-            new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null, logManager));
-    }
 }

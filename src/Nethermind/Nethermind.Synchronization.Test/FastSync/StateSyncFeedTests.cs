@@ -162,7 +162,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             });
 
             SafeContext ctx = container.Resolve<SafeContext>();
-            await ActivateAndWait(ctx);
+            await ctx.RunFinalizingFeed(ctx.CancellationToken).WaitAsync(TimeSpan.FromMilliseconds(TimeoutLength));
 
             verifyTrieStarter.Received(1).TryStartVerifyTrie(Arg.Any<BlockHeader>());
         }

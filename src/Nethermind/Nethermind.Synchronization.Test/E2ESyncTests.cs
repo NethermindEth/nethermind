@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
@@ -52,6 +51,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -64,30 +64,15 @@ namespace Nethermind.Synchronization.Test;
 /// End to end sync test.
 /// For each configuration, create a server with some spam transactions.
 /// </summary>
-/// <param name="dbMode"></param>
 /// <param name="isPostMerge"></param>
 [NonParallelizable]
 [TestFixtureSource(nameof(CreateTestCases))]
-public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
+public class E2ESyncTests(bool isPostMerge)
 {
-    public enum DbMode
-    {
-        Default,
-        Hash,
-        NoPruning,
-        Flat
-    }
-
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
     {
-        yield return new TestFixtureParameters(DbMode.Default, false);
-        yield return new TestFixtureParameters(DbMode.Default, true);
-        yield return new TestFixtureParameters(DbMode.Hash, false);
-        yield return new TestFixtureParameters(DbMode.Hash, true);
-        yield return new TestFixtureParameters(DbMode.NoPruning, false);
-        yield return new TestFixtureParameters(DbMode.NoPruning, true);
-        yield return new TestFixtureParameters(DbMode.Flat, false);
-        yield return new TestFixtureParameters(DbMode.Flat, true);
+        yield return new TestFixtureParameters(false);
+        yield return new TestFixtureParameters(true);
     }
 
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
@@ -242,13 +227,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     /// <summary>
     /// Common code for all node
     /// </summary>
-    private Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer, PrivateKey? fundedAccountKey = null) =>
-        CreateNode(nodeKey, configurer, dbMode, fundedAccountKey);
-
     private async Task<IContainer> CreateNode(
         PrivateKey nodeKey,
         Func<IConfigProvider, ChainSpec, Task> configurer,
-        DbMode dbModeOverride,
         PrivateKey? fundedAccountKey = null)
     {
         IConfigProvider configProvider = new ConfigProvider();
@@ -292,35 +273,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         await configurer(configProvider, spec);
 
-        switch (dbModeOverride)
-        {
-            case DbMode.Default:
-                // Um... nothing?
-                break;
-            case DbMode.Hash:
-                {
-                    IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                    initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
-                    break;
-                }
-            case DbMode.NoPruning:
-                {
-                    IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
-                    pruningConfig.Mode = PruningMode.None;
-                    break;
-                }
-            case DbMode.Flat:
-                {
-                    IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-                    flatDbConfig.Enabled = true;
-                    flatDbConfig.VerifyWithTrie = true;
-                    break;
-                }
-        }
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = true;
+        flatDbConfig.VerifyWithTrie = true;
 
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
@@ -451,6 +410,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         networkConfig.FilterDiscoveryNodesByRecentIp = false;
     }
 
+    private static void ConfigureFlatStateRetention(IConfigProvider configProvider, ulong requiredDepth)
+    {
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.MinReorgDepth = requiredDepth;
+        flatDbConfig.MaxReorgDepth = requiredDepth;
+
+        ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+        syncConfig.SnapServingMaxDepth = requiredDepth;
+    }
+
     private async Task StartServerAndBuildStorageChain(
         IContainer server,
         int chainLength,
@@ -496,6 +465,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         _server = await CreateNode(serverKey, (cfg, spec) =>
         {
             ConfigureLocalNetwork(cfg, AllocatePort());
+            ConfigureFlatStateRetention(cfg, ChainLength);
             return Task.CompletedTask;
         });
 
@@ -557,6 +527,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
         ulong serverHeadNumber = serverBlockTree.Head!.Number;
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - headPivotDistance)!;
+        Assert.That(server.Resolve<IWorldStateManager>().GlobalWorldState.HasRoot(pivot), Is.True,
+            $"Server must retain state at snap pivot {pivot.Number} ({pivot.StateRoot}).");
+
+        IFlatStateRootIndex stateRootIndex = server.Resolve<IFlatStateRootIndex>();
+        Assert.That(stateRootIndex.TryGetStateId(pivot.StateRoot!, out _), Is.True,
+            $"Server snap root index must contain pivot {pivot.Number} ({pivot.StateRoot}); " +
+            $"SnapServingMaxDepth={server.Resolve<ISyncConfig>().SnapServingMaxDepth}.");
+
         syncConfig.PivotHash = pivot.Hash!.ToString();
         syncConfig.PivotNumber = pivot.Number;
         syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
@@ -564,19 +542,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     [Test]
     [Category("Flaky"), Retry(2)]
-    public async Task SnapSync()
-    {
-        if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
-
-        await RunWithTimeout(TestTimeout, RunSnapSyncOnce);
-    }
+    public async Task SnapSync() => await RunWithTimeout(TestTimeout, RunSnapSyncOnce);
 
     // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
     [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
     [TestCaseSource(nameof(StressIterations))]
     public async Task SnapSync_StressRepro(int iteration)
     {
-        if (dbMode != DbMode.Flat) Assert.Ignore("Stress repro only targets the Flat dbMode where the flake was observed");
         _ = iteration; // index is purely to give NUnit a unique case per attempt
 
         await RunWithTimeout(TestTimeout, RunSnapSyncOnce);
@@ -605,7 +577,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Test]
     public void Cancellation_diagnostic_survives_cleanup([Values] bool serverSetup, [Values] bool failDisposal)
     {
-        if (!isPostMerge || dbMode != DbMode.Default)
+        if (!isPostMerge)
             Assert.Ignore("Timeout diagnostics are exercised on the default post-merge fixture.");
 
         using StringWriter output = new();
@@ -655,7 +627,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     [Category("Flaky")]
     public async Task FastSync_downloads_block_access_lists_over_eth71()
     {
-        if (!isPostMerge || dbMode != DbMode.Default)
+        if (!isPostMerge)
         {
             Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
         }
@@ -667,6 +639,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             {
                 EnableBlockAccessListsFromGenesis(spec);
                 ConfigureLocalNetwork(cfg, AllocatePort());
+                ConfigureFlatStateRetention(cfg, BalSyncChainLength);
                 return Task.CompletedTask;
             }, serverKey);
 
@@ -706,36 +679,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     [Test]
     [Category("Flaky"), Retry(2)]
-    public async Task SnapSync_HalfPathServer_HashClient()
-    {
-        if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
-
-        await RunWithTimeout(TestTimeout, async cancellationToken =>
-        {
-            PrivateKey clientKey = TestItem.PrivateKeyD;
-            await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
-            {
-                SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
-                syncConfig.FastSync = true;
-                syncConfig.SnapSync = true;
-
-                await SetPivot(syncConfig, cancellationToken);
-
-                INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-                networkConfig.P2PPort = AllocatePort();
-                networkConfig.FilterPeersByRecentIp = false;
-                networkConfig.FilterDiscoveryNodesByRecentIp = false;
-            }, DbMode.Hash);
-
-            await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
-        });
-    }
-
-    [Test]
-    [Category("Flaky")]
     public async Task FastSync_skips_pre_eip7928_block_access_lists_over_eth71()
     {
-        if (!isPostMerge || dbMode != DbMode.Default)
+        if (!isPostMerge)
         {
             Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
         }
@@ -747,6 +693,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             {
                 EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
                 ConfigureLocalNetwork(cfg, AllocatePort());
+                ConfigureFlatStateRetention(cfg, PartialBalSyncChainLength);
                 return Task.CompletedTask;
             }, serverKey);
 

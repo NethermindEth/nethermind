@@ -9,19 +9,20 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History.Test;
 
 /// <summary>
 /// Builds one chain twice: as flat history rows, which is all a v2 archive keeps, and as a real state trie in a
-/// MemDb that never prunes, so every historical root stays walkable and can answer the proof a node holding the
-/// whole trie would have given.
+/// in-memory node storage that never prunes, so every historical root stays walkable and can answer the proof a node
+/// holding the whole trie would have given.
 /// </summary>
 internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> historyColumns) : IHistoryHeaderSource, IDisposable
 {
     private readonly IColumnsDb<FlatHistoryColumns> _historyColumns = historyColumns;
-    private readonly MemDb _trieNodes = new();
+    private readonly MemoryNodeStorage _trieNodes = new();
     private readonly Dictionary<Address, Account> _accounts = [];
     private readonly Dictionary<Address, Dictionary<UInt256, byte[]>> _storage = [];
     private readonly Dictionary<ulong, ValueHash256> _rootsByBlock = [];
@@ -58,7 +59,7 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
         return collector.BuildResult();
     }
 
-    public void Dispose() => _trieNodes.Dispose();
+    public void Dispose() { }
 
     internal sealed class BlockBuilder(ArchiveProofTestChain chain, ulong block)
     {

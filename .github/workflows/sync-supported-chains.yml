@@ -7,15 +7,6 @@ on:
         description: "Docker image to be used by action"
         default: ""
         required: false
-      mode:
-        description: "Sync mode to run"
-        type: choice
-        options:
-          - Both
-          - HalfPath
-          - Flat
-        default: Both
-        required: true
       network_filter:
         description: "Useful for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
@@ -74,7 +65,6 @@ jobs:
         id: set-matrix
         env:
           NETWORK_FILTER: ${{ inputs.network_filter }}
-          MODE_INPUT: ${{ inputs.mode }}
           PROVISIONING_INPUT: ${{ inputs.provisioning_model }}
           MACHINE_TYPE_INPUT: ${{ inputs.machine_type }}
         run: |
@@ -82,37 +72,13 @@ jobs:
 
           matrix=$(echo "$matrix" | nethermind/scripts/sync/select-networks.sh "$NETWORK_FILTER")
 
-          requested_mode=$(echo "$MODE_INPUT" | tr '[:upper:]' '[:lower:]')
-
-          case "$requested_mode" in
-            both)
-              modes='["HalfPath","Flat"]'
-              ;;
-            halfpath)
-              modes='["HalfPath"]'
-              ;;
-            flat)
-              modes='["Flat"]'
-              ;;
-            *)
-              echo "Unsupported mode '$requested_mode'. Expected 'Both', 'HalfPath', or 'Flat'."
-              exit 1
-              ;;
-          esac
-
           matrix=$(echo "$matrix" | jq \
-            --argjson modes "$modes" \
             --arg run_id "$GITHUB_RUN_ID" \
             --arg model "$PROVISIONING_INPUT" \
             --arg machine_type "$MACHINE_TYPE_INPUT" '
             [.[] as $config
-             | $modes[] as $mode
              | $config + {
-                 mode: $mode,
-                 runner_label: (
-                   (if $mode == "Flat" then "f-" else "hp-" end)
-                   + $run_id + "-" + $config.network
-                 ),
+                 runner_label: ("f-" + $run_id + "-" + $config.network),
                  machine_type: (if $machine_type == "" then $config.machine_type else $machine_type end),
                  provisioning_model: (
                    if $model == "Spot" then "SPOT"
@@ -123,7 +89,6 @@ jobs:
                  ),
                  max_run_duration: ((($config.timeout + 60) | tostring) + "m")
                }]
-            | sort_by(if .mode == "Flat" then 0 else 1 end)
             | to_entries
             | map(.value + { batch_index: ((.key / 5) | floor) })
           ')
@@ -146,12 +111,11 @@ jobs:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    name: "Sync ${{ matrix.config.network }} (${{ matrix.config.mode }})"
+    name: "Sync ${{ matrix.config.network }} (Flat)"
     uses: ./.github/workflows/sync-one-chain.yml
     secrets: inherit
     with:
       network: ${{ matrix.config.network }}
-      mode: ${{ matrix.config.mode }}
       runner_label: ${{ matrix.config.runner_label }}
       machine_type: ${{ matrix.config.machine_type }}
       local_ssd_count: ${{ matrix.config.local_ssd_count }}

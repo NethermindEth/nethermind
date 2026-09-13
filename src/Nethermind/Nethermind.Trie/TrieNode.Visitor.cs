@@ -39,6 +39,8 @@ namespace Nethermind.Trie
 
         internal long Accept(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, bool isStorage, long subtreeSizeHint)
         {
+            options.Diagnostics?.ObserveDepth(path.Length);
+
             try
             {
                 node.ResolveNode(nodeResolver, path);

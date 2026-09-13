@@ -5,6 +5,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,7 +29,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -36,7 +36,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
-using Nethermind.Trie.Pruning;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -177,10 +177,8 @@ public class StatelessInputGeneratorTests
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(spec))
-            // The witness is assembled from trie nodes persisted in StateDb.
-            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = false })
-            .AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None })
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddSingleton(specProvider)
             .Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using ILifetimeScope processingScope = container.BeginLifetimeScope(builder =>
@@ -207,12 +205,14 @@ public class StatelessInputGeneratorTests
             parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
         }
 
-        using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);
+        IStateReader stateReader = container.Resolve<IStateReader>();
         IDbProvider dbProvider = container.Resolve<IDbProvider>();
+        WitnessNodeCollector nodeCollector = new();
+        stateReader.RunTreeVisitor(nodeCollector, parent, new VisitingOptions { MaxDegreeOfParallelism = 1 });
         Witness witness = new()
         {
             Codes = new ArrayPoolList<byte[]>([.. dbProvider.CodeDb.GetAllValues()]),
-            State = new ArrayPoolList<byte[]>([.. dbProvider.StateDb.GetAllValues()]),
+            State = new ArrayPoolList<byte[]>(nodeCollector.BuildResult()),
             Keys = ArrayPoolList<byte[]>.Empty(),
             Headers = new ArrayPoolList<byte[]>([Rlp.Encode(parent).Bytes])
         };
@@ -247,6 +247,44 @@ public class StatelessInputGeneratorTests
         {
             state.CreateAccount(address, 0);
             state.InsertCode(address, Keccak.Compute(code), code, spec);
+        }
+    }
+
+    private sealed class WitnessNodeCollector : ITreeVisitor<OldStyleTrieVisitContext>
+    {
+        private readonly Dictionary<ValueHash256, byte[]> _nodes = [];
+        private int _missingNodes;
+
+        public bool IsFullDbScan => true;
+
+        public bool ShouldVisit(in OldStyleTrieVisitContext _, in ValueHash256 nextNode) => true;
+
+        public void VisitTree(in OldStyleTrieVisitContext _, in ValueHash256 rootHash) { }
+
+        public void VisitMissingNode(in OldStyleTrieVisitContext _, in ValueHash256 nodeHash) => Interlocked.Increment(ref _missingNodes);
+
+        public void VisitBranch(in OldStyleTrieVisitContext _, TrieNode node) => Add(node);
+
+        public void VisitExtension(in OldStyleTrieVisitContext _, TrieNode node) => Add(node);
+
+        public void VisitLeaf(in OldStyleTrieVisitContext _, TrieNode node) => Add(node);
+
+        public void VisitAccount(in OldStyleTrieVisitContext _, TrieNode node, in AccountStruct account) { }
+
+        public byte[][] BuildResult()
+        {
+            if (_missingNodes != 0) throw new InvalidOperationException($"State visitor encountered {_missingNodes} missing trie nodes.");
+            byte[][] result = new byte[_nodes.Count][];
+            int index = 0;
+            foreach (byte[] node in _nodes.Values) result[index++] = node;
+            return result;
+        }
+
+        private void Add(TrieNode node)
+        {
+            byte[] rlp = node.FullRlp.ToArray() ??
+                         throw new InvalidDataException("A visited trie node must have encoded RLP.");
+            _nodes.TryAdd(ValueKeccak.Compute(rlp), rlp);
         }
     }
 

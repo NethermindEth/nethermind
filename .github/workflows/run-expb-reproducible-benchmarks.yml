@@ -28,7 +28,6 @@ on:
         required: true
         type: choice
         options:
-          - halfpath
           - flat
         default: flat
       payload_set:
@@ -243,7 +242,7 @@ jobs:
           expb_env=""
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
-            state_layout="${DISPATCH_STATE_LAYOUT}"
+            state_layout="${DISPATCH_STATE_LAYOUT:-flat}"
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
             expb_branch="${DISPATCH_EXPB_BRANCH}"
@@ -372,17 +371,15 @@ jobs:
               ;;
           esac
 
-          # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
-          # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
-          if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
-            echo "::error::The reproducible-benchmarks-arm runner only serves a flat snapshot - dispatch with arch=amd64 for halfpath."
+          if [[ "${state_layout}" != "flat" ]]; then
+            echo "::error::Only the FlatDB state layout is supported."
             exit 1
           fi
 
-          # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
+          # Default the FlatDb write-buffer (memtable) floor by routing it through the
           # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
-          # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
-          if [[ "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
+          # Skipped when disabled (empty), or when the caller already set it.
+          if [[ -n "${flat_write_buffer_floor:-}" ]]; then
             if ! printf '%s' "${additional_extra_flags}" | grep -qi "PersistenceWriteBufferFloor"; then
               floor_flag="--FlatDb.PersistenceWriteBufferFloor=${flat_write_buffer_floor}"
               if [[ -n "${additional_extra_flags}" ]]; then
@@ -441,19 +438,12 @@ jobs:
             should_trigger_publish_docker="false"
           fi
 
-          if [[ "${state_layout}" == "flat" && "${payload_set}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet-flat.yaml"
-          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
-            config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "fusaka" ]]; then
-            config_file="github-action-mainnet-fusaka-flat.yaml"
-          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet.yaml"
-          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "fusaka" ]]; then
-            config_file="github-action-mainnet-fusaka.yaml"
-          else
-            config_file="github-action-mainnet.yaml"
-          fi
+          case "${payload_set}" in
+            superblocks) config_file="github-action-compressed-mainnet-flat.yaml" ;;
+            realblocks) config_file="github-action-mainnet-flat.yaml" ;;
+            fusaka) config_file="github-action-mainnet-fusaka-flat.yaml" ;;
+            *) echo "::error::Unsupported payload set '${payload_set}'."; exit 1 ;;
+          esac
 
           scenario_name="nethermind-${state_layout}-${payload_set}-${clean_branch}-delay${delay_seconds}s"
 
@@ -666,19 +656,12 @@ jobs:
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
         run: |
           set -euo pipefail
-          if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
-            config_file="github-action-mainnet-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "fusaka" ]]; then
-            config_file="github-action-mainnet-fusaka-flat.yaml"
-          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
-            config_file="github-action-compressed-mainnet.yaml"
-          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "fusaka" ]]; then
-            config_file="github-action-mainnet-fusaka.yaml"
-          else
-            config_file="github-action-mainnet.yaml"
-          fi
+          case "${PAYLOAD_SET}" in
+            superblocks) config_file="github-action-compressed-mainnet-flat.yaml" ;;
+            realblocks) config_file="github-action-mainnet-flat.yaml" ;;
+            fusaka) config_file="github-action-mainnet-fusaka-flat.yaml" ;;
+            *) echo "::error::Unsupported payload set '${PAYLOAD_SET}'."; exit 1 ;;
+          esac
           scenario_name="nethermind-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
           if [[ "${RUN_COUNT}" -gt 1 ]]; then
             scenario_name="${scenario_name}-run${RUN}"

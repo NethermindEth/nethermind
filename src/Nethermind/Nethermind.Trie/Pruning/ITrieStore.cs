@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
     /// <summary>
-    /// Full traditional trie store.
+    /// Provides scoped access to persisted trie nodes.
     /// </summary>
     public interface ITrieStore : IDisposable, IScopableTrieStore
     {
@@ -17,8 +16,8 @@ namespace Nethermind.Trie.Pruning
 
         /// <summary>
         /// Checks if the state root exists and the state for the given block number is still available
-        /// (i.e., not partially pruned). Implementations that perform pruning should reject blocks
-        /// whose state may have been partially pruned.
+        /// (i.e., not partially pruned). Implementations that retain only a state window should reject
+        /// blocks whose state may be partially pruned.
         /// </summary>
         bool HasRoot(Hash256 stateRoot, ulong blockNumber) => HasRoot(stateRoot);
 
@@ -27,8 +26,7 @@ namespace Nethermind.Trie.Pruning
         IScopedTrieStore GetTrieStore(Hash256? address);
 
         /// <summary>
-        /// Begin a block commit for this block number. This call may be blocked if a memory pruning is currently happening.
-        /// This call is required during block processing for memory pruning and reorg boundary to function.
+        /// Begin a block commit for this block number.
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns></returns>
@@ -41,23 +39,6 @@ namespace Nethermind.Trie.Pruning
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        INodeStorage.KeyScheme Scheme { get; }
-    }
-
-    public interface IPruningTrieStore : ITrieStore
-    {
-        public void PersistCache(CancellationToken cancellationToken);
-
-        IReadOnlyTrieStore AsReadOnly();
-
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-        // Used for serving via hash
-        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
-
-        // Acquire lock, then persist and flush cache.
-        // Used for full pruning operation that change underlying node storage.
-        TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken);
     }
 
     /// <summary>

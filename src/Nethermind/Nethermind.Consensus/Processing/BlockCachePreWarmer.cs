@@ -43,7 +43,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
-    private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
     private const int MaxDiscoveryCandidates = 16;
@@ -74,7 +73,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
-        NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         IHasAccessList[]? systemAccessLists = null
@@ -83,7 +81,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
-        nodeStorageCache,
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
@@ -94,7 +91,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int minPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
-        NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         int speculativeConcurrency = 0,
@@ -109,7 +105,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = Math.Max(minPoolSize, _concurrencyLevel * 3 + 1) }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
-        _nodeStorageCache = nodeStorageCache;
         // A consumer scope and a speculative session never coexist: the session is joined the moment a consumer opens.
         if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
     }
@@ -137,19 +132,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         ISet<Hash256>? speculativelyWarmed =
             TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
-        if (speculativelyWarmed is not null)
-        {
-            // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.
-            _nodeStorageCache.Enabled = true;
-        }
-        else
-        {
-            _nodeStorageCache.ClearCaches();
-            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
-            if (skipReactiveWarming) return Task.CompletedTask;
-            _nodeStorageCache.Enabled = true;
-        }
-
         if (skipReactiveWarming) return Task.CompletedTask;
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
     }
@@ -511,9 +493,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             ClearWarmMarker();
             _warmedTxHashes.Clear();
             _preBlockCaches.PrepareFor(head.StateRoot, _logger);
-            _nodeStorageCache.ClearCaches();
-            _nodeStorageCache.Enabled = true;
-
             return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
         }
     }
@@ -626,9 +605,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
         // keeps or clears them before the next use. This continuation can overlap that write-back, so it must not touch them.
         _preBlockCaches?.ClearPrecompileCache();
-        CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
-        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
-        return cachesCleared;
+        return CacheType.None;
     }
 
     public void Dispose()

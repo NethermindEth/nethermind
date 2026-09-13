@@ -60,11 +60,11 @@ class SelectNetworksTest(unittest.TestCase):
         self.assertEqual(select(self.matrix, "-sepolia"), ["op-sepolia", "world-sepolia"])
 
     def test_exact_name_keeps_every_entry_for_that_network(self):
-        # Callers may filter an already expanded matrix, where a network appears per mode.
+        # Callers may filter an already expanded matrix, where a network appears per workflow.
         expanded = [
-            {"network": "hoodi", "mode": "Flat"},
-            {"network": "hoodi", "mode": "HalfPath"},
-            {"network": "taiko-hoodi", "mode": "Flat"},
+            {"network": "hoodi"},
+            {"network": "hoodi"},
+            {"network": "taiko-hoodi"},
         ]
         self.assertEqual(select(expanded, "hoodi"), ["hoodi", "hoodi"])
 

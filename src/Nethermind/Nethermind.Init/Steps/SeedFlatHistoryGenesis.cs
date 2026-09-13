@@ -24,7 +24,6 @@ namespace Nethermind.Init.Steps;
     dependents: [typeof(InitializeBlockchain)]
 )]
 public class SeedFlatHistoryGenesis(
-    FlatStateActivationPolicy activationPolicy,
     ChainSpec chainSpec,
     IBlockTree blockTree,
     HistoryWriter historyWriter,
@@ -35,11 +34,6 @@ public class SeedFlatHistoryGenesis(
 
     public Task Execute(CancellationToken cancellationToken)
     {
-        // The config alone cannot answer whether flat is running: an existing patricia DB keeps patricia even with
-        // the flag on, and then nothing ever reads this history — so seeding (and its per-start warn on chains with
-        // constructor allocations) must follow the backend the policy actually selected.
-        if (!activationPolicy.ShouldTurnOnFlatDb()) return Task.CompletedTask;
-
         // Keyed on the watermark, not on the block-0 marker: a since-block writer removes that marker once it moves on.
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
 

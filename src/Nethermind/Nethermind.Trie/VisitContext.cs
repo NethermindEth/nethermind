@@ -35,6 +35,8 @@ namespace Nethermind.Trie
 
         public bool IsStorage { get; set; }
 
+        internal VisitingStats? Diagnostics { get; init; }
+
         public void Dispose()
         {
         }
