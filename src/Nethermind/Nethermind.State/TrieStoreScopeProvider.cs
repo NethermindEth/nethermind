@@ -378,17 +378,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         public void Set(in UInt256 index, in UInt256 value)
         {
             Unsafe.SkipInit(out EvmWord word);
-            ReadOnlySpan<byte> encoded;
             bool isZero = value.IsZero;
-            if (isZero)
-            {
-                encoded = StorageTree.ZeroBytes;
-            }
-            else
-            {
-                word = value.ToBigEndianWord();
-                encoded = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1)).WithoutLeadingZeros();
-            }
+            ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {

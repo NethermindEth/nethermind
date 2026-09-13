@@ -36,8 +36,7 @@ public class FlatStateReader(
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
         reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
-        if (slot is { } stored) value = stored;
-        else value = default;
+        value = slot.GetValueOrDefault();
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];

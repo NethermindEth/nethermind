@@ -39,8 +39,10 @@ public static class UInt256Extensions
         return value.ToMinimalBigEndian(ref word).ToArray();
     }
 
+    /// <summary>Returns the shortest nonempty big-endian byte representation of the value, backed by <paramref name="buffer"/>.</summary>
+    /// <remarks>The returned span aliases <paramref name="buffer"/> and stays valid only as long as the buffer does.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ReadOnlySpan<byte> ToMinimalBigEndian(this scoped in UInt256 value, ref EvmWord buffer)
+    public static ReadOnlySpan<byte> ToMinimalBigEndian(this scoped in UInt256 value, ref EvmWord buffer)
     {
         buffer = value.ToBigEndianWord();
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1));

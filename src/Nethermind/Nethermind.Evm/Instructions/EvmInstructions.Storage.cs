@@ -626,12 +626,10 @@ public static partial class EvmInstructions
     private static void TraceTransientStorageSet<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        vm.WorldState.GetTransientState(in cell, out UInt256 current);
+        // A transient write always takes effect, so the stored value after the write is the value just written.
         EvmWord word = value.ToBigEndianWord();
-        EvmWord currentWord = current.ToBigEndianWord();
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
-        ReadOnlySpan<byte> currentBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref currentWord, 1));
-        vm.TxTracer.SetOperationTransientStorage(cell.Address, cell.Index, bytes, current.IsZero ? BytesZero : currentBytes);
+        vm.TxTracer.SetOperationTransientStorage(cell.Address, cell.Index, bytes, value.IsZero ? BytesZero : bytes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -639,11 +637,9 @@ public static partial class EvmInstructions
     private static void TraceStorageSet<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value, in UInt256 current)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        EvmWord word = value.ToBigEndianWord();
-        EvmWord currentWord = current.ToBigEndianWord();
-        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
-        ReadOnlySpan<byte> currentBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref currentWord, 1));
-        vm.TxTracer.SetOperationStorage(cell.Address, cell.Index, bytes.WithoutLeadingZeros(), currentBytes.WithoutLeadingZeros());
+        Unsafe.SkipInit(out EvmWord word);
+        Unsafe.SkipInit(out EvmWord currentWord);
+        vm.TxTracer.SetOperationStorage(cell.Address, cell.Index, value.ToMinimalBigEndian(ref word), current.ToMinimalBigEndian(ref currentWord));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -651,11 +647,10 @@ public static partial class EvmInstructions
     private static void TraceSstore<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell storageCell, in UInt256 value)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        EvmWord word = value.ToBigEndianWord();
-        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
+        Unsafe.SkipInit(out EvmWord word);
         EvmWord storageWord = storageCell.Index.ToBigEndianWord();
         ReadOnlySpan<byte> storageBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref storageWord, 1));
-        vm.TxTracer.ReportStorageChange(storageBytes, bytes.WithoutLeadingZeros());
+        vm.TxTracer.ReportStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
     }
 
     /// <summary>

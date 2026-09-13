@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -117,10 +116,11 @@ public static class BaseFlatPersistence
     /// <paramref name="buffer"/> must be at least <see cref="RlpSlotValueBufferSize"/> bytes. Returns the number
     /// of bytes written. Shared so callers (flat writes and the history changeset) produce byte-identical values.
     /// </summary>
+    [SkipLocalsInit]
     internal static int EncodeSlotValue(in UInt256 slot, bool rlpWrapSlots, Span<byte> buffer)
     {
-        EvmWord word = slot.ToBigEndianWord();
-        ReadOnlySpan<byte> withoutLeadingZeros = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref word), StorageValueSize).WithoutLeadingZeros();
+        Unsafe.SkipInit(out EvmWord word);
+        ReadOnlySpan<byte> withoutLeadingZeros = slot.ToMinimalBigEndian(ref word);
         if (!rlpWrapSlots)
         {
             withoutLeadingZeros.CopyTo(buffer);

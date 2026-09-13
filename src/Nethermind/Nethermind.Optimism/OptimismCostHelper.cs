@@ -55,11 +55,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
         if (opSpecHelper.IsFjord(header))
         {
-            worldState.Get(_blobBaseFeeSlot, out UInt256 blobBaseFee);
-
-            worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
-            UInt256 l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
-            UInt256 l1BlobBaseFeeScalar = (uint)scalarData[1];
+            ReadEcotoneScalars(worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar);
 
             uint fastLzSize = ComputeFlzCompressLen(tx);
 
@@ -73,11 +69,7 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
         if (opSpecHelper.IsEcotone(header))
         {
-            worldState.Get(_blobBaseFeeSlot, out UInt256 blobBaseFee);
-
-            worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
-            UInt256 l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
-            UInt256 l1BlobBaseFeeScalar = (uint)scalarData[1];
+            ReadEcotoneScalars(worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar);
 
             return ComputeL1CostEcotone(dataGas, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
         }
@@ -88,6 +80,16 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
 
             return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
         }
+    }
+
+    private void ReadEcotoneScalars(IWorldState worldState, out UInt256 blobBaseFee, out UInt256 l1BaseFeeScalar, out UInt256 l1BlobBaseFeeScalar)
+    {
+        worldState.Get(_blobBaseFeeSlot, out blobBaseFee);
+
+        // Both scalars share one slot: l1BaseFeeScalar in big-endian bytes 16..20, l1BlobBaseFeeScalar in bytes 20..24.
+        worldState.Get(_baseFeeScalarSlot, out UInt256 scalarData);
+        l1BaseFeeScalar = (uint)(scalarData[1] >> 32);
+        l1BlobBaseFeeScalar = (uint)scalarData[1];
     }
 
     public UInt256 ComputeOperatorCost(ulong gas, BlockHeader header, IWorldState worldState)
