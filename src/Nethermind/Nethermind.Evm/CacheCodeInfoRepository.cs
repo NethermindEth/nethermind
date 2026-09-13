@@ -26,18 +26,14 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
     /// <remarks>
-    /// Held as one immutable reference so a racing reader sees a matched hash and body or neither, never a
-    /// torn pair. The hash is re-read from the world state on every call, so anything that changes an
-    /// account's code — including a reverted deployment — produces a different hash and misses the memo;
-    /// there is nothing to invalidate.
+    /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
+    /// stores, so matching against the hash re-read from the world state costs no allocation and cannot
+    /// tear. Anything that changes an account's code — including a reverted deployment — produces a
+    /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
+    /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
+    /// the every-lookup-through-the-world-state behaviour that mode requires.
     /// </remarks>
-    private sealed class ResolvedCode(in ValueHash256 codeHash, CodeInfo codeInfo)
-    {
-        public readonly ValueHash256 CodeHash = codeHash;
-        public readonly CodeInfo CodeInfo = codeInfo;
-    }
-
-    private ResolvedCode? _lastResolved;
+    private CodeInfo? _lastResolved;
 
     private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
     {
@@ -46,10 +42,12 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             return CodeInfo.Empty;
         }
 
-        ResolvedCode? lastResolved = _lastResolved;
+        CodeInfo? lastResolved = _lastResolved;
         if (lastResolved is not null && lastResolved.CodeHash == codeHash)
         {
-            return lastResolved.CodeInfo;
+            // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
+            Metrics.IncrementCodeDbCache();
+            return lastResolved;
         }
 
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
@@ -63,7 +61,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             Metrics.IncrementCodeDbCache();
         }
 
-        _lastResolved = new ResolvedCode(in codeHash, cachedCodeInfo);
+        _lastResolved = cachedCodeInfo;
         return cachedCodeInfo;
     }
 
