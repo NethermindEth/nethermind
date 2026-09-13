@@ -33,8 +33,9 @@ using Nethermind.State;
 namespace Nethermind.Evm.Benchmark;
 
 /// <summary>
-/// Block-level processing benchmark measuring <see cref="BranchProcessor.Process"/>
-/// with mainnet-like block scenarios under <see cref="Osaka"/> rules.
+/// Block-level processing benchmark measuring <see cref="BranchProcessor.Process"/> with mainnet-like
+/// block scenarios, parameterized over the <see cref="Fork"/> the whole set runs under (Osaka and
+/// Amsterdam — see the remark on <see cref="Fork"/> for what the Amsterdam column measures).
 ///
 /// Uses the full <see cref="BranchProcessor"/> pipeline — including the
 /// <see cref="BlockCachePreWarmer"/> — to match the live client's block processing
@@ -45,16 +46,14 @@ namespace Nethermind.Evm.Benchmark;
 /// iteration opens a fresh scope at the genesis root and disposes it on exit —
 /// exactly as the runtime does.
 ///
-/// Each benchmark method loops <see cref="N"/> times with
-/// <c>OperationsPerInvoke = N</c> so BDN divides the total time by N.
-/// This keeps iteration time well above the 100 ms minimum, eliminating
-/// MinIterationTime warnings and reducing coefficient of variation caused
-/// by OS scheduling noise on sub-millisecond measurements.
+/// Each benchmark method loops <see cref="N_LARGE"/> or <see cref="N_SMALL"/> times with a matching
+/// <c>OperationsPerInvoke</c> so BDN divides the total time by the count. This keeps iteration time well
+/// above the 100 ms minimum, eliminating MinIterationTime warnings and reducing the coefficient of
+/// variation caused by OS scheduling noise on sub-millisecond measurements.
 ///
-/// Scenarios:
-/// - EmptyBlock, SingleTransfer, Transfers_50, Transfers_200
-/// - Eip1559_200, AccessList_50, ContractDeploy_10
-/// - ContractCall_200, MixedBlock (100 legacy + 60 EIP-1559 + 30 AL + 10 calls)
+/// The scenarios are the <c>[Benchmark]</c> methods below; the storage-, call- and create-shaped ones
+/// added for the bal-full gap analysis (Sload/Tload/PushPop, Balance/ExtCode*, StaticCall*, Sstore,
+/// Create2) each isolate one variable, with controls named alongside them.
 /// </summary>
 [Config(typeof(BlockProcessingConfig))]
 [MemoryDiagnoser]
@@ -252,7 +251,8 @@ public class BlockProcessingBenchmark
 
     private static readonly Address EoaCallCallerAddress = new("0x00000000000000000000000000000000000000ee");
 
-    /// <summary>An account with no code, so a call to it takes the empty-account fast path.</summary>
+    /// <summary>A non-empty account with no code, so a call to it takes the codeless (empty-code) fast
+    /// path without building a frame. Seeded non-zero so it is not EIP-161-empty.</summary>
     private static readonly Address EoaTargetAddress = new("0x00000000000000000000000000000000000000ef");
 
     /// <summary>STATICCALL to a codeless account: identical opcode work, but no call frame is built.</summary>
@@ -318,10 +318,9 @@ public class BlockProcessingBenchmark
             code = code.PushData((i & 1) == 0 ? 7 : 9).PushData(0).Op(Instruction.SSTORE);
         }
 
-        // Restore the seeded value so every transaction starts from the same EIP-2200 original.
-        // Without this, the slot ends at 9 and the next transaction's alternating writes swing
-        // around their own original, turning every other write into a fresh clean SSTORE — which
-        // multiplies the gas ~12x and quietly turned transactions 2..10 into out-of-gas burns.
+        // Restore the seeded value so every transaction starts from the same EIP-2200 original: otherwise
+        // the slot ends at 9 and the next transaction's alternating writes swing around their own original,
+        // making every other write a fresh clean SSTORE at ~12x the gas.
         return code.PushData(5).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
     }
 
