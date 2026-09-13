@@ -35,6 +35,10 @@ public class EvmExecutionGateTests
     private static async Task<EvmExecutionGate.Lease> Acquire(EvmExecutionGate gate, int weight = 1) =>
         await gate.AcquireAsync(weight, allowQueue: true);
 
+    /// <summary>Acquires as an authenticated or IPC caller, which an anonymous one may never overtake.</summary>
+    private static ValueTask<EvmExecutionGate.Lease> AcquireTrusted(EvmExecutionGate gate) =>
+        gate.AcquireAsync(1, allowQueue: false, isTrusted: true);
+
     [Test]
     public async Task Admits_exactly_the_configured_number_of_permits()
     {
@@ -44,6 +48,88 @@ public class EvmExecutionGateTests
         using EvmExecutionGate.Lease second = await Acquire(gate);
 
         Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>());
+    }
+
+    /// <summary>A saturated gate must not refuse the trusted caller while it goes on serving anonymous ones.</summary>
+    /// <remarks>Authenticated and IPC callers used to be shed outright rather than queued, which reads as a latency
+    /// favour only while the gate is unsaturated. Saturated, it meant one hundred percent rejection for the
+    /// consensus client while anonymous callers behind it were still admitted after a wait. They now queue at the
+    /// head instead: no anonymous arrival can overtake one, whatever its weight or arrival time.</remarks>
+    [Test]
+    public async Task Trusted_caller_is_admitted_before_anonymous_callers_already_waiting()
+    {
+        EvmExecutionGate gate = Gate(permits: 1);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        ValueTask<EvmExecutionGate.Lease> anonymous = gate.AcquireAsync(1, allowQueue: true);
+        Assert.That(() => gate.QueuedCount, Is.EqualTo(1).After(1000, 10), "precondition: an anonymous caller is queued first");
+
+        ValueTask<EvmExecutionGate.Lease> trusted = AcquireTrusted(gate);
+        Assert.That(() => gate.QueuedCount, Is.EqualTo(2).After(1000, 10), "the trusted caller queues rather than being shed");
+
+        held.Dispose();
+
+        using EvmExecutionGate.Lease admitted = await trusted;
+        Assert.That(async () => await anonymous, Throws.InstanceOf<LimitExceededException>(),
+            "the one free permit went to the trusted caller, not to the anonymous caller that arrived first");
+    }
+
+    /// <summary>A caller that gives up stops waiting, and burns no permit doing so.</summary>
+    /// <remarks>Under exactly the overload this gate exists for, clients time out and drop their sockets en masse.
+    /// Without the token linked into the wait, each one is still granted a permit when someone releases and then
+    /// executes a full call for a socket nobody is reading, while a live caller behind it is shed with 503.</remarks>
+    [Test]
+    public async Task Cancelled_caller_stops_waiting_and_leaves_its_permit_behind()
+    {
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        using CancellationTokenSource disconnected = new();
+        ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true, cancellationToken: disconnected.Token);
+        Assert.That(() => gate.QueuedCount, Is.EqualTo(1).After(1000, 10), "precondition: the caller is queued");
+
+        disconnected.Cancel();
+
+        Assert.That(async () => await queued, Throws.InstanceOf<OperationCanceledException>());
+
+        // The abandoned waiter must not have taken the permit with it.
+        held.Dispose();
+        using EvmExecutionGate.Lease next = await Acquire(gate);
+        Assert.Pass();
+    }
+
+    /// <summary>An already-cancelled caller never enters the queue.</summary>
+    [Test]
+    public void Cancelled_caller_does_not_enter_the_queue()
+    {
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using CancellationTokenSource disconnected = new();
+        disconnected.Cancel();
+
+        Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true, cancellationToken: disconnected.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(gate.QueuedCount, Is.Zero);
+    }
+
+    /// <summary>Shutdown answers waiters at once instead of waiting out the budget for each of them.</summary>
+    [Test]
+    public async Task Disposing_the_gate_answers_everyone_waiting()
+    {
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using EvmExecutionGate.Lease held = await Acquire(gate);
+
+        ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true);
+        Assert.That(() => gate.QueuedCount, Is.EqualTo(1).After(1000, 10));
+
+        gate.Dispose();
+
+        // Bounded rather than awaited outright: without the drain this sits out the whole 60s budget, and a
+        // regression should fail here rather than hang the suite.
+        Task<EvmExecutionGate.Lease> queuedTask = queued.AsTask();
+        Assert.That(await Task.WhenAny(queuedTask, Task.Delay(TimeSpan.FromSeconds(10))), Is.SameAs(queuedTask),
+            "a closing gate must answer its waiters rather than let them wait out the budget");
+        Assert.That(async () => await queuedTask, Throws.InstanceOf<LimitExceededException>());
+        Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>(), "a closed gate admits nobody");
     }
 
     [Test]

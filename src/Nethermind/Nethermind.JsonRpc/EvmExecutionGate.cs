@@ -39,12 +39,25 @@ namespace Nethermind.JsonRpc;
 /// Cost is proxied by the raw <c>params</c> byte length, which is the only estimate available before the request is
 /// bound. It is wrong in both directions - a small <c>eth_call</c> into a hot loop is expensive, a large state
 /// override may execute trivially - so it is deliberately used only to pick an order, never to admit or refuse.
+/// It confers <em>no</em> resistance to abuse and mildly assists it: sixty bytes naming a tight loop with a 30M gas
+/// cap weigh one and sit at the head of the queue, a params-less request weighs zero and sits ahead of everything,
+/// and an honest simulate call with a large state override always goes last. Ordering is a mean-latency
+/// optimisation for well-behaved traffic; what bounds a hostile caller is the permit count and the depth cap.
+/// </para>
+/// <para>
+/// A permit is not a core. The lease spans the whole invocation, including flat-database and trie reads, which is
+/// where most of a slow call's time goes - so permits sized to the processor count are held by I/O-bound calls
+/// while the CPU is idle. Size <c>EthModuleConcurrentInstances</c> with headroom above the core count if the
+/// workload is read-heavy.
 /// </para>
 /// </remarks>
-internal sealed class EvmExecutionGate
+internal sealed class EvmExecutionGate : IDisposable
 {
     // Never reaches the caller: ReturnErrorResponse answers every LimitExceededException with "Too many requests".
     private const string SaturatedMessage = "All EVM execution slots are busy.";
+
+    // Never reaches the caller either, but it separates the two cases in a log line and in a test.
+    private const string ShuttingDownMessage = "The node is shutting down.";
 
     /// <summary>Raw <c>params</c> bytes per unit of weight.</summary>
     internal const int BytesPerWeightUnit = 128 * 1024;
@@ -72,6 +85,7 @@ internal sealed class EvmExecutionGate
     private readonly List<(Waiter Waiter, (long Deadline, long Sequence) Key)> _rebuildScratch = [];
     private long _sequence;
     private int _freePermits;
+    private bool _closed;
 
     // Waiters still waiting. Distinct from _waiters.Count, which also holds entries whose caller has already given
     // up: a waiter that is overtaken is by construction outlived by its overtaker, so it expires while something
@@ -83,6 +97,9 @@ internal sealed class EvmExecutionGate
     // which is exact under the lock: reading a stale live count there would park a caller behind a waiter that no
     // longer exists, with nobody left holding a lease to release it.
     private int _liveWaiters;
+
+    // Lock-free mirror of _closed, for the post-wait path, which runs outside the lock.
+    private bool _closedFlag;
 
     /// <param name="config">Supplies the permit count and the wait budget.</param>
     /// <param name="timestamp">Monotonic tick source; overridden in tests so the aging window is deterministic.</param>
@@ -107,23 +124,40 @@ internal sealed class EvmExecutionGate
     /// <summary>Acquires one execution permit, waiting at most the configured budget.</summary>
     /// <param name="weight">Cost class from <see cref="Weigh"/>; decides queue position only, never admission.</param>
     /// <param name="allowQueue">Whether a saturated gate may make this request wait; <c>false</c> sheds it immediately.</param>
+    /// <param name="isTrusted">Whether the caller is authenticated or on IPC, which places it at the head of the
+    /// queue ahead of every anonymous waiter regardless of <paramref name="allowQueue"/>.</param>
+    /// <param name="cancellationToken">The caller's lifetime. A client that gives up stops waiting here rather
+    /// than being granted a permit later and executing for a socket nobody is reading.</param>
     /// <returns>A lease that must be disposed exactly once, after the invocation and any task it returned have completed.</returns>
     /// <exception cref="LimitExceededException">No permit was free, and none became free within the budget.</exception>
-    internal ValueTask<Lease> AcquireAsync(int weight, bool allowQueue)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired while waiting.</exception>
+    internal ValueTask<Lease> AcquireAsync(int weight, bool allowQueue, bool isTrusted = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         Waiter? waiter = null;
+        bool closed;
         lock (_lock)
         {
-            if (TryTakeFreePermit()) return ValueTask.FromResult(new Lease(this));
+            closed = _closed;
+            if (!closed && TryTakeFreePermit()) return ValueTask.FromResult(new Lease(this));
 
-            if (allowQueue && _budget > TimeSpan.Zero && Volatile.Read(ref _liveWaiters) < _maxWaiters)
+            // A trusted caller queues even where an anonymous one would be shed. Shedding it was only a latency
+            // favour while the gate was unsaturated - saturated, it meant refusing the consensus client outright
+            // while anonymous callers behind it were still served after a wait. At the head of the queue it waits
+            // at most one service time, and the budget still bounds that to the same answer it used to get.
+            if (!closed && (allowQueue || isTrusted) && _budget > TimeSpan.Zero
+                && Volatile.Read(ref _liveWaiters) < _maxWaiters)
             {
                 // Only the enqueue path pays for the rebuild; the shed path below crosses this lock on every
                 // saturated request and must not carry an O(n log n) spike.
                 ReapSettledHead(mayRebuild: true);
 
                 waiter = new Waiter(this);
-                _waiters.Enqueue(waiter, (_timestamp() + weight * _quantumTicks, _sequence++));
+                // long.MinValue, not an aged deadline: no anonymous arrival may overtake a trusted one, and the
+                // sequence still orders trusted callers among themselves by arrival.
+                long deadline = isTrusted ? long.MinValue : _timestamp() + weight * _quantumTicks;
+                _waiters.Enqueue(waiter, (deadline, _sequence++));
                 // After the enqueue: an enqueue that threw would otherwise leave a count nothing can ever settle,
                 // permanently shrinking the usable depth.
                 Interlocked.Increment(ref _liveWaiters);
@@ -133,24 +167,31 @@ internal sealed class EvmExecutionGate
         // Thrown outside the lock: exception dispatch walks the stack looking for a handler before any finally
         // runs, so throwing inside would hold the gate's global lock for that whole first pass - on the shed path,
         // which is the hot one under saturation and the only one batch and authenticated callers take.
-        if (waiter is null) throw new LimitExceededException(SaturatedMessage);
+        if (waiter is null) throw new LimitExceededException(closed ? ShuttingDownMessage : SaturatedMessage);
 
-        return WaitForAdmissionAsync(waiter);
+        return WaitForAdmissionAsync(waiter, cancellationToken);
     }
 
-    private async ValueTask<Lease> WaitForAdmissionAsync(Waiter waiter)
+    private async ValueTask<Lease> WaitForAdmissionAsync(Waiter waiter, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref Metrics.EvmExecutionQueueLength);
         bool granted = false;
         try
         {
             // The expiry settles the same completion source the grant does, so exactly one of them wins and the
-            // permit can never be handed to a caller that has already given up.
-            using CancellationTokenSource expiry = new(_budget);
+            // permit can never be handed to a caller that has already given up. The caller's own token is linked
+            // into it rather than awaited separately, so a disconnect settles through that same single winner.
+            using CancellationTokenSource expiry = cancellationToken.CanBeCanceled
+                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+                : new CancellationTokenSource();
+            expiry.CancelAfter(_budget);
             using CancellationTokenRegistration registration =
                 expiry.Token.UnsafeRegister(static state => _ = ((Waiter)state!).Abandon(), waiter);
 
             granted = await waiter.Admission;
+            // Re-checked after the grant: the caller may have gone away while the permit was in flight, and the
+            // catch below hands it straight back rather than executing for a socket nobody is reading.
+            if (granted) cancellationToken.ThrowIfCancellationRequested();
         }
         catch when (granted)
         {
@@ -173,24 +214,57 @@ internal sealed class EvmExecutionGate
             Interlocked.Decrement(ref Metrics.EvmExecutionQueueLength);
         }
 
-        if (!granted) throw new LimitExceededException(SaturatedMessage);
+        if (!granted)
+        {
+            // Separate the three ways a wait ends: the caller left, the gate closed, or the budget ran out.
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new LimitExceededException(Volatile.Read(ref _closedFlag) ? ShuttingDownMessage : SaturatedMessage);
+        }
 
         return new Lease(this);
     }
 
     private void Release()
     {
+        bool releasedTwice;
         lock (_lock)
         {
-            while (_waiters.TryDequeue(out Waiter? waiter, out _))
-            {
-                // An abandoned waiter has already been answered with LimitExceeded; its queue slot is reclaimed
-                // here rather than by a sweep, so the gate needs no timer of its own.
-                if (waiter.TryGrant()) return;
-            }
+            releasedTwice = ReleaseCore();
+        }
 
-            if (_freePermits == _maxPermits) ThrowReleasedTwice();
-            _freePermits++;
+        // Outside the lock, like the shed path's throw, and for a second reason: Release runs from a Lease
+        // dispose, so throwing here on an exception path would replace the caller's original exception while
+        // holding the gate's global lock for the whole first pass of dispatch.
+        if (releasedTwice) ThrowReleasedTwice();
+    }
+
+    private bool ReleaseCore()
+    {
+        while (_waiters.TryDequeue(out Waiter? waiter, out _))
+        {
+            // An abandoned waiter has already been answered with LimitExceeded; its queue slot is reclaimed here
+            // rather than by a sweep, so the gate needs no timer of its own.
+            if (waiter.TryGrant()) return false;
+        }
+
+        if (_freePermits == _maxPermits) return true;
+
+        _freePermits++;
+        return false;
+    }
+
+    /// <summary>Closes the gate: everyone queued is answered at once and later arrivals are shed.</summary>
+    /// <remarks>Without this, shutdown waits out the whole budget per waiter and then answers them "too many
+    /// requests" rather than "shutting down" - a real stall once an operator raises the budget to seconds.</remarks>
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            if (_closed) return;
+
+            _closed = true;
+            Volatile.Write(ref _closedFlag, true);
+            while (_waiters.TryDequeue(out Waiter? waiter, out _)) waiter.Abandon();
         }
     }
 

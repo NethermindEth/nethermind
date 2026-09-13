@@ -147,6 +147,82 @@ public class EvmExecutionGateServiceTests
         Assert.That(error.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
     }
 
+    /// <summary>A method that executes the EVM must not also stream its result.</summary>
+    /// <remarks>The permit is released when the invocation completes, so a streamable result driving the EVM
+    /// while the response is written would run ungated with no diagnostic. The contract was stated in two places
+    /// and enforced nowhere; this pins that resolving such a module fails loudly instead.</remarks>
+    [Test]
+    public void A_gated_method_returning_a_streamable_result_is_rejected_at_resolve_time()
+    {
+        JsonRpcConfig config = new() { Enabled = true, EnabledModules = ["Streaming"] };
+        RpcModuleProvider moduleProvider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        Assert.That(
+            () => moduleProvider.Register(new SingletonModulePool<IStreamingGatedRpcModule>(
+                new SingletonFactory<IStreamingGatedRpcModule>(new StreamingGatedModule()), true)),
+            Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    /// <summary>A caller that gives up while queued must stop waiting and leave its permit behind.</summary>
+    /// <remarks>Under exactly the overload the gate exists for, clients time out and drop their sockets en masse.
+    /// Without the request's token reaching the gate, each one is still granted a permit when someone releases,
+    /// then executes a full call for a dead socket while a live caller behind it is shed with 503.</remarks>
+    [Test]
+    public async Task A_caller_that_gives_up_while_queued_stops_waiting()
+    {
+        using BlockingGatedModule module = new();
+        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+
+        ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
+        await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using CancellationTokenSource disconnected = new();
+        JsonRpcRequest giver = Request(GatedMethod, 2);
+        giver.CallerCancellation = disconnected.Token;
+        ValueTask<JsonRpcResponse> queued = service.SendRequestAsync(giver, context);
+
+        disconnected.Cancel();
+
+        // Without the token reaching the gate this sits out the whole 60s budget instead.
+        Task<JsonRpcResponse> queuedTask = queued.AsTask();
+        Assert.That(await Task.WhenAny(queuedTask, Task.Delay(TimeSpan.FromSeconds(10))), Is.SameAs(queuedTask),
+            "the caller that gave up was left waiting out the budget");
+        AssertShed(await queuedTask);
+
+        module.Release();
+        await inFlight;
+
+        // The abandoned caller must not have taken the permit with it.
+        module.Release();
+        JsonRpcResponse afterwards = await service.SendRequestAsync(Request(GatedMethod, 3), context);
+        Assert.That(afterwards, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+    }
+
+    /// <summary>Shutdown answers whoever is queued at once, rather than waiting out the budget for each.</summary>
+    [Test]
+    public async Task Disposing_the_service_answers_a_queued_caller_at_once()
+    {
+        using BlockingGatedModule module = new();
+        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+
+        ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
+        await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+
+        ValueTask<JsonRpcResponse> queued = service.SendRequestAsync(Request(GatedMethod, 2), context);
+
+        service.Dispose();
+
+        Task<JsonRpcResponse> queuedTask = queued.AsTask();
+        Assert.That(await Task.WhenAny(queuedTask, Task.Delay(TimeSpan.FromSeconds(10))), Is.SameAs(queuedTask),
+            "shutdown left the queued caller waiting out the budget");
+        AssertShed(await queuedTask);
+
+        module.Release();
+        await inFlight;
+    }
+
     [Test]
     public async Task Gated_method_is_shed_while_every_permit_is_held()
     {
@@ -449,6 +525,28 @@ public class EvmExecutionGateServiceTests
             IsImplemented = true,
             IsSharable = true)]
         ResultWrapper<int> ungated_read();
+    }
+
+    /// <summary>Violates the gate's contract on purpose: flagged as EVM execution and streaming its result.</summary>
+    [RpcModule("Streaming")]
+    public interface IStreamingGatedRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(
+            Description = "Test method that breaks the rule that a gated method must not stream its result.",
+            IsImplemented = true,
+            IsSharable = true,
+            IsEvmExecution = true)]
+        ResultWrapper<StubStreamableResult> streaming_execute();
+    }
+
+    private sealed class StreamingGatedModule : IStreamingGatedRpcModule
+    {
+        public ResultWrapper<StubStreamableResult> streaming_execute() => ResultWrapper<StubStreamableResult>.Success(new StubStreamableResult());
+    }
+
+    public sealed class StubStreamableResult : IStreamableResult
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     /// <summary>Collects what the processor writes, so a batch can be driven end to end without a transport.</summary>

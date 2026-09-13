@@ -172,16 +172,18 @@ public interface IJsonRpcConfig : IConfig
             `eth_createAccessList`, `eth_fillTransaction`, `eth_simulateV1`, `debug_simulateV1`) may wait for an execution slot before it
             is answered with a `LimitExceeded` error (HTTP 503). Applies only when `EvmExecutionGateEnabled` is
             set: the gate is off by default, and with it off this budget has no effect. The number of slots is
-            `EthModuleConcurrentInstances`, the number of logical processors by default. Waiters are ordered by a
+            `EthModuleConcurrentInstances`, the number of logical processors by default - note a slot is not a
+            core: it is held for the whole call, including the flat-database and trie reads that dominate a slow
+            one, so a read-heavy workload wants headroom above the core count. Waiters are ordered by a
             cost estimate taken from the raw `params` length, aged by arrival time so that a large request cannot
             be overtaken indefinitely by smaller ones. `0` disables waiting: a request that finds every slot busy
             is shed at once, before its parameters are read - to turn the gate off entirely, use
             `EvmExecutionGateEnabled`. A request is also shed at once, regardless of this budget, when more than
             eight requests per slot are already waiting. A longer budget adds latency to the requests it serves without adding
-            throughput. Waiting is skipped for batch items, authenticated requests (which includes IPC), and
-            connections that process one request at a time, where it would only delay later calls on the same
-            connection - note this covers every WebSocket connection unless `WebSocketsProcessingConcurrency`
-            is raised above its default of `1`.
+            throughput. Waiting is skipped for batch items and for connections that process one request at a time,
+            where it would only delay later calls on the same connection - note this covers every WebSocket
+            connection unless `WebSocketsProcessingConcurrency` is raised above its default of `1`. Authenticated
+            requests (which includes IPC) wait at the head of the queue, ahead of every anonymous one.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }

@@ -12,6 +12,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -27,7 +28,7 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService, IDisposable
 {
     private const int MaxPooledParameterCount = 8;
     private const int MaxReportedExceptionChainDepth = 8;
@@ -38,6 +39,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
     private readonly EvmExecutionGate? _evmGate = jsonRpcConfig.EvmExecutionGateEnabled ? new(jsonRpcConfig) : null;
     private readonly bool _webSocketsQueueingEnabled = jsonRpcConfig.WebSocketsProcessingConcurrency > 1;
+
+    /// <summary>Closes the EVM execution gate, so nothing is left waiting out its budget at shutdown.</summary>
+    public void Dispose() => _evmGate?.Dispose();
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -90,8 +94,23 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         // Weighed before the parameters are bound: the raw length is only readable while the backing buffer lives.
         int weight = EvmExecutionGate.Weigh(request.ParamsUtf8Length);
-        using EvmExecutionGate.Lease lease = await _evmGate!.AcquireAsync(weight, CanQueue(request, context));
-        return await ExecuteAsync(request, methodName, method, context);
+        CancellationToken callerCancellation = request.CallerCancellation;
+        EvmExecutionGate.Lease lease;
+        try
+        {
+            lease = await _evmGate!.AcquireAsync(weight, CanQueue(request, context), context.IsAuthenticated, callerCancellation);
+        }
+        catch (OperationCanceledException) when (callerCancellation.IsCancellationRequested)
+        {
+            // The caller gave up while queued. Answer the socket nobody is reading the way a shed request is
+            // answered, rather than logging an internal error for a client that is no longer there.
+            throw new LimitExceededException("The caller stopped waiting for an EVM execution slot.");
+        }
+
+        using (lease)
+        {
+            return await ExecuteAsync(request, methodName, method, context);
+        }
     }
 
     /// <summary>Whether a saturated gate may make this request wait rather than shedding it immediately.</summary>
@@ -99,8 +118,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     /// Waiting only pays off where the connection can serve something else meanwhile. On a lane that processes one
     /// request at a time - a batch, or a socket with a single processing slot - the wait is pure added latency for
     /// every later request behind it. Authenticated callers are the consensus client, which needs a prompt answer
-    /// rather than a queued one; note <see cref="JsonRpcContext"/> counts every IPC request as authenticated, so
-    /// local IPC callers are shed rather than queued too.
+    /// rather than a queued one. Note this answers only whether the request may wait at all: an authenticated
+    /// caller (<see cref="JsonRpcContext"/> counts every IPC request as one) is queued at the head regardless, so
+    /// a saturated gate makes it wait one service time rather than refusing it while anonymous callers are served.
     /// </remarks>
     private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
         !request.IsBatchItem &&

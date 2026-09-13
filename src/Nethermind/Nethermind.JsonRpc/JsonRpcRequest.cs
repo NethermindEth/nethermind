@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -53,6 +54,13 @@ namespace Nethermind.JsonRpc
         internal int ParamsUtf8Length => !ParamsUtf8.IsEmpty
             ? ParamsUtf8.Length
             : _params.ValueKind == JsonValueKind.Undefined ? 0 : JsonMarshal.GetRawUtf8Value(_params).Length;
+
+        /// <summary>The caller's lifetime, so a request that is waiting for an execution slot rather than running
+        /// can stop once the client has gone away.</summary>
+        /// <remarks>Carried here rather than on <see cref="IJsonRpcService"/>, which would have to grow an overload:
+        /// the interface has out-of-tree implementors, and a default interface member would not reach a generated
+        /// test double. One request is handled by one caller, so nothing shares this the way a context is shared.</remarks>
+        internal CancellationToken CallerCancellation { get; set; }
 
         /// <summary>Whether this request arrived as an element of a batch rather than on its own.</summary>
         /// <remarks>A batch is dispatched sequentially, so making one item wait for an execution slot delays every
