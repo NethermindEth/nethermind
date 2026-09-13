@@ -57,37 +57,85 @@ public class EvmExecutionGateServiceTests
         return new JsonRpcService(moduleProvider, LimboLogs.Instance, config);
     }
 
-    /// <summary>A reader over the body, either as one buffer or split per byte so the batch source is resumed.</summary>
+    /// <summary>A reader over the body, either as one buffer or revealed one byte per read so the batch
+    /// source genuinely resumes mid-document.</summary>
     private static PipeReader CreateReader(string body, bool segmented)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(body);
-        if (!segmented) return PipeReader.Create(new ReadOnlySequence<byte>(bytes));
+        return segmented ? new OneBytePerReadPipeReader(bytes) : PipeReader.Create(new ReadOnlySequence<byte>(bytes));
+    }
 
-        // pauseWriterThreshold 1 blocks the writer on every FlushAsync until the reader consumes, so the
-        // parser genuinely resumes mid-document — a default 64 KiB threshold would let this ~100-byte body
-        // flush in one go and make the segmented case identical to the contiguous one.
-        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 1, resumeWriterThreshold: 1));
-        _ = Task.Run(async () =>
+    /// <summary>Exposes one more byte on each <see cref="ReadAsync"/> over a multi-segment sequence, with no
+    /// second thread. Deterministic where a <see cref="Pipe"/> is not: its backpressure never resumes against
+    /// <c>JsonRpcProcessor</c>, which consumes nothing until it has a whole document.</summary>
+    private sealed class OneBytePerReadPipeReader(byte[] bytes) : PipeReader
+    {
+        private readonly Segment _first = Segment.Build(bytes);
+        private long _revealed;
+        private long _consumed;
+
+        public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
         {
-            try
+            if (_revealed < bytes.Length) _revealed++;
+            ReadOnlySequence<byte> buffer = Slice(_consumed, _revealed);
+            return new ValueTask<ReadResult>(new ReadResult(buffer, isCanceled: false, isCompleted: _revealed == bytes.Length));
+        }
+
+        private ReadOnlySequence<byte> Slice(long start, long end)
+        {
+            (Segment startSeg, int startIdx) = Locate(start);
+            (Segment endSeg, int endIdx) = Locate(end);
+            return new ReadOnlySequence<byte>(startSeg, startIdx, endSeg, endIdx);
+        }
+
+        private (Segment, int) Locate(long index)
+        {
+            Segment seg = _first;
+            while (index > 0 && seg.Next is Segment next)
             {
-                foreach (byte b in bytes)
+                seg = next;
+                index--;
+            }
+            return (seg, (int)index);
+        }
+
+        public override void AdvanceTo(SequencePosition consumed) => AdvanceTo(consumed, consumed);
+
+        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+        {
+            Segment seg = (Segment)consumed.GetObject()!;
+            _consumed = seg.RunningIndex + consumed.GetInteger();
+        }
+
+        public override bool TryRead(out ReadResult result)
+        {
+            result = default;
+            return false;
+        }
+
+        public override void CancelPendingRead() { }
+        public override void Complete(Exception? exception = null) { }
+
+        private sealed class Segment : ReadOnlySequenceSegment<byte>
+        {
+            public static Segment Build(byte[] source)
+            {
+                Segment head = new();
+                Segment current = head;
+                for (int i = 0; i < source.Length; i++)
                 {
-                    pipe.Writer.GetSpan(1)[0] = b;
-                    pipe.Writer.Advance(1);
-                    await pipe.Writer.FlushAsync();
+                    current.Memory = new ReadOnlyMemory<byte>(source, i, 1);
+                    current.RunningIndex = i;
+                    if (i < source.Length - 1)
+                    {
+                        Segment next = new();
+                        current.Next = next;
+                        current = next;
+                    }
                 }
-
-                await pipe.Writer.CompleteAsync();
+                return head;
             }
-            catch (Exception ex)
-            {
-                // Surface a writer fault to the reader as a fault rather than an unobserved task and a hang.
-                await pipe.Writer.CompleteAsync(ex);
-            }
-        });
-
-        return pipe.Reader;
+        }
     }
 
     private static JsonRpcRequest Request(string method, int id = 1) =>
