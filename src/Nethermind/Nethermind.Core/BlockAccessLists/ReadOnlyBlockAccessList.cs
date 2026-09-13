@@ -117,8 +117,8 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
             }
         }
 
-        // Frozen both to enforce the shared-read contract and because the index is built once per
-        // block and probed by every worker.
+        // Frozen to enforce the shared-read contract: one instance is handed to every worker
+        // on the block and must not be mutable.
         return result?.ToFrozenDictionary(GenericEqualityComparer.GetOptimized<ValueHash256>());
     }
 

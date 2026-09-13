@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -89,8 +89,8 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             ChangedSlots = [];
         }
 
-        // A map is worth its allocation once there is anything to change or more than a handful of reads;
-        // below that the arrays are scanned, as the separate read set used to be.
+        // Worth its allocation once there is anything to change or more than a handful of reads;
+        // below that the read array is scanned instead.
         if (storageChanges.Length > 0 || storageReads.Length > ReadScanThreshold)
         {
             _declaredSlots = new Dictionary<UInt256, ReadOnlySlotChanges?>(
@@ -122,6 +122,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             ? _declaredSlots.TryGetValue(slot, out slotChanges)
             : ScanDeclaredReads(slot, out slotChanges);
 
+    /// <summary>Scans the declared reads for <paramref name="slot"/> when the account has no slot map.</summary>
     /// <remarks>Out of line so the two-instruction map probe above stays inlineable at the SLOAD
     /// call sites; a body with a loop is not.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
