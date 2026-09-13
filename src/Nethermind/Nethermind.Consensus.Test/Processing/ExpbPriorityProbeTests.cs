@@ -99,6 +99,108 @@ public class ExpbPriorityProbeTests
     }
 
     [Test]
+    public void Reth_prefers_maximum_priority_and_restores_original_value()
+    {
+        FakeNative native = new();
+        TestLogger logger = RunProbe(ExpbPriorityMode.Reth, native);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, 0 }));
+            Assert.That(native.CurrentNice, Is.Zero);
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("mode=reth"));
+            Assert.That(logger.LogList[0], Does.Contain("nice_during=-20"));
+            Assert.That(logger.LogList[0], Does.Contain("success=true"));
+        }
+    }
+
+    [Test]
+    public void Reth_falls_back_to_six_below_zero_when_maximum_is_denied()
+    {
+        FakeNative native = new() { FailRethPrimary = true };
+        TestLogger logger = RunProbe(ExpbPriorityMode.Reth, native);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -6, 0 }));
+            Assert.That(native.CurrentNice, Is.Zero);
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("nice_during=-6"));
+            Assert.That(logger.LogList[0], Does.Contain("success=true"));
+        }
+    }
+
+    [Test]
+    public void Reth_reports_both_denied_attempts_without_throwing()
+    {
+        FakeNative native = new() { FailRethPrimary = true, FailRethFallback = true };
+        TestLogger logger = RunProbe(ExpbPriorityMode.Reth, native);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -6, 0 }));
+            Assert.That(native.CurrentNice, Is.Zero);
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("mode=reth"));
+            Assert.That(logger.LogList[0], Does.Contain("nice_during=0"));
+            Assert.That(logger.LogList[0], Does.Contain("setpriority_primary"));
+            Assert.That(logger.LogList[0], Does.Contain("setpriority_fallback"));
+            Assert.That(logger.LogList[0], Does.Contain("success=false"));
+        }
+    }
+
+    [Test]
+    public void Reth_fallback_preserves_a_stronger_preexisting_priority()
+    {
+        FakeNative native = new() { InitialNice = -10, FailRethPrimary = true };
+        TestLogger logger = RunProbe(ExpbPriorityMode.Reth, native);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -10, -10 }));
+            Assert.That(native.CurrentNice, Is.EqualTo(-10));
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("nice_before=-10"));
+            Assert.That(logger.LogList[0], Does.Contain("nice_during=-10"));
+            Assert.That(logger.LogList[0], Does.Contain("success=true"));
+        }
+    }
+
+    [Test]
+    public void Reth_fallback_readback_mismatch_is_unsuccessful()
+    {
+        FakeNative native = new() { FailRethPrimary = true, MismatchRethFallbackReadback = true };
+        TestLogger logger = RunProbe(ExpbPriorityMode.Reth, native);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -6, 0 }));
+            Assert.That(native.CurrentNice, Is.Zero);
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("setpriority_fallback_readback"));
+            Assert.That(logger.LogList[0], Does.Contain("success=false"));
+        }
+    }
+
+    [Test]
+    public void Reth_nested_scopes_restore_each_scope_value()
+    {
+        FakeNative native = new();
+        ExpbPriorityProbe probe = new(ExpbPriorityMode.Reth, native, new ILogger(new TestLogger()));
+
+        using (ExpbPriorityProbe.Scope outer = probe.Enter())
+        using (ThreadExtensions.Disposable handle = System.Threading.Thread.CurrentThread.SetHighestPriority())
+        {
+            outer.CaptureDuring();
+            using ExpbPriorityProbe.Scope inner = probe.Enter();
+            inner.CaptureDuring();
+        }
+
+        Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -20, -20, 0 }));
+    }
+
+    [Test]
     public void Restore_failure_is_logged_as_unsuccessful()
     {
         FakeNative native = new() { FailRestore = true };
@@ -177,10 +279,11 @@ public class ExpbPriorityProbeTests
     }
 
     [Test]
-    public void Restore_happens_when_processing_scope_throws()
+    public void Restore_happens_when_processing_scope_throws([Values(2, 3)] int modeValue)
     {
+        ExpbPriorityMode mode = (ExpbPriorityMode)modeValue;
         FakeNative native = new();
-        ExpbPriorityProbe probe = new(ExpbPriorityMode.Nice, native, new ILogger(new TestLogger()));
+        ExpbPriorityProbe probe = new(mode, native, new ILogger(new TestLogger()));
 
         Assert.That(() =>
         {
@@ -192,7 +295,8 @@ public class ExpbPriorityProbeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -5, 0 }));
+            int expectedNice = mode is ExpbPriorityMode.Nice ? -5 : -20;
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { expectedNice, 0 }));
             Assert.That(native.CurrentNice, Is.Zero);
         }
     }
@@ -219,16 +323,39 @@ public class ExpbPriorityProbeTests
         }
     }
 
-    [TestCase(null, 0)]
-    [TestCase("off", 0)]
-    [TestCase("observe", 1)]
-    [TestCase("nice", 2)]
-    public void Parse_mode(string? rawMode, int expected)
-        => Assert.That(ExpbPriorityProbe.ParseMode(rawMode), Is.EqualTo((ExpbPriorityMode)expected));
+    [TestCase(null, false, 0)]
+    [TestCase(null, true, 3)]
+    [TestCase("off", true, 0)]
+    [TestCase("observe", false, 1)]
+    [TestCase("nice", false, 2)]
+    [TestCase("reth", false, 3)]
+    public void Parse_mode(string? rawMode, bool isLinux, int expected)
+        => Assert.That(ExpbPriorityProbe.ParseMode(rawMode, isLinux), Is.EqualTo((ExpbPriorityMode)expected));
 
     [Test]
     public void Parse_mode_rejects_unknown_value()
         => Assert.That(() => ExpbPriorityProbe.ParseMode("invalid"), Throws.InvalidOperationException);
+
+    [Test]
+    public void Missing_native_entry_point_is_logged_without_throwing()
+    {
+        FakeNative native = new() { ThrowOnGetThreadId = true };
+        TestLogger logger = new();
+        ExpbPriorityProbe probe = new(ExpbPriorityMode.Reth, native, new ILogger(logger));
+
+        Assert.DoesNotThrow(() =>
+        {
+            using ExpbPriorityProbe.Scope scope = probe.Enter();
+            scope.CaptureDuring();
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("gettid unavailable"));
+            Assert.That(logger.LogList[0], Does.Contain("success=false"));
+        }
+    }
 
     [Test]
     public void Linux_native_observe_records_real_thread_state()
@@ -280,13 +407,62 @@ public class ExpbPriorityProbeTests
         }
     }
 
+    [Test]
+    public void Linux_native_reth_maximum_apply_and_restore()
+    {
+        if (!OperatingSystem.IsLinux() || Environment.GetEnvironmentVariable("NETHERMIND_EXPB_RUN_RETH_TEST") != "1")
+        {
+            Assert.Ignore("Set NETHERMIND_EXPB_RUN_RETH_TEST=1 on Linux to run the privileged Reth priority probe.");
+        }
+
+        TestLogger logger = new();
+        LinuxExpbPriorityNative native = LinuxExpbPriorityNative.Instance;
+        Assert.That(native.TryGetThreadId(out int threadId, out int threadIdError), Is.True, $"gettid errno={threadIdError}");
+        Assert.That(native.TryGetNice(threadId, out int initialNice, out int niceError), Is.True, $"getpriority errno={niceError}");
+        ExpbPriorityProbe probe = new(ExpbPriorityMode.Reth, native, new ILogger(logger));
+
+        using (ExpbPriorityProbe.Scope scope = probe.Enter())
+        using (ThreadExtensions.Disposable handle = System.Threading.Thread.CurrentThread.SetHighestPriority())
+        {
+            scope.CaptureDuring();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Has.One.Items);
+            TestContext.Progress.WriteLine(logger.LogList[0]);
+            Assert.That(logger.LogList[0], Does.Contain("EXPB_PRIORITY mode=reth"));
+            Assert.That(logger.LogList[0], Does.Contain("nice_before=" + initialNice));
+            Assert.That(logger.LogList[0], Does.Contain("nice_during=-20"));
+            Assert.That(logger.LogList[0], Does.Contain("nice_after=" + initialNice));
+            Assert.That(logger.LogList[0], Does.Contain("success=true"));
+        }
+    }
+
+    private static TestLogger RunProbe(ExpbPriorityMode mode, FakeNative native)
+    {
+        TestLogger logger = new();
+        ExpbPriorityProbe probe = new(mode, native, new ILogger(logger));
+        using (ExpbPriorityProbe.Scope scope = probe.Enter())
+        using (ThreadExtensions.Disposable handle = System.Threading.Thread.CurrentThread.SetHighestPriority())
+        {
+            scope.CaptureDuring();
+        }
+
+        return logger;
+    }
+
     private sealed class FakeNative : IExpbPriorityNative
     {
         private int _getThreadIdCalls;
 
         public bool FailApply { get; init; }
         public bool FailRestore { get; init; }
+        public bool ThrowOnGetThreadId { get; init; }
+        public bool FailRethPrimary { get; init; }
+        public bool FailRethFallback { get; init; }
         public bool MismatchApplyReadback { get; init; }
+        public bool MismatchRethFallbackReadback { get; init; }
         public int FailPolicyAfterCall { get; init; }
         public int ThreadIdAfterEnter { get; init; } = 42;
         public int InitialNice { get; init; }
@@ -298,6 +474,11 @@ public class ExpbPriorityProbeTests
 
         public bool TryGetThreadId(out int threadId, out int error)
         {
+            if (ThrowOnGetThreadId)
+            {
+                throw new EntryPointNotFoundException("gettid");
+            }
+
             CallCount++;
             _getThreadIdCalls++;
             threadId = _getThreadIdCalls > 1 ? ThreadIdAfterEnter : 42;
@@ -339,13 +520,19 @@ public class ExpbPriorityProbeTests
         {
             CallCount++;
             SetNiceValues.Add(nice);
-            if ((FailApply && nice == -5) || (FailRestore && nice == InitialNice))
+            if ((FailApply && nice == -5)
+                || (FailRethPrimary && nice == -20)
+                || (FailRethFallback && nice == -6)
+                || (FailRestore && nice == InitialNice))
             {
                 error = 13;
                 return false;
             }
 
-            CurrentNice = MismatchApplyReadback && nice == -5 ? -4 : nice;
+            CurrentNice = MismatchApplyReadback && nice == -5
+                || MismatchRethFallbackReadback && nice == -6
+                ? nice + 1
+                : nice;
             error = 0;
             return true;
         }
