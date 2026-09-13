@@ -218,6 +218,45 @@ public class BesuGenesisLoaderTests
         }
     }
 
+    /// <summary>
+    /// Besu's own <c>operator generate-blockchain-config</c> writes <c>alloc</c> addresses without the
+    /// <c>0x</c> prefix, as Geth does, and such a genesis has to load.
+    /// </summary>
+    /// <remarks>
+    /// Found by pointing a node at a Besu-generated IBFT 2.0 network: it refused the genesis with
+    /// "hex string without 0x prefix" before reaching consensus at all.
+    /// </remarks>
+    [Test]
+    public void AllocAddressesLoadWithoutTheHexPrefix()
+    {
+        const string json = """
+            {
+              "config": {
+                "chainId": 424242,
+                "berlinBlock": 0,
+                "ibft2": { "blockperiodseconds": 2, "epochlength": 30000 }
+              },
+              "nonce": "0x0",
+              "timestamp": "0x0",
+              "gasLimit": "0x1000000",
+              "difficulty": "0x1",
+              "alloc": {
+                "fe3b557e8fb62b89f4916b721be55ceb828dbd73": { "balance": "0xad78ebc5ac6200000" },
+                "0x627306090abaB3A6e1400e9345bC60c78a8BEf57": { "balance": "0x1" }
+              },
+              "extraData": "0xf853a00000000000000000000000000000000000000000000000000000000000000000ea94d011e3a85ad8a5cfa65797cde3d0487a5c545d5694939d531cb28be9fc5292167780cfe9b6af26f139808400000000c0"
+            }
+            """;
+        ChainSpec chainSpec = Load(json);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ibft2));
+            Assert.That(chainSpec.Allocations, Has.Count.EqualTo(2), "both the prefixed and the unprefixed address");
+            Assert.That(chainSpec.Allocations!.ContainsKey(new Address("0xfe3b557e8fb62b89f4916b721be55ceb828dbd73")), Is.True);
+            Assert.That(chainSpec.Allocations!.ContainsKey(new Address("0x627306090abaB3A6e1400e9345bC60c78a8BEf57")), Is.True);
+        }
+    }
+
     /// <summary>Besu refuses a genesis that names Petersburg twice with different blocks.</summary>
     [Test]
     public void ConflictingPetersburgSpellingsAreRejected()

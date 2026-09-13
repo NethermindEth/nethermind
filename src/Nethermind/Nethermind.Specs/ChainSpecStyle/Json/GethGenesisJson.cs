@@ -17,6 +17,7 @@ public class GethGenesisJson
 {
     public GethGenesisConfigJson? Config { get; set; }
 
+    [JsonConverter(typeof(GethGenesisAllocConverter))]
     public Dictionary<Address, GethGenesisAllocJson>? Alloc { get; set; }
 
     [JsonConverter(typeof(ULongConverter))]
