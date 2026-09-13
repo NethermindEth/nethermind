@@ -633,7 +633,7 @@ public static partial class EvmInstructions
         // The dead check is three more reads — balance, nonce, and the same code hash again — and EIP-1052
         // only needs them to tell an empty account (push zero) from a codeless live one (push the empty hash).
         ValueHash256 hash = state.GetCodeHash(address);
-        if (hash != Keccak.OfAnEmptyString.ValueHash256)
+        if (hash != ValueKeccak.OfAnEmptyString)
         {
             return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
         }

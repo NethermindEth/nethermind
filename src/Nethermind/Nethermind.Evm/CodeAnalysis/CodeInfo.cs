@@ -54,7 +54,9 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    public ValueHash256 CodeHash { get; set; }
+    /// <remarks>Written only by <see cref="StaticCodeCache"/> on insert; <c>CacheCodeInfoRepository</c>'s
+    /// last-resolved memo validates a hit against it, so the write must stay confined to the cache.</remarks>
+    public ValueHash256 CodeHash { get; internal set; }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
