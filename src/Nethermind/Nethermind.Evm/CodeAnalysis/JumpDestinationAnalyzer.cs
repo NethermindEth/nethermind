@@ -37,7 +37,11 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
     /// <summary>The jump-destination bitmap, built on first use; one bit per code byte.</summary>
-    internal long[] JumpDestinationBitmap => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+    internal long[] JumpDestinationBitmap
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
