@@ -478,6 +478,11 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
 
+            // Recipient of every transfer and access-list tx. Seeded (non-zero, so not EIP-161-empty) because
+            // a real transfer overwhelmingly targets an existing account; otherwise the first tx of each block
+            // pays EIP-8037's ~183k NEW_ACCOUNT state charge and OOGs on Amsterdam.
+            stateProvider.CreateAccount(TestItem.AddressC, UInt256.One);
+
             stateProvider.CreateAccount(SloadCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(SloadCallerAddress, SloadSameKeyCode, Spec);
             stateProvider.Set(new StorageCell(SloadCallerAddress, UInt256.Zero), [0x07]);
@@ -814,7 +819,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(300_000) // EIP-8037 sizes the state reservoir into the required intrinsic, so an Amsterdam transfer needs an outsized limit (fails at 100k); the setup guard verifies it executes
+                .WithGasLimit(21_000)
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
@@ -832,7 +837,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(300_000) // EIP-8037 sizes the state reservoir into the required intrinsic, so an Amsterdam transfer needs an outsized limit (fails at 100k); the setup guard verifies it executes
+                .WithGasLimit(21_000)
                 .WithMaxFeePerGas(2.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_senderKey)
@@ -851,7 +856,7 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(TestItem.AddressC)
                 .WithValue(1.Wei)
-                .WithGasLimit(600_000) // Amsterdam's EIP-8037 state-gas reservoir scales with the limit: at 200k these OOG despite using ~54k; the setup guard keeps this honest
+                .WithGasLimit(100_000) // Amsterdam prices the access-list intrinsic above the classic 50k
                 .WithGasPrice(2.GWei)
                 .WithAccessList(SampleAccessList)
                 .SignedAndResolved(_senderKey)
