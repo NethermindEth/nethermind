@@ -322,6 +322,7 @@ public class BlockhashProviderTests
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTreeBuilder builder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(ChainLength);
             BlockTree tree = builder.TestObject;
+            Tree = tree;
             Head = tree.FindHeader(ChainLength - 1ul, BlockTreeLookupOptions.None)!;
 
             (IWorldState worldState, Hash256 stateRoot) = CreateWorldState();
@@ -344,6 +345,8 @@ public class BlockhashProviderTests
             byte[] code = [1, 2, 3];
             worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, Prague.Instance);
         }
+
+        public BlockTree Tree { get; }
 
         public BlockHeader Head { get; }
         public Block Current { get; }
@@ -419,6 +422,32 @@ public class BlockhashProviderTests
     /// <remarks>Goes through the production <see cref="BlockhashProvider"/> on both the block-tree path and the
     /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
     /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
+    /// <summary>A sweep over distinct numbers allocates at most one memo entry per number per block:
+    /// the second pass over the same distinct set must be allocation-free.</summary>
+    public void Blockhash_span_lookup_over_distinct_numbers_allocates_once_per_number()
+    {
+        using BlockhashFixture fixture = new();
+        BlockHeader header = fixture.Current.Header;
+        fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
+        for (ulong k = 1; k < 42; k++)
+        {
+            fixture.Store.ApplyBlockhashStateChanges(fixture.Tree.FindHeader(k, BlockTreeLookupOptions.None)!, fixture.Spec);
+        }
+
+        for (ulong n = 1; n < 42; n++)
+        {
+            Assert.That(fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _), Is.True, $"number {n} should resolve");
+        }
+
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (ulong n = 1; n < 42; n++)
+        {
+            fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Blockhash_span_lookup_does_not_allocate([Values(true, false)] bool blockHashInState)
     {

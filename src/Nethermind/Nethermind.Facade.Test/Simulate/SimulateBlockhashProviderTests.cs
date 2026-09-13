@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -32,7 +33,7 @@ public class SimulateBlockhashProviderTests
         BlockHeader current = Build.A.BlockHeader.WithNumber(50).TestObject;
         inner.GetBlockhash(current, 40, Arg.Any<IReleaseSpec>()).Returns(innerResult);
 
-        SimulateBlockhashProvider sut = new(inner, blockTree);
+        SimulateBlockhashProvider sut = new(inner, blockTree, Substitute.For<IBlockhashStore>());
 
         Assert.That(sut.GetBlockhash(current, 40, Substitute.For<IReleaseSpec>()), Is.EqualTo(innerResult));
     }
@@ -47,7 +48,7 @@ public class SimulateBlockhashProviderTests
         blockTree.BestSuggestedHeader.Returns(bestSuggested);
         inner.GetBlockhash(bestSuggested, 100, Arg.Any<IReleaseSpec>()).Returns(TestItem.KeccakB);
 
-        SimulateBlockhashProvider sut = new(inner, blockTree);
+        SimulateBlockhashProvider sut = new(inner, blockTree, Substitute.For<IBlockhashStore>());
 
         // Requesting 150 (> best-known 100) clamps to (BestSuggestedHeader, BestKnownNumber).
         Assert.That(sut.GetBlockhash(Build.A.BlockHeader.WithNumber(151).TestObject, 150, Substitute.For<IReleaseSpec>()), Is.EqualTo(TestItem.KeccakB));

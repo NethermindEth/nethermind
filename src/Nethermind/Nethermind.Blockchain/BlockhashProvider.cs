@@ -28,7 +28,11 @@ namespace Nethermind.Blockchain
         private Hash256[]? _hashes;
         private long _prefetchVersion;
 
-        private const int StateHashCacheSize = 256;
+        /// <summary>Covers the whole EIP-2935 window (<see cref="Eip2935Constants.RingBufferSize"/> = 8191,
+        /// rounded to a power of two), so a contract sweeping BLOCKHASH across the full servable range takes
+        /// at most one miss per distinct number per block instead of conflict-missing on every call.
+        /// 8192 references = 64 KB per provider.</summary>
+        private const int StateHashCacheSize = 8192;
         private readonly CachedBlockhash?[] _stateHashCache = new CachedBlockhash?[StateHashCacheSize];
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
@@ -71,8 +75,11 @@ namespace Nethermind.Blockchain
 
         /// <summary>Serves EIP-2935 lookups from a per-block memo of what state already returned.</summary>
         /// <remarks>
-        /// The ring buffer is written once per block by the system call before any transaction runs, and no
-        /// transaction can write to it, so a resolved entry cannot change while the block executes. Entries
+        /// Gated by EIP-7709. The ring buffer is written once per block by the system call before any
+        /// transaction runs, and the canonical EIP-2935 contract only stores for SYSTEM_ADDRESS, so no
+        /// transaction can write to it — a chain pointing Eip2935ContractAddress at writable code would
+        /// invalidate this, as would serving one header's resolution to a different state (see
+        /// SimulateBlockhashProvider, which bypasses this memo for that reason). Entries
         /// carry the header they were resolved against and are matched by reference, so anything resolved for
         /// a different block simply misses rather than being served stale — there is no invalidation step to
         /// get wrong. Cached values come from state rather than from the block tree, which matters at the

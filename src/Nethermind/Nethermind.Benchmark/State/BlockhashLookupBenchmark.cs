@@ -31,6 +31,7 @@ public class BlockhashLookupBenchmark
     private BlockHeader _header = null!;
     private IReleaseSpec _spec = null!;
     private ulong _number;
+    private ulong[] _sweepNumbers = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -70,6 +71,19 @@ public class BlockhashLookupBenchmark
         worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, _spec);
         _store.ApplyBlockhashStateChanges(_header, _spec);
 
+        // Fill the ring for the whole chain so the sweep row has distinct servable numbers.
+        for (ulong k = 1; k < 42; k++)
+        {
+            _store.ApplyBlockhashStateChanges(tree.FindHeader(k, BlockTreeLookupOptions.None)!, _spec);
+        }
+
+        _sweepNumbers = new ulong[41];
+        for (int i = 0; i < _sweepNumbers.Length; i++)
+        {
+            _sweepNumbers[i] = (ulong)(i + 1);
+            _provider.TryGetBlockhash(_header, _sweepNumbers[i], _spec, out _);
+        }
+
         _provider.TryGetBlockhash(_header, _number, _spec, out _);
     }
 
@@ -95,6 +109,21 @@ public class BlockhashLookupBenchmark
     {
         int n = 0;
         for (int i = 0; i < OperationsPerInvoke; i++) n += _provider.TryGetBlockhash(_header, _number, _spec, out _) ? 1 : 0;
+        return n;
+    }
+
+    /// <summary>Distinct numbers per call — the miss-shape a BLOCKHASH sweep produces. Warmed in setup,
+    /// so this measures per-slot hits; the memo covers the full EIP-2935 window, so a sweep allocates at
+    /// most one entry per distinct number per block rather than conflict-missing.</summary>
+    [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
+    public int Memoized_DistinctNumbers()
+    {
+        int n = 0;
+        for (int i = 0; i < OperationsPerInvoke; i++)
+        {
+            n += _provider.TryGetBlockhash(_header, _sweepNumbers[i % _sweepNumbers.Length], _spec, out _) ? 1 : 0;
+        }
+
         return n;
     }
 }
