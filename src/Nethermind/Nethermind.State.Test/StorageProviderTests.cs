@@ -971,6 +971,8 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(storageValue30, Is.EqualTo(UInt256.Zero));
             provider.Get(readAfterClear, out UInt256 storageValue31);
             Assert.That(storageValue31, Is.EqualTo(UInt256.Zero));
+            provider.GetOriginal(in readAfterClear, out UInt256 originalAfterClear);
+            Assert.That(originalAfterClear, Is.EqualTo(UInt256.Zero));
 
             if (rollback == StorageClearRollback.ResetKeepingBlockChanges)
             {

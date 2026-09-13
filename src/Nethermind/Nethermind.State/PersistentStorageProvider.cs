@@ -822,7 +822,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 // Where we know the rest of the tree is empty
                 // we can say the value was found but is default
                 // rather than having to check the database
-                value = StorageChangeTrace.ZeroBytes;
                 exists = true;
             }
             return ref value;
@@ -1165,9 +1164,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private struct StorageChangeTrace
     {
-        public static readonly StorageChangeTrace _zeroBytes = new(UInt256.Zero, UInt256.Zero);
-        public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
-
         public StorageChangeTrace(in UInt256 before, in UInt256 after)
         {
             After = after;
