@@ -53,7 +53,7 @@ public class WarmStorageReadBenchmark
     [Params(true, false)]
     public bool UseFlat { get; set; }
 
-    private Env Create()
+    private Env Create(in StorageCell probe)
     {
         IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(
@@ -81,7 +81,9 @@ public class WarmStorageReadBenchmark
 
         IDisposable scope = worldState.BeginScope(baseBlock);
         // The measurement is meaningless against an empty root, so refuse to run rather than report it.
-        if (!worldState.Get(_unwritten).SequenceEqual(Value))
+        // The probe cell is a parameter so the guard cannot silently compare default(StorageCell) if the
+        // field assignments and Create calls are ever reordered.
+        if (!worldState.Get(in probe).SequenceEqual(Value))
         {
             throw new InvalidOperationException("The measurement scope does not see the seeded storage.");
         }
@@ -96,10 +98,10 @@ public class WarmStorageReadBenchmark
         _written = new StorageCell(TestItem.AddressA, (UInt256)99);
         _otherContractWritten = new StorageCell(TestItem.AddressB, (UInt256)1);
 
-        _cleanJournal = Create();
-        _dirtyJournal = Create();
-        _otherWritten = Create();
-        _alternating = Create();
+        _cleanJournal = Create(in _unwritten);
+        _dirtyJournal = Create(in _unwritten);
+        _otherWritten = Create(in _unwritten);
+        _alternating = Create(in _unwritten);
 
         // Same contract: the read cannot skip the journal, because this contract really has entries there.
         _dirtyJournal.WorldState.Set(_written, Value);

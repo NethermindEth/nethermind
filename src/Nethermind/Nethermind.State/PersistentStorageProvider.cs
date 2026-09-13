@@ -48,6 +48,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
+    /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
+    /// per block, and the journal-gate's safety rests on this ordering.</remarks>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowJournalNotEmpty()
+        => throw new InvalidOperationException("storage states must not be pooled while the write journal holds their cells");
+
     private void EndOriginalsRound()
     {
         _originalValues.ClearAndTrim();
@@ -369,7 +375,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </remarks>
     public void ClearStorageMap()
     {
-        Debug.Assert(_intraBlockCache.Count == 0, "storage states must not be pooled while the write journal holds their cells");
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
         _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
@@ -386,7 +392,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns>The changes; the caller owns the snapshot and must dispose it.</returns>
     internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
     {
-        Debug.Assert(_intraBlockCache.Count == 0, "storage states must not be pooled while the write journal holds their cells");
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
             storage.Value.BlockEndFate = FateOf(storage);
