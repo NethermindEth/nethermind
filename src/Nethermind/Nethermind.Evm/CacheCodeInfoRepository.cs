@@ -27,8 +27,9 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
     /// <remarks>
     /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
-    /// stores, so matching against the hash re-read from the world state costs no allocation and cannot
-    /// tear. Anything that changes an account's code — including a reverted deployment — produces a
+    /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
+    /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
+    /// body. Anything that changes an account's code — including a reverted deployment — produces a
     /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
     /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
     /// the every-lookup-through-the-world-state behaviour that mode requires.
