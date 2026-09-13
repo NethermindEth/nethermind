@@ -390,8 +390,9 @@ public partial class Metrics
     public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheEntries { get; } = new();
 
     [GaugeMetric]
-    [Description("Weighted budget of one per-block precompile cache partition; partitions are equal shares, and this stays 0 when precompile caching is disabled.")]
-    public static long PrecompileCachePartitionMaxBytes { get; set; }
+    [Description("Weighted byte budget of one precompile's per-block cache partition. Shares are equal for now. A precompile without a partition reports nothing, so nothing is reported at all while precompile caching is disabled.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCachePartitionMaxBytes { get; } = new();
 
     [GaugeMetric]
     [Description("Entries held by the surviving precompile result cache, which is shared by every precompile.")]

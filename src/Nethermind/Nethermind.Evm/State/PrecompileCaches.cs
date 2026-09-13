@@ -85,8 +85,6 @@ public sealed class PrecompileCaches
             precompile => new Partition(precompile.Name, partitionSize, _survivingCache)
         );
 
-        Metrics.PrecompileCachePartitionMaxBytes = precompiles.Count == 0 ? 0 : partitionSize;
-
         LogCacheBudget(precompiles.Count, partitionSize, maxBytes, logManager);
     }
 
@@ -282,6 +280,7 @@ public sealed class PrecompileCaches
             Metrics.PrecompileCacheAdds[(_name, RejectedFull)] = Volatile.Read(ref _rejectedFull);
             Metrics.PrecompileCacheAdds[(_name, RejectedDuplicate)] = Volatile.Read(ref _rejectedDuplicate);
             Metrics.PrecompileCacheAdds[(_name, RejectedLarge)] = Volatile.Read(ref _rejectedLarge);
+            Metrics.PrecompileCachePartitionMaxBytes[_name] = MaxBytes;
             Metrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
             Metrics.PrecompileCacheEntries[_name] = Count;
         }
