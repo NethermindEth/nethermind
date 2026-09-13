@@ -487,6 +487,96 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
     }
 
+    /// <summary>A transient write must not materialise the word: TSTORE is priced per call and can fill a block.</summary>
+    /// <remarks>
+    /// Both arms run after the undo log has grown and been reset, so its amortized growth is out of the
+    /// measurement and what is left is the per-write array. The array arm is measured in the same run, so
+    /// this fails loudly rather than passing vacuously if it ever stops allocating.
+    /// </remarks>
+    [Test]
+    public void Transient_write_does_not_materialise_the_word()
+    {
+        // Must stay <= CoreCollectionExtensions.DefaultTrimToCapacity: the warm-up does Iterations*4*2
+        // journaling writes, and if that pushes _undo past the trim bound, Reset() shrinks it and a larger
+        // measured loop would regrow the list, allocating for a reason unrelated to the write path.
+        const int Iterations = 1000;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 2);
+        byte[] word = new byte[32];
+        word[31] = 7;
+        byte[] otherWord = new byte[32];
+        otherWord[31] = 9;
+
+        // Alternate two words so no write takes the unchanged-value shortcut: every one journals, which
+        // is what grows the undo log past what either measured loop needs. The reset then leaves it
+        // empty with that capacity retained.
+        for (int i = 0; i < Iterations * 4; i++)
+        {
+            provider.SetTransientState(in cell, (ReadOnlySpan<byte>)word);
+            provider.SetTransientState(in cell, CopyOf(otherWord));
+        }
+
+        provider.Reset();
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            provider.SetTransientState(in cell, (ReadOnlySpan<byte>)((i & 1) == 0 ? word : otherWord));
+        }
+        long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        provider.Reset();
+        start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            provider.SetTransientState(in cell, CopyOf((i & 1) == 0 ? word : otherWord));
+        }
+        long arrayAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        Assert.That(arrayAllocated, Is.GreaterThan(Iterations * 8), "materialising the word should allocate per call");
+        Assert.That(spanAllocated, Is.Zero, $"span={spanAllocated} array={arrayAllocated}");
+
+        // The control arm has to materialise a word the way the opcode used to; NETH005 rejects ToArray here.
+        static byte[] CopyOf(byte[] source)
+        {
+            byte[] copy = new byte[source.Length];
+            source.CopyTo(copy, 0);
+            return copy;
+        }
+    }
+
+    /// <summary>One TSTORE-heavy transaction must not pin its worst-case tables for the provider's
+    /// lifetime: after a reset, both the value map and the undo log shrink back below the trim bound.</summary>
+    /// <remarks>White-box via reflection because the capacities are deliberately not part of any surface;
+    /// nothing else stops a refactor from dropping either trim.</remarks>
+    [Test]
+    public void Transient_reset_trims_the_tables_a_heavy_transaction_grew()
+    {
+        const int Cells = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1000;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        byte[] word = new byte[32];
+        word[31] = 7;
+        for (int i = 0; i < Cells; i++)
+        {
+            provider.SetTransientState(new StorageCell(ctx.Address1, (UInt256)i), (ReadOnlySpan<byte>)word);
+        }
+
+        provider.Reset();
+
+        object transientProvider = GetPrivateField(provider, "_transientStorageProvider");
+        int valuesCapacity = GetCollectionCapacity(GetPrivateField(transientProvider, "_values"));
+        int undoCapacity = GetCollectionCapacity(GetPrivateField(transientProvider, "_undo"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valuesCapacity, Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity), "value map");
+            Assert.That(undoCapacity, Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity), "undo log");
+        }
+    }
+
     /// <summary>
     /// Commit will reset transient state
     /// </summary>

@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 
 namespace Nethermind.State
@@ -11,15 +18,167 @@ namespace Nethermind.State
     /// EIP-1153 provides a transient store for contracts that doesn't persist
     /// storage across calls. Reverts will rollback any transient state changes.
     /// </summary>
-    internal sealed class TransientStorageProvider(ILogManager logManager) : PartialStorageProviderBase(logManager)
+    /// <remarks>
+    /// Values are held inline as 32-byte words rather than as <see cref="byte"/> arrays, so a TSTORE does
+    /// not allocate. This does not share <c>PartialStorageProviderBase</c> because transient storage needs
+    /// far less of it: there are no original values, no tree, nothing to commit, and no storage-clear
+    /// journal entries — every change is a plain overwrite, so an undo log of the previous word is enough
+    /// to restore any snapshot.
+    /// </remarks>
+    internal sealed class TransientStorageProvider(ILogManager logManager)
     {
+        private readonly Dictionary<StorageCell, Entry> _values = [];
+        private readonly List<Undo> _undo = new(Resettable.StartCapacity);
+        private readonly ILogger _logger = logManager.GetClassLogger<TransientStorageProvider>();
 
-        /// <summary>
-        /// Get the storage value at the specified storage cell
-        /// </summary>
-        /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at cell</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes : StorageTree.ZeroBytes;
+        /// <summary>A stored value: the word plus how many bytes of it were written.</summary>
+        /// <remarks>The length is kept so a read returns exactly the bytes that were stored. Callers other
+        /// than TSTORE may write fewer than 32, and the array this replaced round-tripped its own length.</remarks>
+        private struct Entry
+        {
+            public ValueHash256 Value;
+            public byte Length;
+        }
+
+        /// <summary>What a cell held before one write, so that write can be rolled back.</summary>
+        private readonly struct Undo(in StorageCell storageCell, in Entry previous, bool existed)
+        {
+            public readonly StorageCell StorageCell = storageCell;
+            public readonly Entry Previous = previous;
+            public readonly bool Existed = existed;
+        }
+
+        /// <summary>Gets the transient value at the cell, or a single zero byte when it was never written.</summary>
+        /// <remarks>The span points into the value table and is only valid until the next write, which is
+        /// all TLOAD needs — it pushes the word before anything else can run.</remarks>
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        {
+            ref Entry entry = ref CollectionsMarshal.GetValueRefOrNullRef(_values, storageCell);
+            if (Unsafe.IsNullRef(ref entry)) return StorageTree.ZeroBytes;
+
+            return MemoryMarshal
+                .CreateReadOnlySpan(ref Unsafe.As<ValueHash256, byte>(ref entry.Value), ValueHash256.MemorySize)
+                .Slice(ValueHash256.MemorySize - entry.Length);
+        }
+
+        public void Set(in StorageCell storageCell, byte[] newValue) => Set(in storageCell, (ReadOnlySpan<byte>)newValue);
+
+        public void Set(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
+        {
+            // Reachable from plugins through IWorldState, so fail with an actionable message rather than
+            // truncating the length byte in release.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(newValue.Length, ValueHash256.MemorySize);
+
+            Unsafe.SkipInit(out Entry entry);
+            entry.Length = (byte)newValue.Length;
+            if (newValue.Length == ValueHash256.MemorySize)
+            {
+                // TSTORE always pops a full word, so the hot path skips the zero-fill entirely.
+                newValue.CopyTo(entry.Value.BytesAsSpan);
+            }
+            else
+            {
+                entry.Value = default;
+                // Right-aligned, so the stored bytes read back unchanged.
+                newValue.CopyTo(entry.Value.BytesAsSpan[(ValueHash256.MemorySize - newValue.Length)..]);
+            }
+
+            Set(in storageCell, in entry);
+        }
+
+        private void Set(in StorageCell storageCell, in Entry entry)
+        {
+            // A zero word is indistinguishable from a cell that was never written, so store nothing at all.
+            // revm does the same. It matters for the set-then-clear shape a reentrancy guard produces: the
+            // table goes back to empty rather than filling with zeroes that still cost a lookup and a reset.
+            if (entry.Value == default)
+            {
+                ref Entry zeroed = ref CollectionsMarshal.GetValueRefOrNullRef(_values, storageCell);
+                if (Unsafe.IsNullRef(ref zeroed)) return;
+
+                _undo.Add(new Undo(in storageCell, zeroed, true));
+                _values.Remove(storageCell);
+                return;
+            }
+
+            ref Entry slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_values, storageCell, out bool exists);
+
+            // A write that changes nothing has nothing to roll back, and skipping it keeps the undo log
+            // from growing: a block that rewrites one transient slot would otherwise add an entry per
+            // write for a revert that could only restore what is already there. revm applies the same
+            // rule. The time saved is under a nanosecond — this is about the log, not the write.
+            if (exists && slot.Length == entry.Length && slot.Value == entry.Value) return;
+
+            _undo.Add(new Undo(in storageCell, exists ? slot : default, exists));
+            slot = entry;
+        }
+
+        /// <inheritdoc cref="PartialStorageProviderBase.TakeSnapshot"/>
+        /// <param name="newTransactionStart">Ignored; transient storage tracks no per-transaction originals.</param>
+        public int TakeSnapshot(bool newTransactionStart)
+        {
+            int position = _undo.Count - 1;
+            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
+            return position;
+        }
+
+        /// <inheritdoc cref="PartialStorageProviderBase.Restore"/>
+        public void Restore(int snapshot)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Restoring transient storage snapshot {snapshot}");
+
+            int currentPosition = _undo.Count - 1;
+            if (snapshot > currentPosition)
+            {
+                throw new InvalidOperationException($"{nameof(TransientStorageProvider)} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
+            }
+
+            Span<Undo> undo = CollectionsMarshal.AsSpan(_undo);
+            for (int i = currentPosition; i > snapshot; i--)
+            {
+                ref readonly Undo entry = ref undo[i];
+                if (entry.Existed)
+                {
+                    _values[entry.StorageCell] = entry.Previous;
+                }
+                else
+                {
+                    _values.Remove(entry.StorageCell);
+                }
+            }
+
+            CollectionsMarshal.SetCount(_undo, snapshot + 1);
+        }
+
+        /// <summary>Transient storage does not outlive the transaction, so committing discards it.</summary>
+        public void Commit(IStorageTracer tracer) => Reset();
+
+        public void Reset(bool resetBlockChanges = true)
+        {
+            if (_logger.IsTrace) _logger.Trace("Resetting storage");
+            _values.ClearAndTrim();
+            _undo.Clear();
+            // Bound the retained peak the same way _values is bounded: one TSTORE-heavy transaction must
+            // not pin its worst-case undo log for the provider's lifetime.
+            if (_undo.Capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity)
+            {
+                _undo.Capacity = Core.Collections.CollectionExtensions.DefaultTrimToCapacity;
+            }
+        }
+
+        /// <summary>Zeroes every cell of the address, revertibly.</summary>
+        /// <remarks><see cref="Dictionary{TKey,TValue}"/> supports removal during enumeration, and removal
+        /// cannot grow the table, so the zero-write is inlined rather than collected first.</remarks>
+        public void ClearStorage(Address address)
+        {
+            foreach (KeyValuePair<StorageCell, Entry> cell in _values)
+            {
+                if (cell.Key.Address == address)
+                {
+                    _undo.Add(new Undo(cell.Key, cell.Value, existed: true));
+                    _values.Remove(cell.Key);
+                }
+            }
+        }
     }
 }
