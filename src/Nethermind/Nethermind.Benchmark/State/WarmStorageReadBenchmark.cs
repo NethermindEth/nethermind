@@ -125,10 +125,12 @@ public class WarmStorageReadBenchmark
     [GlobalCleanup]
     public void Cleanup()
     {
-        _cleanJournal.Dispose();
-        _dirtyJournal.Dispose();
-        _otherWritten.Dispose();
-        _alternating.Dispose();
+        // Null-conditional: if a Create() guard fired mid-Setup, the later fields are still null and a
+        // bare Dispose here would replace the real "empty root" error with an NRE.
+        _cleanJournal?.Dispose();
+        _dirtyJournal?.Dispose();
+        _otherWritten?.Dispose();
+        _alternating?.Dispose();
     }
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
