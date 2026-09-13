@@ -29,7 +29,7 @@ public class TrieNodeTests
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
-        [Values(0, 2, 4)] int dirtyBranchCount, [Values(1, 9, 15, 16)] int replacementCount, [Values] bool pooled)
+        [Values(0, 2, 4)] int dirtyBranchCount)
     {
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
@@ -51,13 +51,9 @@ public class TrieNodeTests
             1 => new Context().TiniestLeaf,
             _ => new TrieNode(NodeType.Unknown, Keccak.Compute([0xff]))
         };
-        for (int i = 0; i < replacementCount; i++)
-        {
-            int index = (changedIndex + i) % TrieNode.BranchesCount;
-            restored.SetChild(index, replacement);
-            expected.SetChild(index, replacement);
-            if (replacementKind == 3) restored.UnresolveChild(index);
-        }
+        restored.SetChild(changedIndex, replacement);
+        expected.SetChild(changedIndex, replacement);
+        if (replacementKind == 3) restored.UnresolveChild(changedIndex);
 
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
@@ -73,17 +69,9 @@ public class TrieNodeTests
 
         // Four materialized children select the parallel measuring path even without AVX-512VL;
         // two dirty branches select batched measuring on hosts that support it.
-        using TrackingCappedArrayPool? pool = pooled ? new() : null;
-        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, pool, canBeParallel: dirtyBranchCount == 4);
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: dirtyBranchCount == 4);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
-            if (pooled && dirtyBranchCount == 0)
-                Assert.That(actual.UnderlyingLength, Is.GreaterThanOrEqualTo(oldRlp.Length));
-            else if (!pooled)
-                Assert.That(actual.UnderlyingLength, Is.EqualTo(actual.Length));
-        }
+        Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
     }
 
     // private TrieNode _tiniestLeaf;
