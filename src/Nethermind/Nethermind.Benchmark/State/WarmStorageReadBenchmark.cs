@@ -81,8 +81,8 @@ public class WarmStorageReadBenchmark
 
         IDisposable scope = worldState.BeginScope(baseBlock);
         // The measurement is meaningless against an empty root, so refuse to run rather than report it.
-        // The probe cell is a parameter so the guard cannot silently compare default(StorageCell) if the
-        // field assignments and Create calls are ever reordered.
+        // The probe cell is a parameter so each call site shows which value the guard checks, rather
+        // than the guard reaching for a field the caller has to remember to assign first.
         if (!worldState.Get(in probe).SequenceEqual(Value))
         {
             throw new InvalidOperationException("The measurement scope does not see the seeded storage.");

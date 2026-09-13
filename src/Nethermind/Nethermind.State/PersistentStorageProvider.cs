@@ -48,12 +48,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
-    /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
-    /// per block, and the journal-gate's safety rests on this ordering.</remarks>
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowJournalNotEmpty()
-        => throw new InvalidOperationException("storage states must not be pooled while the write journal holds their cells");
-
     private void EndOriginalsRound()
     {
         _originalValues.ClearAndTrim();
@@ -373,6 +367,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// detached its changes left an empty map behind, and its states belong to the snapshot, which returns them once
     /// written; that is also what keeps a state from being returned twice.
     /// </remarks>
+    /// <summary>Rejects pooling a contract state whose cells the write journal still holds.</summary>
+    /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
+    /// per block, and the journal gate's safety rests on this ordering.</remarks>
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowJournalNotEmpty()
+        => throw new InvalidOperationException("storage states must not be pooled while the write journal holds their cells");
+
     public void ClearStorageMap()
     {
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
@@ -945,6 +946,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// </remarks>
         public bool HasJournalledWrites => _hasJournalledWrites;
 
+        /// <summary>Marks that this contract has journalled at least one write this block.</summary>
         /// <remarks>Also runs off the block thread: the sequential BAL apply executes as iteration 0 of the
         /// parallel executor's loop, whose join publishes the flag before the block thread reads it.</remarks>
         public void MarkJournalled() => _hasJournalledWrites = true;
