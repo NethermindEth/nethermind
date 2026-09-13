@@ -57,16 +57,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private byte[]? _lastOriginalValue;
     private uint _lastOriginalRound;
 
-    /// <summary>Drops the originals-probe memo and releases the value it pinned.</summary>
+    /// <summary>Drops the originals-probe memo and releases the value and address it pinned.</summary>
     private void ForgetLastOriginal()
     {
         _lastOriginalRound = 0;
+        _lastOriginalCell = default;
         _lastOriginalValue = null;
     }
 
     private void EndOriginalsRound()
     {
         _originalValues.ClearAndTrim();
+        ForgetLastOriginal();
         if (++_originalsRound == 0) _originalsRound = 1;
     }
 
@@ -835,6 +837,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _address = address;
             _provider = provider;
+            ForgetLastRead();
         }
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
@@ -980,10 +983,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         /// <remarks>
-        /// A loop over one slot lands here every iteration with the same index. Written cells never reach
-        /// this method — the journal answers those first — so a value here cannot change under us while the
-        /// round holds, and the round is part of the key so the first read of each round still captures its
-        /// original. Everything that can rewrite <c>BlockChange</c> drops the memo.
+        /// A loop over one slot lands here every iteration with the same index. The memo mirrors
+        /// <c>BlockChange</c>, and everything that rewrites <c>BlockChange</c> drops it, so the memoized
+        /// value cannot go stale; the round is part of the key, so the first read of each round still
+        /// captures its original.
         /// </remarks>
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
@@ -1032,6 +1035,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
+            // Rewrites BlockChange below, and the commit that normally bumps the round first returns
+            // early when nothing was read or written - so drop the memo here rather than rely on that.
+            ForgetLastRead();
             EnsureStorageTree();
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
 

@@ -921,6 +921,27 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>A destroy must drop the read memo with no commit behind it to bump the round.</summary>
+    /// <remarks>Every other destroy test commits between the destroy and the re-read, and that commit's
+    /// round bump invalidates the memo on its own — so they all pass with the destroy's own invalidation
+    /// deleted. This sequence is the one that does not.</remarks>
+    [Test]
+    public void Destroy_without_a_commit_is_not_answered_from_the_read_memo()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]), "precondition: the read arms the memo");
+
+        provider.MarkStorageDestroyed(ctx.Address1);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
     [Test]
     public void Destroy_only_round_does_not_leak_into_next_transaction()
     {
