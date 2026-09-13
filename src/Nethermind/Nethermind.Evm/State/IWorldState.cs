@@ -58,8 +58,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
+    /// <remarks>The span may point into the implementation's own storage, so it is valid only until the
+    /// next transient write, restore or reset. Callers that keep the value past one of those must copy it.
+    /// A cell that was never written reads back as a single zero byte rather than a zero word.</remarks>
     /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at cell</returns>
+    /// <returns>Value at cell, right-aligned in the word and trimmed to the bytes that were stored</returns>
     ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
 
     /// <summary>

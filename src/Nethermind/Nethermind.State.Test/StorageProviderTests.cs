@@ -487,6 +487,122 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
     }
 
+    /// <summary>A write of zero stores nothing, and that removal must still be revertible.</summary>
+    /// <remarks>The shortcut is the set-then-clear shape a reentrancy guard produces. Deleting its undo
+    /// append leaves the cell reading zero after the revert — the guard would stay disarmed.</remarks>
+    [Test]
+    public void Transient_zero_write_is_revertible()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, _values[1]);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(cell, _values[0]);
+        Assert.That(provider.GetTransientState(cell).IsZero(), Is.True, "precondition: the zero write took effect");
+
+        provider.Restore(snapshot);
+
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    /// <summary>A rewrite of the value already there journals nothing, and must not cost a later revert.</summary>
+    /// <remarks>The snapshot below is taken after the deduped write, so it names the same undo position as
+    /// the one before it — an off-by-one in the shortcut would restore to the wrong side of the first write.</remarks>
+    [Test]
+    public void Transient_unchanged_write_does_not_break_a_later_revert()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, _values[1]);
+        provider.SetTransientState(cell, _values[1]);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(cell, _values[2]);
+
+        provider.Restore(snapshot);
+
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    /// <summary>Values differing only in length are different values, so neither write may be deduped.</summary>
+    [Test]
+    public void Transient_write_of_a_shorter_value_with_the_same_tail_is_visible()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        byte[] word = new byte[32];
+        word[31] = 1;
+
+        provider.SetTransientState(cell, word);
+        provider.SetTransientState(cell, _values[1]);
+
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[1]));
+    }
+
+    /// <summary>Zeroing an address's transient cells must be revertible, like any other write.</summary>
+    [Test]
+    public void Transient_clear_storage_is_revertible()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell second = new(ctx.Address1, 2);
+        StorageCell untouched = new(ctx.Address2, 1);
+
+        provider.SetTransientState(first, _values[1]);
+        provider.SetTransientState(second, _values[2]);
+        provider.SetTransientState(untouched, _values[3]);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.ClearStorage(ctx.Address1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetTransientState(first).IsZero(), Is.True);
+            Assert.That(provider.GetTransientState(second).IsZero(), Is.True);
+            Assert.That(provider.GetTransientState(untouched).ToArray(), Is.EqualTo(_values[3]), "another address is untouched");
+        }
+
+        provider.Restore(snapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetTransientState(first).ToArray(), Is.EqualTo(_values[1]));
+            Assert.That(provider.GetTransientState(second).ToArray(), Is.EqualTo(_values[2]));
+        }
+    }
+
+    /// <summary>Nested reverts over the two shortcuts must unwind in order, innermost first.</summary>
+    /// <remarks>The inner frame rewrites the value it was handed and then zeroes it; the outer one writes
+    /// a fresh value. Restoring each in turn walks the undo log across both shortcuts in one sequence.</remarks>
+    [Test]
+    public void Transient_nested_restores_unwind_in_order()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, _values[1]);
+        Snapshot outer = provider.TakeSnapshot();
+
+        provider.SetTransientState(cell, _values[2]);
+        Snapshot inner = provider.TakeSnapshot();
+
+        provider.SetTransientState(cell, _values[2]);
+        provider.SetTransientState(cell, _values[0]);
+        Assert.That(provider.GetTransientState(cell).IsZero(), Is.True);
+
+        provider.Restore(inner);
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[2]), "the inner frame reverted");
+
+        provider.Restore(outer);
+        Assert.That(provider.GetTransientState(cell).ToArray(), Is.EqualTo(_values[1]), "the outer frame reverted");
+    }
+
     /// <summary>A transient write must not materialise the word: TSTORE is priced per call and can fill a block.</summary>
     /// <remarks>
     /// Both arms run after the undo log has grown and been reset, so its amortized growth is out of the
