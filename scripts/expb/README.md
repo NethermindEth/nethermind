@@ -126,16 +126,17 @@ artifacts remain separate from ordinary timing samples. A hard runner loss can
 still prevent GitHub's artifact upload; a local log is not a durable off-runner
 checkpoint until uploaded.
 
-The `expb-campaign-<run-id>` artifact contains `campaign.json`, `summary.md`,
-and a directory for each image/repetition. Each sample includes the timestamped
-combined log, cleaned log, rendered config, `metrics.env`, `metadata.json`,
-and matching exception/invalid-block/severe-signal lines. Campaign files live on
-the benchmark data volume under `campaigns/<run-id>/<attempt>`. Console lines
-are capped at 4,096 characters; artifacts preserve the full lines. Preflight
-requires 2 GiB free on the root filesystem and 10 GiB on the data volume.
-A failed or incomplete compute warmup skips further repetitions of that image
-after verified cleanup, while retaining the failure in the campaign result.
-Single-mode runs
+The `expb-campaign-<run-id>` artifact contains the campaign record, a simple
+mean/CV summary, and a directory for each attempted image/repetition. Each
+sample retains its full combined EXPB/k6/Nethermind log, rendered configuration
+and result metadata. Campaign files live on the benchmark data volume under
+`campaigns/<run-id>/<attempt>`. The console shows progress and bounded diagnostics;
+full output remains in the artifact. Preflight requires 2 GiB free on the root
+filesystem and 10 GiB on the data volume.
+
+The campaign stops on its first failed sample, including incomplete warmup or
+unverified cleanup. EXPB owns container shutdown and snapshot teardown; the
+small driver verifies cleanup before starting the next sample. Single-mode runs
 also upload a logs artifact for each payload set and repetition.
 
 For the current Fusaka corpus, the runner configuration replays eleven entries
