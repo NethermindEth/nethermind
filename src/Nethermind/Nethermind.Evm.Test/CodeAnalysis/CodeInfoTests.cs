@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Linq;
 using System.Runtime.Intrinsics;
@@ -19,34 +20,67 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Repeat(10)]
         public async Task Concurrent_analysis_publishes_complete_bitmap([Values(64, 32768)] int length)
         {
+            const int Workers = 4;
+            const int GroupSize = 4;
+            const int JumpDestOffset = 2;
             byte[] code = new byte[length];
-            for (int i = 0; i < length; i += 4)
+            for (int i = 0; i <= length - GroupSize; i += GroupSize)
             {
                 code[i] = (byte)Instruction.PUSH1;
                 code[i + 1] = (byte)Instruction.JUMPDEST;
-                code[i + 2] = (byte)Instruction.JUMPDEST;
+                code[i + JumpDestOffset] = (byte)Instruction.JUMPDEST;
             }
-            JumpDestinationAnalyzer analyzer = new(new CodeInfo(code));
-            using Barrier start = new(4);
-            Task[] workers = new Task[4];
-            for (int worker = 0; worker < workers.Length; worker++)
+            TaskCompletionSource analysisStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using ManualResetEventSlim continueAnalysis = new(false);
+            using GatedCodeMemory memory = new(code, () =>
             {
-                bool analyze = worker == 0;
-                workers[worker] = Task.Factory.StartNew(() =>
+                // Execute claims _analysisComplete before requesting the code span.
+                analysisStarted.TrySetResult();
+                continueAnalysis.Wait();
+            });
+            JumpDestinationAnalyzer analyzer = new(new CodeInfo(memory.Memory));
+            using Barrier start = new(Workers);
+            Task[] workers = new Task[Workers];
+            Array.Fill(workers, Task.CompletedTask);
+            workers[0] = Task.Factory.StartNew(analyzer.Execute,
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            try
+            {
+                await analysisStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                for (int worker = 1; worker < workers.Length; worker++)
                 {
-                    start.SignalAndWait();
-                    if (analyze)
+                    workers[worker] = Task.Factory.StartNew(() =>
                     {
-                        analyzer.Execute();
-                    }
-                    else
-                    {
-                        for (int offset = 0; offset < length; offset++)
-                            Assert.That(analyzer.ValidateJump(offset), Is.EqualTo(offset % 4 == 2), $"offset {offset}");
-                    }
-                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                        start.SignalAndWait();
+                        int mismatch = -1;
+                        for (int offset = 0; offset < length && mismatch < 0; offset++)
+                        {
+                            bool expected = offset < length - length % GroupSize && offset % GroupSize == JumpDestOffset;
+                            if (analyzer.ValidateJump(offset) != expected) mismatch = offset;
+                        }
+                        Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
+                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                }
+                start.SignalAndWait();
             }
-            await Task.WhenAll(workers);
+            finally
+            {
+                continueAnalysis.Set();
+                await Task.WhenAll(workers);
+            }
+        }
+
+        private sealed class GatedCodeMemory(byte[] code, Action beforeRead) : MemoryManager<byte>
+        {
+            public override Memory<byte> Memory => CreateMemory(code.Length);
+            public override Span<byte> GetSpan()
+            {
+                beforeRead();
+                return code;
+            }
+            public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+            public override void Unpin() { }
+            protected override void Dispose(bool disposing) { }
         }
 
         [TestCase(-1, false)]

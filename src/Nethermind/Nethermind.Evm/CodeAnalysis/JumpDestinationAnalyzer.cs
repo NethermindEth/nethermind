@@ -29,7 +29,8 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
     /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
     internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
-    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
+    // Fast-path readers must acquire the initialized bitmap without observing _analysisComplete.
+    private volatile long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
@@ -63,6 +64,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
         if (previous is ManualResetEventSlim resetEvent)
         {
+            // Bound work at the caller's priority to non-yielding spins before the priority-dropping wait.
             SpinWait spinWait = default;
             while (true)
             {
