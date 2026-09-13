@@ -97,7 +97,27 @@ public class BlockProcessingBenchmark
         }
     }
 
-    private static readonly IReleaseSpec Spec = Osaka.Instance;
+    /// <summary>The fork the whole scenario set runs under.</summary>
+    /// <remarks>Amsterdam turns on EIP-7928 block access lists, which decorate every state read. That layer
+    /// is what the ethpandaops bal-full suite exercises and what an Osaka-only benchmark cannot see.
+    /// <para>Caveat on which BAL path this measures: the scenario blocks carry no supplied
+    /// <see cref="Block.BlockAccessList"/>, so <c>BlockAccessListManager</c> takes the <em>producer</em>
+    /// path — sequential execution, no read pre-warming, plus a per-block RLP encode and Keccak of the
+    /// generated list. The bal-full rig measures the <em>validator</em> path (parallel, prefetched, no
+    /// encode/hash). The BAL decoration cost per read is common to both; the parallelism, warming and
+    /// encode/hash are not, so read the Amsterdam column as the decorated-read producer shape rather than
+    /// as the rig's validator shape. Flipping onto the validator path is feasible — attach each block's
+    /// generated BAL (the header hash is a sync-layer check, not on the processing path) — and is left as a
+    /// follow-up because it changes what the arm measures rather than because anything blocks it.</para></remarks>
+    [Params("Osaka", "Amsterdam")]
+    public string Fork { get; set; } = "Osaka";
+
+    private IReleaseSpec Spec => Fork switch
+    {
+        "Osaka" => Osaka.Instance,
+        "Amsterdam" => Amsterdam.Instance,
+        _ => throw new ArgumentOutOfRangeException(nameof(Fork), Fork, "Unmapped fork - BDN would silently label a wrong spec."),
+    };
 
     private static readonly byte[] ContractCode = Prepare.EvmCode
         .PushData(0x01)
@@ -106,6 +126,249 @@ public class BlockProcessingBenchmark
 
     // Minimal bytecode (STOP) for system contract stubs
     private static readonly byte[] StopCode = [0x00];
+
+    /// <summary>How many times the SLOAD scenario reads the same slot per call.</summary>
+    private const int SloadsPerCall = 2000;
+
+    /// <summary>Home of the SLOAD loop. Deliberately not <see cref="TestItem.AddressD"/>:
+    /// <see cref="SampleAccessList"/> names it, and merely creating it would make the pre-warmer load
+    /// its declared slots for the pre-existing access-list scenarios (the trigger is existence, not
+    /// code or storage).</summary>
+    private static readonly Address SloadCallerAddress = new("0x00000000000000000000000000000000000000ad");
+
+    /// <summary>Recipient of every transfer and access-list tx. Seeded (non-zero, so not EIP-161-empty)
+    /// because a real transfer overwhelmingly targets an existing account; otherwise the first tx of each
+    /// block pays EIP-8037's ~183k NEW_ACCOUNT state charge and OOGs on Amsterdam. Deliberately outside
+    /// <see cref="SampleAccessList"/>: an address that exists makes the pre-warmer load its declared
+    /// slots, which would change the pre-existing AccessList_50 and MixedBlock numbers. Seeding it does
+    /// shift the transfer-shaped series (SingleTransfer/Transfers_50/Transfers_200/Eip1559_200/MixedBlock)
+    /// slightly — the recipient is now a leaf update and a warm read rather than a fresh insert — which is
+    /// the more mainnet-like shape and is unavoidable if Amsterdam is to run at all.</summary>
+    private static readonly Address TransferTargetAddress = new("0x00000000000000000000000000000000000000ba");
+
+    /// <summary>Reads one warm slot over and over, the shape of the sload_same_key benchmark.</summary>
+    private static readonly byte[] SloadSameKeyCode = BuildSloadSameKeyCode();
+
+    /// <summary>The same loop without the SLOAD, so subtracting isolates what the read itself costs.</summary>
+    private static readonly byte[] PushPopOnlyCode = BuildPushPopOnlyCode();
+
+    private static byte[] BuildPushPopOnlyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(0).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    /// <summary>Same loop with TLOAD: no access-list check and no persistent storage provider —
+    /// so the difference against the SLOAD loop isolates those two layers.</summary>
+    private static readonly byte[] TloadSameKeyCode = BuildTloadSameKeyCode();
+
+    private static byte[] BuildTloadSameKeyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(0).Op(Instruction.TLOAD).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    /// <summary>Queries one external account's balance repeatedly, the ext_account_query_warm shape.</summary>
+    private static readonly Address BalanceCallerAddress = new("0x00000000000000000000000000000000000000aa");
+
+    private static readonly byte[] BalanceSameAddressCode = BuildBalanceSameAddressCode();
+
+    private static byte[] BuildBalanceSameAddressCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(TestItem.AddressB).Op(Instruction.BALANCE).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address ExtCodeSizeCallerAddress = new("0x00000000000000000000000000000000000000bb");
+
+    /// <summary>EXTCODESIZE on one account repeatedly; POP follows so the peephole path cannot fire.</summary>
+    private static readonly byte[] ExtCodeSizeSameAddressCode = BuildExtCodeSizeCode();
+
+    private static byte[] BuildExtCodeSizeCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(TestItem.AddressB).Op(Instruction.EXTCODESIZE).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address ExtCodeHashCallerAddress = new("0x00000000000000000000000000000000000000cc");
+
+    /// <summary>EXTCODEHASH on one account with code, the ext_account_query_warm shape.</summary>
+    private static readonly byte[] ExtCodeHashSameAddressCode = BuildExtCodeHashCode();
+
+    private static byte[] BuildExtCodeHashCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(TestItem.AddressB).Op(Instruction.EXTCODEHASH).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address CallCallerAddress = new("0x00000000000000000000000000000000000000dd");
+
+    /// <summary>STATICCALL to one account repeatedly, the CALL half of ext_account_query_warm.</summary>
+    /// <remarks>Fewer iterations than the single-opcode loops, since a call frame is far more code and
+    /// gas per step. (Code size is no constraint here: seeding goes through <c>InsertCode</c>, which
+    /// bypasses the deploy-time EIP-170 limit — the single-opcode loops already exceed it.)</remarks>
+    private const int CallsPerCall = 400;
+
+    private static readonly byte[] StaticCallSameAddressCode = BuildStaticCallCode();
+
+    private static byte[] BuildStaticCallCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CallsPerCall; i++)
+        {
+            // STATICCALL takes gas, address, argsOffset, argsLength, retOffset, retLength.
+            code = code
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressB)
+                .PushData(1000)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address EoaCallCallerAddress = new("0x00000000000000000000000000000000000000ee");
+
+    /// <summary>An account with no code, so a call to it takes the empty-account fast path.</summary>
+    private static readonly Address EoaTargetAddress = new("0x00000000000000000000000000000000000000ef");
+
+    /// <summary>STATICCALL to a codeless account: identical opcode work, but no call frame is built.</summary>
+    /// <remarks>Subtracting this from <see cref="StaticCall_SameAddress"/> isolates what a frame costs.</remarks>
+    private static readonly byte[] StaticCallEoaCode = BuildStaticCallEoaCode();
+
+    private static byte[] BuildStaticCallEoaCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CallsPerCall; i++)
+        {
+            code = code
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(EoaTargetAddress)
+                .PushData(1000)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address PrecompileCallCallerAddress = new("0x00000000000000000000000000000000000000fa");
+
+    /// <summary>STATICCALL to the identity precompile with no input.</summary>
+    /// <remarks>STATICCALL to a precompile takes the inline path, which runs the callee without building a
+    /// frame or suspending to the outer dispatch loop. Against <see cref="StaticCall_SameAddress"/> that
+    /// isolates what the frame round trip costs.</remarks>
+    private static readonly byte[] StaticCallPrecompileCode = BuildStaticCallPrecompileCode();
+
+    private static byte[] BuildStaticCallPrecompileCode()
+    {
+        Address identity = new("0x0000000000000000000000000000000000000004");
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CallsPerCall; i++)
+        {
+            code = code
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(identity)
+                .PushData(1000)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address SstoreCallerAddress = new("0x00000000000000000000000000000000000000ab");
+
+    /// <summary>Writes alternating values to one slot, so every write after the first is a dirty
+    /// transition — the shape is fork-independent even where the write's price is not.</summary>
+    private static readonly byte[] SstoreDirtyCode = BuildSstoreDirtyCode();
+
+    private static byte[] BuildSstoreDirtyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData((i & 1) == 0 ? 7 : 9).PushData(0).Op(Instruction.SSTORE);
+        }
+
+        // Restore the seeded value so every transaction starts from the same EIP-2200 original.
+        // Without this, the slot ends at 9 and the next transaction's alternating writes swing
+        // around their own original, turning every other write into a fresh clean SSTORE — which
+        // multiplies the gas ~12x and quietly turned transactions 2..10 into out-of-gas burns.
+        return code.PushData(5).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+    }
+
+    private static readonly Address Create2CallerAddress = new("0x00000000000000000000000000000000000000ac");
+
+    /// <summary>How many CREATE2s the create scenario performs per call.</summary>
+    /// <remarks>One transaction of 50: distinct salts keep the addresses collision-free within the block
+    /// (a second tx would recompute the same addresses and every create would collide), and one tx is
+    /// below the pre-warmer's 3-transaction trigger, so this scenario deliberately runs unwarmed. The
+    /// 16M gas limit is sized for Amsterdam, where EIP-8037 state gas makes an empty-initcode CREATE2
+    /// ~195k gas against Osaka's ~32k (50 creates ≈ 9.8M) — a smaller budget OOGs silently under
+    /// NoValidation. It is deliberately kept under EIP-7825's 16,777,216 per-tx cap: a larger limit is
+    /// invalid on Osaka and, on Amsterdam, would route the creates through the state reservoir instead of
+    /// the spill path every other scenario uses.</remarks>
+    private const int CreatesPerCall = 50;
+
+    /// <summary>CREATE2 of an empty contract followed by an immediate query of the created address,
+    /// the create2_immediate_access shape.</summary>
+    private static readonly byte[] Create2ImmediateAccessCode = BuildCreate2ImmediateAccessCode();
+
+    private static byte[] BuildCreate2ImmediateAccessCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < CreatesPerCall; i++)
+        {
+            // CREATE2 takes value, offset, length, salt; empty initcode deploys an empty contract.
+            code = code
+                .PushData(i)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.CREATE2)
+                .Op(Instruction.EXTCODESIZE)
+                .Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static byte[] BuildSloadSameKeyCode()
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < SloadsPerCall; i++)
+        {
+            code = code.PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP);
+        }
+        return code.Op(Instruction.STOP).Done;
+    }
 
     private static readonly AccessList SampleAccessList = new AccessList.Builder()
         .AddAddress(TestItem.AddressC)
@@ -138,6 +401,18 @@ public class BlockProcessingBenchmark
     private Block _accessList50Block = null!;
     private Block _contractDeploy10Block = null!;
     private Block _contractCall200Block = null!;
+    private Block _sloadSameKeyBlock = null!;
+    private Block _sloadSameKeyNoPrewarmBlock = null!;
+    private Block _pushPopOnlyBlock = null!;
+    private Block _tloadSameKeyBlock = null!;
+    private Block _balanceSameAddressBlock = null!;
+    private Block _extCodeSizeBlock = null!;
+    private Block _extCodeHashBlock = null!;
+    private Block _staticCallBlock = null!;
+    private Block _staticCallEoaBlock = null!;
+    private Block _staticCallPrecompileBlock = null!;
+    private Block _sstoreDirtyBlock = null!;
+    private Block _create2Block = null!;
     private Block _mixedBlock = null!;
 
     private BlockHeader _header = null!;
@@ -168,6 +443,18 @@ public class BlockProcessingBenchmark
         _accessList50Block = BuildBlock(BuildAccessListTxs(50, 0));
         _contractDeploy10Block = BuildBlock(BuildContractDeploys(10, 0));
         _contractCall200Block = BuildBlock(BuildContractCalls(200, 0));
+        _sloadSameKeyBlock = BuildBlock(BuildSloadCalls(10, 0));
+        _sloadSameKeyNoPrewarmBlock = BuildBlock(BuildSloadCalls(2, 0));
+        _pushPopOnlyBlock = BuildBlock(BuildCallsTo(TestItem.AddressE, 10, 0));
+        _tloadSameKeyBlock = BuildBlock(BuildCallsTo(TestItem.AddressF, 10, 0));
+        _balanceSameAddressBlock = BuildBlock(BuildCallsTo(BalanceCallerAddress, 10, 0));
+        _extCodeSizeBlock = BuildBlock(BuildCallsTo(ExtCodeSizeCallerAddress, 10, 0));
+        _extCodeHashBlock = BuildBlock(BuildCallsTo(ExtCodeHashCallerAddress, 10, 0));
+        _staticCallBlock = BuildBlock(BuildCallsTo(CallCallerAddress, 10, 0));
+        _staticCallEoaBlock = BuildBlock(BuildCallsTo(EoaCallCallerAddress, 10, 0));
+        _staticCallPrecompileBlock = BuildBlock(BuildCallsTo(PrecompileCallCallerAddress, 10, 0));
+        _sstoreDirtyBlock = BuildBlock(BuildCallsTo(SstoreCallerAddress, 10, 0));
+        _create2Block = BuildBlock(BuildCallsTo(Create2CallerAddress, 1, 0, gasLimit: 16_000_000));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
@@ -183,10 +470,10 @@ public class BlockProcessingBenchmark
 
         // Build DI container using standard modules instead of hand-wiring.
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
-        // with TestSpecProvider(Osaka.Instance) and in-memory databases.
+        // with TestSpecProvider(Spec) and in-memory databases.
         // Includes PrewarmerModule (via NethermindModule) for block cache pre-warming.
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(Osaka.Instance))
+            .AddModule(new TestNethermindModule(Spec))
             .Build();
 
         // Single world state — BranchProcessor.Process() manages scope internally,
@@ -214,10 +501,54 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
 
+            stateProvider.CreateAccount(TransferTargetAddress, UInt256.One);
+
+            stateProvider.CreateAccount(SloadCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(SloadCallerAddress, SloadSameKeyCode, Spec);
+            stateProvider.Set(new StorageCell(SloadCallerAddress, UInt256.Zero), [0x07]);
+
+            stateProvider.CreateAccount(TestItem.AddressE, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressE, PushPopOnlyCode, Spec);
+
+            stateProvider.CreateAccount(TestItem.AddressF, UInt256.Zero);
+            stateProvider.InsertCode(TestItem.AddressF, TloadSameKeyCode, Spec);
+
+            stateProvider.CreateAccount(BalanceCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(BalanceCallerAddress, BalanceSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(SstoreCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(SstoreCallerAddress, SstoreDirtyCode, Spec);
+            stateProvider.Set(new StorageCell(SstoreCallerAddress, UInt256.Zero), [0x05]);
+
+            stateProvider.CreateAccount(Create2CallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(Create2CallerAddress, Create2ImmediateAccessCode, Spec);
+
+            stateProvider.CreateAccount(PrecompileCallCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(PrecompileCallCallerAddress, StaticCallPrecompileCode, Spec);
+
+            stateProvider.CreateAccount(EoaTargetAddress, UInt256.One);
+            stateProvider.CreateAccount(EoaCallCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(EoaCallCallerAddress, StaticCallEoaCode, Spec);
+
+            stateProvider.CreateAccount(CallCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(CallCallerAddress, StaticCallSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(ExtCodeHashCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(ExtCodeHashCallerAddress, ExtCodeHashSameAddressCode, Spec);
+
+            stateProvider.CreateAccount(ExtCodeSizeCallerAddress, UInt256.Zero);
+            stateProvider.InsertCode(ExtCodeSizeCallerAddress, ExtCodeSizeSameAddressCode, Spec);
+
             stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, StopCode, Spec);
             stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, UInt256.Zero);
             stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, StopCode, Spec);
+
+            // Amsterdam reads two more system contracts at the end of every block.
+            stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, StopCode, Spec);
+            stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, UInt256.Zero);
+            stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, StopCode, Spec);
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
@@ -230,6 +561,39 @@ public class BlockProcessingBenchmark
         }
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
+
+        VerifyScenariosExecute();
+    }
+
+    /// <summary>Refuses to benchmark a failed execution.</summary>
+    /// <remarks>Everything runs under <see cref="ProcessingOptions.NoValidation"/>, where a failed
+    /// transaction still produces a number — silently, as fork repricing has already demonstrated on
+    /// several scenarios. Receipt status is exact, so it also catches reverts and partial failures in a
+    /// heterogeneous block, which an aggregate gas heuristic cannot. (A CREATE2 collision would not fail
+    /// the transaction — the outer frame survives — so the create scenario excludes it by construction:
+    /// distinct salts, one transaction, the same parent root every run.)</remarks>
+    private void VerifyScenariosExecute()
+    {
+        foreach (Block block in (Block[])[
+            _singleTransferBlock, _transfers50Block, _transfers200Block, _eip1559_200Block,
+            _accessList50Block, _contractDeploy10Block, _contractCall200Block,
+            _sloadSameKeyBlock, _sloadSameKeyNoPrewarmBlock, _pushPopOnlyBlock, _tloadSameKeyBlock,
+            _balanceSameAddressBlock, _extCodeSizeBlock, _extCodeHashBlock,
+            _staticCallBlock, _staticCallEoaBlock, _staticCallPrecompileBlock,
+            _sstoreDirtyBlock, _create2Block, _mixedBlock])
+        {
+            BlockReceiptsTracer tracer = new();
+            _branchProcessor.Process(_parentHeader, [block], ProcessingOptions.NoValidation, tracer);
+
+            foreach (TxReceipt receipt in tracer.TxReceipts)
+            {
+                if (receipt.StatusCode != StatusCode.Success)
+                {
+                    throw new InvalidOperationException(
+                        $"Scenario transaction to {receipt.Recipient?.ToString() ?? "create"} failed under {Fork} ({receipt.Error}) - the benchmark number would be meaningless.");
+                }
+            }
+        }
     }
 
     [GlobalCleanup]
@@ -311,6 +675,131 @@ public class BlockProcessingBenchmark
         return result;
     }
 
+    /// <summary>20,000 warm reads of one slot, so the per-SLOAD cost is the whole measurement.</summary>
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Sload_SameKey()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_sloadSameKeyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    /// <summary>The same reads in two transactions, which is under the pre-warmer's 3-transaction trigger.</summary>
+    /// <remarks>Both variants are normalised by their own read count, and the fixed per-block cost is
+    /// amortised over fewer reads here, which biases against this one.</remarks>
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Sload_SameKey_NoPrewarm()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_sloadSameKeyNoPrewarmBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    /// <summary>The control for <see cref="Sload_SameKey"/>: identical loop, no SLOAD.</summary>
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] PushPop_Only()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_pushPopOnlyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Tload_SameKey()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_tloadSameKeyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Balance_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_balanceSameAddressBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] ExtCodeSize_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_extCodeSizeBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] ExtCodeHash_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_extCodeHashBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] StaticCall_SameAddress()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_staticCallBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] StaticCall_ToEoa()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_staticCallEoaBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] StaticCall_ToPrecompile()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_staticCallPrecompileBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Sstore_DirtyTransitions()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_sstoreDirtyBlock],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
+    [Benchmark(OperationsPerInvoke = N_SMALL)]
+    public Block[] Create2_ImmediateAccess()
+    {
+        Block[] result = null!;
+        for (int i = 0; i < N_SMALL; i++)
+            result = _branchProcessor.Process(_parentHeader, [_create2Block],
+                ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        return result;
+    }
+
     [Benchmark(OperationsPerInvoke = N_SMALL)]
     public Block[] ContractCall_200()
     {
@@ -348,7 +837,7 @@ public class BlockProcessingBenchmark
         {
             txs[i] = Build.A.Transaction
                 .WithNonce(startNonce + (ulong)i)
-                .WithTo(TestItem.AddressC)
+                .WithTo(TransferTargetAddress)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
                 .WithGasPrice(2.GWei)
@@ -366,7 +855,7 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithNonce(startNonce + (ulong)i)
-                .WithTo(TestItem.AddressC)
+                .WithTo(TransferTargetAddress)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
                 .WithMaxFeePerGas(2.GWei)
@@ -385,9 +874,9 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithNonce(startNonce + (ulong)i)
-                .WithTo(TestItem.AddressC)
+                .WithTo(TransferTargetAddress)
                 .WithValue(1.Wei)
-                .WithGasLimit(50_000)
+                .WithGasLimit(100_000) // Amsterdam prices the access-list intrinsic above the classic 50k
                 .WithGasPrice(2.GWei)
                 .WithAccessList(SampleAccessList)
                 .SignedAndResolved(_senderKey)
@@ -405,7 +894,25 @@ public class BlockProcessingBenchmark
                 .WithNonce(startNonce + (ulong)i)
                 .WithTo(null)
                 .WithData(ContractCode)
-                .WithGasLimit(100_000)
+                .WithGasLimit(600_000) // Amsterdam state gas makes a deploy several times Osaka's price; the setup guard verifies it executes
+                .WithGasPrice(2.GWei)
+                .SignedAndResolved(_senderKey)
+                .TestObject;
+        }
+        return txs;
+    }
+
+    private Transaction[] BuildSloadCalls(int count, ulong startNonce) => BuildCallsTo(SloadCallerAddress, count, startNonce);
+
+    private Transaction[] BuildCallsTo(Address to, int count, ulong startNonce, ulong gasLimit = 500_000)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            txs[i] = Build.A.Transaction
+                .WithNonce(startNonce + (ulong)i)
+                .WithTo(to)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(2.GWei)
                 .SignedAndResolved(_senderKey)
                 .TestObject;
