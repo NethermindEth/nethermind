@@ -52,10 +52,9 @@ public sealed class PrecompileCaches
     private const string ProbeSurvivingHit = "surviving_hit";
     private const string ProbeMiss = "miss";
     private const string AddedToBlock = "block";
-    private const string AddedToSurviving = "surviving";
     private const string RejectedFull = "rejected_full";
     private const string RejectedDuplicate = "rejected_duplicate";
-    private const string RejectedTooLarge = "too_large";
+    private const string RejectedLarge = "rejected_large";
 
     /// <summary> For flows and tests that don't cache precompile results. </summary>
     public static PrecompileCaches Empty { get; } = new([], new PreBlockCachesConfig(), maxBytes: 0);
@@ -179,15 +178,13 @@ public sealed class PrecompileCaches
 
         // Metrics, counted in fields and published on block clear
         // to prevent additional dictionary lookup on read path
-        // Each tier admits on its own, so one add records one tier-1 and one tier-2 outcome
         private long _blockHits;
         private long _survivingHits;
         private long _misses;
         private long _admitted;
-        private long _survivingAdmitted;
         private long _rejectedFull;
         private long _rejectedDuplicate;
-        private long _tooLarge;
+        private long _rejectedLarge;
 
         internal int Count => _entries.Count;
 
@@ -245,7 +242,7 @@ public sealed class PrecompileCaches
             }
 
             bool tier2 = entryBytes <= MaxSurvivingEntryBytes;
-            if (!tier2) Record(ref _tooLarge);
+            if (!tier2) Record(ref _rejectedLarge);
             if (!tier1 && !tier2) return false;
 
             // we need to rebuild the key with data copy as the data can be changed by VM processing
@@ -262,11 +259,7 @@ public sealed class PrecompileCaches
 
             if (tier1) Record(ref _admitted);
 
-            if (tier2)
-            {
-                _survivingCache.Set(copiedKey, result);
-                Record(ref _survivingAdmitted);
-            }
+            if (tier2) _survivingCache.Set(copiedKey, result);
 
             return tier1;
         }
@@ -286,10 +279,9 @@ public sealed class PrecompileCaches
             Metrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits);
             Metrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses);
             Metrics.PrecompileCacheAdds[(_name, AddedToBlock)] = Volatile.Read(ref _admitted);
-            Metrics.PrecompileCacheAdds[(_name, AddedToSurviving)] = Volatile.Read(ref _survivingAdmitted);
             Metrics.PrecompileCacheAdds[(_name, RejectedFull)] = Volatile.Read(ref _rejectedFull);
             Metrics.PrecompileCacheAdds[(_name, RejectedDuplicate)] = Volatile.Read(ref _rejectedDuplicate);
-            Metrics.PrecompileCacheAdds[(_name, RejectedTooLarge)] = Volatile.Read(ref _tooLarge);
+            Metrics.PrecompileCacheAdds[(_name, RejectedLarge)] = Volatile.Read(ref _rejectedLarge);
             Metrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
             Metrics.PrecompileCacheEntries[_name] = Count;
         }
