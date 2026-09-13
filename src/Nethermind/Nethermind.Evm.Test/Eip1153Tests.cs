@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
@@ -164,12 +165,12 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         public byte[]? LoadedBytes { get; private set; }
         public int Writes { get; private set; }
 
-        public override void LoadOperationTransientStorage(Address address, UInt256 storageIndex, System.ReadOnlySpan<byte> value)
+        public override void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
             => LoadedBytes = value.ToArray();
         public UInt256 NewValue { get; private set; }
         public UInt256 CurrentValue { get; private set; }
 
-        public override void SetOperationTransientStorage(Address address, UInt256 storageIndex, System.ReadOnlySpan<byte> newValue, System.ReadOnlySpan<byte> currentValue)
+        public override void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
         {
             Writes++;
             NewValue = new UInt256(newValue, isBigEndian: true);
