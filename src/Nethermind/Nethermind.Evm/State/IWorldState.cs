@@ -66,7 +66,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
-    /// <param name="newValue">Value to store</param>
+    /// <param name="newValue">Value to store, at most 32 bytes, right-aligned in the word</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="newValue"/> exceeds 32 bytes.</exception>
     void SetTransientState(in StorageCell storageCell, byte[] newValue);
 
     /// <summary>Sets transient storage from the stack word directly.</summary>
@@ -74,6 +75,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// per transient write. The default implementation falls back to the array overload.</remarks>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store, at most 32 bytes, right-aligned in the word</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="newValue"/> exceeds 32 bytes.</exception>
     void SetTransientState(in StorageCell storageCell, ReadOnlySpan<byte> newValue)
         => SetTransientState(in storageCell, newValue.ToArray());
 

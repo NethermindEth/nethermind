@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
@@ -108,7 +109,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Reset_trims_oversized_round_collections()
     {
-        const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
+        const int OversizedCapacity = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity + 1;
 
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -133,7 +134,7 @@ public class StorageProviderTests(bool useFlat)
         {
             for (int i = 0; i < collections.Length; i++)
             {
-                Assert.That(capacitiesBeforeReset[i], Is.GreaterThan(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+                Assert.That(capacitiesBeforeReset[i], Is.GreaterThan(Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity));
                 Assert.That(GetCollectionCapacity(collections[i]), Is.GreaterThan(0));
                 Assert.That(GetCollectionCapacity(collections[i]), Is.LessThan(capacitiesBeforeReset[i]));
             }
@@ -540,6 +541,45 @@ public class StorageProviderTests(bool useFlat)
             byte[] copy = new byte[source.Length];
             source.CopyTo(copy, 0);
             return copy;
+        }
+    }
+
+    /// <summary>One TSTORE-heavy transaction must not pin its worst-case tables for the provider's
+    /// lifetime: after a reset, both the value map and the undo log shrink back below the trim bound.</summary>
+    /// <remarks>White-box via reflection because the capacities are deliberately not part of any surface;
+    /// nothing else stops a refactor from dropping either trim.</remarks>
+    [Test]
+    public void Transient_reset_trims_the_tables_a_heavy_transaction_grew()
+    {
+        const int Cells = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity + 1000;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        byte[] word = new byte[32];
+        word[31] = 7;
+        for (int i = 0; i < Cells; i++)
+        {
+            provider.SetTransientState(new StorageCell(ctx.Address1, (UInt256)i), (ReadOnlySpan<byte>)word);
+        }
+
+        provider.Reset();
+
+        object transientProvider = typeof(WorldState)
+            .GetField("_transientStorageProvider", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(provider)!;
+        object values = transientProvider.GetType()
+            .GetField("_values", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(transientProvider)!;
+        object undo = transientProvider.GetType()
+            .GetField("_undo", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(transientProvider)!;
+        int valuesCapacity = (int)values.GetType().GetProperty("Capacity")!.GetValue(values)!;
+        int undoCapacity = (int)undo.GetType().GetProperty("Capacity")!.GetValue(undo)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valuesCapacity, Is.LessThanOrEqualTo(Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity), "value map");
+            Assert.That(undoCapacity, Is.LessThanOrEqualTo(Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity), "undo log");
         }
     }
 

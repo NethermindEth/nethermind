@@ -114,6 +114,7 @@ namespace Nethermind.State
         }
 
         /// <inheritdoc cref="PartialStorageProviderBase.TakeSnapshot"/>
+        /// <param name="newTransactionStart">Ignored; transient storage tracks no per-transaction originals.</param>
         public int TakeSnapshot(bool newTransactionStart)
         {
             int position = _undo.Count - 1;
@@ -157,6 +158,12 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
             _values.ClearAndTrim();
             _undo.Clear();
+            // Bound the retained peak the same way _values is bounded: one TSTORE-heavy transaction must
+            // not pin its worst-case undo log for the provider's lifetime.
+            if (_undo.Capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity)
+            {
+                _undo.Capacity = Core.Collections.CollectionExtensions.DefaultTrimToCapacity;
+            }
         }
 
         /// <summary>Zeroes every cell of the address, revertibly.</summary>
