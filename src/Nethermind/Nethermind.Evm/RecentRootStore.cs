@@ -64,7 +64,7 @@ public static class RecentRootStore
         ValueHash256 sourceId = SourceId(sourceAddress, salt);
         StorageCell cell = RingBufferCell(sourceId, currentSlot % Eip8272Constants.RecentRootLength);
         ValueHash256 entryHash = EntryHash(sourceId, currentSlot, root);
-        state.Set(cell, new UInt256(entryHash.Bytes, isBigEndian: true));
+        state.Set(cell, entryHash.ToUInt256());
     }
 
     public static bool AreReferencesValid(IWorldState state, ReadOnlySpan<(ValueHash256 SourceId, ulong Slot, ValueHash256 Root)> references, ulong currentSlot)
