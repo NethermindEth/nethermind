@@ -218,14 +218,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void AddStorageRead(in StorageCell storageCell) => AddStorageRead(storageCell.Address, storageCell.Index);
 
-    public void AddStorageRead(Address address, in UInt256 key)
-    {
-        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
-        if (!accountChanges.HasStorageChange(key))
-        {
-            accountChanges.AddStorageRead(key);
-        }
-    }
+    public void AddStorageRead(Address address, in UInt256 key) => RecordStorageReadAndGet(address, in key);
 
     public void DeleteAccount(Address address, UInt256 oldBalance)
     {

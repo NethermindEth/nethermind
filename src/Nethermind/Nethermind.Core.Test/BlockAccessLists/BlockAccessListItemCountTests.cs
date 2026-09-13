@@ -75,6 +75,14 @@ public class BlockAccessListItemCountTests
         slice.AddStorageRead(TestItem.AddressA, 2);
         slice.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)1);
         slice.AddStorageRead(TestItem.AddressB, 7);
+        slice.AddStorageRead(TestItem.AddressB, 7);
+        slice.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
+        slice.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slice.GetAccountChanges(TestItem.AddressA)!.StorageReads, Is.EquivalentTo(new UInt256[] { 2 }));
+            Assert.That(slice.GetAccountChanges(TestItem.AddressB)!.StorageReads, Is.EquivalentTo(new UInt256[] { 7 }));
+        }
 
         GeneratedBlockAccessList bal = new();
         bal.Merge(slice);
@@ -88,7 +96,7 @@ public class BlockAccessListItemCountTests
     /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one.
     /// </summary>
     [Test]
-    public void ItemCount_reflects_reuse_across_blocks_through_Reset()
+    public void ItemCount_reflects_reuse_across_blocks_through_Reset([Values] bool reuseSlice)
     {
         BlockAccessListAtIndex sliceBlock1 = new() { Index = 0 };
         sliceBlock1.AddStorageRead(TestItem.AddressA, 1);
@@ -100,7 +108,18 @@ public class BlockAccessListItemCountTests
 
         bal.Reset();
 
-        BlockAccessListAtIndex sliceBlock2 = new() { Index = 0 };
+        BlockAccessListAtIndex sliceBlock2;
+        if (reuseSlice)
+        {
+            sliceBlock1.Clear();
+            sliceBlock2 = sliceBlock1;
+            sliceBlock2.AddStorageRead(TestItem.AddressA, 99);
+            sliceBlock2.Clear();
+        }
+        else
+        {
+            sliceBlock2 = new() { Index = 0 };
+        }
         sliceBlock2.AddStorageRead(TestItem.AddressB, 1);
         sliceBlock2.AddStorageRead(TestItem.AddressB, 2);
         sliceBlock2.AddStorageRead(TestItem.AddressB, 3);
