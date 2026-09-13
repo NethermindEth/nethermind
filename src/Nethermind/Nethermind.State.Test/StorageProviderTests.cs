@@ -237,7 +237,10 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]), "original for the new transaction");
     }
 
-    /// <summary>A write must be visible to the next read even when that slot was just read.</summary>
+    /// <summary>A write to a just-read slot must win over the read memo.</summary>
+    /// <remarks>The written cell is answered by the journal before <c>LoadFromTree</c> is reached, so this
+    /// pins the ordering invariant the memo's safety rests on (journal first) rather than the memo itself —
+    /// it passes with the memo deleted, and would fail only if that order were ever inverted.</remarks>
     [Test]
     public void Write_after_read_is_not_answered_from_the_read_memo()
     {

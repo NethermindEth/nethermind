@@ -48,14 +48,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
-    /// <summary>Memoizes the last <see cref="_originalValues"/> probe.</summary>
-    /// <remarks>An SSTORE probes the same cell its preceding read just captured. Keyed on the originals
-    /// round because <see cref="EndOriginalsRound"/> is the only routine clearing the map, and it always
-    /// bumps the round; within a round the map only grows, except in <see cref="RestoreStorageClear"/>,
-    /// which forgets the memo explicitly. Round 0 is never issued, so it doubles as "no memo".</remarks>
+    // These three fields memoize the last _originalValues probe: an SSTORE probes the same cell its
+    // preceding read just captured. Keyed on the originals round because EndOriginalsRound is the only
+    // routine clearing the map, and it always bumps the round; within a round the map only grows, except
+    // in RestoreStorageClear, which calls ForgetLastOriginal. Round 0 is never issued, so it doubles as
+    // "no memo".
     private StorageCell _lastOriginalCell;
     private byte[]? _lastOriginalValue;
     private uint _lastOriginalRound;
+
+    /// <summary>Drops the originals-probe memo and releases the value it pinned.</summary>
+    private void ForgetLastOriginal()
+    {
+        _lastOriginalRound = 0;
+        _lastOriginalValue = null;
+    }
 
     private void EndOriginalsRound()
     {
@@ -672,7 +679,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException($"Expected storage clear journal entry {lastIndex}, got {journalIndex}");
         }
 
-        _lastOriginalRound = 0;
+        ForgetLastOriginal();
 
         StorageClearChange change = _storageClearJournal[journalIndex];
         _storageClearJournal.RemoveAt(journalIndex);
@@ -835,10 +842,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private UInt256 _lastReadIndex;
         private byte[]? _lastReadValue;
         private uint _lastReadRound;
-        private bool _hasLastRead;
 
         /// <summary>Drops the memo of the last slot read, for anything that can change what a read returns.</summary>
-        private void ForgetLastRead() => _hasLastRead = false;
+        /// <remarks>Round 0 is never issued, so it is the "no memo" sentinel — same convention as the
+        /// provider-level originals memo. Nulling the value keeps a pooled instance from pinning the array.</remarks>
+        private void ForgetLastRead()
+        {
+            _lastReadRound = 0;
+            _lastReadValue = null;
+        }
 
         private PersistentStorageProvider Provider =>
             _provider ?? throw new InvalidOperationException("A returned storage state cannot be used.");
@@ -975,8 +987,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// </remarks>
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            if (_hasLastRead && _lastReadRound == Provider._originalsRound && _lastReadIndex.Equals(storageCell.Index))
+            if (_lastReadRound == Provider._originalsRound && _lastReadIndex.Equals(storageCell.Index))
             {
+                // Still a served repeat read: keep DbMetrics.StorageTreeCache (and the per-block
+                // processing stats built on it) counting the workload it always counted.
+                Provider._metrics.IncrementStorageTreeCache();
                 return _lastReadValue;
             }
 
@@ -1003,7 +1018,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _lastReadIndex = storageCell.Index;
             _lastReadValue = valueChange.After;
             _lastReadRound = round;
-            _hasLastRead = true;
 
             return valueChange.After;
         }
