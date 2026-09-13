@@ -1239,10 +1239,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(327_634));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(241_330));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
-        TestState.Get(new StorageCell(Recipient, 0), out UInt256 storageValue1);
-        Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0 }));
-        TestState.Get(new StorageCell(Recipient, 1), out UInt256 storageValue2);
-        Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 1 }));
+        AssertStorage(UInt256.Zero, UInt256.Zero);
+        AssertStorage(UInt256.One, UInt256.One);
         Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0ul));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }

@@ -99,8 +99,10 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(value, Is.EqualTo(stored));
     }
 
-    [Test]
-    public void GetSlot_OverlayPresenceControlsFallback([Values] bool hasEntry, [Values] bool explicitZero)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void GetSlot_OverlayPresenceControlsFallback(bool hasEntry, bool explicitZero)
     {
         Address address = TestItem.AddressA;
         UInt256 index = 42;

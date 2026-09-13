@@ -771,13 +771,13 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, out UInt256? slot1), Is.True);
-        Assert.That(slot1.GetValueOrDefault().ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x03));
+        Assert.That(slot1.GetValueOrDefault().ToMinimalBigEndian()[0], Is.EqualTo(0x03));
 
         Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, out UInt256? slot2), Is.True);
-        Assert.That(slot2.GetValueOrDefault().ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
+        Assert.That(slot2.GetValueOrDefault().ToMinimalBigEndian()[0], Is.EqualTo(0x02));
 
         Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, out UInt256? slot5), Is.True);
-        Assert.That(slot5.GetValueOrDefault().ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray()[0], Is.EqualTo(0x02));
+        Assert.That(slot5.GetValueOrDefault().ToMinimalBigEndian()[0], Is.EqualTo(0x02));
     }
 
     private static IEnumerable<TestCaseData> NullSlotMergeCases()
@@ -809,7 +809,7 @@ public class PersistedSnapshotTests
             (Action<PersistedSnapshot>)(persisted =>
             {
                 Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out UInt256? slot), Is.True);
-                Assert.That(slot.GetValueOrDefault().ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray().Length, Is.GreaterThan(0), "Value should override null slot after merge");
+                Assert.That(slot, Is.EqualTo(new UInt256(nonZero, isBigEndian: true)), "Value should override null slot after merge");
             })).SetName("ValueOverridesNull");
 
         yield return new TestCaseData(

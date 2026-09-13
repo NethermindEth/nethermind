@@ -38,7 +38,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         UInt256 slotValue = default;
         if (reader.TryGetSlot(address, in slot, ref slotValue))
         {
-            return slotValue.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray();
+            return slotValue.ToMinimalBigEndian();
         }
         return null;
     }
@@ -342,7 +342,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(reader.TryGetStorageRaw(addrHash, slotHash, ref rawValue), Is.EqualTo(storageValue is not null));
             if (storageValue is not null)
             {
-                Assert.That(rawValue.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
+                Assert.That(rawValue.ToMinimalBigEndian(), Is.EqualTo(storageValue.WithoutLeadingZeros().ToArray()));
             }
         }
     }

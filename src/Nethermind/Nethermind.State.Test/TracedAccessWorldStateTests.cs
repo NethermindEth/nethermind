@@ -205,7 +205,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void Set_RecordsStorageChange([Values] bool supplyCurrentValue)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
-        StorageWriteDecorator decorator = null!;
+        CountingWorldStateDecorator decorator = null!;
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(TestItem.AddressA, 0), ws => decorator = new(ws));
         using (scope)
@@ -263,24 +263,6 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Get(in cell, out actual);
             Assert.That(actual, Is.EqualTo(UInt256.One));
             Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
-        }
-    }
-
-    private sealed class StorageWriteDecorator(IWorldState state) : WorldStateDecorator(state)
-    {
-        public int Reads { get; private set; }
-        public int Writes { get; private set; }
-
-        public override void Get(in StorageCell cell, out UInt256 value)
-        {
-            Reads++;
-            base.Get(in cell, out value);
-        }
-
-        public override void Set(in StorageCell cell, in UInt256 value)
-        {
-            Writes++;
-            base.Set(in cell, in value);
         }
     }
 

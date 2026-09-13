@@ -36,13 +36,7 @@ public class GenesisBuilderTests
     {
         byte[] value = new byte[length];
         value[0] = 1;
-        ChainSpec chainSpec = new()
-        {
-            Genesis = Build.A.Block.Genesis.TestObject,
-            GenesisStateUnavailable = true,
-            Allocations = new() { [TestItem.AddressA] = new() { Storage = new() { [0] = value } } },
-        };
-        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
+        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(ChainSpecWithStorageSlot(value));
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Assert.That(() => builder.Build(), Throws.InvalidOperationException.With.Message.Contains("exceeds 32 bytes"));
@@ -53,13 +47,7 @@ public class GenesisBuilderTests
     {
         byte[] value = new byte[length];
         value[^1] = lastByte;
-        ChainSpec chainSpec = new()
-        {
-            Genesis = Build.A.Block.Genesis.TestObject,
-            GenesisStateUnavailable = true,
-            Allocations = new() { [TestItem.AddressA] = new() { Storage = new() { [0] = value } } },
-        };
-        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
+        (GenesisBuilder builder, IWorldState stateProvider) = BuildGenesisBuilder(ChainSpecWithStorageSlot(value));
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         builder.Build();
 
@@ -170,6 +158,13 @@ public class GenesisBuilderTests
         return genesisLoader.Build();
     }
 
+
+    private static ChainSpec ChainSpecWithStorageSlot(byte[] slotValue) => new()
+    {
+        Genesis = Build.A.Block.Genesis.TestObject,
+        GenesisStateUnavailable = true,
+        Allocations = new() { [TestItem.AddressA] = new() { Storage = new() { [0] = slotValue } } },
+    };
 
     private static ChainSpec LoadChainSpec(string path)
     {

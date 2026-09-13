@@ -674,26 +674,15 @@ public class StorageProviderTests(bool useFlat)
     public void Transient_write_invokes_decorator_override()
     {
         using Context ctx = new(useFlat);
-        TransientWriteDecorator decorator = new(BuildStorageProvider(ctx));
+        CountingWorldStateDecorator decorator = new(BuildStorageProvider(ctx));
         IWorldState provider = decorator;
         StorageCell cell = new(ctx.Address1, 1);
         provider.SetTransientState(cell, UInt256.One);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decorator.Writes, Is.EqualTo(1));
+            Assert.That(decorator.TransientWrites, Is.EqualTo(1));
             provider.GetTransientState(cell, out UInt256 storageValue22);
             Assert.That(storageValue22, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
-        }
-    }
-
-    private sealed class TransientWriteDecorator(IWorldState state) : WorldStateDecorator(state)
-    {
-        public int Writes { get; private set; }
-
-        public override void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
-        {
-            Writes++;
-            base.SetTransientState(in storageCell, newValue);
         }
     }
 

@@ -129,8 +129,7 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(result.Refund, Is.EqualTo(refund));
             Assert.That(result.GasSpent, Is.EqualTo(spent - Math.Min(spent / 5, refund)));
-            TestState.Get(in cell, out UInt256 storageValue1);
-            Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { originalValue }));
+            AssertStorage(cell, originalValue);
         }
     }
 

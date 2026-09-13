@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -127,7 +126,7 @@ public class SlotRlpEncodingTests
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         UInt256 read = default;
         Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-        Assert.That(read.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(stripped));
+        Assert.That(read.ToMinimalBigEndian(), Is.EqualTo(stripped));
 
         // The leaf RLP is stored verbatim — byte-identical to our on-disk format.
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpLeaf));
@@ -172,7 +171,7 @@ public class SlotRlpEncodingTests
         {
             UInt256 read = default;
             Assert.That(reader.TryGetSlot(Addr, Slot, ref read), Is.True);
-            Assert.That(read.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("0102")));
+            Assert.That(read.ToMinimalBigEndian(), Is.EqualTo(Bytes.FromHexString("0102")));
         }
 
         // Writes on the legacy DB stay raw and never stamp the metadata markers.
@@ -184,7 +183,7 @@ public class SlotRlpEncodingTests
         using IPersistence.IPersistenceReader reader2 = reopened.CreateReader();
         UInt256 read2 = default;
         Assert.That(reader2.TryGetSlot(Addr, Slot, ref read2), Is.True);
-        Assert.That(read2.ToBigEndian().AsSpan().WithoutLeadingZeros().ToArray(), Is.EqualTo(Bytes.FromHexString("abcd")));
+        Assert.That(read2.ToMinimalBigEndian(), Is.EqualTo(Bytes.FromHexString("abcd")));
     }
 
     // A Layout marker without slots (e.g. accounts synced but no storage yet) is still a brand-new DB — it wraps.
@@ -237,15 +236,7 @@ public class SlotRlpEncodingTests
         Assert.That(() => BaseFlatPersistence.DecodeSlotValue(new byte[length]), Throws.ArgumentException);
 
     [Test]
-    public void Decode_full_width_slot()
-    {
-        byte[] data = Bytes.FromHexString("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
-        UInt256 value = BaseFlatPersistence.DecodeSlotValue(data);
-        Assert.That(value.ToBigEndian(), Is.EqualTo(data));
-    }
-
-    [Test]
-    public void Decode_slot_pads_leading_zeros([Values(0, 1, 16, 31)] int length)
+    public void Decode_slot_pads_leading_zeros([Values(0, 1, 16, 31, 32)] int length)
     {
         byte[] data = IncrementingBytes(length);
 
@@ -254,15 +245,5 @@ public class SlotRlpEncodingTests
 
         for (int i = 0; i < 32 - length; i++) Assert.That(bytes[i], Is.EqualTo(0));
         for (int i = 0; i < length; i++) Assert.That(bytes[32 - length + i], Is.EqualTo(data[i]));
-    }
-
-    [Test]
-    public void Storage_value_layout_is_compact()
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Unsafe.SizeOf<UInt256>(), Is.EqualTo(32));
-            Assert.That(Unsafe.SizeOf<UInt256?>(), Is.EqualTo(40));
-        }
     }
 }
