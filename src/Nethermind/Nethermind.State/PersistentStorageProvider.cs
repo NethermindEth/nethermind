@@ -361,12 +361,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
-    /// <remarks>
-    /// Only a block that took no snapshot has states to return here, and it pays for them on its own thread. One that
-    /// detached its changes left an empty map behind, and its states belong to the snapshot, which returns them once
-    /// written; that is also what keeps a state from being returned twice.
-    /// </remarks>
     /// <summary>Rejects pooling a contract state whose cells the write journal still holds.</summary>
     /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
     /// per block, and the journal gate's safety rests on this ordering.</remarks>
@@ -374,6 +368,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private static void ThrowJournalNotEmpty()
         => throw new InvalidOperationException("storage states must not be pooled while the write journal holds their cells");
 
+    /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
+    /// <remarks>
+    /// Only a block that took no snapshot has states to return here, and it pays for them on its own thread. One that
+    /// detached its changes left an empty map behind, and its states belong to the snapshot, which returns them once
+    /// written; that is also what keeps a state from being returned twice.
+    /// </remarks>
     public void ClearStorageMap()
     {
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
