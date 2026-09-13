@@ -113,13 +113,16 @@ internal sealed class XdcConsensusMessageHandler(
 
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
-        if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
-        {
-            //TODO Disconnect peer?
-            if (_logger.IsDebug) _logger.Debug($"Received useless SyncInfo from peer {session.RemoteNodeId}: {error}");
-            return;
-        }
-        syncInfoManager.ProcessSyncInfo(syncInfoMsg.SyncInfo);
+        SyncInfo syncInfo = syncInfoMsg.SyncInfo;
+        LogSkippedCertificate(syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert));
+        LogSkippedCertificate(syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert));
+    }
+
+    private void LogSkippedCertificate(string? error)
+    {
+        //TODO Disconnect peer?
+        if (error is not null && _logger.IsDebug)
+            _logger.Debug($"Skipped SyncInfo certificate from peer {session.RemoteNodeId}: {error}");
     }
 
     /// <summary>Builds the per-session handler, so the protocol handlers take one dependency rather than five.</summary>

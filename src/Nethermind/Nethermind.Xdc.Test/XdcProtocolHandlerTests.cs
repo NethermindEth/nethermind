@@ -143,7 +143,7 @@ public class XdcProtocolHandlerTests
     }
 
     [Test]
-    public void HandleMessage_SyncInfoMsg_WhenVerificationSucceeds_CallsProcessSyncInfo()
+    public void HandleMessage_SyncInfoMsg_ProcessesBothCertificates()
     {
         (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             _, _, ISyncInfoManager syncInfoManager) = CreateAll();
@@ -152,32 +152,12 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
-        }
-    }
-
-    [Test]
-    public void HandleMessage_SyncInfoMsg_WhenVerificationFails_DoesNotCallProcessSyncInfo()
-    {
-        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
-            _, _, ISyncInfoManager syncInfoManager) = CreateAll();
-        using (handler)
-        {
-            SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
-            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
-            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>())
-                .Returns(x => { x[1] = "rounds too low"; return false; });
-
-            HandleIncomingStatus(handler, serializer);
-            handler.HandleMessage(packet);
-
-            syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
+            syncInfoManager.Received(1).ProcessQuorumCertificate(syncInfo.HighestQuorumCert);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
         }
     }
 
@@ -374,7 +354,7 @@ public class XdcProtocolHandlerTests
     public void HandleMessage_SyncInfoMsgWhileSyncing_IsNeverIgnored()
     {
         // SyncInfo is the node's own catch-up path (carries the network's HighestQC/HighestTC) and
-        // already guards itself via VerifySyncInfo, so unlike Vote/Timeout it must never be dropped
+        // already guards each certificate itself, so unlike Vote/Timeout it must never be dropped
         // by the syncing check - not even while genuinely far behind, as this test's 900-block gap
         // simulates.
         (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
@@ -387,11 +367,11 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
             handler.HandleMessage(syncInfoPacket);
 
-            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+            syncInfoManager.Received(1).ProcessQuorumCertificate(syncInfo.HighestQuorumCert);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
         }
     }
 
@@ -422,12 +402,12 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
             ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
             handler.HandleMessage(syncInfoPacket);
 
             votesManager.Received(1).OnReceiveVote(vote);
             timeoutManager.Received(1).OnReceiveTimeout(timeout);
-            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+            syncInfoManager.Received(1).ProcessQuorumCertificate(syncInfo.HighestQuorumCert);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
         }
     }
 
