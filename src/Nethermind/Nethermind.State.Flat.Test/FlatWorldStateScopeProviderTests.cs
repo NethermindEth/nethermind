@@ -189,13 +189,14 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TestAccountAndSlotFromPersistence()
+    public void TestAccountAndSlotFromPersistence([Values] bool hasStorage)
     {
         using TestContext ctx = new();
 
         Address testAddress = TestItem.AddressA;
         UInt256 slotIndex = 1;
-        Account persistedAccount = TestItem.GenerateRandomAccount();
+        Hash256 expectedRoot = hasStorage ? TestItem.KeccakA : Keccak.EmptyTreeHash;
+        Account persistedAccount = new(1, 2, expectedRoot, Keccak.OfAnEmptyString);
         byte[] persistedSlotValue = { 0xDE, 0xAD, 0xBE, 0xEF };
 
         // Setup Persistence Reader
@@ -212,6 +213,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(persistedAccount));
 
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
+        Assert.That(storageTree.RootHash, Is.EqualTo(expectedRoot));
         storageTree.Get(slotIndex, out UInt256 slotRead213);
         Assert.That(slotRead213, Is.EqualTo(new UInt256(persistedSlotValue, isBigEndian: true)));
     }

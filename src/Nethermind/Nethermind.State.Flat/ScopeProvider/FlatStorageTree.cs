@@ -47,10 +47,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
         StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
-        {
-            RootHash = storageRoot
-        };
+        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager);
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
