@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -16,9 +16,10 @@ namespace Nethermind.Core.BlockAccessLists;
 /// <summary>
 /// Per-account changes from a decoded BAL. Index-keyed change families are stored as plain
 /// arrays kept sorted by <see cref="IIndexedChange.Index"/> (the decoder validates ordering),
-/// so reads can binary-search via <see cref="System.MemoryExtensions"/>. Storage changes are
-/// kept in two parallel structures: a hash map for O(1) <see cref="TryGetSlotChanges"/>
-/// lookups (used during EVM execution) and an array sorted by slot key for ordered iteration
+/// so reads can binary-search via <see cref="System.MemoryExtensions"/>. Declared storage —
+/// changes and reads together — resolves through <see cref="TryGetDeclaredSlot"/> (used during
+/// EVM execution): a map when the account has any change or many reads, a scan of the few
+/// declared reads otherwise. The change array stays sorted by slot key for ordered iteration
 /// (used by the cache prewarmer's sorted-merge with <see cref="StorageReads"/>).
 /// </summary>
 /// <remarks>
@@ -50,8 +51,14 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public CodeChange[] CodeChanges { get; }
 
-    private readonly Dictionary<UInt256, ReadOnlySlotChanges>? _storageChanges;
-    private readonly HashSet<UInt256>? _storageReadSet;
+    /// <summary>Every slot this account declares, changed or read-only, mapped to its changes.</summary>
+    /// <remarks>A <c>null</c> value marks a slot declared only as a read. Holding both kinds here lets a
+    /// storage access answer "is this declared, and was it written" in one probe: reads are the common
+    /// case and used to cost a miss in the changes map followed by a hit in a separate read set.</remarks>
+    private readonly Dictionary<UInt256, ReadOnlySlotChanges?>? _declaredSlots;
+
+    /// <summary>More declared reads than this are mapped; at or below it (with no changes) the array is scanned.</summary>
+    private const int ReadScanThreshold = 4;
 
     public ReadOnlyAccountChanges(
         Address address,
@@ -63,51 +70,76 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         Address = address;
         StorageChanges = storageChanges;
+        StorageReads = storageReads;
+        BalanceChanges = balanceChanges;
+        NonceChanges = nonceChanges;
+        CodeChanges = codeChanges;
+
         if (storageChanges.Length > 0)
         {
-            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length, UInt256Comparer.GetOptimized());
             UInt256[] changedSlots = new UInt256[storageChanges.Length];
             for (int i = 0; i < storageChanges.Length; i++)
             {
-                ReadOnlySlotChanges sc = storageChanges[i];
-                _storageChanges.Add(sc.Key, sc);
-                changedSlots[i] = sc.Key;
+                changedSlots[i] = storageChanges[i].Key;
             }
             ChangedSlots = changedSlots;
         }
         else
         {
-            _storageChanges = null;
             ChangedSlots = [];
         }
-        StorageReads = storageReads;
-        BalanceChanges = balanceChanges;
-        NonceChanges = nonceChanges;
-        CodeChanges = codeChanges;
-        // Hash-set lookup beats array.Contains() for accounts with many declared reads; allocated
-        // lazily to avoid the overhead on accounts that never get queried via IsStorageRead.
-        _storageReadSet = storageReads.Length > 4 ? new HashSet<UInt256>(storageReads, UInt256Comparer.GetOptimized()) : null;
+
+        // Worth its allocation once there is anything to change or more than a handful of reads;
+        // below that the read array is scanned instead.
+        if (storageChanges.Length > 0 || storageReads.Length > ReadScanThreshold)
+        {
+            _declaredSlots = new Dictionary<UInt256, ReadOnlySlotChanges?>(
+                storageChanges.Length + storageReads.Length, UInt256Comparer.GetOptimized());
+
+            foreach (ReadOnlySlotChanges sc in storageChanges)
+            {
+                _declaredSlots.Add(sc.Key, sc);
+            }
+
+            foreach (UInt256 slot in storageReads)
+            {
+                _declaredSlots.TryAdd(slot, null);
+            }
+        }
+        else
+        {
+            _declaredSlots = null;
+        }
     }
 
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
 
-    public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-        => _storageChanges.TryGetValueOrNull(key, out slotChanges);
+    /// <summary>Whether the BAL declares <paramref name="slot"/> for this account at all.</summary>
+    /// <param name="slotChanges">The slot's changes, or <c>null</c> when it is declared only as a read.</param>
+    /// <returns><c>true</c> when the slot is declared, whether written or only read.</returns>
+    public bool TryGetDeclaredSlot(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
+        => _declaredSlots is not null
+            ? _declaredSlots.TryGetValue(slot, out slotChanges)
+            : ScanDeclaredReads(slot, out slotChanges);
 
-    public bool IsStorageRead(UInt256 slot)
+    /// <summary>Scans the declared reads for <paramref name="slot"/> when the account has no slot map.</summary>
+    /// <remarks>Out of line so the two-instruction map probe above stays inlineable at the SLOAD
+    /// call sites; a body with a loop is not.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool ScanDeclaredReads(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
     {
-        if (_storageReadSet is not null)
-        {
-            return _storageReadSet.Contains(slot);
-        }
-
+        slotChanges = null;
         ReadOnlySpan<UInt256> reads = StorageReads;
         for (int i = 0; i < reads.Length; i++)
         {
             if (reads[i].Equals(slot)) return true;
         }
+
         return false;
     }
+
+    private bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
+        => TryGetDeclaredSlot(key, out slotChanges) && slotChanges is not null;
 
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
 
@@ -189,13 +221,12 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         if (other is null) return false;
         if (Address != other.Address) return false;
         if (StorageChanges.Length != other.StorageChanges.Length) return false;
-        if (_storageChanges is not null)
+        foreach (ReadOnlySlotChanges slotChanges in StorageChanges)
         {
-            Dictionary<UInt256, ReadOnlySlotChanges> otherDict = other._storageChanges!;
-            foreach (KeyValuePair<UInt256, ReadOnlySlotChanges> kv in _storageChanges)
+            if (!other.TryGetSlotChanges(slotChanges.Key, out ReadOnlySlotChanges? otherVal)
+                || !slotChanges.Equals(otherVal))
             {
-                if (!otherDict.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
-                    return false;
+                return false;
             }
         }
         // Span casts force MemoryExtensions.SequenceEqual (zero-alloc) over LINQ's.
@@ -242,6 +273,19 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// </summary>
     private static bool TryGetLastBefore<T>(T[] changes, uint blockAccessIndex, out T last) where T : struct, IIndexedChange
     {
+        // Most accounts carry zero or one change per family, so skip the binary search for those.
+        if (changes.Length <= 1)
+        {
+            if (changes.Length == 1 && changes[0].Index < blockAccessIndex)
+            {
+                last = changes[0];
+                return true;
+            }
+
+            last = default;
+            return false;
+        }
+
         ReadOnlySpan<T> span = changes;
         int idx = span.BinarySearch(new IndexKey<T>(blockAccessIndex));
         // (idx if found, ~idx otherwise) is the position of the first entry with Index >= target;

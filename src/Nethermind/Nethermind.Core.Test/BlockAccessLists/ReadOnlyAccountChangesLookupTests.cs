@@ -156,4 +156,86 @@ public class ReadOnlyAccountChangesLookupTests
             Assert.That(last.Value, Is.EqualTo((UInt256)300));
         }
     }
+
+    /// <summary>A declared slot resolves correctly through both lookup strategies.</summary>
+    /// <remarks>Any storage change (or more than four declared reads) makes the account map its declared
+    /// slots; four or fewer reads with no changes are scanned. The cases pin both strategies and the
+    /// 4/5 threshold between them; the changed slot exists only in the mapped arm, since a change forces
+    /// the map by construction.</remarks>
+    [Test]
+    public void TryGetDeclaredSlot_separates_changed_read_and_undeclared(
+        [Values(0, 4, 5, 64)] int readCount,
+        [Values(true, false)] bool withChange)
+    {
+        UInt256[] reads = BuildReads(readCount);
+        ReadOnlyAccountChanges ac = BuildDeclared(reads, withChange);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.TryGetDeclaredSlot((UInt256)1000, out ReadOnlySlotChanges? changed), Is.EqualTo(withChange));
+            Assert.That(changed, withChange ? Is.Not.Null : Is.Null,
+                withChange ? "a written slot carries its changes" : "an undeclared slot resolves to nothing");
+
+            if (readCount > 0)
+            {
+                Assert.That(ac.TryGetDeclaredSlot(reads[^1], out ReadOnlySlotChanges? read), Is.True);
+                Assert.That(read, Is.Null, "a slot declared only as a read carries no changes");
+            }
+
+            Assert.That(ac.TryGetDeclaredSlot((UInt256)9999, out ReadOnlySlotChanges? absent), Is.False);
+            Assert.That(absent, Is.Null);
+        }
+    }
+
+    private static UInt256[] BuildReads(int count)
+    {
+        UInt256[] reads = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            reads[i] = (UInt256)(i + 1);
+        }
+
+        return reads;
+    }
+
+    private static ReadOnlyAccountChanges BuildDeclared(UInt256[] reads, bool withChange)
+    {
+        AccountChangesBuilder builder = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageReads(reads);
+        if (withChange) builder = builder.WithStorageChanges((UInt256)1000, new StorageChange(0, 42));
+        return builder.TestObject;
+    }
+
+    /// <summary>Equality still compares the declared storage, now that reads and changes share a map.</summary>
+    /// <remarks>Both read counts take the mapped lookup, since <c>Make</c> always declares a change — which
+    /// is the only strategy <see cref="ReadOnlyAccountChanges.Equals"/> can reach anyway (a change is the
+    /// precondition for the storage comparison). The counts differ only so the <c>fewerReads</c> case sees
+    /// a 1-vs-2 and a 1-vs-64 read-array mismatch.</remarks>
+    [Test]
+    public void Equals_distinguishes_accounts_by_their_storage([Values(2, 64)] int readCount)
+    {
+        UInt256[] reads = BuildReads(readCount);
+
+        static ReadOnlyAccountChanges Make(UInt256[] reads, UInt256 changedSlot, byte value) =>
+            Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(reads)
+                .WithStorageChanges(changedSlot, new StorageChange(0, value))
+                .TestObject;
+
+        ReadOnlyAccountChanges subject = Make(reads, 1000, 42);
+        ReadOnlyAccountChanges identical = Make(reads, 1000, 42);
+        ReadOnlyAccountChanges otherValue = Make(reads, 1000, 43);
+        ReadOnlyAccountChanges otherSlot = Make(reads, 1001, 42);
+        ReadOnlyAccountChanges fewerReads = Make(reads[..1], 1000, 42);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subject, Is.EqualTo(identical));
+            Assert.That(subject, Is.Not.EqualTo(otherValue), "differing value");
+            Assert.That(subject, Is.Not.EqualTo(otherSlot), "differing slot");
+            Assert.That(subject, Is.Not.EqualTo(fewerReads), "differing reads");
+        }
+    }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -16,14 +17,15 @@ namespace Nethermind.Core.BlockAccessLists;
 /// account lookup is O(1) via hash map. Iteration order matches insertion order — the decoder
 /// inserts accounts in the order they arrive on the wire (which it has already validated as
 /// sorted by address), so enumerating <see cref="AccountChanges"/> walks accounts in sorted
-/// address order. Instances are immutable after construction; concurrent readers rely on this.
+/// address order. The declared content is immutable after construction; the one mutable member is
+/// the lazily built, internally synchronised code index, so concurrent readers stay safe.
 /// </summary>
 public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {
     private readonly Dictionary<AddressAsKey, ReadOnlyAccountChanges> _accountChanges;
     private readonly ReadOnlyAccountChanges[] _orderedAccounts;
     private bool _codeChangesInitialized;
-    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private object? _codeChangesLock;
 
     [JsonIgnore]
@@ -91,16 +93,16 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
         WireHash = wireHash;
     }
 
-    /// <summary>Returns the shared code index for this immutable BAL. Callers must not modify it.</summary>
-    internal Dictionary<ValueHash256, (uint Index, byte[] Code)>? GetCodeChangesByHash()
+    /// <summary>Returns the shared code index for this BAL, built once and frozen.</summary>
+    internal FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? GetCodeChangesByHash()
         => _orderedAccounts.Length == 0 ? null
             : Volatile.Read(ref _codeChangesInitialized) ? _codeChangesByHash : InitializeCodeChangesByHash();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? InitializeCodeChangesByHash()
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? InitializeCodeChangesByHash()
         => LazyInitializer.EnsureInitialized(ref _codeChangesByHash, ref _codeChangesInitialized, ref _codeChangesLock, BuildCodeChangesByHash);
 
-    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
     {
         Dictionary<ValueHash256, (uint Index, byte[] Code)>? result = null;
         foreach (ReadOnlyAccountChanges account in _orderedAccounts)
@@ -114,7 +116,10 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
                 }
             }
         }
-        return result;
+
+        // Frozen to enforce the shared-read contract: one instance is handed to every worker
+        // on the block and must not be mutable.
+        return result?.ToFrozenDictionary(GenericEqualityComparer.GetOptimized<ValueHash256>());
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)
