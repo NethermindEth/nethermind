@@ -354,12 +354,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     private AccountChangesAtIndex GetOrAddAccountChanges(Address address)
     {
-        if (!_accountChanges.TryGetValue(address, out AccountChangesAtIndex? existing))
-        {
-            existing = RentAccountChanges(address);
-            _accountChanges.Add(address, existing);
-        }
-        return existing;
+        ref AccountChangesAtIndex? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(_accountChanges, address, out _);
+        return existing ??= RentAccountChanges(address);
     }
 
     private AccountChangesAtIndex RentAccountChanges(Address address)
