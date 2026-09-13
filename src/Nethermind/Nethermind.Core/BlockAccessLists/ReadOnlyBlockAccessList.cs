@@ -17,8 +17,9 @@ namespace Nethermind.Core.BlockAccessLists;
 /// account lookup is O(1) via hash map. Iteration order matches insertion order — the decoder
 /// inserts accounts in the order they arrive on the wire (which it has already validated as
 /// sorted by address), so enumerating <see cref="AccountChanges"/> walks accounts in sorted
-/// address order. The declared content is immutable after construction; the one mutable member is
-/// the lazily built, internally synchronised code index, so concurrent readers stay safe.
+/// address order. The declared content is immutable after construction; the one mutable member is the
+/// lazily built code index, published under <see cref="LazyInitializer"/> with its own lock — a second
+/// lazy field added later needs the same treatment rather than inheriting this claim.
 /// </summary>
 public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {

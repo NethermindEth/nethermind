@@ -17,7 +17,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// Per-account changes from a decoded BAL. Index-keyed change families are stored as plain
 /// arrays kept sorted by <see cref="IIndexedChange.Index"/> (the decoder validates ordering),
 /// so reads can binary-search via <see cref="System.MemoryExtensions"/>. Declared storage —
-/// changes and reads together — resolves through <see cref="TryGetDeclaredSlot"/> (used during
+/// changes and reads together — resolves through <see cref="TryGetDeclaredSlotChanges"/> (used during
 /// EVM execution): a map when the account has any change or many reads, a scan of the few
 /// declared reads otherwise. The change array stays sorted by slot key for ordered iteration
 /// (used by the cache prewarmer's sorted-merge with <see cref="StorageReads"/>).
@@ -117,7 +117,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// <summary>Whether the BAL declares <paramref name="slot"/> for this account at all.</summary>
     /// <param name="slotChanges">The slot's changes, or <c>null</c> when it is declared only as a read.</param>
     /// <returns><c>true</c> when the slot is declared, whether written or only read.</returns>
-    public bool TryGetDeclaredSlot(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
+    public bool TryGetDeclaredSlotChanges(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
         => _declaredSlots is not null
             ? _declaredSlots.TryGetValue(slot, out slotChanges)
             : ScanDeclaredReads(slot, out slotChanges);
@@ -139,7 +139,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     }
 
     private bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-        => TryGetDeclaredSlot(key, out slotChanges) && slotChanges is not null;
+        => TryGetDeclaredSlotChanges(key, out slotChanges) && slotChanges is not null;
 
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
 
@@ -273,10 +273,11 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// </summary>
     private static bool TryGetLastBefore<T>(T[] changes, uint blockAccessIndex, out T last) where T : struct, IIndexedChange
     {
-        // Most accounts carry zero or one change per family, so skip the binary search for those.
-        if (changes.Length <= 1)
+        // Most accounts carry zero or one change per family, so skip the binary search for those. The
+        // null case is folded in here because the span conversion this replaced accepted a null array.
+        if (changes is null or { Length: <= 1 })
         {
-            if (changes.Length == 1 && changes[0].Index < blockAccessIndex)
+            if (changes is { Length: 1 } && changes[0].Index < blockAccessIndex)
             {
                 last = changes[0];
                 return true;

@@ -110,7 +110,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
-        if (accountChanges.TryGetDeclaredSlot(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
+        if (accountChanges.TryGetDeclaredSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
             if (slotChanges is null) _readCoverage?.TryMark(storageCell);
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
@@ -134,7 +134,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
-        if (accountChanges.TryGetDeclaredSlot(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
+        if (accountChanges.TryGetDeclaredSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {

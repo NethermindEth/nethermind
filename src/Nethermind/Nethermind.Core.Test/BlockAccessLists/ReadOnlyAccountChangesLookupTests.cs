@@ -163,7 +163,7 @@ public class ReadOnlyAccountChangesLookupTests
     /// 4/5 threshold between them; the changed slot exists only in the mapped arm, since a change forces
     /// the map by construction.</remarks>
     [Test]
-    public void TryGetDeclaredSlot_separates_changed_read_and_undeclared(
+    public void TryGetDeclaredSlotChanges_separates_changed_read_and_undeclared(
         [Values(0, 4, 5, 64)] int readCount,
         [Values(true, false)] bool withChange)
     {
@@ -172,18 +172,36 @@ public class ReadOnlyAccountChangesLookupTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ac.TryGetDeclaredSlot((UInt256)1000, out ReadOnlySlotChanges? changed), Is.EqualTo(withChange));
+            Assert.That(ac.TryGetDeclaredSlotChanges((UInt256)1000, out ReadOnlySlotChanges? changed), Is.EqualTo(withChange));
             Assert.That(changed, withChange ? Is.Not.Null : Is.Null,
                 withChange ? "a written slot carries its changes" : "an undeclared slot resolves to nothing");
 
             if (readCount > 0)
             {
-                Assert.That(ac.TryGetDeclaredSlot(reads[^1], out ReadOnlySlotChanges? read), Is.True);
+                Assert.That(ac.TryGetDeclaredSlotChanges(reads[^1], out ReadOnlySlotChanges? read), Is.True);
                 Assert.That(read, Is.Null, "a slot declared only as a read carries no changes");
             }
 
-            Assert.That(ac.TryGetDeclaredSlot((UInt256)9999, out ReadOnlySlotChanges? absent), Is.False);
+            Assert.That(ac.TryGetDeclaredSlotChanges((UInt256)9999, out ReadOnlySlotChanges? absent), Is.False);
             Assert.That(absent, Is.Null);
+        }
+    }
+
+    /// <summary>A null change array reads as "no change", as it did before the fast path.</summary>
+    /// <remarks>Unreachable through the decoder, which always materialises an array, but the span
+    /// conversion the fast path replaced turned a null array into an empty span - so narrowing that to a
+    /// throw would break an out-of-tree producer with no in-tree test noticing.</remarks>
+    [Test]
+    public void Null_change_arrays_read_as_no_change()
+    {
+        ReadOnlyAccountChanges ac = new(TestItem.AddressA, [], [], null!, null!, null!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ac.GetBalance(1), Is.Null);
+            Assert.That(ac.GetNonce(1), Is.Null);
+            Assert.That(ac.GetCode(1), Is.Null);
+            Assert.That(ac.GetCodeHash(1), Is.Null);
         }
     }
 
