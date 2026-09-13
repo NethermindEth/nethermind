@@ -295,9 +295,8 @@ public class EvmExecutionGateTests
         // Exercises the paths that maintain the live count concurrently - enqueue under the lock, expiry from the
         // timer thread, release from the holder - and checks the count settles and the gate is still usable.
         //
-        // It does NOT pin the lost-update race the Interlocked increment exists for: that window is a couple of
-        // instructions between the read and write of a non-atomic ++, and it does not reproduce here (measured:
-        // 3/3 passes against the non-atomic version). That fix rests on the memory model, not on this test. What
+        // It does NOT pin the lost-update race the Interlocked increment exists for: that window is a couple
+        // of instructions between the read and write of a non-atomic ++, too narrow to reproduce reliably. What
         // this does catch is a wholesale accounting mistake, such as a decrement path that stops running.
         EvmExecutionGate gate = Gate(permits: 2, maxQueueWaitMs: 40);
         EvmExecutionGate.Lease first = await Acquire(gate);
@@ -334,7 +333,8 @@ public class EvmExecutionGateTests
         Assert.That(() => gate.QueuedCount, Is.Zero.After(2000, 50),
             "a lost decrement never recovers, so the queue-depth accounting drifts one way and the cap eventually refuses every arrival");
 
-        // The fast path is the thing the drift destroys, so check it still works rather than only the counter.
+        // Check acquisition still works rather than only the counter: drift affects the queue-depth cap,
+        // which would eventually refuse every arrival even though the free-permit path never reads it.
         using EvmExecutionGate.Lease afterwards = await Acquire(gate);
         Assert.Pass();
     }

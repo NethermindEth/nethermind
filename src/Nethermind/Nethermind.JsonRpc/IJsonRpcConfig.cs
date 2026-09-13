@@ -168,7 +168,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(
         Description = """
             The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
-            `eth_createAccessList`, `eth_simulateV1`, `debug_simulateV1`) may wait for an execution slot before it
+            `eth_createAccessList`, `eth_fillTransaction`, `eth_simulateV1`, `debug_simulateV1`) may wait for an execution slot before it
             is answered with a `LimitExceeded` error (HTTP 503). The number of slots is
             `EthModuleConcurrentInstances`, the number of logical processors by default. Waiters are ordered by a
             cost estimate taken from the raw `params` length, aged by arrival time so that a large request cannot
@@ -188,8 +188,8 @@ public interface IJsonRpcConfig : IConfig
     /// </summary>
     [ConfigItem(
         Description = """
-            Whether `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `debug_simulateV1`
-            are admitted through the EVM execution gate, which bounds how many of them run at once. Disabling it
+            Whether `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_fillTransaction`, `eth_simulateV1`
+            and `debug_simulateV1` are admitted through the EVM execution gate, which bounds how many of them run at once. Disabling it
             restores the previous behaviour, where the number of concurrent calls without state overrides was
             limited only by `MaxConcurrentSharedRequests`. Provided as an escape hatch for operators who would
             rather serve every call slowly than shed some: with it off, a heavy enough call rate can starve block

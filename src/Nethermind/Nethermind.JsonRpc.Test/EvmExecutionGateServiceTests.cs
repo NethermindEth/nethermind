@@ -28,8 +28,9 @@ namespace Nethermind.JsonRpc.Test;
 [NonParallelizable]
 public class EvmExecutionGateServiceTests
 {
-    /// <summary>eth_call, eth_estimateGas, eth_createAccessList, eth_simulateV1, debug_simulateV1.</summary>
-    private const int GatedMethodCount = 5;
+    /// <summary>eth_call, eth_estimateGas, eth_createAccessList, eth_fillTransaction, eth_simulateV1,
+    /// debug_simulateV1.</summary>
+    private const int GatedMethodCount = 6;
 
     private const string GatedMethod = "gated_execute";
     private const string UngatedMethod = "ungated_read";

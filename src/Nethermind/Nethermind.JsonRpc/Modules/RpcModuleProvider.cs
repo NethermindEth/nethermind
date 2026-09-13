@@ -375,6 +375,7 @@ namespace Nethermind.JsonRpc.Modules
 
             public ResolvedMethodInfo() => ExpectedParameters = [];
 
+            /// <summary>Describes a resolved JSON-RPC method that does not execute the EVM.</summary>
             /// <remarks>Kept as its own overload rather than defaulting the fifth argument: an optional parameter
             /// drops this signature from the assembly, and an already-compiled plugin calling it would fail with
             /// <see cref="MissingMethodException"/> at runtime.</remarks>
@@ -387,6 +388,10 @@ namespace Nethermind.JsonRpc.Modules
             {
             }
 
+            /// <summary>Describes a resolved JSON-RPC method.</summary>
+            /// <param name="isEvmExecution">Routes the method through the aggregate EVM admission gate
+            /// (see <see cref="JsonRpcMethodAttribute.IsEvmExecution"/>); such a method must not return an
+            /// <c>IStreamableResult</c>.</param>
             public ResolvedMethodInfo(
                 string moduleType,
                 MethodInfo methodInfo,

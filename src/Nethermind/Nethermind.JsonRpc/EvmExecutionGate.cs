@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc;
 /// </summary>
 /// <remarks>
 /// The flagged set is the <c>eth_call</c> / <c>eth_estimateGas</c> / <c>eth_createAccessList</c> /
-/// <c>eth_simulateV1</c> / <c>debug_simulateV1</c> family. It is deliberately not every method that can execute the
+/// <c>eth_fillTransaction</c> / <c>eth_simulateV1</c> / <c>debug_simulateV1</c> family. It is deliberately not every method that can execute the
 /// EVM: the <c>trace_*</c> and <c>debug_traceCall*</c> methods run in their own pools and are not covered, so this
 /// is a budget for the simulate family rather than a whole-node EVM budget.
 /// <para>
@@ -148,7 +148,7 @@ internal sealed class EvmExecutionGate
             // permit can never be handed to a caller that has already given up.
             using CancellationTokenSource expiry = new(_budget);
             using CancellationTokenRegistration registration =
-                expiry.Token.UnsafeRegister(static state => ((Waiter)state!).Abandon(), waiter);
+                expiry.Token.UnsafeRegister(static state => _ = ((Waiter)state!).Abandon(), waiter);
 
             granted = await waiter.Admission;
         }
@@ -162,8 +162,9 @@ internal sealed class EvmExecutionGate
         catch
         {
             // Still queued and unsettled - a failure setting the expiry up would otherwise leave it there and the
-            // next Release would hand its permit to nobody.
-            waiter.Abandon();
+            // next Release would hand its permit to nobody. Losing the settle race means a concurrent grant
+            // already transferred a permit to this waiter, and no Lease will carry it back - return it.
+            if (!waiter.Abandon()) Release();
             throw;
         }
         finally
@@ -249,7 +250,7 @@ internal sealed class EvmExecutionGate
         // Whichever of these wins TrySetResult owns the decrement, so the live count stays exact even though
         // Abandon runs on a timer thread without the lock.
         internal bool TryGrant() => Settle(true);
-        internal void Abandon() => Settle(false);
+        internal bool Abandon() => Settle(false);
 
         private bool Settle(bool granted)
         {
