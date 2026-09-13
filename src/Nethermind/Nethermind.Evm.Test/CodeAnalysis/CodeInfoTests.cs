@@ -5,6 +5,8 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Runtime.Intrinsics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -13,6 +15,40 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class CodeInfoTests
     {
+        [Test]
+        [Repeat(10)]
+        public async Task Concurrent_analysis_publishes_complete_bitmap([Values(64, 32768)] int length)
+        {
+            byte[] code = new byte[length];
+            for (int i = 0; i < length; i += 4)
+            {
+                code[i] = (byte)Instruction.PUSH1;
+                code[i + 1] = (byte)Instruction.JUMPDEST;
+                code[i + 2] = (byte)Instruction.JUMPDEST;
+            }
+            JumpDestinationAnalyzer analyzer = new(new CodeInfo(code));
+            using Barrier start = new(4);
+            Task[] workers = new Task[4];
+            for (int worker = 0; worker < workers.Length; worker++)
+            {
+                bool analyze = worker == 0;
+                workers[worker] = Task.Factory.StartNew(() =>
+                {
+                    start.SignalAndWait();
+                    if (analyze)
+                    {
+                        analyzer.Execute();
+                    }
+                    else
+                    {
+                        for (int offset = 0; offset < length; offset++)
+                            Assert.That(analyzer.ValidateJump(offset), Is.EqualTo(offset % 4 == 2), $"offset {offset}");
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+            await Task.WhenAll(workers);
+        }
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]

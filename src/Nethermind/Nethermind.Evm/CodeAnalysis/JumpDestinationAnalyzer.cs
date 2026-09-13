@@ -63,6 +63,17 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
         if (previous is ManualResetEventSlim resetEvent)
         {
+            SpinWait spinWait = default;
+            while (true)
+            {
+                if (Volatile.Read(ref _analysisComplete) is long[] bitmap)
+                {
+                    return bitmap;
+                }
+                if (spinWait.NextSpinWillYield) break;
+                spinWait.SpinOnce();
+            }
+
             WaitForAnalysisToComplete(resetEvent);
 
             return _jumpDestinationBitmap;
@@ -354,7 +365,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
                 _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
                 // Release the MRES to be GC'd
-                _analysisComplete = _jumpDestinationBitmap;
+                Volatile.Write(ref _analysisComplete, _jumpDestinationBitmap);
                 // Signal complete.
                 analysisComplete.Set();
             }
