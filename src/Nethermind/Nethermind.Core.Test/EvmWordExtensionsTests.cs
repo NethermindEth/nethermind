@@ -38,11 +38,14 @@ public class EvmWordExtensionsTests
         if (length != 0) expected[0] = leadingByte;
         UInt256 value = new(expected, isBigEndian: true);
         byte[] encoded = value.ToMinimalBigEndian();
+        EvmWord buffer = UInt256.MaxValue.ToBigEndianWord();
+        byte[] buffered = value.ToMinimalBigEndian(ref buffer).ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(value.MinimalByteLength(), Is.EqualTo(value.ToBigEndian().AsSpan().WithoutLeadingZeros().Length));
             Assert.That(value.ToBigEndian().AsSpan(32 - value.MinimalByteLength()).ToArray(), Is.EqualTo(expected));
             Assert.That(encoded, Is.EqualTo(expected));
+            Assert.That(buffered, Is.EqualTo(expected));
             Assert.That(new UInt256(encoded, isBigEndian: true), Is.EqualTo(value));
         }
     }

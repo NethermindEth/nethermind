@@ -35,9 +35,16 @@ public static class UInt256Extensions
     [SkipLocalsInit]
     public static byte[] ToMinimalBigEndian(this in UInt256 value)
     {
-        EvmWord word = value.ToBigEndianWord();
-        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
-        return (Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..]).ToArray();
+        Unsafe.SkipInit(out EvmWord word);
+        return value.ToMinimalBigEndian(ref word).ToArray();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ReadOnlySpan<byte> ToMinimalBigEndian(this scoped in UInt256 value, ref EvmWord buffer)
+    {
+        buffer = value.ToBigEndianWord();
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1));
+        return Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..];
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

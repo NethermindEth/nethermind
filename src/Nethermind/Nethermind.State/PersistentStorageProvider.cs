@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -348,7 +347,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void TraceUpdate(in Change change)
     {
         Unsafe.SkipInit(out EvmWord buffer);
-        _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {EncodeStorageValue(in change.Value, ref buffer).ToHexString(true)}");
+        _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToMinimalBigEndian(ref buffer).ToHexString(true)}");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -589,7 +588,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (before != after)
             {
-                tracer.ReportStorageChange(address, before.IsZero ? StorageTree.ZeroBytes : EncodeStorageValue(in before, ref beforeBuffer).ToArray(), after.IsZero ? StorageTree.ZeroBytes : EncodeStorageValue(in after, ref afterBuffer).ToArray());
+                tracer.ReportStorageChange(address, before.IsZero ? StorageTree.ZeroBytes : before.ToMinimalBigEndian(ref beforeBuffer).ToArray(), after.IsZero ? StorageTree.ZeroBytes : after.ToMinimalBigEndian(ref afterBuffer).ToArray());
             }
         }
     }
@@ -1162,14 +1161,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _pool.Enqueue(item);
             }
         }
-    }
-
-    private static ReadOnlySpan<byte> EncodeStorageValue(scoped in UInt256 value, ref EvmWord buffer)
-    {
-        if (value.IsZero) return StorageTree.ZeroBytes;
-        buffer = value.ToBigEndianWord();
-        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1));
-        return Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..];
     }
 
     private struct StorageChangeTrace
