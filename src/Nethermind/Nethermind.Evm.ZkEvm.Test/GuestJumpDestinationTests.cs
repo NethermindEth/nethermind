@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -60,21 +61,19 @@ public class GuestJumpDestinationTests
     public void Full_analysis_reuses_the_completed_bitmap([Values] bool executeFirst)
     {
         CodeInfo codeInfo = new(new byte[] { PUSH1, JUMPDEST, JUMPDEST });
-        JumpDestinationAnalyzer analyzer = new(codeInfo);
-        if (executeFirst) analyzer.Execute();
+        if (executeFirst) ((IThreadPoolWorkItem)codeInfo).Execute();
 
-        long[] bitmap = analyzer.JumpDestinationBitmap;
-        analyzer.Execute();
+        long[] bitmap = codeInfo.JumpDestinationBitmap;
+        ((IThreadPoolWorkItem)codeInfo).Execute();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(analyzer.JumpDestinationBitmap, Is.SameAs(bitmap));
-            Assert.That(analyzer.RequiresAnalysis, Is.False);
-            Assert.That(analyzer.ValidateJump(-1), Is.False);
-            Assert.That(analyzer.ValidateJump(0), Is.False);
-            Assert.That(analyzer.ValidateJump(1), Is.False);
-            Assert.That(analyzer.ValidateJump(2), Is.True);
-            Assert.That(analyzer.ValidateJump(3), Is.False);
+            Assert.That(codeInfo.JumpDestinationBitmap, Is.SameAs(bitmap));
+            Assert.That(codeInfo.ValidateJump(-1), Is.False);
+            Assert.That(codeInfo.ValidateJump(0), Is.False);
+            Assert.That(codeInfo.ValidateJump(1), Is.False);
+            Assert.That(codeInfo.ValidateJump(2), Is.True);
+            Assert.That(codeInfo.ValidateJump(3), Is.False);
         }
     }
 
