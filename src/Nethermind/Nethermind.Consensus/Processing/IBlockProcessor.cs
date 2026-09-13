@@ -31,8 +31,8 @@ namespace Nethermind.Consensus.Processing
         /// <remarks>
         /// A transaction-only trace may return fewer receipts than transactions. Such receipts have no computed bloom,
         /// and the returned block has unfinalized roots, bloom and prefix-only gas totals. Consumers must not persist
-        /// these results or assume full-block receipt indexing. The suggested block's execution artifacts are not
-        /// updated by tracing. Ordinary block processing retains the complete, finalized result contract.
+        /// these results or assume full-block receipt indexing. Prefix replay does not update the suggested block's
+        /// execution artifacts. Ordinary block processing retains the complete, finalized result contract.
         /// </remarks>
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,

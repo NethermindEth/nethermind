@@ -36,6 +36,12 @@ public sealed class TransactionTraceBlockProcessor(
         return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
 
+    protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+    {
+        if (!options.ContainsFlag(ProcessingOptions.Trace))
+            base.PostValidation(suggestedBlock, processedBlock, receipts, options);
+    }
+
     protected override TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
         IReleaseSpec spec, TxReceipt[] receipts)
     {
