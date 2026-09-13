@@ -135,7 +135,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    private void Set(UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
 
     internal void ClearStorage()
     {
