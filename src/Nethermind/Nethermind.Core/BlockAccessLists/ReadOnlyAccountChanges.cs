@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -118,12 +118,15 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// <param name="slotChanges">The slot's changes, or <c>null</c> when it is declared only as a read.</param>
     /// <returns><c>true</c> when the slot is declared, whether written or only read.</returns>
     public bool TryGetDeclaredSlot(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
-    {
-        if (_declaredSlots is not null)
-        {
-            return _declaredSlots.TryGetValue(slot, out slotChanges);
-        }
+        => _declaredSlots is not null
+            ? _declaredSlots.TryGetValue(slot, out slotChanges)
+            : ScanDeclaredReads(slot, out slotChanges);
 
+    /// <remarks>Out of line so the two-instruction map probe above stays inlineable at the SLOAD
+    /// call sites; a body with a loop is not.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool ScanDeclaredReads(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
+    {
         slotChanges = null;
         ReadOnlySpan<UInt256> reads = StorageReads;
         for (int i = 0; i < reads.Length; i++)

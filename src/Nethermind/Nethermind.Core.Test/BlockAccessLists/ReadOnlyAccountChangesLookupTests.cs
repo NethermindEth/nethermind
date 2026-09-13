@@ -173,7 +173,8 @@ public class ReadOnlyAccountChangesLookupTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ac.TryGetDeclaredSlot((UInt256)1000, out ReadOnlySlotChanges? changed), Is.EqualTo(withChange));
-            Assert.That(changed, withChange ? Is.Not.Null : Is.Null, "a written slot carries its changes");
+            Assert.That(changed, withChange ? Is.Not.Null : Is.Null,
+                withChange ? "a written slot carries its changes" : "an undeclared slot resolves to nothing");
 
             if (readCount > 0)
             {

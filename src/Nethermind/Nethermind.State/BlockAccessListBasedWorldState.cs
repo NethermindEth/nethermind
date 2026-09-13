@@ -110,7 +110,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
-        if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
+        if (accountChanges.TryGetDeclaredSlot(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
             if (slotChanges is null) _readCoverage?.TryMark(storageCell);
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
@@ -134,7 +134,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
-        if (TryGetDeclaredSlotChanges(accountChanges, storageCell.Index, out ReadOnlySlotChanges? slotChanges))
+        if (accountChanges.TryGetDeclaredSlot(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
@@ -479,9 +479,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         }
         return false;
     }
-
-    private static bool TryGetDeclaredSlotChanges(ReadOnlyAccountChanges accountChanges, UInt256 slot, out ReadOnlySlotChanges? slotChanges)
-        => accountChanges.TryGetDeclaredSlot(slot, out slotChanges);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNotInitialized(string fieldName)
