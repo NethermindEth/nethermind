@@ -208,6 +208,10 @@ public class ReadOnlyAccountChangesLookupTests
     }
 
     /// <summary>Equality still compares the declared storage, now that reads and changes share a map.</summary>
+    /// <remarks>Both read counts take the mapped lookup, since <c>Make</c> always declares a change — which
+    /// is the only strategy <see cref="ReadOnlyAccountChanges.Equals"/> can reach anyway (a change is the
+    /// precondition for the storage comparison). The counts differ only so the <c>fewerReads</c> case sees
+    /// a 1-vs-2 and a 1-vs-64 read-array mismatch.</remarks>
     [Test]
     public void Equals_distinguishes_accounts_by_their_storage([Values(2, 64)] int readCount)
     {
