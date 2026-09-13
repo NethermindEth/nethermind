@@ -593,6 +593,9 @@ jobs:
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/rpcbench-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       contents: read
       pull-requests: write
@@ -609,6 +612,20 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          path: rpcbench-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify benchmark checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          for script in lib.sh run-rpc-sweep.sh start-node.sh stop-node.sh cleanup.sh cpu-stabilize.sh; do
+            test -f "scripts/rpc-bench/${script}" || { echo "::error::Missing benchmark script: ${script}"; exit 1; }
+          done
+          echo "Verified benchmark checkout: $(pwd) at ${EXPECTED_SHA}"
 
       - name: Verify perf profiling prerequisites
         if: needs.resolve.outputs.perf == 'true'
