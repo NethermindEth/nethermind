@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Regression tests for the EXPB workflow's single and multi-image paths."""
 
-import json
 import os
 import re
 import shutil
@@ -9,8 +8,6 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-
-import yaml
 
 
 def find_bash():
@@ -37,35 +34,65 @@ def to_bash(path):
 REPO = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO / ".github" / "workflows" / "run-expb-reproducible-benchmarks.yml"
 
+JOB_PATTERN = re.compile(
+    r"(?ms)^  (?P<name>[A-Za-z0-9_-]+):[^\r\n]*\r?\n"
+    r"(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:[^\r\n]*(?:\r?\n|\Z)|\Z)"
+)
+STEP_PATTERN = re.compile(
+    r"(?ms)^      - name: (?P<name>[^\r\n]+)\r?\n"
+    r"(?P<body>.*?)(?=^      - |\Z)"
+)
+
 
 class ExpbWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        cls.jobs = cls.workflow["jobs"]
+        cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.jobs = {
+            match["name"]: match["body"]
+            for match in JOB_PATTERN.finditer(cls.workflow)
+        }
 
     @classmethod
     def step(cls, job_name, name_fragment):
         fragment = name_fragment.casefold()
-        for step in cls.jobs[job_name].get("steps", []):
-            if fragment in step.get("name", "").casefold():
-                return step
+        for step in STEP_PATTERN.finditer(cls.jobs[job_name]):
+            if fragment in step["name"].casefold():
+                return step["body"]
         raise AssertionError(f"No step containing {name_fragment!r} in {job_name}")
 
     @classmethod
     def run_text(cls, job_name, name_fragment):
         step = cls.step(job_name, name_fragment)
-        body = step.get("run")
-        if not isinstance(body, str):
+        marker = re.search(r"(?m)^        run:\s*\|\s*$", step)
+        if marker is None:
             raise AssertionError(f"{job_name}/{name_fragment} is not a shell step")
-        return body
+        body = []
+        for line in step[marker.end() :].splitlines():
+            if not line.strip():
+                body.append("")
+            elif line.startswith(" " * 10):
+                body.append(line[10:])
+            else:
+                break
+        return "\n".join(body) + "\n"
+
+    @classmethod
+    def step_field(cls, job_name, name_fragment, field):
+        step = cls.step(job_name, name_fragment)
+        match = re.search(rf"(?m)^        {re.escape(field)}:\s*(.*)$", step)
+        if match is None:
+            match = re.search(rf"(?m)^          {re.escape(field)}:\s*(.*)$", step)
+        if match is None:
+            raise AssertionError(f"No {field!r} field in {job_name}/{name_fragment}")
+        return match.group(1)
 
     def run_warmup_validation(self, log, expected_status):
         bash = find_bash()
         if bash is None:  # pragma: no cover - environment guard
             self.skipTest("a POSIX bash is required to execute the workflow snippet")
 
-        analyze = self.step("benchmark", "Analyze benchmark output")["run"]
+        analyze = self.run_text("benchmark", "Analyze benchmark output")
         start = analyze.index('warmup_status="not-requested"')
         end = analyze.index('\ngrep -in "Exception"', start)
         warmup_logic = analyze[start:end]
@@ -119,8 +146,8 @@ printf 'status=%s\\n' "$warmup_status"
         self.assertIn("RAW_RUN_LOG", run)
 
         analyze = self.step("benchmark", "Analyze benchmark output")
-        self.assertEqual("analyze", analyze.get("id"))
-        analyze_run = analyze["run"]
+        self.assertEqual("analyze", self.step_field("benchmark", "Analyze benchmark output", "id"))
+        analyze_run = self.run_text("benchmark", "Analyze benchmark output")
         self.assertIn('metrics_file="${RUNNER_TEMP}/expb-metrics.env"', analyze_run)
         self.assertIn('>> "${GITHUB_OUTPUT}"', analyze_run)
 
@@ -129,16 +156,19 @@ printf 'status=%s\\n' "$warmup_status"
         self.assertRegex(quality, r"exception_found.*true")
         self.assertIn("exit 1", quality)
 
-        profiling = self.step("benchmark", "Collect and upload profiling artifacts")
-        self.assertEqual("collect-profiling", profiling.get("id"))
-        self.assertIn("dotnet-trace", profiling["run"])
-        self.assertIn("perf", profiling["run"])
+        self.assertEqual(
+            "collect-profiling",
+            self.step_field("benchmark", "Collect and upload profiling artifacts", "id"),
+        )
+        profiling = self.run_text("benchmark", "Collect and upload profiling artifacts")
+        self.assertIn("dotnet-trace", profiling)
+        self.assertIn("perf", profiling)
 
     def test_single_job_uploads_run_logs_even_after_failure(self):
         upload = self.step("benchmark", "Upload benchmark logs")
-        self.assertEqual("always()", upload.get("if"))
-        self.assertIn("upload-artifact", upload.get("uses", ""))
-        artifact_path = str(upload.get("with", {}).get("path", "")).casefold()
+        self.assertEqual("always()", self.step_field("benchmark", "Upload benchmark logs", "if"))
+        self.assertIn("upload-artifact", self.step_field("benchmark", "Upload benchmark logs", "uses"))
+        artifact_path = self.step_field("benchmark", "Upload benchmark logs", "path").casefold()
         self.assertIn("logs", artifact_path)
 
         stage = self.run_text("benchmark", "Stage benchmark logs")
@@ -149,8 +179,8 @@ printf 'status=%s\\n' "$warmup_status"
 
     def test_compute_warm_requires_payload_server_warmup_for_each_k6_index(self):
         analyze = self.step("benchmark", "Analyze benchmark output")
-        analyze_run = analyze["run"]
-        self.assertIn("MEASUREMENT_MODE", analyze.get("env", {}))
+        analyze_run = self.run_text("benchmark", "Analyze benchmark output")
+        self.assertRegex(analyze, r"(?m)^          MEASUREMENT_MODE:")
         self.assertIn(r"\[payload-server\]", analyze_run)
         self.assertIn(r"warmup[[:space:]]+block=[0-9]+", analyze_run)
         self.assertRegex(analyze_run, r"(?i)warmup.*(?:ok|failed|missing)")
@@ -173,18 +203,17 @@ printf 'status=%s\\n' "$warmup_status"
 
     def test_multi_job_runs_one_sequential_campaign_without_matrix(self):
         multi = self.jobs["benchmark-multi"]
-        self.assertNotIn("strategy", multi)
+        self.assertNotRegex(multi, r"(?m)^    strategy:")
 
-        serialized = json.dumps(multi)
-        self.assertNotRegex(serialized, r"\$\{\{\s*matrix\.")
+        self.assertNotRegex(multi, r"\$\{\{\s*matrix\.")
 
         campaign = self.run_text("benchmark-multi", "Run sequential EXPB campaign")
         self.assertIn("sequential_driver.py", campaign)
         self.assertRegex(campaign, r"\bpython3\s+.*sequential_driver\.py")
 
         upload = self.step("benchmark-multi", "Upload campaign artifact")
-        self.assertEqual("always()", upload.get("if"))
-        self.assertIn("upload-artifact", upload.get("uses", ""))
+        self.assertEqual("always()", self.step_field("benchmark-multi", "Upload campaign artifact", "if"))
+        self.assertIn("upload-artifact", self.step_field("benchmark-multi", "Upload campaign artifact", "uses"))
 
     def test_resolved_duplicate_images_get_distinct_ids(self):
         resolve = self.run_text("resolve-images", "Resolve Docker images")

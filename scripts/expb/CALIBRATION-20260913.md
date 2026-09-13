@@ -45,6 +45,46 @@ The aligned calibration uses
 25,490,001–25,491,000 while avoiding replay before the snapshot. This changes
 startup history; compare modes only within this explicitly recorded setup.
 
+## Sequential standard campaigns
+
+Both campaigns passed all three repetitions with the full image digest. Every
+sample delivered 1,000 K6 payload rows and 999 SSE timings, with the identical
+SSE block sequence 25,490,001–25,490,999. All samples contained normal shutdown,
+had no exceptions or invalid blocks, and verified absent containers, mounts and
+writable snapshot contents after cleanup.
+
+| Runner | SSE run means (ms) | Across-run CV, n=3 | Sum of sample elapsed time | Mean cleanup |
+| --- | --- | ---: | ---: | ---: |
+| amd64 | 25.2095, 25.3292, 25.4269 | 0.430% | 207.83 s | 8.24 s |
+| arm64 | 24.5467, 25.0034, 24.5929 | 1.017% | 143.64 s | 5.66 s |
+
+Sample elapsed time includes rendering, execution, teardown and verification;
+it excludes the job's one-time checkout/install and artifact upload. These are
+separate machine measurements. Three observations provide only a preliminary
+noise estimate. The changed startup alignment also prevents attributing a CV
+change versus the old harness to batching alone.
+
+Sources and complete campaign artifacts:
+[amd64](https://github.com/NethermindEth/nethermind/actions/runs/34752398003),
+[arm64](https://github.com/NethermindEth/nethermind/actions/runs/34752400728).
+
+## Warmed calibration failure
+
+The ARM compute-warm experiment repeatedly logged
+`System.InvalidOperationException: Cannot move unknown block ... to main`
+from `BlockTreeOverlay.ResetMainChain` through the pooled simulation
+environment. Raising the gas cap does not resolve this client error. The runner
+then failed with `No space left on device` while writing its Actions diagnostic
+log and went offline before uploading the campaign artifact. This is not an
+accepted warmed performance sample.
+
+The matching amd64 warmed experiment was cancelled rather than used for a
+comparison. No warmed CV is claimed for this image. Complete warmup and client
+health checks must pass before this mode can be used for regression screening.
+
+Sources: [ARM failed run](https://github.com/NethermindEth/nethermind/actions/runs/34752625718),
+[amd64 cancelled run](https://github.com/NethermindEth/nethermind/actions/runs/34752624438).
+
 ## GC diagnostic, ARM only
 
 Two separate timeline captures used the aligned payload window. These are

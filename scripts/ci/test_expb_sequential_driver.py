@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Pure regression tests for the EXPB sequential campaign driver."""
 
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -209,6 +211,19 @@ class ExpbSequentialDriverTests(unittest.TestCase):
         self.assertTrue(campaign.cancel_requested)
         self.assertTrue(campaign.aborted)
 
+    def test_force_termination_kills_owned_process_group_even_after_parent_exit(self):
+        campaign = Mock()
+        process = Mock()
+        process.pid = 123
+        campaign.current_process = process
+        with patch.object(sequential_driver.os, "killpg", create=True) as killpg:
+            sequential_driver.Campaign._force_termination(campaign, process)
+
+        if hasattr(sequential_driver.signal, "SIGKILL"):
+            killpg.assert_called_once_with(123, sequential_driver.signal.SIGKILL)
+        else:
+            process.kill.assert_called_once_with()
+
     def test_summary_refuses_cv_when_ordered_sse_blocks_differ(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -400,6 +415,108 @@ class ExpbSequentialDriverTests(unittest.TestCase):
         self.assertFalse(sample["sse_coverage_valid"])
         self.assertEqual("failed", sample["status"])
 
+    def test_console_output_is_bounded_while_combined_log_keeps_full_line(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            campaign = sequential_driver.Campaign(self.campaign_args(root, amount="1"))
+            long_line = "X" * (sequential_driver.CONSOLE_LINE_LIMIT + 904) + "\n"
+            process = Mock()
+            process.stdout = iter(
+                (
+                    long_line
+                    + "[payload-server] client_metric block_number=10 processing_ms=10\n"
+                    + "| 10 | 100 | 10.0 |\n"
+                    + "Nethermind is shut down\nCleanup completed\n"
+                ).splitlines(keepends=True)
+            )
+            process.wait.return_value = 0
+            process.poll.return_value = 0
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                patch.object(
+                    campaign,
+                    "render_config",
+                    side_effect=lambda _image, _run, path: path.write_text("scenario: test\n") or "scenario",
+                ),
+                patch.object(sequential_driver.subprocess, "Popen", return_value=process),
+                patch.object(sequential_driver, "verify_cleanup", return_value=(True, [])),
+                patch.object(sequential_driver, "verify_snapshot_scratch", return_value=(True, [])),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                sample = campaign.run_sample(
+                    {"id": "image-a", "image": "repo:image-a", "tag": "image-a", "date": "n/a"}, 1
+                )
+
+            raw_log = Path(sample["log"]).read_text(encoding="utf-8")
+
+        self.assertEqual("success", sample["status"])
+        self.assertIn("X" * (sequential_driver.CONSOLE_LINE_LIMIT + 904), raw_log)
+        console = stdout.getvalue() + stderr.getvalue()
+        self.assertIn("X" * sequential_driver.CONSOLE_LINE_LIMIT, console)
+        self.assertIn(sequential_driver.CONSOLE_TRUNCATION, console)
+        self.assertNotIn("X" * (sequential_driver.CONSOLE_LINE_LIMIT + 1), console)
+
+    def test_compute_warm_failure_skips_remaining_repetitions_for_that_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.campaign_args(root, measurement_mode="compute-warm")
+            args.images_json = (
+                '[{"id":"image-a","image":"repo:image-a"},'
+                '{"id":"image-b","image":"repo:image-b"}]'
+            )
+            args.run_count = 3
+            campaign = sequential_driver.Campaign(args)
+            calls: list[tuple[str, int]] = []
+
+            def sample(image: dict[str, str], run: int) -> dict:
+                calls.append((image["id"], run))
+                if image["id"] == "image-a":
+                    campaign.failures += 1
+                    return {
+                        "sample_id": f"{image['id']}-run{run}",
+                        "image_id": image["id"],
+                        "run": run,
+                        "started_at": "2026-09-13T00:00:00Z",
+                        "status": "failed",
+                        "warmup_status": "missing",
+                        "cleanup_verified": True,
+                        "failure_reasons": ["compute-warm warmup is missing"],
+                        "metrics": {},
+                    }
+                return {
+                    "sample_id": f"{image['id']}-run{run}",
+                    "image_id": image["id"],
+                    "run": run,
+                    "started_at": "2026-09-13T00:00:00Z",
+                    "status": "success",
+                    "metrics_source": "TTFB",
+                    "sse_block_ids": [],
+                    "metrics": {"SOURCE": "TTFB", "COUNT": "1", "AVG": "1", "AVG_EXACT": "1"},
+                }
+
+            with (
+                patch.object(campaign, "run_sample", side_effect=sample),
+                patch.object(sequential_driver, "verify_cleanup", return_value=(True, [])),
+                patch.object(sequential_driver, "verify_snapshot_scratch", return_value=(True, [])),
+                patch.object(sequential_driver.signal, "signal"),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = campaign.run()
+
+        self.assertEqual(1, result)
+        self.assertEqual(
+            [("image-a", 1), ("image-b", 1), ("image-b", 2), ("image-b", 3)],
+            calls,
+        )
+        self.assertEqual(
+            ["image-a-run1", "image-a-run2", "image-a-run3", "image-b-run1", "image-b-run2", "image-b-run3"],
+            [sample["sample_id"] for sample in campaign.samples],
+        )
+        self.assertEqual(["skipped", "skipped"], [sample["status"] for sample in campaign.samples[1:3]])
+
     def test_compute_warm_requires_concrete_success_for_each_delivered_row(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -508,7 +625,7 @@ class ExpbSequentialDriverTests(unittest.TestCase):
             def manifest() -> None:
                 nonlocal manifests
                 manifests += 1
-                if manifests == 2:
+                if manifests == 3:
                     campaign.cancel_requested = True
 
             with (

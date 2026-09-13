@@ -12,6 +12,11 @@ Never compare timings between modes, architectures, payload sets, snapshot
 versions or different metric sources. Keep the ordinary standard run as a
 confirmation gate for compute changes and as the primary test for storage changes.
 
+Check warmup compatibility with the client being tested. The 2026-09-13
+calibration found repeated `eth_simulateV1` failures on `master-d7bd8d0`
+(`Cannot move unknown block ... to main`); that run cannot establish warmed CV.
+Use standard mode until a client passes the complete warmup and health checks.
+
 ## State-root interpretation
 
 Warm reads do not remove the requirement to compute and validate the imported
@@ -98,7 +103,7 @@ For example, screen the last 50 published master images on one architecture:
 gh workflow run run-expb-reproducible-benchmarks.yml --ref <workflow-branch> \
   -f arch=amd64 -f state_layout=flat -f payload_set=fusaka \
   -f enable_retrospective=true -f retrospective_last=50 -f retrospective_step=1 \
-  -f run_count=1 -f measurement_mode=compute-warm -f amount=1000 \
+  -f run_count=1 -f measurement_mode=standard -f amount=1000 \
   -f expb_env='EXPB_SKIP_OVERRIDE=11,EXPB_WARMUP_OVERRIDE=0'
 ```
 
@@ -124,7 +129,13 @@ checkpoint until uploaded.
 The `expb-campaign-<run-id>` artifact contains `campaign.json`, `summary.md`,
 and a directory for each image/repetition. Each sample includes the timestamped
 combined log, cleaned log, rendered config, `metrics.env`, `metadata.json`,
-and matching exception/invalid-block/severe-signal lines. Single-mode runs
+and matching exception/invalid-block/severe-signal lines. Campaign files live on
+the benchmark data volume under `campaigns/<run-id>/<attempt>`. Console lines
+are capped at 4,096 characters; artifacts preserve the full lines. Preflight
+requires 2 GiB free on the root filesystem and 10 GiB on the data volume.
+A failed or incomplete compute warmup skips further repetitions of that image
+after verified cleanup, while retaining the failure in the campaign result.
+Single-mode runs
 also upload a logs artifact for each payload set and repetition.
 
 For the current Fusaka corpus, the runner configuration replays eleven entries

@@ -2192,6 +2192,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/expb
+            scripts/validate-folded-profile.sh
+          sparse-checkout-cone-mode: false
       - name: Ensure Docker is installed
         shell: bash
         run: |
@@ -2325,6 +2331,28 @@ jobs:
             done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
           done
           exit 0
+      - name: Check benchmark disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h / "${EXPB_DATA_DIR}"
+          root_available_kb="$(df -Pk / | awk 'NR == 2 { print $4 }')"
+          data_available_kb="$(df -Pk "${EXPB_DATA_DIR}" | awk 'NR == 2 { print $4 }')"
+          if ! [[ "${root_available_kb}" =~ ^[0-9]+$ && "${data_available_kb}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not determine free space for the runner root or ${EXPB_DATA_DIR}."
+            exit 1
+          fi
+          if (( root_available_kb < 2 * 1024 * 1024 )); then
+            echo "::error::Only ${root_available_kb} KiB is free on the runner root filesystem; at least 2 GiB is required before starting a campaign."
+            echo "::error::Inspect runner diagnostics and other root-volume files before retrying."
+            exit 1
+          fi
+          if (( data_available_kb < 10 * 1024 * 1024 )); then
+            echo "::error::Only ${data_available_kb} KiB is free on ${EXPB_DATA_DIR}; at least 10 GiB is required before starting a campaign."
+            echo "::error::Inspect existing campaign artifacts on the data volume and choose a runner with more free space."
+            exit 1
+          fi
+
       - name: Install or upgrade expb and yq
         shell: bash
         env:
@@ -2368,7 +2396,7 @@ jobs:
         env:
           EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
           EXPB_CONFIG_TEMPLATE: ${{ needs.resolve.outputs.expb_data_dir }}/${{ needs.resolve.outputs.config_file }}
-          EXPB_CAMPAIGN_DIR: ${{ runner.temp }}/expb-campaign
+          EXPB_CAMPAIGN_DIR: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
           FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
           YQ_BIN: ${{ runner.temp }}/yq
@@ -2395,10 +2423,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: expb-campaign-${{ github.run_id }}
-          path: ${{ runner.temp }}/expb-campaign
+          path: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           retention-days: 30
           if-no-files-found: warn
-      - name: Collect profiling artifacts
+      - name: Collect and upload profiling artifacts
         id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
@@ -2409,20 +2437,24 @@ jobs:
           PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
-          if [[ "${PERF}" == "true" ]]; then artifact_prefix=profiling; else artifact_prefix=dottrace; fi
+          if [[ "${PERF}" == "true" ]]; then
+            artifact_prefix="profiling"
+          else
+            artifact_prefix="dottrace"
+          fi
           artifact_name="${artifact_prefix}-campaign"
           archive="${RUNNER_TEMP}/${artifact_name}.zip"
           echo "artifact_name=${artifact_name}" >> "${GITHUB_OUTPUT}"
           echo "archive=${archive}" >> "${GITHUB_OUTPUT}"
-          mapfile -t dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name dottrace -o -name dotnet-trace -o -name perf \) -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dirs[@]}" -eq 0 ]]; then
+          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name dottrace -o -name dotnet-trace -o -name perf \) -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#profiling_dirs[@]}" -eq 0 ]]; then
             if [[ "${PERF}" == "true" ]]; then echo "::error::perf produced no profile."; exit 1; fi
             echo "::warning::No profiling output was produced."
             exit 0
           fi
           perf_validation_failed=false
           if [[ "${PERF}" == "true" ]]; then
-            mapfile -t perf_dirs < <(find "${dirs[@]}" -type d -name perf -newer "${MARKER}" 2>/dev/null)
+            mapfile -t perf_dirs < <(find "${profiling_dirs[@]}" -type d -name perf -newer "${MARKER}" 2>/dev/null)
             if [[ "${#perf_dirs[@]}" -eq 0 ]]; then
               echo "::error::perf was requested but no perf output directory was produced."
               perf_validation_failed=true
@@ -2442,7 +2474,7 @@ jobs:
               fi
             done
           fi
-          zip -9r "${archive}" "${dirs[@]}" -x '*/perf.data'
+          zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
           if [[ "${perf_validation_failed}" == "true" ]]; then
             exit 1
           fi

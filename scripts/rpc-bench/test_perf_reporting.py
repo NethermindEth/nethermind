@@ -1188,16 +1188,17 @@ esac
         self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
         self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
         self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
-        self.assertEqual(
-            expb_workflow.count(
-                "# Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard."
-            ),
-            2,
-        )
+        default_expb_revision = "4a7ef676493fedfc4973c2d3420442d71dedd255"
+        self.assertIn(f"default: {default_expb_revision}", expb_workflow)
+        self.assertEqual(expb_workflow.count(f'expb_default_revision="{default_expb_revision}"'), 2)
         for job_name in ("benchmark", "benchmark-multi"):
             job_body = workflow_job_body(expb_workflow, job_name)
             self.assertIn(
-                'if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then',
+                'if [[ -n "${EXPB_BRANCH}" ]]; then',
+                job_body,
+            )
+            self.assertIn(
+                'expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"',
                 job_body,
             )
             self.assertIn('expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)"', job_body)

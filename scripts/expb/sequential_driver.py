@@ -40,6 +40,8 @@ WARMUP_FAILED_RE = re.compile(
     r"\[payload-server\]\s+warmup\s+block=(\d+)\s+FAILED\b", re.IGNORECASE
 )
 SEVERE_RE = re.compile(r"(?:Unhandled|Fatal|ERROR)", re.IGNORECASE)
+CONSOLE_LINE_LIMIT = 4096
+CONSOLE_TRUNCATION = " ... [truncated in console; full line retained in combined log]"
 INVALID_BLOCK_RE = re.compile(r"invalid[\s_-]*blocks?", re.IGNORECASE)
 EXCEPTION_RE = re.compile(r"Exception")
 KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -101,7 +103,7 @@ def metrics_for_values(values: list[float], prefix: str = "") -> dict[str, str]:
     return {
         f"{prefix}COUNT": str(len(values)),
         f"{prefix}AVG": f"{sum(values) / len(values):.2f}",
-        f"{prefix}AVG_EXACT": f"{sum(values) / len(values):.12g}",
+        f"{prefix}AVG_EXACT": f"{sum(values) / len(values):.17g}",
         f"{prefix}MEDIAN": f"{median:.2f}",
         f"{prefix}P90": f"{percentile(values, 90):g}",
         f"{prefix}P95": f"{percentile(values, 95):g}",
@@ -171,6 +173,20 @@ def parse_severe_lines(log: str) -> list[str]:
     """Return severe runtime signal lines for artifact review and warnings."""
     clean = ANSI_RE.sub("", log)
     return [line for line in clean.splitlines() if SEVERE_RE.search(line)]
+
+
+def print_console_line(line: str, *, stream: Any = None) -> None:
+    """Print a bounded diagnostic line while retaining the unbounded artifact copy."""
+    target = stream or sys.stdout
+    if line.endswith("\r\n"):
+        body, ending = line[:-2], "\r\n"
+    elif line.endswith("\n"):
+        body, ending = line[:-1], "\n"
+    else:
+        body, ending = line, "\n"
+    if len(body) > CONSOLE_LINE_LIMIT:
+        body = body[:CONSOLE_LINE_LIMIT] + CONSOLE_TRUNCATION
+    print(body, end=ending, file=target, flush=True)
 
 
 def load_image_plan(raw: str) -> list[dict[str, str]]:
@@ -374,7 +390,7 @@ class Campaign:
         self.flags.append("--JsonRpc.GasCap=1000000000000")
 
     def _force_termination(self, process: subprocess.Popen[str]) -> None:
-        if process is not self.current_process or process.poll() is not None:
+        if process is not self.current_process:
             return
         print("Cleanup grace period elapsed; forcing EXPB shutdown.", flush=True)
         try:
@@ -655,7 +671,7 @@ class Campaign:
                     log_file.write(line)
                     log_file.flush()
                     log_parts.append(line)
-                    print(line, end="", flush=True)
+                    print_console_line(line)
                 exit_code = self.current_process.wait()
         except OSError as error:
             log_parts.append(f"driver error starting expb: {error}\n")
@@ -823,17 +839,17 @@ class Campaign:
         if severe_lines:
             print(f"::warning::Severe runtime signal(s) found for {sample_id}; see severe-lines.log.", flush=True)
             for line in severe_lines[:20]:
-                print(line, flush=True)
+                print_console_line(line)
         if failure_reasons:
             print(f"Sample {sample_id} failed: {'; '.join(failure_reasons)}", file=sys.stderr, flush=True)
             if exceptions:
                 print("Exception lines:", file=sys.stderr, flush=True)
                 for line in exceptions[:20]:
-                    print(line, file=sys.stderr, flush=True)
+                    print_console_line(line, stream=sys.stderr)
             if invalid_blocks:
                 print("Invalid block lines:", file=sys.stderr, flush=True)
                 for line in invalid_blocks[:20]:
-                    print(line, file=sys.stderr, flush=True)
+                    print_console_line(line, stream=sys.stderr)
         return metadata
 
     def write_summary(self) -> None:
@@ -1012,10 +1028,52 @@ class Campaign:
             encoding="utf-8",
         )
 
+    def make_skipped_sample(self, image: dict[str, str], run: int, reason: str) -> dict[str, Any]:
+        """Persist a repetition skipped after an unusable compute-warm sample."""
+        sample_id = f"{image['id']}-run{run}"
+        sample_dir = self.output_dir / sample_id
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        started = utc_now()
+        log_stamp = started.replace("-", "").replace(":", "")
+        raw_path = sample_dir / f"combined-{log_stamp}.log"
+        metadata: dict[str, Any] = {
+            "sample_id": sample_id,
+            "image_id": image["id"],
+            "image": image["image"],
+            "tag": image["tag"],
+            "date": image["date"],
+            "architecture": self.runner_architecture,
+            "runner_hostname": self.runner_hostname,
+            "run": run,
+            "started_at": started,
+            "finished_at": started,
+            "log": str(raw_path),
+            "measurement_mode": self.args.measurement_mode,
+            "expb_source": os.environ.get("EXPB_SOURCE", "unknown"),
+            "expb_env": self.args.expb_env or "",
+            "expb_env_values": parse_client_env(self.args.expb_env or ""),
+            "status": "skipped",
+            "failure_reasons": [reason],
+            "cleanup_verified": True,
+            "snapshot_scratch_verified": True,
+            "cancel_requested": self.cancel_requested,
+        }
+        raw_path.write_text(f"driver: {reason}\n", encoding="utf-8")
+        (sample_dir / "clean.log").write_text(raw_path.read_text(encoding="utf-8"), encoding="utf-8")
+        for name in ("exceptions.log", "invalid-blocks.log", "severe-lines.log"):
+            (sample_dir / name).write_text("", encoding="utf-8")
+        (sample_dir / "metrics.env").write_text(
+            f"IMAGE_ID={image['id']}\nIMAGE={image['image']}\nRUN={run}\nSTATUS=skipped\nSKIP_REASON={reason}\n",
+            encoding="utf-8",
+        )
+        (sample_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        return metadata
+
     def run(self) -> int:
         signal.signal(signal.SIGTERM, self.terminate)
         signal.signal(signal.SIGINT, self.terminate)
         images = load_image_plan(self.args.images_json)
+        self.write_manifest()
         preflight_cleanup, preflight_cleanup_problems = verify_cleanup(
             Path(self.args.expb_data_dir), self.args.docker_bin
         )
@@ -1058,6 +1116,19 @@ class Campaign:
                     print("Cleanup could not be verified; aborting campaign before the next sample.", file=sys.stderr, flush=True)
                     self.write_summary()
                     return 1
+                if (
+                    self.args.measurement_mode == "compute-warm"
+                    and sample.get("status") == "failed"
+                    and sample.get("warmup_status") in {"failed", "missing"}
+                    and sample.get("cleanup_verified") is True
+                ):
+                    reason = f"skipped after {sample['sample_id']}: compute-warm warmup is {sample['warmup_status']}"
+                    for skipped_run in range(run + 1, self.args.run_count + 1):
+                        skipped = self.make_skipped_sample(image, skipped_run, reason)
+                        self.samples.append(skipped)
+                        self.write_manifest()
+                        print(f"Skipped sample {skipped['sample_id']}: {reason}", file=sys.stderr, flush=True)
+                    break
         self.write_summary()
         return 1 if self.failures else 0
 
