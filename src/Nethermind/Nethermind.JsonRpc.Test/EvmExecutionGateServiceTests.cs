@@ -63,17 +63,28 @@ public class EvmExecutionGateServiceTests
         byte[] bytes = Encoding.UTF8.GetBytes(body);
         if (!segmented) return PipeReader.Create(new ReadOnlySequence<byte>(bytes));
 
-        Pipe pipe = new();
+        // pauseWriterThreshold 1 blocks the writer on every FlushAsync until the reader consumes, so the
+        // parser genuinely resumes mid-document — a default 64 KiB threshold would let this ~100-byte body
+        // flush in one go and make the segmented case identical to the contiguous one.
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 1, resumeWriterThreshold: 1));
         _ = Task.Run(async () =>
         {
-            foreach (byte b in bytes)
+            try
             {
-                pipe.Writer.GetSpan(1)[0] = b;
-                pipe.Writer.Advance(1);
-                await pipe.Writer.FlushAsync();
-            }
+                foreach (byte b in bytes)
+                {
+                    pipe.Writer.GetSpan(1)[0] = b;
+                    pipe.Writer.Advance(1);
+                    await pipe.Writer.FlushAsync();
+                }
 
-            await pipe.Writer.CompleteAsync();
+                await pipe.Writer.CompleteAsync();
+            }
+            catch (Exception ex)
+            {
+                // Surface a writer fault to the reader as a fault rather than an unobserved task and a hang.
+                await pipe.Writer.CompleteAsync(ex);
+            }
         });
 
         return pipe.Reader;
