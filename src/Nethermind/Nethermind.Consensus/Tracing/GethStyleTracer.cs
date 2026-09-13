@@ -38,7 +38,8 @@ public class GethStyleTracer(
     ISpecProvider specProvider,
     ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
     IFileSystem fileSystem,
-    IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv
+    IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
+    HistoricalTracePrewarmer? historicalTracePrewarmer = null
 ) : IGethStyleTracer
 {
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -234,6 +235,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(block);
 
         BlockHeader parent = FindParent(block);
+        if (options.StateOverrides is null) historicalTracePrewarmer?.Prewarm(block, parent, cancellationToken);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
