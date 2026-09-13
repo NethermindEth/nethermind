@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -130,7 +132,6 @@ public class SimulateBlockhashProviderTests
             return false;
         }
 
-        public System.Threading.Tasks.Task Prefetch(BlockHeader currentBlock, System.Threading.CancellationToken token)
-            => System.Threading.Tasks.Task.CompletedTask;
+        public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }
 }
