@@ -138,7 +138,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         bool inserted = false;
-        bool journalCode = false;
 
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -153,7 +152,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             // Only first-time additions are journaled; an entry staged by an already committed
             // transaction must stay in the batch even if a later frame re-inserts and reverts.
-            journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
+            bool journalCode = !_codeBatchAlternate.ContainsKey(codeHash);
 
             if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                 && codeArray.Offset == 0
@@ -170,8 +169,15 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
 
-            _metrics.IncrementCodeWrites();
-            _metrics.IncrementCodeBytesWritten(code.Length);
+            if (journalCode)
+            {
+                // Anchored one past the change log, which is where the code-hash update below lands
+                // when there is one; without it the anchor still precedes every later snapshot.
+                _codeInsertJournal.Add((_changes.Count, codeHash));
+
+                _metrics.IncrementCodeWrites();
+                _metrics.IncrementCodeBytesWritten(code.Length);
+            }
         }
 
         Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -182,7 +188,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
 
             PushUpdate(address, changedAccount);
-            if (journalCode) _codeInsertJournal.Add((_changes.Count - 1, codeHash));
         }
         else if (spec.IsEip158Enabled && !isGenesis)
         {
@@ -459,7 +464,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// leaves no runtime bytecode that committed state no longer references.
     /// </summary>
     /// <remarks>
-    /// An entry is anchored to the change-log position of the code-hash update referencing it, so
+    /// An entry is anchored to the change-log position the code-hash update referencing it occupies, so
     /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
     /// same code would be suppressed and lost.
