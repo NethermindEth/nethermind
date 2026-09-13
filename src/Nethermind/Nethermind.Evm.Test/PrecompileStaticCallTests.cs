@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -96,25 +97,40 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
         AssertOutput(code, input);
     }
 
-    [Test]
-    public void Identity_calls_of_changing_lengths_each_return_their_own_input()
+    private static IEnumerable<TestCaseData> IdentityChainCases()
     {
+        const int limit = VirtualMachineStatics.MaxRetainedPrecompileScratch;
+
         // Grow, shrink, empty, unaligned, grow back: a reused buffer must not leave a tail of a longer call behind.
-        byte[] code = BuildIdentityChain([64, 32, 0, 40, 64], out byte[] expected);
+        yield return new TestCaseData(new[] { 64, 32, 0, 40, 64 }, 100_000UL)
+            .SetName("Identity_calls_of_changing_lengths_each_return_their_own_input");
 
-        AssertOutput(code, expected);
-    }
-
-    [Test]
-    public void Identity_calls_crossing_the_retained_scratch_limit_each_return_their_own_input()
-    {
         // The second call fills the VM's own buffer exactly and the fourth exceeds it, so it is served from the
         // pool — where the array is longer than asked for; the short calls around them must still see only their
         // own bytes.
-        const int limit = VirtualMachineStatics.MaxRetainedPrecompileScratch;
-        byte[] code = BuildIdentityChain([32, limit, 32, limit + 32, 32], out byte[] expected);
+        yield return new TestCaseData(new[] { 32, limit, 32, limit + 32, 32 }, DefaultBlockGasLimit)
+            .SetName("Identity_calls_crossing_the_retained_scratch_limit_each_return_their_own_input");
+    }
 
+    [TestCaseSource(nameof(IdentityChainCases))]
+    public void Identity_calls_each_return_their_own_input(int[] lengths, ulong gasLimit)
+    {
+        byte[] code = BuildIdentityChain(lengths, out byte[] expected);
+
+        AssertOutput(code, expected, gasLimit: gasLimit);
+    }
+
+    [Test]
+    public void Identity_fast_path_grows_the_retained_scratch()
+    {
+        // A 64 KiB ID call fills the retained (non-pooled) buffer exactly, so the inline ID fast path grows it to
+        // that size. If the `precompile is IdentityPrecompile` branch were dropped, ID would resolve through the
+        // ordinary precompile path, RentPrecompileScratch would never run, and this would stay 0 — so the
+        // assertion pins that the optimization is actually taken.
+        byte[] code = BuildIdentityChain([VirtualMachineStatics.MaxRetainedPrecompileScratch], out byte[] expected);
         AssertOutput(code, expected, gasLimit: DefaultBlockGasLimit);
+
+        Assert.That(Machine.RetainedPrecompileScratchLength, Is.EqualTo(VirtualMachineStatics.MaxRetainedPrecompileScratch));
     }
 
     [Test]
@@ -172,8 +188,9 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     /// followed by its first and last word.
     /// </summary>
     /// <remarks>Every call writes a word unique to it at both ends of its input, so returndata carrying another
-    /// call's bytes — the stale tail of a longer one, or a wrongly sliced buffer — cannot go unnoticed. What lies
-    /// between the two words stays zero, which keeps the bytecode the same size at any input length.</remarks>
+    /// call's bytes — the stale tail of a longer one, or a wrongly sliced buffer — cannot go unnoticed. Each call
+    /// writes only its two marker words; every other byte keeps whatever an earlier call left there (a shorter
+    /// call's markers can fall inside a longer call's input), which the <c>memory</c> mirror tracks.</remarks>
     private static byte[] BuildIdentityChain(int[] lengths, out byte[] expected)
     {
         int longest = 0;

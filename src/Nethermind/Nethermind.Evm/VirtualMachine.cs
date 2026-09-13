@@ -139,6 +139,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>Whether a pooled ID scratch is currently borrowed. Always false between transactions.</summary>
     internal bool HoldsPooledPrecompileScratch => _pooledPrecompileScratch is not null;
 
+    /// <summary>The retained (per-instance) ID scratch length, which the inline ID fast path grows. Zero until
+    /// that path runs, so a test can assert it to pin that the fast path was actually taken.</summary>
+    internal int RetainedPrecompileScratchLength => _precompileScratch.Length;
+
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -1008,7 +1012,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <remarks>Buffers up to <see cref="VirtualMachineStatics.MaxRetainedPrecompileScratch"/> live on this
     /// instance and are reused for the rest of its life. A larger one is borrowed from the pool and handed back
     /// when the transaction ends, so what an outsized call needs is bounded by the transaction that asked for it
-    /// rather than kept per VM — of which a node holds tens.</remarks>
+    /// rather than kept per VM — of which a node holds tens. The pool-grow path replaces the retained buffer via
+    /// <see cref="ReleasePooledPrecompileScratch"/>, which clears <see cref="ReturnDataBuffer"/> as a side
+    /// effect, so the caller must reassign it before any later read.</remarks>
     internal Memory<byte> RentPrecompileScratch(int length)
     {
         byte[] buffer = _precompileScratch;
