@@ -58,7 +58,7 @@ public class BlockProcessorTests
 {
     [Test]
     public async Task TransactionTraceBoundary_WhenTargetCompletes_PreservesTraceAndSkipsSuffix(
-        [Values(-1, 0, 1, 2)] int targetIndex,
+        [Range(-1, 2)] int targetIndex,
         [Values("callTracer", "prestateTracer")] string tracerName,
         [Values] bool useBal,
         [Values] bool forceFullBal)

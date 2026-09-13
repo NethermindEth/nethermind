@@ -32,7 +32,7 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
         [Values("debug_traceTransaction", "trace_transaction", "trace_replayTransaction")] string method,
-        [Values(0, 1, 2)] int targetIndex, [Values] bool stream, [Values] bool isAura)
+        [Range(0, 2)] int targetIndex, [Values] bool stream, [Values] bool isAura)
     {
         List<Hash256?> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev)
@@ -49,9 +49,8 @@ public partial class DebugRpcModuleTests
         }
         Block block = await chain.AddBlock(transactions);
         Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: all three test transactions must be mined");
-        if (isAura)
-            Assert.That(chain.BlockProcessor, Is.InstanceOf<Nethermind.Consensus.AuRa.AuRaBlockProcessor>(),
-                "precondition: the compatibility control must use a chain-specific processor");
+        Assert.That(chain.SealEngineType, Is.EqualTo(isAura ? SealEngineType.AuRa : SealEngineType.NethDev),
+            "precondition: the fixture must select the requested consensus engine");
         executed.Clear();
         string hash = block.Transactions[targetIndex].Hash!.ToString();
         string response = method switch

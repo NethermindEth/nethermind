@@ -159,6 +159,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {
         protected override void Load(ContainerBuilder builder) => builder
+            .AddSingleton(new Nethermind.Consensus.Tracing.TransactionTraceCapabilities(SupportsPrefixReplay: true))
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();
     }

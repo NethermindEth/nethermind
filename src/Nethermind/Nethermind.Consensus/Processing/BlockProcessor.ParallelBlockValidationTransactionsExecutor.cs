@@ -40,8 +40,6 @@ public partial class BlockProcessor
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
         private int _pooledSlotsInUse;
 
-        internal bool SupportsTransactionTraceBoundary => inner.GetType() == typeof(BlockValidationTransactionsExecutor);
-
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             balManager.SetBlockExecutionContext(blockExecutionContext);

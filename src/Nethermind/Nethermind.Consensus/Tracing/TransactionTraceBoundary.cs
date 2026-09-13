@@ -25,6 +25,10 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal bool IsComplete { get; private set; }
     internal IBlockTracer Inner => _inner;
 
+    /// <summary>Wraps a transaction tracer for early completion in a supported read-only replay environment.</summary>
+    /// <param name="tracer">The tracer to forward callbacks to; reward tracing retains full replay.</param>
+    /// <param name="transactionHash">The transaction to stop after, or null for unrestricted replay.</param>
+    /// <returns>The original tracer for a null hash or reward tracing; otherwise a completion boundary.</returns>
     public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash);
 

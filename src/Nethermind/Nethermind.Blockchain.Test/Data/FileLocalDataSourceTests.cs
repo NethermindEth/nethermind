@@ -56,12 +56,14 @@ public class FileLocalDataSourceTests
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
         await WaitForData(fileLocalDataSource, ["C", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        Assert.That(await WaitForCondition(handle, () => Volatile.Read(ref changedRaised) >= 1), Is.True,
+            "the changed notification must arrive after the data is published");
 
         int afterFirst = Volatile.Read(ref changedRaised);
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
         await WaitForData(fileLocalDataSource, ["E", "F"], handle);
-        Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
+        Assert.That(await WaitForCondition(handle, () => Volatile.Read(ref changedRaised) > afterFirst), Is.True,
+            "the next data update must publish another changed notification");
     }
 
     private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle)

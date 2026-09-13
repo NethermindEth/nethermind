@@ -43,7 +43,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    TransactionTraceCapabilities? traceCapabilities = null)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
@@ -125,15 +126,7 @@ public partial class BlockProcessor(
     }
 
     private bool SupportsTransactionTraceBoundary() =>
-        GetType() == typeof(BlockProcessor)
-        && !_balManager.ForceConstructGeneratedBlockAccessList
-        && (_blockTransactionsExecutor switch
-        {
-            BlockValidationTransactionsExecutor executor => executor.GetType() == typeof(BlockValidationTransactionsExecutor),
-            ParallelBlockValidationTransactionsExecutor executor =>
-                executor.GetType() == typeof(ParallelBlockValidationTransactionsExecutor) && executor.SupportsTransactionTraceBoundary,
-            _ => false
-        });
+        traceCapabilities?.SupportsPrefixReplay == true && !_balManager.ForceConstructGeneratedBlockAccessList;
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
