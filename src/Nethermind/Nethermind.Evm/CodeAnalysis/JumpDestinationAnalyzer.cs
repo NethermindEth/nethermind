@@ -46,7 +46,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
-        long[] bitmap = _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+        long[] bitmap = JumpDestinationBitmap;
 
         // Cast to uint to change negative numbers to very int high numbers
         // Then do length check, this both reduces check by 1 and eliminates the bounds
@@ -103,6 +103,10 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         previous ??= CompleteAnalysis(analysisComplete);
     }
 
+    /// <remarks>
+    /// Failures remain cached for this analyzer's lifetime so every waiter observes the same completed result.
+    /// Retrying requires a result tied to each attempt; clearing the shared result can race awakened waiters.
+    /// </remarks>
     private object CompleteAnalysis(ManualResetEventSlim analysisComplete)
     {
         object result;
