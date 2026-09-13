@@ -234,8 +234,10 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    private static readonly UInt256[] StorageWriteValues = [0, 1, 2, ulong.MaxValue, UInt256.MaxValue];
+
     [Test]
-    public void Set_WithCurrentValue_PreservesOriginalAndRollback([Values(0ul, 1ul, 2ul, ulong.MaxValue)] ulong next, [Values] bool evictReadCache)
+    public void Set_WithCurrentValue_PreservesOriginalAndRollback([ValueSource(nameof(StorageWriteValues))] UInt256 next, [Values] bool evictReadCache)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
@@ -247,7 +249,7 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             Snapshot snapshot = tws.TakeSnapshot();
             tws.Get(in cell, out UInt256 currentValue);
-            tws.Set(in cell, (UInt256)next, in currentValue);
+            tws.Set(in cell, in next, in currentValue);
             tws.GetOriginal(in cell, out UInt256 original);
             if (evictReadCache) tws.Get(new StorageCell(cell.Address, 2), out _);
             tws.Get(in cell, out UInt256 actual);
@@ -255,11 +257,16 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(original, Is.EqualTo(UInt256.One));
-                Assert.That(actual, Is.EqualTo((UInt256)next));
+                Assert.That(actual, Is.EqualTo(next));
                 Assert.That(changes.StorageChangeCount, Is.EqualTo(next == 1 ? 0 : 1));
             }
 
+            tws.Get(in cell, out actual);
+            Assert.That(actual, Is.EqualTo(next));
+
             tws.Restore(snapshot);
+            tws.Get(in cell, out actual);
+            Assert.That(actual, Is.EqualTo(UInt256.One));
             tws.Get(in cell, out actual);
             Assert.That(actual, Is.EqualTo(UInt256.One));
             Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
@@ -595,8 +602,8 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
-                Assert.That(ac.TryGetStorageChange((UInt256)1, out StorageChange? change), Is.True);
-                Assert.That(change!.Value.Value, Is.EqualTo(new StorageChange(0, (UInt256)2).Value));
+                Assert.That(ac.StorageChanges.TryGetValue((UInt256)1, out StorageChange change), Is.True);
+                Assert.That(change.Value, Is.EqualTo((UInt256)2));
             }
         }
     }

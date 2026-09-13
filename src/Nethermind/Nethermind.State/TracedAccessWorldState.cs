@@ -376,9 +376,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private void GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell, out UInt256 value)
     {
         if (parallel && accountChanges is not null &&
-            accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
+            accountChanges.StorageChanges.TryGetValue(storageCell.Index, out StorageChange change))
         {
-            value = change.Value.Value;
+            value = change.Value;
             return;
         }
 

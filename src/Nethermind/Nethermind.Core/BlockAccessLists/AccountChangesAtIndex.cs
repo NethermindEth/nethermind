@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
@@ -35,17 +34,6 @@ public class AccountChangesAtIndex(Address address)
     public HashSet<UInt256> StorageReads => _storageReads;
 
     public bool HasStorageChange(in UInt256 key) => _storageChanges.ContainsKey(key);
-
-    public bool TryGetStorageChange(in UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
-    {
-        if (_storageChanges.TryGetValue(key, out StorageChange existing))
-        {
-            storageChange = existing;
-            return true;
-        }
-        storageChange = null;
-        return false;
-    }
 
     public void SetStorageChange(in UInt256 key, StorageChange storageChange)
         => _storageChanges[key] = storageChange;
