@@ -239,11 +239,16 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
             slotValue = null;
             return false;
         }
+        // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
+        if (b.Length == 0)
+        {
+            slotValue = null;
+            return true;
+        }
         Span<byte> buf = stackalloc byte[PersistedSnapshotTags.RlpSlotValueBufferSize];
         Span<byte> raw = buf[..checked((int)b.Length)];
         reader.TryRead(b.Offset, raw);
-        // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
-        slotValue = raw.IsEmpty ? null : BaseFlatPersistence.DecodeSlotValue(new RlpReader(raw).DecodeByteArraySpan());
+        slotValue = BaseFlatPersistence.DecodeSlotValue(new RlpReader(raw).DecodeByteArraySpan());
         return true;
     }
 
