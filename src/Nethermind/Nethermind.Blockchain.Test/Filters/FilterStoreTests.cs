@@ -188,7 +188,9 @@ public class FilterStoreTests
         DateTimeOffset stale = DateTimeOffset.UtcNow.AddDays(-2);
         foreach (FilterBase filter in store.GetFilters<FilterBase>()) filter.LastUsed = stale;
         store.RefreshFilter(0);
+        timer.ClearReceivedCalls();
         timer.Elapsed += Raise.Event();
+        timer.Received(1).Enabled = true;
 
         Assert.That(store.FilterExists(0), Is.True, "refreshed filter survives cleanup");
         Assert.That(store.FilterExists(1), Is.False, "stale block filter is removed");
@@ -197,7 +199,9 @@ public class FilterStoreTests
         Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 1, 2, 3 }));
 
         store.GetFilter<BlockFilter>(0)!.LastUsed = stale;
+        timer.ClearReceivedCalls();
         timer.Elapsed += Raise.Event();
+        timer.Received(1).Enabled = true;
         Assert.That(store.FilterExists(0), Is.False, "the refreshed filter is removed once stale");
         Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 0, 1, 2, 3 }));
     }
