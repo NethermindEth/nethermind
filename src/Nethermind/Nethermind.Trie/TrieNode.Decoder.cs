@@ -198,11 +198,8 @@ namespace Nethermind.Trie
                 Span<byte> resultSpan;
                 int position;
 
-                // The sequence header carries the children's length and CappedArray has no offset to write
-                // it backwards into, so the length has to be known before the children can go in. Writing
-                // them into a scratch buffer and copying them in behind the header trades the measuring
-                // walk for one bounded copy. The walk is kept where it does something else as well:
-                // spreading the children over cores, or collecting branch pairs for batched hashing.
+                // Keep the measuring walk when it also distributes work over cores or collects
+                // branch pairs for batched hashing. Serial encoding determines the length as it writes.
                 bool useParallel = UseParallel(canBeParallel, item);
                 if (useParallel || (Avx512F.VL.IsSupported && HasBatchableChildPair(item)))
                 {
@@ -220,17 +217,26 @@ namespace Nethermind.Trie
                 }
 
                 Unsafe.SkipInit(out BranchScratch scratch);
-                Span<byte> children = scratch;
+                const int fullBranchHeaderLength = 3;
+                bool reuseFullBranch = item.FullRlp.Length == FullBranchRlpLength;
+                // A full branch can only stay the same size or shrink. Encode into its final buffer
+                // and compact only when the sequence header shrinks; other branches use scratch space.
+                result = reuseFullBranch ? pool.SafeRent(FullBranchRlpLength) : default;
+                Span<byte> children = reuseFullBranch
+                    ? result.AsSpan(fullBranchHeaderLength, BranchesCount * Rlp.LengthOfKeccakRlp)
+                    : scratch;
                 int childrenLength = WriteChildrenRlpBranch(tree, ref path, item, children, pool, canBeParallel);
                 contentLength = valueRlpLength + childrenLength;
                 sequenceLength = Rlp.LengthOfSequence(contentLength);
-                result = pool.SafeRent(sequenceLength);
+                if (!reuseFullBranch)
+                    result = pool.SafeRent(sequenceLength);
                 resultSpan = result.AsSpan();
                 position = Rlp.StartSequence(resultSpan, 0, contentLength);
-                children[..childrenLength].CopyTo(resultSpan[position..]);
+                if (!reuseFullBranch || position != fullBranchHeaderLength)
+                    children[..childrenLength].CopyTo(resultSpan[position..]);
                 resultSpan[sequenceLength - valueRlpLength] = 128;
 
-                return result;
+                return new CappedArray<byte>(result.UnderlyingArray, sequenceLength);
 
                 static bool UseParallel(bool canBeParallel, TrieNode item)
                 {

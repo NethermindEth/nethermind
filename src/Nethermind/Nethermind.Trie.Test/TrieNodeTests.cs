@@ -29,7 +29,7 @@ public class TrieNodeTests
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
-        [Values(0, 2, 4)] int dirtyBranchCount)
+        [Values(0, 2, 4)] int dirtyBranchCount, [Values(1, 9, 15, 16)] int replacementCount)
     {
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
@@ -51,9 +51,13 @@ public class TrieNodeTests
             1 => new Context().TiniestLeaf,
             _ => new TrieNode(NodeType.Unknown, Keccak.Compute([0xff]))
         };
-        restored.SetChild(changedIndex, replacement);
-        expected.SetChild(changedIndex, replacement);
-        if (replacementKind == 3) restored.UnresolveChild(changedIndex);
+        for (int i = 0; i < replacementCount; i++)
+        {
+            int index = (changedIndex + i) % TrieNode.BranchesCount;
+            restored.SetChild(index, replacement);
+            expected.SetChild(index, replacement);
+            if (replacementKind == 3) restored.UnresolveChild(index);
+        }
 
         for (int i = 1; i <= dirtyBranchCount; i++)
         {

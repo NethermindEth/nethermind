@@ -580,10 +580,26 @@ public sealed partial class KeccakHash
             stateRef = ref Unsafe.Add(ref stateRef, ulongLength);
         }
 
-        // Handle remaining bytes
-        for (int i = 0; i < input.Length; i++)
+        ref byte tail = ref MemoryMarshal.GetReference(input);
+        nuint remaining = (nuint)input.Length;
+        // Fewer than eight bytes remain; consume each complete word without reading beyond the input.
+        if (remaining >= sizeof(uint))
         {
-            Unsafe.Add(ref stateRef, i) ^= input[i];
+            Unsafe.WriteUnaligned(ref stateRef, Unsafe.ReadUnaligned<uint>(ref stateRef) ^ Unsafe.ReadUnaligned<uint>(ref tail));
+            stateRef = ref Unsafe.Add(ref stateRef, sizeof(uint));
+            tail = ref Unsafe.Add(ref tail, sizeof(uint));
+            remaining -= sizeof(uint);
+        }
+        if (remaining >= sizeof(ushort))
+        {
+            Unsafe.WriteUnaligned(ref stateRef, (ushort)(Unsafe.ReadUnaligned<ushort>(ref stateRef) ^ Unsafe.ReadUnaligned<ushort>(ref tail)));
+            stateRef = ref Unsafe.Add(ref stateRef, sizeof(ushort));
+            tail = ref Unsafe.Add(ref tail, sizeof(ushort));
+            remaining -= sizeof(ushort);
+        }
+        if (remaining != 0)
+        {
+            stateRef ^= tail;
         }
     }
 
