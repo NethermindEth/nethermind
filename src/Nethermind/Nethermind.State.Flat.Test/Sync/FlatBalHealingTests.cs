@@ -53,6 +53,7 @@ public class FlatBalHealingTests
     [TearDown]
     public void TearDown()
     {
+        (_persistence as IDisposable)?.Dispose();
         _columnsDb.Dispose();
         _codeDb.Dispose();
         _balDb.Dispose();

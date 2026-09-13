@@ -36,7 +36,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 {
     protected ILogger _logger;
 
+    internal ILogger Logger => _logger;
+
     private string? _fullPath;
+
+    internal string FullPath => _fullPath ?? throw new InvalidOperationException("DB path not initialized");
 
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
@@ -98,6 +102,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // a single shared word per DB serializes them under load.
     internal readonly StripedLong _allocatedSpan = new();
     private readonly StripedLong _totalReads = new();
+
+    private readonly Dictionary<string, ColumnFamilyOptions> _columnFamilyOptionsByName = [];
+
+    internal ColumnFamilyOptions? GetColumnFamilyOptions(string columnFamilyName) =>
+        _columnFamilyOptionsByName.GetValueOrDefault(columnFamilyName);
     private CacheLinePaddedLong _totalWrites;
 
     private readonly DisposableLazy<IteratorManager>? _iteratorManager;
@@ -182,6 +191,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
                     columnFamilies.Add(columnFamily, options);
+                    _columnFamilyOptionsByName[columnFamily] = options;
                 }
             }
 
@@ -320,7 +330,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    internal void HandleFatalDbError(RocksDbException rocksDbException)
+    /// <param name="scheduleRepairMarker">
+    /// When <c>false</c>, a reported <c>Corruption:</c> is treated as originating from an external artifact
+    /// (an SST staged for ingestion) rather than the live DB files, so the fast-shutdown still happens but no
+    /// repair marker is written and no lossy repair of a healthy DB is scheduled.
+    /// </param>
+    internal void HandleFatalDbError(RocksDbException rocksDbException, bool scheduleRepairMarker = true)
     {
         bool corruption = rocksDbException.Message.Contains("Corruption:", StringComparison.Ordinal);
         bool ioError = rocksDbException.Message.Contains("IO error", StringComparison.Ordinal);
@@ -336,10 +351,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // never write the marker for it. Either way we fast-shutdown, because continuing past a
         // failed write would apply later writes as if it had succeeded and corrupt state at the
         // application layer even when the DB files themselves are intact.
-        if (corruption)
+        if (corruption && scheduleRepairMarker)
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
+        }
+        else if (corruption)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Corruption reported by an SST ingest on path {_fullPath}; shutting down without scheduling a repair of the live DB.");
         }
         else if (_logger.IsWarn)
         {
