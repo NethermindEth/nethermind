@@ -5,8 +5,9 @@
 #   1. Review path — triggered automatically on same-repository PR open / ready-for-review,
 #      and manually when a trusted maintainer comments a variant of "@claude review". Runs
 #      Claude with a fixed review prompt, captures a structured `mergeable` verdict via
-#      --json-schema, and posts a `claude-review/reviewed` commit status (success/failure)
-#      that branch protection uses to gate merging.
+#      --json-schema, and posts a `claude-review/reviewed` commit status that branch
+#      protection uses to gate merging. Review blockers fail the status; Claude or action
+#      failures report the review as unavailable without blocking unrelated CI.
 #
 #   2. Mention path — triggered by any other `@claude ...` comment/mention (e.g.
 #      `@claude explain X`, `@claude fix Y`). Runs Claude with the comment body as its prompt,
@@ -33,6 +34,9 @@ on:
 
 jobs:
   claude:
+    concurrency:
+      group: claude-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+      cancel-in-progress: false
     # Gate the job on either:
     #  - a same-repository pull_request event that is NOT a WIP PR (label/title filter), OR
     #  - an unlabeled event where the removed label was specifically `wip`, OR
@@ -87,6 +91,7 @@ jobs:
         id: detect
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
+          IS_PR_ISSUE: ${{ github.event.issue.pull_request != null }}
           REVIEW_BODY: ${{ github.event.review.body }}
         run: |
           # Job-level `if:` already ensures `@claude` is present for comment/review events.
@@ -99,7 +104,10 @@ jobs:
               # Auto-triggers (opened, ready_for_review, unlabeled-wip) are always reviews.
               IS_REVIEW=true
               ;;
-            issue_comment|pull_request_review_comment)
+            issue_comment)
+              [[ "$IS_PR_ISSUE" == "true" && "${COMMENT_BODY,,}" == *"review"* ]] && IS_REVIEW=true
+              ;;
+            pull_request_review_comment)
               [[ "${COMMENT_BODY,,}" == *"review"* ]] && IS_REVIEW=true
               ;;
             pull_request_review)
@@ -107,6 +115,19 @@ jobs:
               ;;
           esac
           echo "is_review=$IS_REVIEW" >> "$GITHUB_OUTPUT"
+
+      # Capture the PR head before the review starts. A push while Claude is running must not
+      # attach the old review's verdict to the newer, unreviewed commit.
+      - name: Resolve review target
+        if: steps.detect.outputs.is_review == 'true'
+        id: review_target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq .headRefOid)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -122,6 +143,7 @@ jobs:
         timeout-minutes: 20
         if: steps.detect.outputs.is_review == 'true'
         id: claude_review
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -166,66 +188,78 @@ jobs:
             --model opus
             --allowedTools "Bash(gh:*),WebFetch"
 
-      # After a successful review, read the structured verdict from the previous step and
-      # post a commit status on the PR head SHA:
+      # Read the structured verdict from the review step and post a commit status on the PR
+      # head SHA:
       #   - mergeable == true  → state=success, merging is allowed
       #   - mergeable == false → state=failure, branch protection will block merging
+      #   - action failure or invalid/missing output → state=success, review unavailable
       # Statuses are keyed by (sha, context), so a later re-review overwrites the previous
       # verdict on the same commit. Pushing new commits changes the SHA and leaves the new
       # commit with no status → branch protection blocks until `@claude review` is re-run.
-      - name: Post claude-review status (success)
-        if: success() && steps.detect.outputs.is_review == 'true'
+      - name: Post claude-review status
+        if: always() && steps.detect.outputs.is_review == 'true' && steps.review_target.outputs.sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           STRUCTURED: ${{ steps.claude_review.outputs.structured_output }}
+          REVIEW_OUTCOME: ${{ steps.claude_review.outcome }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          SHA: ${{ steps.review_target.outputs.sha }}
         run: |
-          # Resolve the PR head SHA. Works for both pull_request events (where PR_NUMBER
-          # comes from event.pull_request.number) and comment events (from event.issue.number).
-          SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq .headRefOid)
-          # `// default` in jq guards against missing/malformed fields — we default to the
-          # most conservative interpretation (not mergeable, zero counts reported).
-          MERGEABLE=$(printf '%s' "$STRUCTURED" | jq -r '.mergeable // false')
-          CRIT=$(printf '%s' "$STRUCTURED" | jq -r '.critical_count // 0')
-          HIGH=$(printf '%s' "$STRUCTURED" | jq -r '.high_count // 0')
-          MED=$(printf '%s' "$STRUCTURED" | jq -r '.medium_count // 0')
-          SUMMARY=$(printf '%s' "$STRUCTURED" | jq -r '.summary // ""' | tr '\n' ' ')
-          if [[ "$MERGEABLE" == "true" ]]; then
+          VALID=false
+          if [[ "$REVIEW_OUTCOME" == "success" ]] && printf '%s' "$STRUCTURED" | jq -e '
+            type == "object" and
+            (.mergeable | type == "boolean") and
+            (.critical_count | type == "number" and . >= 0 and floor == .) and
+            (.high_count | type == "number" and . >= 0 and floor == .) and
+            (.medium_count | type == "number" and . >= 0 and floor == .) and
+            (.summary | type == "string")
+          ' >/dev/null 2>&1; then
+            VALID=true
+          fi
+
+          if [[ "$VALID" != "true" ]]; then
             STATE=success
-            PREFIX="Claude reviewed: no blockers"
+            DESC="Claude review unavailable; no verdict (non-blocking), re-run with @claude review"
+            echo "::warning::Claude review was unavailable; no mergeability verdict was produced."
+            echo "### Claude review unavailable" >> "$GITHUB_STEP_SUMMARY"
+            echo "Claude or the review action failed before producing a valid verdict. Re-run with \`@claude review\`." >> "$GITHUB_STEP_SUMMARY"
+
+            # A failed retry must not clear blockers from an earlier successful review of
+            # the same commit. Commit statuses are last-write-wins for a given context, so
+            # leave an existing failure untouched instead of replacing it with success.
+            EXISTING_STATE=$(
+              gh api --paginate --slurp "repos/$REPO/commits/$SHA/statuses?per_page=100" |
+                jq -r 'flatten | map(select(.context == "claude-review/reviewed")) | first | .state // ""'
+            )
+            if [[ "$EXISTING_STATE" == "failure" ]]; then
+              echo "A prior blocker verdict exists for this commit; leaving it unchanged." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
           else
-            STATE=failure
-            PREFIX="Claude blockers: $CRIT critical, $HIGH high, $MED medium"
+            MERGEABLE=$(printf '%s' "$STRUCTURED" | jq -r '.mergeable')
+            CRIT=$(printf '%s' "$STRUCTURED" | jq -r '.critical_count')
+            HIGH=$(printf '%s' "$STRUCTURED" | jq -r '.high_count')
+            MED=$(printf '%s' "$STRUCTURED" | jq -r '.medium_count')
+            SUMMARY=$(printf '%s' "$STRUCTURED" | jq -r '.summary' | tr '\n' ' ')
+            if [[ "$MERGEABLE" == "true" ]]; then
+              STATE=success
+              PREFIX="Claude reviewed: no blockers"
+            else
+              STATE=failure
+              PREFIX="Claude blockers: $CRIT critical, $HIGH high, $MED medium"
+            fi
+            # GitHub truncates commit status descriptions at 140 chars in the UI; build
+            # "<prefix> — <summary>" and clip so the summary surfaces directly in the PR checks.
+            if [[ -n "$SUMMARY" ]]; then
+              DESC="$PREFIX — $SUMMARY"
+            else
+              DESC="$PREFIX"
+            fi
           fi
-          # GitHub truncates commit status descriptions at 140 chars in the UI; build
-          # "<prefix> — <summary>" and clip so the summary surfaces directly in the PR checks.
-          if [[ -n "$SUMMARY" ]]; then
-            DESC="$PREFIX — $SUMMARY"
-          else
-            DESC="$PREFIX"
-          fi
+
           DESC="${DESC:0:140}"
           gh api "repos/$REPO/statuses/$SHA" \
             -f state="$STATE" \
             -f context=claude-review/reviewed \
             -f description="$DESC" \
-            -f target_url="$RUN_URL"
-
-      # If the action itself errored out (API timeout, rate limit, schema violation, etc.)
-      # we still need to record a non-success status so branch protection keeps the PR
-      # blocked. `state=error` is distinct from `failure` so reviewers can tell the workflow
-      # broke vs. Claude flagged blockers.
-      - name: Post claude-review status (error)
-        if: failure() && steps.detect.outputs.is_review == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-        run: |
-          SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq .headRefOid)
-          gh api "repos/$REPO/statuses/$SHA" \
-            -f state=error \
-            -f context=claude-review/reviewed \
-            -f description="Claude review workflow failed; please re-run with @claude review" \
             -f target_url="$RUN_URL"

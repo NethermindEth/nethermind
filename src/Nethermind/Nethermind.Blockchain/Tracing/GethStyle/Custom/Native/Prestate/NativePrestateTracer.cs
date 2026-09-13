@@ -16,9 +16,13 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public class NativePrestateTracer : GethLikeNativeTxTracer
+public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter
 {
     public const string PrestateTracer = "prestateTracer";
+
+    public UInt256 InstructionMask => CaptureMask;
+
+    private static readonly UInt256 CaptureMask = CreateCaptureMask();
 
     private readonly IWorldState? _worldState;
     private readonly Hash256? _txHash;
@@ -41,10 +45,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         Address? beneficiary = null)
         : base(options)
     {
-        IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _worldState = worldState;
         _txHash = txHash;
@@ -64,6 +69,23 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
+
+    private static UInt256 CreateCaptureMask()
+    {
+        UInt256 mask = UInt256.Zero;
+        for (int opcode = 0; opcode <= byte.MaxValue; opcode++)
+        {
+            if (RequiresStack((Instruction)opcode))
+                mask |= UInt256.One << opcode;
+        }
+        return mask;
+    }
+
+    private static bool RequiresStack(Instruction opcode) => opcode is Instruction.SLOAD or Instruction.SSTORE
+        or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
+        or Instruction.BALANCE or Instruction.SELFDESTRUCT
+        or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
+        or Instruction.CREATE or Instruction.CREATE2;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -98,10 +120,21 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        if (_error is not null) return;
+        // Everything after an operation error is ignored, so stop pulling stack and memory for the
+        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
+        // at the failing operation.
+        if (_error is not null)
+        {
+            IsTracingMemory = false;
+            IsTracingStack = false;
+            return;
+        }
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
+
+        IsTracingMemory = _op == Instruction.CREATE2;
+        IsTracingStack = RequiresStack(_op);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -113,6 +146,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
+
+        // A wrapping tracer may keep asking for the stack after the flags were cleared above.
+        if (_error is not null) return;
 
         int stackLen = stack.Count;
         Address address;

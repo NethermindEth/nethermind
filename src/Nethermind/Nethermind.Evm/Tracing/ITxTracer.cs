@@ -26,6 +26,16 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingReceipt { get; }
 
     /// <summary>
+    /// Whether receipt callbacks require the transaction's event logs.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to receipt tracing for compatibility. Tracers that only consume status, gas or output
+    /// can return false. Per-opcode log callbacks are controlled separately by <see cref="IsTracingLogs"/>.
+    /// Returning false permits an incomplete log array in receipt callbacks; it does not guarantee an empty array.
+    /// </remarks>
+    bool IsCollectingLogs => IsTracingReceipt;
+
+    /// <summary>
     /// High level calls with information on the target account
     /// </summary>
     /// <remarks>
@@ -370,6 +380,18 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="evmExceptionType"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
+
+    /// <summary>
+    /// Reports the remaining gas observed at an execution-segment boundary.
+    /// </summary>
+    /// <param name="gas">Gas remaining in the frame.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. Checkpoints are emitted when execution suspends,
+    /// resumes, completes or fails, before the corresponding action completion or error notification
+    /// where applicable. These are not per-opcode updates; early action failures can occur without
+    /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
+    /// </remarks>
+    void ReportActionRemainingGas(ulong gas) { }
 
     /// <summary>
     ///

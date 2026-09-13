@@ -191,6 +191,30 @@ public class BlockAccessListValidationIndexTests
         });
     }
 
+    [Test]
+    public void Disabling_read_tracking_preserves_write_validation([Values] bool trackStorageReads, [Values] bool incorrectWrite)
+    {
+        ReadOnlyBlockAccessList suggested = Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+            .WithStorageReads(1)
+            .WithStorageChanges(3, new StorageChange(1, 7u))
+            .WithStorageChanges(2, new StorageChange(1, 5u)).TestObject);
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, 1, _addressIndex);
+        using BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex,
+            suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        slice.AddStorageChange(TestItem.AddressA, 3, before: 0, after: incorrectWrite ? 8u : 7u);
+        slice.AddStorageChange(TestItem.AddressA, 2, before: 0, after: 5);
+        generatedIndex.Add(slice);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.EqualTo(!incorrectWrite));
+            Assert.That(generatedIndex.FindStructuralMismatch(suggested, out _, out _), Is.EqualTo(trackStorageReads
+                ? BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                : BlockAccessListValidationIndex.StructuralMismatchKind.None));
+        }
+    }
+
     private BlockAccessListValidationIndex BuildPair(
         ReadOnlyBlockAccessList suggested,
         ReadOnlyBlockAccessList generated,

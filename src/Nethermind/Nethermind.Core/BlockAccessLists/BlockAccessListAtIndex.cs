@@ -29,6 +29,9 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public uint Index { get; set; }
 
+    /// <summary>Distinct chargeable declared reads recorded by worker coverage for this slice.</summary>
+    public ulong CoveredStorageReads { get; set; }
+
     private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
 
@@ -60,6 +63,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Clear()
     {
+        CoveredStorageReads = 0;
         int spareCount = _accountChangesPool.Count;
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {

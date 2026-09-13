@@ -101,7 +101,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IHasAccessList[]? systemAccessLists = null)
     {
         _systemAccessLists = systemAccessLists ?? [];
-        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         // minPoolSize is a floor: the address warmer, transaction warmup, and storage discovery rent

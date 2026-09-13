@@ -37,6 +37,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
     private AccountChangesAtIndex? _lastReadStorageChanges;
+
+    /// <summary>Optional worker coverage replacing materialization of declared read-only slots.</summary>
+    /// <remarks>Set only between execution slices, with the same coverage used by the BAL-backed state.</remarks>
+    public BalReadCoverage? ReadCoverage { get; set; }
     private BlockAccessListAtIndex GeneratingBlockAccessList
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -92,7 +96,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
         else
         {
-            accountChanges = GeneratingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
+            accountChanges = ReadCoverage?.TryMark(storageCell) == true
+                ? GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address)
+                : GeneratingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
             _lastReadStorageCell = storageCell;
             _lastReadStorageChanges = accountChanges;
         }

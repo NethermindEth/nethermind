@@ -8,6 +8,7 @@
     <Project Path="Nethermind.Core/Nethermind.Core.csproj" />
     <Project Path="Nethermind.Crypto/Nethermind.Crypto.csproj" />
     <Project Path="Nethermind.Db/Nethermind.Db.csproj" />
+    <Project Path="Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
