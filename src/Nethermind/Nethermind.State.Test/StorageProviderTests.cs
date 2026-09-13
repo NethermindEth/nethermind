@@ -207,6 +207,58 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
     }
 
+    /// <summary>A read-only transaction must not let its memo suppress the next transaction's capture.</summary>
+    /// <remarks>
+    /// Reads are answered from a memo of the last slot read, keyed partly on the originals round. A
+    /// transaction that only reads writes no change, so nothing else drops that memo at commit — without the
+    /// round in the key the next transaction would never record an original, and <c>GetOriginal</c> is what
+    /// SSTORE meters against.
+    /// </remarks>
+    [Test]
+    public void Read_only_transaction_does_not_suppress_the_next_original()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance);
+
+        // A transaction that only reads: the second read is served from the memo, and committing it
+        // changes nothing, so nothing invalidates that memo.
+        provider.TakeSnapshot(newTransactionStart: true);
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+        provider.Commit(Frontier.Instance);
+
+        // The next transaction must still capture its own original for the slot.
+        provider.TakeSnapshot(newTransactionStart: true);
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]), "original for the new transaction");
+    }
+
+    /// <summary>A write to a just-read slot must win over the read memo.</summary>
+    /// <remarks>The written cell is answered by the journal before <c>LoadFromTree</c> is reached, so this
+    /// pins the ordering invariant the memo's safety rests on (journal first) rather than the memo itself —
+    /// it passes with the memo deleted, and would fail only if that order were ever inverted.</remarks>
+    [Test]
+    public void Write_after_read_is_not_answered_from_the_read_memo()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+
+        provider.Set(cell, _values[3]);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[3]), "the write must win over the memo");
+    }
+
     [Test]
     public void Original_value_tracks_transaction_start_across_stacked_writes()
     {
@@ -618,6 +670,76 @@ public class StorageProviderTests(bool useFlat)
         provider.ClearStorage(TestItem.AddressA);
         Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
         Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
+    /// <summary>The originals-probe memo must not answer across caching rounds.</summary>
+    /// <remarks>tx1 memoizes (cell, v1) while writing v2; after commit the next transaction's original for
+    /// the same cell is v2. A memo without the round in its key silently returns v1, which mis-meters every
+    /// EIP-2200 SSTORE of tx2 without failing anything.</remarks>
+    [Test]
+    public void Get_original_after_commit_is_the_new_rounds_original()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, (UInt256)1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Set(in cell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(in cell);
+            provider.Set(in cell, _values[2]);
+            Assert.That(provider.GetOriginal(in cell).ToArray(), Is.EqualTo(_values[1]), "tx1 original is the committed value");
+
+            provider.Commit(Frontier.Instance);
+
+            provider.Get(in cell);
+            Assert.That(provider.GetOriginal(in cell).ToArray(), Is.EqualTo(_values[2]), "tx2 original is tx1's write");
+        }
+    }
+
+    // Rolling a storage clear back drops originals first captured under the clear, so anything caching a probe
+    // of them has to let go: after the rollback the cell recaptures the block value, and only a stale cache can
+    // still answer with the zero the clear planted.
+    [Test]
+    public void Rolling_back_a_storage_clear_forgets_originals_captured_under_the_clear()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, _values[1]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Snapshot snapshot = provider.TakeSnapshot();
+            provider.ClearStorage(TestItem.AddressA);
+
+            provider.Get(cell);
+            Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes),
+                "precondition: the first capture happens under the clear");
+
+            provider.Restore(snapshot);
+
+            provider.Get(cell);
+            Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        }
     }
 
     // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be

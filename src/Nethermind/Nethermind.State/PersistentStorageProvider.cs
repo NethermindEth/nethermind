@@ -48,6 +48,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Zero means never captured, which is what a default BlockChange entry carries.
     private uint _originalsRound = 1;
 
+    // These three fields memoize the last _originalValues probe: an SSTORE probes the same cell its
+    // preceding read just captured. Keyed on the originals round because EndOriginalsRound is the only
+    // routine clearing the map, and it always bumps the round; within a round the map only grows, except
+    // in RestoreStorageClear, which calls ForgetLastOriginal. Round 0 is never issued, so it doubles as
+    // "no memo".
+    private StorageCell _lastOriginalCell;
+    private byte[]? _lastOriginalValue;
+    private uint _lastOriginalRound;
+
+    /// <summary>Drops the originals-probe memo and releases the value it pinned.</summary>
+    private void ForgetLastOriginal()
+    {
+        _lastOriginalRound = 0;
+        _lastOriginalValue = null;
+    }
+
     private void EndOriginalsRound()
     {
         _originalValues.ClearAndTrim();
@@ -116,9 +132,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out byte[]? value))
+        byte[]? value;
+        if (_lastOriginalRound == _originalsRound && _lastOriginalCell.Equals(in storageCell))
         {
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            value = _lastOriginalValue;
+        }
+        else
+        {
+            if (!_originalValues.TryGetValue(storageCell, out value))
+            {
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+
+            _lastOriginalCell = storageCell;
+            _lastOriginalValue = value;
+            _lastOriginalRound = _originalsRound;
         }
 
         if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
@@ -651,6 +679,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException($"Expected storage clear journal entry {lastIndex}, got {journalIndex}");
         }
 
+        ForgetLastOriginal();
+
         StorageClearChange change = _storageClearJournal[journalIndex];
         _storageClearJournal.RemoveAt(journalIndex);
         GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange);
@@ -809,6 +839,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public int EstimatedChanges => BlockChange.EstimatedSize;
 
+        private UInt256 _lastReadIndex;
+        private byte[]? _lastReadValue;
+        private uint _lastReadRound;
+
+        /// <summary>Drops the memo of the last slot read, for anything that can change what a read returns.</summary>
+        /// <remarks>Round 0 is never issued, so it is the "no memo" sentinel — same convention as the
+        /// provider-level originals memo. Nulling the value keeps a pooled instance from pinning the array.</remarks>
+        private void ForgetLastRead()
+        {
+            _lastReadRound = 0;
+            _lastReadValue = null;
+        }
+
         private PersistentStorageProvider Provider =>
             _provider ?? throw new InvalidOperationException("A returned storage state cannot be used.");
 
@@ -875,6 +918,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 // Slight optimization that skips the tree
                 BlockChange.ClearAndSetMissingAsDefault();
+                ForgetLastRead();
             }
         }
 
@@ -882,6 +926,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             EnsureStorageTree();
             _wasCleared = true;
+            ForgetLastRead();
             BlockChange.ClearAndSetMissingAsDefault();
         }
 
@@ -890,10 +935,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             EnsureStorageTree();
             // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
             _wasCleared = true;
+            ForgetLastRead();
             return BlockChange.ClearRevertibly();
         }
 
-        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot) => BlockChange.Restore(snapshot);
+        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot)
+        {
+            ForgetLastRead();
+            BlockChange.Restore(snapshot);
+        }
 
         public void Return()
         {
@@ -901,6 +951,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
+            ForgetLastRead();
             _hadStorageBeforeBlock = false;
             _storageRootSeen = false;
             _wasCleared = false;
@@ -912,6 +963,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void SaveChange(StorageCell storageCell, byte[] value)
         {
+            ForgetLastRead();
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
@@ -927,8 +979,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend.HintSet(storageCell.Index, value);
         }
 
+        /// <remarks>
+        /// A loop over one slot lands here every iteration with the same index. Written cells never reach
+        /// this method — the journal answers those first — so a value here cannot change under us while the
+        /// round holds, and the round is part of the key so the first read of each round still captures its
+        /// original. Everything that can rewrite <c>BlockChange</c> drops the memo.
+        /// </remarks>
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
+            PersistentStorageProvider provider = Provider;
+            if (_lastReadRound == provider._originalsRound && _lastReadIndex.Equals(storageCell.Index))
+            {
+                // Still a served repeat read: keep DbMetrics.StorageTreeCache (and the per-block
+                // processing stats built on it) counting the workload it always counted.
+                provider._metrics.IncrementStorageTreeCache();
+                return _lastReadValue;
+            }
+
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
@@ -941,13 +1008,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 Provider._metrics.IncrementStorageTreeCache();
             }
 
-            PersistentStorageProvider provider = Provider;
             uint round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
                 provider.CaptureOriginalValue(storageCell, valueChange.After);
                 valueChange = valueChange.WithCapturedRound(round);
             }
+
+            _lastReadIndex = storageCell.Index;
+            _lastReadValue = valueChange.After;
+            _lastReadRound = round;
 
             return valueChange.After;
         }
