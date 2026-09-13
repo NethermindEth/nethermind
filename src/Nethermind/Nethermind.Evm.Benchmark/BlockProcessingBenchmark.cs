@@ -122,9 +122,17 @@ public class BlockProcessingBenchmark
     private const int SloadsPerCall = 2000;
 
     /// <summary>Home of the SLOAD loop. Deliberately not <see cref="TestItem.AddressD"/>:
-    /// <see cref="SampleAccessList"/> names it, and giving it code and storage would make the
-    /// pre-warmer load slots for the pre-existing access-list scenarios.</summary>
+    /// <see cref="SampleAccessList"/> names it, and merely creating it would make the pre-warmer load
+    /// its declared slots for the pre-existing access-list scenarios (the trigger is existence, not
+    /// code or storage).</summary>
     private static readonly Address SloadCallerAddress = new("0x00000000000000000000000000000000000000ad");
+
+    /// <summary>Recipient of every transfer and access-list tx. Seeded (non-zero, so not EIP-161-empty)
+    /// because a real transfer overwhelmingly targets an existing account; otherwise the first tx of each
+    /// block pays EIP-8037's ~183k NEW_ACCOUNT state charge and OOGs on Amsterdam. Deliberately outside
+    /// <see cref="SampleAccessList"/>: an address that exists makes the pre-warmer load its declared
+    /// slots, which would change the pre-existing AccessList_50 and MixedBlock numbers.</summary>
+    private static readonly Address TransferTargetAddress = new("0x00000000000000000000000000000000000000ba");
 
     /// <summary>Reads one warm slot over and over, the shape of the sload_same_key benchmark.</summary>
     private static readonly byte[] SloadSameKeyCode = BuildSloadSameKeyCode();
@@ -478,10 +486,7 @@ public class BlockProcessingBenchmark
             stateProvider.CreateAccount(TestItem.AddressB, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressB, ContractCode, Spec);
 
-            // Recipient of every transfer and access-list tx. Seeded (non-zero, so not EIP-161-empty) because
-            // a real transfer overwhelmingly targets an existing account; otherwise the first tx of each block
-            // pays EIP-8037's ~183k NEW_ACCOUNT state charge and OOGs on Amsterdam.
-            stateProvider.CreateAccount(TestItem.AddressC, UInt256.One);
+            stateProvider.CreateAccount(TransferTargetAddress, UInt256.One);
 
             stateProvider.CreateAccount(SloadCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(SloadCallerAddress, SloadSameKeyCode, Spec);
@@ -548,8 +553,10 @@ public class BlockProcessingBenchmark
     /// <summary>Refuses to benchmark a failed execution.</summary>
     /// <remarks>Everything runs under <see cref="ProcessingOptions.NoValidation"/>, where a failed
     /// transaction still produces a number — silently, as fork repricing has already demonstrated on
-    /// several scenarios. Receipt status is exact, so it also catches reverts, partial failures in a
-    /// heterogeneous block, and a CREATE2 collision, none of which an aggregate gas heuristic sees.</remarks>
+    /// several scenarios. Receipt status is exact, so it also catches reverts and partial failures in a
+    /// heterogeneous block, which an aggregate gas heuristic cannot. (A CREATE2 collision would not fail
+    /// the transaction — the outer frame survives — so the create scenario excludes it by construction:
+    /// distinct salts, one transaction, the same parent root every run.)</remarks>
     private void VerifyScenariosExecute()
     {
         foreach (Block block in (Block[])[
@@ -567,8 +574,6 @@ public class BlockProcessingBenchmark
             {
                 if (receipt.StatusCode != StatusCode.Success)
                 {
-
-
                     throw new InvalidOperationException(
                         $"Scenario transaction to {receipt.Recipient?.ToString() ?? "create"} failed under {Fork} ({receipt.Error}) - the benchmark number would be meaningless.");
                 }
@@ -817,7 +822,7 @@ public class BlockProcessingBenchmark
         {
             txs[i] = Build.A.Transaction
                 .WithNonce(startNonce + (ulong)i)
-                .WithTo(TestItem.AddressC)
+                .WithTo(TransferTargetAddress)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
                 .WithGasPrice(2.GWei)
@@ -835,7 +840,7 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithNonce(startNonce + (ulong)i)
-                .WithTo(TestItem.AddressC)
+                .WithTo(TransferTargetAddress)
                 .WithValue(1.Wei)
                 .WithGasLimit(21_000)
                 .WithMaxFeePerGas(2.GWei)
@@ -854,7 +859,7 @@ public class BlockProcessingBenchmark
             txs[i] = Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithNonce(startNonce + (ulong)i)
-                .WithTo(TestItem.AddressC)
+                .WithTo(TransferTargetAddress)
                 .WithValue(1.Wei)
                 .WithGasLimit(100_000) // Amsterdam prices the access-list intrinsic above the classic 50k
                 .WithGasPrice(2.GWei)
