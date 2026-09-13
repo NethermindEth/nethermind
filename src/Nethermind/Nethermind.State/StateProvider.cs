@@ -468,9 +468,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// An entry is anchored to the change-log position the code-hash update referencing it occupies, so
     /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
     /// A re-stage for an account already carrying the hash pushes no update to anchor to, and takes the
-    /// position one past the log instead: it leaves no change-log footprint, so it is unwound by any
-    /// later snapshot. That is deliberate - such code is already durable in CodeDb, which is why the
-    /// account carries its hash, so the staging is redundant rather than load-bearing.
+    /// position one past the log instead, so no surviving change can reference it. Whether a restore
+    /// reaches it does not matter either way: such code is already durable in CodeDb, which is why the
+    /// account carries its hash, so the staging is a redundant re-write rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
     /// same code would be suppressed and lost.
     /// </remarks>
