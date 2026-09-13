@@ -164,7 +164,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Manual dispatch supports `nethermind` (default), `reth`, and `geth`. Reference clients are bounded to
   Fusaka, require explicit `docker_images`, and use `measurement_source=engine-api` so their K6 TTFB
   table is comparable; Nethermind's default `measurement_source=auto` retains SSE client metrics with
-  a K6 fallback. Manual dispatch defaults to reviewed EXPB ref `3787dfc76e339cf096543485f8d7a8fa90a3d064`.
+  a K6 fallback. Manual dispatch defaults to reviewed EXPB ref `fbe0bc94cb9fa2bd176416d8e2aed2c1c172817d`.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.

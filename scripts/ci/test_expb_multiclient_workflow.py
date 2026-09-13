@@ -81,7 +81,7 @@ class ExpbClientPolicy(unittest.TestCase):
             "DISPATCH_ARCH": "amd64",
             "DISPATCH_PAYLOAD_SET": "fusaka",
             "DISPATCH_EXPB_REPO": "NethermindEth/execution-payloads-benchmarks",
-            "DISPATCH_EXPB_BRANCH": "3787dfc76e339cf096543485f8d7a8fa90a3d064",
+            "DISPATCH_EXPB_BRANCH": "fbe0bc94cb9fa2bd176416d8e2aed2c1c172817d",
             "DISPATCH_DELAY_SECONDS": "0",
             "DISPATCH_AMOUNT": "25",
             "DISPATCH_ADDITIONAL_EXTRA_FLAGS": "",

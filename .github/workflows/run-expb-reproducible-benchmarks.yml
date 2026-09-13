@@ -39,7 +39,7 @@ on:
       expb_branch:
         description: execution-payloads-benchmarks branch or tag
         required: false
-        default: 3787dfc76e339cf096543485f8d7a8fa90a3d064
+        default: fbe0bc94cb9fa2bd176416d8e2aed2c1c172817d
       state_layout:
         description: State layout mode
         required: true
