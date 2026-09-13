@@ -82,6 +82,15 @@ The matching amd64 warmed experiment was cancelled rather than used for a
 comparison. No warmed CV is claimed for this image. Complete warmup and client
 health checks must pass before this mode can be used for regression screening.
 
+Code inspection suggests a cache-lifetime defect in the pooled simulation
+environment: scope disposal clears temporary database writes, while the
+`ChainLevelInfoRepository` cache can retain a synthetic chain level. After the
+real head advances, the next reset can read that stale level and fail to find
+the real block hash. Alternating successful and failed warmups are consistent
+with failed environments being discarded. This is a diagnosis to verify with a
+client regression test, not a proven fix. No configuration workaround preserving
+the same workload was found; use standard mode until this is resolved.
+
 Sources: [ARM failed run](https://github.com/NethermindEth/nethermind/actions/runs/34752625718),
 [amd64 cancelled run](https://github.com/NethermindEth/nethermind/actions/runs/34752624438).
 
@@ -106,3 +115,41 @@ Sources: [default sweep](https://github.com/NethermindEth/nethermind/actions/run
 [NoGC sweep](https://github.com/NethermindEth/nethermind/actions/runs/34751583002).
 Reports were generated from the EventPipe sidecars with
 `dotnet run --file scripts/nettrace-report.cs -- <capture.nettrace>`.
+
+## Unprofiled GC comparison, amd64
+
+The standard-mode `--Merge.SweepMemory=NoGC` campaign completed three clean
+samples on the same image and ordered SSE block sequence. Its run means were
+25.2186, 25.0927 and 25.6468 ms: mean 25.3194 ms, sample CV 1.147%.
+The earlier default campaign averaged 25.3219 ms with CV 0.430%.
+This experiment provides no evidence to replace the default sweep strategy:
+the mean difference is negligible, and the observed CV is higher. Three runs
+per setting, taken at different times, cannot establish a general variance effect.
+
+Source: [amd64 NoGC campaign](https://github.com/NethermindEth/nethermind/actions/runs/34752680973).
+The ARM unprofiled comparison remains blocked by the offline runner. Its queued
+calibration was cancelled; the maintenance workflow cannot execute until the
+runner agent is restored. No ARM NoGC CV is claimed.
+
+## Follow-up baseline and final workflow verification
+
+A second amd64 standard/default campaign on the final workflow passed all three
+samples and uploaded logs from `/mnt/sda/expb-data/campaigns/34753499197/1`.
+The disk guard reported 160 GiB available on root and 639 GiB on the data volume.
+Each sample retained the same 1,000 delivered payloads and 999 ordered SSE
+blocks, with normal shutdown and verified snapshot cleanup.
+
+Run means were 26.0408, 25.0427 and 25.1543 ms: mean 25.4126 ms, CV 2.152%.
+The larger CV than the first default campaign demonstrates that the initial
+0.430% is not a stable noise guarantee. The first sample is retained; no outlier
+is discarded. An intervening automatic PR benchmark changed runner history, so
+this is also not a tightly controlled reverse-order GC comparison. Neither the
+NoGC experiment nor batching establishes a variance improvement.
+
+Source: [final amd64 campaign](https://github.com/NethermindEth/nethermind/actions/runs/34753499197).
+
+The infrastructure changes are validated. Reliable low-CV screening remains
+an open calibration task: recover ARM, fix and regression-test simulation reset,
+then repeat interleaved default/experimental settings on each runner with fixed
+startup history. Until then, use standard-mode single-pass screening with
+repeated baseline images and confirm candidate regressions with repeated runs.
