@@ -49,7 +49,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
     private readonly IForkInfo _forkInfo;
-    private readonly IReceiptConfig _receiptConfig;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly HeadBlockSignal _headBlockSignal;
@@ -78,7 +77,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IOptimismConfig config,
         IJsonSerializer jsonSerializer,
         ITimestamper timestamper,
-        IReceiptConfig receiptConfig,
         IBlockForRpcFactory blockForRpcFactory
     )
     {
@@ -103,7 +101,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
         _forkInfo = forkInfo;
-        _receiptConfig = receiptConfig;
         ILogger logger = logManager.GetClassLogger<OptimismEthModuleFactory>();
         if (config.SequencerUrl is null && logger.IsWarn)
         {

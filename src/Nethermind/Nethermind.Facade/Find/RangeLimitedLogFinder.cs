@@ -18,12 +18,16 @@ public sealed class RangeLimitedLogFinder(ILogFinder logFinder, IBlockFinder blo
 {
     private readonly int _maxBlockDepth = receiptConfig.MaxBlockDepth;
 
+    /// <inheritdoc/>
+    /// <exception cref="ArgumentException">Block range exceeds <see cref="IReceiptConfig.MaxBlockDepth"/>.</exception>
     public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
     {
         (BlockHeader fromBlock, BlockHeader toBlock) = LogFinder.ResolveRange(blockFinder, filter, cancellationToken);
         return FindLogs(filter, fromBlock, toBlock, cancellationToken);
     }
 
+    /// <inheritdoc/>
+    /// <exception cref="ArgumentException">Block range exceeds <see cref="IReceiptConfig.MaxBlockDepth"/>.</exception>
     public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
     {
         EnsureBlockRangeWithinLimit(fromBlock, toBlock);

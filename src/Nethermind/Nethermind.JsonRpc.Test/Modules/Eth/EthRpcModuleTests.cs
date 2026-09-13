@@ -1052,7 +1052,6 @@ public partial class EthRpcModuleTests
 
         string parameter = filter;
 
-        // create filter if needed
         if (method == "eth_getFilterLogs")
         {
             using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
