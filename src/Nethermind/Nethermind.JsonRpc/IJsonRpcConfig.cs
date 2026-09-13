@@ -163,13 +163,15 @@ public interface IJsonRpcConfig : IConfig
 
     /// <summary>
     /// Maximum time, in milliseconds, an EVM-executing JSON-RPC request may wait for an execution slot.
-    /// Defaults to 500 ms; 0 sheds immediately instead of waiting.
+    /// Defaults to 500 ms; 0 sheds immediately instead of waiting. Applies only when
+    /// <see cref="EvmExecutionGateEnabled"/> is set, which is off by default.
     /// </summary>
     [ConfigItem(
         Description = """
             The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
             `eth_createAccessList`, `eth_fillTransaction`, `eth_simulateV1`, `debug_simulateV1`) may wait for an execution slot before it
-            is answered with a `LimitExceeded` error (HTTP 503). The number of slots is
+            is answered with a `LimitExceeded` error (HTTP 503). Applies only when `EvmExecutionGateEnabled` is
+            set: the gate is off by default, and with it off this budget has no effect. The number of slots is
             `EthModuleConcurrentInstances`, the number of logical processors by default. Waiters are ordered by a
             cost estimate taken from the raw `params` length, aged by arrival time so that a large request cannot
             be overtaken indefinitely by smaller ones. `0` disables waiting: a request that finds every slot busy

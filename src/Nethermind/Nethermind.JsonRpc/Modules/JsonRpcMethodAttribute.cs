@@ -20,7 +20,8 @@ namespace Nethermind.JsonRpc.Modules
 
         /// <summary>
         /// Marks a method that executes the EVM, so that it is admitted through the JSON-RPC EVM-execution gate
-        /// (see <c>JsonRpc.EvmExecutionMaxQueueWaitMs</c>).
+        /// (see <c>JsonRpc.EvmExecutionMaxQueueWaitMs</c>) when the gate is enabled — it is off by default
+        /// (<c>JsonRpc.EvmExecutionGateEnabled</c>), so the flag is inert on a stock node.
         /// </summary>
         /// <remarks>
         /// A gated method must not return an <see cref="IStreamableResult"/>: the permit is released when the
