@@ -486,7 +486,7 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Code_re_staged_for_an_account_already_carrying_the_hash_is_rolled_back()
+    public void Code_re_staged_for_an_account_already_carrying_the_hash_is_rolled_back([Values] bool warmAccountBeforeSnapshot)
     {
         using Context ctx = new(useFlat);
         IWorldState provider = ctx.WorldState;
@@ -503,6 +503,10 @@ public class StateProviderTests(bool useFlat)
 
         EvictFromCodeInsertFilter((WorldState)provider, codeHash);
         EvictFromPersistedCodeHint((WorldState)provider, codeHash);
+
+        // Warming the account first leaves the snapshot at the head of the change log, so the restore
+        // below unwinds no account change at all and only the re-stage is left to drop.
+        if (warmAccountBeforeSnapshot) provider.GetNonce(TestItem.AddressB);
 
         // Re-delegating an EIP-7702 authority to the target it already points at, with ContainsCode
         // only a hint: nothing suppresses the re-stage, and it pushes no code-hash change to anchor to.

@@ -398,10 +398,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         int lastIndex = _changes.Count - 1;
         if (snapshot > lastIndex) ThrowCannotRestore(lastIndex, snapshot);
         if (_logger.IsTrace) Trace(snapshot);
+        // Ahead of the no-op check: an unanchored re-stage sits one past the log, so it is unwound
+        // even by a restore to the current position.
+        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
-        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -468,9 +470,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// An entry is anchored to the change-log position the code-hash update referencing it occupies, so
     /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
     /// A re-stage for an account already carrying the hash pushes no update to anchor to, and takes the
-    /// position one past the log instead, so no surviving change can reference it. Whether a restore
-    /// reaches it does not matter either way: such code is already durable in CodeDb, which is why the
-    /// account carries its hash, so the staging is a redundant re-write rather than load-bearing.
+    /// position one past the log instead, so every restore unwinds it and no surviving change can
+    /// reference it. Dropping it loses nothing: such code is already durable in CodeDb, which is why
+    /// the account carries its hash, so the staging is a redundant re-write rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
     /// same code would be suppressed and lost.
     /// </remarks>
