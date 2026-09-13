@@ -987,11 +987,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// </remarks>
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            if (_lastReadRound == Provider._originalsRound && _lastReadIndex.Equals(storageCell.Index))
+            PersistentStorageProvider provider = Provider;
+            if (_lastReadRound == provider._originalsRound && _lastReadIndex.Equals(storageCell.Index))
             {
                 // Still a served repeat read: keep DbMetrics.StorageTreeCache (and the per-block
                 // processing stats built on it) counting the workload it always counted.
-                Provider._metrics.IncrementStorageTreeCache();
+                provider._metrics.IncrementStorageTreeCache();
                 return _lastReadValue;
             }
 
@@ -1007,7 +1008,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 Provider._metrics.IncrementStorageTreeCache();
             }
 
-            PersistentStorageProvider provider = Provider;
             uint round = provider._originalsRound;
             if (valueChange.CapturedRound != round)
             {
