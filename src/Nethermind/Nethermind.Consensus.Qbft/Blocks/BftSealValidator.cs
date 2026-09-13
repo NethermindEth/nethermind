@@ -83,7 +83,7 @@ public class BftSealValidator(
 
     public bool ValidateSeal(BlockHeader header, bool force)
     {
-        header.Author ??= header.Beneficiary;
+        header.Author ??= forksSchedule.BlockPayee(header);
         return true;
     }
 

@@ -33,7 +33,7 @@ public sealed class BftAuthorRecoveryStep(BftForksSchedule forksSchedule) : IBlo
     public void RecoverData(Block block)
     {
         BlockHeader header = block.Header;
-        header.Author ??= forksSchedule.GetFork((long)header.Number, header.Timestamp).MiningBeneficiary ?? header.Beneficiary;
+        header.Author ??= forksSchedule.BlockPayee(header);
     }
 }
 
@@ -50,7 +50,7 @@ public sealed class BftRewardCalculator(BftForksSchedule forksSchedule) : IRewar
         BftConfigSnapshot config = forksSchedule.GetFork((long)block.Number, block.Timestamp);
         return config.BlockReward.IsZero
             ? []
-            : [new BlockReward(config.MiningBeneficiary ?? block.Header.Beneficiary!, config.BlockReward)];
+            : [new BlockReward(forksSchedule.BlockPayee(block.Header), config.BlockReward)];
     }
 
     public IRewardCalculator Get(ITransactionProcessor processor) => this;

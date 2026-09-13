@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Qbft.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -18,6 +19,37 @@ public class QbftForksScheduleTests
     private static readonly Address Beneficiary = new("0xdee0519f7c7cb0f9843fa1e93b99255c89507a9c");
 
     private static QbftChainSpecEngineParameters Parameters(params BftTransition[] transitions) => new() { Transitions = [.. transitions] };
+
+    /// <summary>
+    /// Everything a block pays out goes to one account, so the reward and the transaction fees
+    /// cannot disagree about which.
+    /// </summary>
+    /// <remarks>
+    /// They did disagree: the seal validator and the author-recovery step each assigned
+    /// <c>Author</c> only when it was still null, and the seal validator ran first and set it to the
+    /// proposer. Fees follow <c>GasBeneficiary</c>, which is <c>Author</c>, so the reward went to the
+    /// configured beneficiary while the fees stayed with the proposer. On KalyChain that diverged on
+    /// block 51,192,015, the first to carry a transaction after the chain set a beneficiary.
+    /// </remarks>
+    [Test]
+    public void BlockPayeeIsTheBeneficiaryForBothTheRewardAndTheFees()
+    {
+        BftForksSchedule schedule = BftForksSchedule.Create(
+            Parameters(new BftTransition { Block = 10, MiningBeneficiary = Beneficiary.ToString() }), ulong.MaxValue);
+        Address proposer = new("0x0000000000000000000000000000000000000042");
+
+        BlockHeader before = Build.A.BlockHeader.WithNumber(9).WithBeneficiary(proposer).TestObject;
+        BlockHeader after = Build.A.BlockHeader.WithNumber(10).WithBeneficiary(proposer).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.BlockPayee(before), Is.EqualTo(proposer), "no beneficiary yet");
+            Assert.That(schedule.BlockPayee(after), Is.EqualTo(Beneficiary));
+
+            // GasBeneficiary is what the fee payment reads, so setting Author is what routes fees.
+            after.Author = schedule.BlockPayee(after);
+            Assert.That(after.GasBeneficiary, Is.EqualTo(Beneficiary));
+        }
+    }
 
     private static BftForksSchedule Create(QbftChainSpecEngineParameters parameters, ulong firstTimestampFork = ISpecProvider.TimestampForkNever) =>
         BftForksSchedule.Create(parameters, firstTimestampFork);

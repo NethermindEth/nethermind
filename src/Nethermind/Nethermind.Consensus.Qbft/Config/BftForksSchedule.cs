@@ -83,6 +83,17 @@ public sealed class BftForksSchedule
 
     public BftConfigSnapshot GetFork(long blockNumber, ulong blockTimestamp) => GetForkSpec(blockNumber, blockTimestamp).Value;
 
+    /// <summary>The account a block pays out to: its fork's <c>miningbeneficiary</c>, else the proposer.</summary>
+    /// <remarks>
+    /// Besu pays both the block reward and the priority fees here, so every caller that credits
+    /// either has to agree. They did not once: the seal validator and the author-recovery step both
+    /// assigned <c>Author</c> only when it was still null, and the seal validator, which runs first,
+    /// set it to the proposer. The reward went to the beneficiary while the fees kept going to the
+    /// proposer, which diverged on KalyChain's first block carrying a transaction after it set one.
+    /// </remarks>
+    public Address BlockPayee(BlockHeader header) =>
+        GetFork((long)header.Number, header.Timestamp).MiningBeneficiary ?? header.Beneficiary!;
+
     /// <summary>The validator list a transition installs at <paramref name="blockNumber"/>, if any.</summary>
     public IReadOnlyList<Address>? GetValidatorOverride(ulong blockNumber)
     {
