@@ -23,6 +23,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             const int Workers = 4;
             const int GroupSize = 4;
             const int JumpDestOffset = 2;
+            TimeSpan timeout = TimeSpan.FromSeconds(30);
             byte[] code = new byte[length];
             for (int i = 0; i <= length - GroupSize; i += GroupSize)
             {
@@ -36,7 +37,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 // Execute claims _analysisComplete before requesting the code span.
                 analysisStarted.TrySetResult();
-                continueAnalysis.Wait();
+                Assert.That(continueAnalysis.Wait(timeout), Is.True, "analysis was not released");
             });
             JumpDestinationAnalyzer analyzer = new(new CodeInfo(memory.Memory));
             using Barrier start = new(Workers);
@@ -46,12 +47,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             try
             {
-                await analysisStarted.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                await analysisStarted.Task.WaitAsync(timeout);
                 for (int worker = 1; worker < workers.Length; worker++)
                 {
                     workers[worker] = Task.Factory.StartNew(() =>
                     {
-                        start.SignalAndWait();
+                        Assert.That(start.SignalAndWait(timeout), Is.True, "readers did not reach the barrier");
                         int mismatch = -1;
                         for (int offset = 0; offset < length && mismatch < 0; offset++)
                         {
@@ -61,26 +62,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
                     }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
                 }
-                start.SignalAndWait();
+                // Ownership is deterministic; whether readers use the spin return or event wait is scheduling-dependent.
+                Assert.That(start.SignalAndWait(timeout), Is.True, "readers did not reach the barrier");
             }
             finally
             {
                 continueAnalysis.Set();
                 await Task.WhenAll(workers);
             }
-        }
-
-        private sealed class GatedCodeMemory(byte[] code, Action beforeRead) : MemoryManager<byte>
-        {
-            public override Memory<byte> Memory => CreateMemory(code.Length);
-            public override Span<byte> GetSpan()
-            {
-                beforeRead();
-                return code;
-            }
-            public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
-            public override void Unpin() { }
-            protected override void Dispose(bool disposing) { }
         }
 
         [TestCase(-1, false)]
@@ -328,6 +317,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     }
                 }
             }
+        }
+
+        // Every span read shares the same one-shot release; later reads do not introduce another gate.
+        private sealed class GatedCodeMemory(byte[] code, Action beforeRead) : MemoryManager<byte>
+        {
+            public override Memory<byte> Memory => CreateMemory(code.Length);
+            public override Span<byte> GetSpan()
+            {
+                beforeRead();
+                return code;
+            }
+            public override MemoryHandle Pin(int elementIndex = 0) =>
+                throw new NotSupportedException("The analyzer test supports span access only.");
+            public override void Unpin() { }
+            protected override void Dispose(bool disposing) { }
         }
     }
 }

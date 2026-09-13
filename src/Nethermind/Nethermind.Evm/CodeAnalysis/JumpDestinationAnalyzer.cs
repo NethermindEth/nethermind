@@ -41,12 +41,12 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
-        _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+        long[] bitmap = _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
 
         // Cast to uint to change negative numbers to very int high numbers
         // Then do length check, this both reduces check by 1 and eliminates the bounds
         // check from accessing the span.
-        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination);
+        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(bitmap, destination);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
