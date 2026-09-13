@@ -18,14 +18,13 @@ SRC_DIR := /nethermind/src
 # 11 on the nine stateless-tests mainnet blocks; 11 gives ~6.5% smaller
 # binaries, which matters less than proving cost.
 BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13de95839e03397f7a6ea9c4a6d7f902dadc843934a
-# Both new targets decode rv64im only, and both read the whole .text up front:
-# SP1 panics on the first word it cannot decode, OpenVM turns it into a trap.
-# So even unreachable F/D/C/A instructions are fatal - fail at build time instead.
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF -
 # ghcr.io/succinctlabs/sp1 carries the Rust toolchain for BUILDING guests and
-# nothing that runs one - so this is our own, built from runner/ by
-# .github/workflows/release-zkvm-runners.yml and pinned by digest here.
-# SP1_RUNNER overrides it with a host binary when iterating locally.
+# nothing that runs one - so this is our own: NethermindEth/bflat-sp1 builds a
+# harness around sp1-sdk v6.5.0 (runner/ there, release-runner.yml) that takes
+# an ELF and an input and prints the cycle count and public values. Pinned by
+# digest here; SP1_RUNNER overrides it with a host binary when iterating
+# locally.
 SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0@sha256:6df3e8ade2d183f7d5a6146d5deba3f76f2531677c84b6d3afef47e579b229b3
 # The native executor maps guest memory through /dev/shm. Docker's default of
 # 64 MB fails, and so does 1g; 4g is the smallest tested value that works on a
@@ -36,6 +35,9 @@ SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0@sha256:6df3e8ade2d183f7d5a6146d5deb
 # which reads exactly like a broken guest. Check this first.
 SP1_SHM_SIZE ?= 8g
 SP1_RUNNER ?=
+# SP1 decodes rv64im only and reads the whole .text up front, panicking on the
+# first word it cannot decode. So even unreachable F/D/C/A instructions are
+# fatal - fail at build time instead.
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back
 # and favouring speed is close to free. Must land together with the TrieNode seqlock
@@ -47,6 +49,8 @@ ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --er
 # constructs and compile correctly today, so suspect them first if the guest ever starts
 # failing silently again.
 OPT_FLAGS ?= -Ot
+# The guest never reads the stack-trace name table or the symbol tables.
+TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -88,6 +92,7 @@ build: dotnet-build
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc sp1 \
 		$(OPT_FLAGS) \
+		$(TRIM_FLAGS) \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
@@ -95,24 +100,36 @@ build: dotnet-build
 		--substitution $(SRC_DIR)/substitutions.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libsp1.bflat.manifest \
+		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(SRC_DIR)/Program.cs
+	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
+	rm -f $(GUEST_DIR)/Program.map.xml; \
+	if [ -z "$$len" ]; then echo "error: could not read __embedded_resourcedata from the ILC map" >&2; exit 1; fi; \
+	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
+	echo "Resource verification: OK - no manifest resources in the guest image"
 	# No .patched step here: bflat runs patch_elf for --libc zisk only, so
 	# the linked Program is the artifact.
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
 
-# TODO: no published SP1 executor image yet. `sp1-cli execute --elf ... --input ...`
-# from the SP1 toolchain is the equivalent of ziskemu here; wire it once there is
-# an image to pin, the way ZISK_IMAGE is pinned above.
-
 # SP1 and OpenVM take the SSZ payload as-is. The shared fixtures are framed for
 # ZisK - an 8-byte little-endian length, the payload, then padding to 8 - so the
 # frame is stripped here rather than in every guest.
+# A slice would clamp silently: a truncated download, or an input that is not
+# framed at all, would yield a short payload and exit 0, and the guest would
+# then fail deep inside SSZ decoding - reported as a broken guest rather than a
+# bad fixture. Check the length instead.
 $(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
-	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
+	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; assert 8+n <= len(b), f'framed length {n} exceeds the {len(b)}-byte file'; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
 
-run: $(GUEST_DIR)/bin/$(INPUT).raw
+# INPUT is checked in the recipe, not as a makefile conditional: a conditional
+# is evaluated while reading the file and would abort `make build` too. Without
+# the check a bare `make run` asks for bin/.raw from bin/, which is a directory,
+# and fails obscurely.
+run:
+	@[ -n "$(INPUT)" ] || { echo "error: INPUT is not set - make run INPUT=<fixture>.ssz" >&2; exit 1; }
+	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).raw
 ifeq ($(strip $(SP1_RUNNER)),)
 	docker run --rm --shm-size=$(SP1_SHM_SIZE) -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
@@ -129,8 +146,13 @@ clean:
 		$(GUEST_DIR)/bin/*.raw \
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
-		$(GUEST_DIR)/Program.o
+		$(GUEST_DIR)/Program.o \
+		$(GUEST_DIR)/Program.map.xml
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
+
+# Without this, a recipe that dies mid-write leaves its partial output on disk
+# and the next run reuses it because it is newer than its prerequisite.
+.DELETE_ON_ERROR:
 
 .PHONY: \
 	build \

@@ -18,17 +18,17 @@ SRC_DIR := /nethermind/src
 # 11 on the nine stateless-tests mainnet blocks; 11 gives ~6.5% smaller
 # binaries, which matters less than proving cost.
 BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13de95839e03397f7a6ea9c4a6d7f902dadc843934a
-# Both new targets decode rv64im only, and both read the whole .text up front:
-# SP1 panics on the first word it cannot decode, OpenVM turns it into a trap.
-# So even unreachable F/D/C/A instructions are fatal - fail at build time instead.
 # Execution harness. OpenVM publishes no image at all (cargo-openvm is a source
 # install) and `cargo openvm run` only accepts a transpiled .vmexe, so this is
-# our own: runner/ builds the openvm SDK from the develop-v2.1.0 rv64 line into
-# a harness that transpiles the ELF and executes it. Published by
-# .github/workflows/release-zkvm-runners.yml, pinned by digest here.
-# OPENVM_RUNNER overrides it with a host binary when iterating locally.
+# our own: NethermindEth/bflat-openvm builds the openvm SDK from the
+# develop-v2.1.0 rv64 line into a harness that transpiles the ELF and executes
+# it (runner/ there, release-runner.yml). Pinned by digest here; OPENVM_RUNNER
+# overrides it with a host binary when iterating locally.
 OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:d8209a5db5d59df6d6f5899b2ce6866f81c30bdc3df952dc78243b8316706baa
 OPENVM_RUNNER ?=
+# OpenVM decodes rv64im only and transpiles the whole .text up front, turning
+# anything it cannot decode into a trap. So even unreachable F/D/C/A
+# instructions are fatal - fail at build time instead.
 ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 # The guest has no instruction cache, so the code-size cost of inlining buys nothing back
 # and favouring speed is close to free. Must land together with the TrieNode seqlock
@@ -40,6 +40,8 @@ ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --er
 # constructs and compile correctly today, so suspect them first if the guest ever starts
 # failing silently again.
 OPT_FLAGS ?= -Ot
+# The guest never reads the stack-trace name table or the symbol tables.
+TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -81,6 +83,7 @@ build: dotnet-build
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc openvm \
 		$(OPT_FLAGS) \
+		$(TRIM_FLAGS) \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
@@ -88,24 +91,36 @@ build: dotnet-build
 		--substitution $(SRC_DIR)/substitutions.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libopenvm.bflat.manifest \
+		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(SRC_DIR)/Program.cs
+	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
+	rm -f $(GUEST_DIR)/Program.map.xml; \
+	if [ -z "$$len" ]; then echo "error: could not read __embedded_resourcedata from the ILC map" >&2; exit 1; fi; \
+	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
+	echo "Resource verification: OK - no manifest resources in the guest image"
 	# No .patched step here: bflat runs patch_elf for --libc zisk only, so
 	# the linked Program is the artifact.
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
 
-# TODO: no published OpenVM runner image yet. `cargo openvm run` is the equivalent
-# of ziskemu here, but it wants a cargo project; the raw ELF path is
-# `openvm run --elf`. Wire it once there is an image to pin.
-
 # SP1 and OpenVM take the SSZ payload as-is. The shared fixtures are framed for
 # ZisK - an 8-byte little-endian length, the payload, then padding to 8 - so the
 # frame is stripped here rather than in every guest.
+# A slice would clamp silently: a truncated download, or an input that is not
+# framed at all, would yield a short payload and exit 0, and the guest would
+# then fail deep inside SSZ decoding - reported as a broken guest rather than a
+# bad fixture. Check the length instead.
 $(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
-	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
+	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; assert 8+n <= len(b), f'framed length {n} exceeds the {len(b)}-byte file'; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
 
-run: $(GUEST_DIR)/bin/$(INPUT).raw
+# INPUT is checked in the recipe, not as a makefile conditional: a conditional
+# is evaluated while reading the file and would abort `make build` too. Without
+# the check a bare `make run` asks for bin/.raw from bin/, which is a directory,
+# and fails obscurely.
+run:
+	@[ -n "$(INPUT)" ] || { echo "error: INPUT is not set - make run INPUT=<fixture>.ssz" >&2; exit 1; }
+	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).raw
 ifeq ($(strip $(OPENVM_RUNNER)),)
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
@@ -123,8 +138,13 @@ clean:
 		$(GUEST_DIR)/bin/*.raw \
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
-		$(GUEST_DIR)/Program.o
+		$(GUEST_DIR)/Program.o \
+		$(GUEST_DIR)/Program.map.xml
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
+
+# Without this, a recipe that dies mid-write leaves its partial output on disk
+# and the next run reuses it because it is newer than its prerequisite.
+.DELETE_ON_ERROR:
 
 .PHONY: \
 	build \

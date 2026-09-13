@@ -11,21 +11,7 @@ namespace Nethermind.Stateless.OpenVmGuest;
 
 class Program
 {
-    /// <summary>
-    /// OpenVM's public output is a fixed 32-byte window, and the validation
-    /// result is 43 bytes (SSZ: a 32-byte root, a flag, a chain id and a schema
-    /// id), so this guest publishes the Keccak-256 of the result rather than the
-    /// result itself. That is not a choice this guest can make differently:
-    /// <c>DEFAULT_MAX_NUM_PUBLIC_VALUES</c> is 32 and <c>cargo openvm keygen</c>
-    /// refuses any other value, so a larger window means a proving key off the
-    /// supported path. Writing past the window would panic rather than truncate.
-    ///
-    /// THE VERIFIER MUST HASH TOO. Where the ZisK and SP1 guests publish the
-    /// result bytes for the verifier to compare directly, here the verifier has
-    /// to encode the result it expects and compare Keccak-256 digests. The hash
-    /// is one accelerated instruction on OpenVM, so it costs essentially
-    /// nothing; the asymmetry in the contract is what to be careful about.
-    /// </summary>
+    /// <summary>Length in bytes of the Keccak-256 digest this guest publishes.</summary>
     const int DigestLength = 32;
 
     static int Main()
@@ -38,10 +24,28 @@ class Program
         return 0;
     }
 
+    /// <summary>Publishes the validation result as this guest's proven output.</summary>
+    /// <remarks>
+    /// What is proven is the Keccak-256 of the result, not the result itself.
+    /// OpenVM's public output is a fixed 32-byte window and the result is 43
+    /// bytes (SSZ: a 32-byte root, a flag, a chain id and a schema id), and that
+    /// is not a choice this guest can make differently:
+    /// <c>DEFAULT_MAX_NUM_PUBLIC_VALUES</c> is 32 and <c>cargo openvm keygen</c>
+    /// refuses any other value, so a larger window would mean a proving key off
+    /// the supported path. Writing past the window panics rather than truncates.
+    /// <para>
+    /// THE VERIFIER MUST HASH TOO. Where the ZisK and SP1 guests publish the
+    /// result bytes for a verifier to compare directly, a verifier here has to
+    /// encode the result it expects and compare Keccak-256 digests. The hash is
+    /// one accelerated instruction on OpenVM and costs essentially nothing; the
+    /// asymmetry in the contract is what to be careful about.
+    /// </para>
+    /// </remarks>
     static void WriteOutput(ReadOnlySpan<byte> output)
     {
         // The full result, for debugging: only the digest is provable, so this
-        // is the only place the bytes behind it are visible at all.
+        // is the only place the bytes behind it are visible at all. Anything
+        // asserting correctness must read the digest, not this line.
         IO.PrintLine(Convert.ToHexStringLower(output));
 
         Span<byte> digest = stackalloc byte[DigestLength];
