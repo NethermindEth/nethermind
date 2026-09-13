@@ -139,6 +139,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         bool inserted = false;
 
+        // Read the account first: for a cold one this appends the JustCache change, so the anchor
+        // taken below is the position the code-hash update occupies rather than one before it.
+        Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
+
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
         // or people copy and pasting popular contracts
@@ -171,8 +175,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             if (journalCode)
             {
-                // Anchored one past the change log, which is where the code-hash update below lands
-                // when there is one; without it the anchor still precedes every later snapshot.
                 _codeInsertJournal.Add((_changes.Count, codeHash));
 
                 _metrics.IncrementCodeWrites();
@@ -180,7 +182,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             }
         }
 
-        Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
         if (account.CodeHash.ValueHash256 != codeHash)
         {
             _needsStateRootUpdate = true;
@@ -466,6 +467,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// <remarks>
     /// An entry is anchored to the change-log position the code-hash update referencing it occupies, so
     /// <c>position > snapshot</c> selects exactly the entries whose account changes are being unwound.
+    /// A re-stage for an account already carrying the hash pushes no update to anchor to, and takes the
+    /// position one past the log instead: it leaves no change-log footprint, so it is unwound by any
+    /// later snapshot. That is deliberate - such code is already durable in CodeDb, which is why the
+    /// account carries its hash, so the staging is redundant rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
     /// same code would be suppressed and lost.
     /// </remarks>
