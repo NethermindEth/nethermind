@@ -3,15 +3,11 @@
 
 using System;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using System.Threading;
-using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
@@ -30,10 +26,6 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
     /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
     internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
-    // Fast-path readers must acquire the initialized bitmap without observing _analysisComplete.
-    private volatile long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
-
-    private object? _analysisComplete;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
     /// <summary>The jump-destination bitmap, built on first use; one bit per code byte.</summary>
@@ -52,77 +44,6 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         // Then do length check, this both reduces check by 1 and eliminates the bounds
         // check from accessing the span.
         return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(bitmap, destination);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private long[] CreateOrWaitForJumpDestinationBitmap()
-    {
-        // A single processor never queues the background analysis, so there is no completion event
-        // to allocate, signal or wait on; the guest folds the rest of the method away.
-        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return CreateJumpDestinationBitmap();
-
-        object? previous = Volatile.Read(ref _analysisComplete);
-        if (previous is null)
-        {
-            AnalyzeJumpDestinations(out previous);
-        }
-
-        if (previous is ManualResetEventSlim resetEvent)
-        {
-            // Bound work at the caller's priority to non-yielding spins before the priority-dropping wait.
-            SpinWait spinWait = default;
-            while (true)
-            {
-                if (_jumpDestinationBitmap is { } bitmap) return bitmap;
-                if (spinWait.NextSpinWillYield) break;
-                spinWait.SpinOnce();
-            }
-
-            WaitForAnalysisToComplete(resetEvent);
-            previous = Volatile.Read(ref _analysisComplete)!;
-        }
-
-        if (previous is ExceptionDispatchInfo failure) failure.Throw();
-
-        // Must be the bitmap, and lost check->create benign data race
-        return (long[])previous;
-    }
-
-    private void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
-    {
-        // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
-        // Already in progress, wait for completion.
-        resetEvent.Wait();
-    }
-
-    private void AnalyzeJumpDestinations([NotNull] out object? previous)
-    {
-        ManualResetEventSlim analysisComplete = new(initialState: false);
-        previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
-        previous ??= CompleteAnalysis(analysisComplete);
-    }
-
-    /// <remarks>
-    /// Failures remain cached for this analyzer's lifetime so every waiter observes the same completed result.
-    /// Retrying requires a result tied to each attempt; clearing the shared result can race awakened waiters.
-    /// </remarks>
-    private object CompleteAnalysis(ManualResetEventSlim analysisComplete)
-    {
-        object result;
-        try
-        {
-            long[] bitmap = _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
-            result = bitmap;
-        }
-        catch (Exception exception)
-        {
-            // Readers must observe the original failure rather than wait on an event that can never complete.
-            result = ExceptionDispatchInfo.Capture(exception);
-        }
-        Volatile.Write(ref _analysisComplete, result);
-        analysisComplete.Set();
-        return result;
     }
 
     /// <summary>
@@ -366,21 +287,6 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         nuint offset = pos >> BitShiftPerInt64;
         ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
         segment = segment | flags;
-    }
-
-    public void Execute()
-    {
-        if (_jumpDestinationBitmap is null && Volatile.Read(ref _analysisComplete) is null)
-        {
-            ManualResetEventSlim analysisComplete = new(initialState: false);
-            if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
-            {
-                // Boost the priority of the thread as block processing may be waiting on this.
-                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-
-                CompleteAnalysis(analysisComplete);
-            }
-        }
     }
 
     public bool RequiresAnalysis => _jumpDestinationBitmap is null;
