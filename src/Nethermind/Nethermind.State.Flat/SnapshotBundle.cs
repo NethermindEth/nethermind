@@ -6,7 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
@@ -29,7 +28,7 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
+    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
@@ -122,21 +121,23 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out UInt256? value)
     {
         GuardDispose();
 
         HashedKey<(Address, UInt256)> key = new((address, index));
 
-        if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+        if (_changedSlots.TryGetValue(key, out UInt256? slotValue))
         {
-            return slotValue?.ToEvmBytes();
+            value = slotValue;
+            return;
         }
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
-            return null;
+            value = null;
+            return;
         }
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
@@ -144,17 +145,19 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
-                return slotValue?.ToEvmBytes();
+                value = slotValue;
+                return;
             }
 
             if (i <= currentBundleSelfDestructIdx)
             {
                 // This is the snapshot with selfdestruct
-                return null;
+                value = null;
+                return;
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+        _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
@@ -481,19 +484,19 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
         HashedKey<(Address, UInt256)> key = new((address, index));
-        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+        if (value.IsZero)
         {
             _changedSlots[key] = null;
         }
         else
         {
-            _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
+            _changedSlots[key] = value;
         }
 
         if (!_addressesWithChangedSlots.ContainsKey(address))
@@ -519,7 +522,7 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kvp in _changedSlots)
         {
             if (kvp.Key.Key.Item1 == address)
             {

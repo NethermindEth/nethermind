@@ -355,7 +355,7 @@ namespace Nethermind.Trie.Test
             {
                 _stateProvider.Set(
                     new StorageCell(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey),
-                    ((UInt256)storageValue).ToBigEndian());
+                    new UInt256(((UInt256)storageValue).ToBigEndian(), isBigEndian: true));
                 return this;
             }
 
@@ -371,7 +371,7 @@ namespace Nethermind.Trie.Test
                 _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
                     new(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey);
-                _stateProvider.Get(storageCell);
+                _stateProvider.Get(storageCell, out _);
                 return this;
             }
 
@@ -466,7 +466,8 @@ namespace Nethermind.Trie.Test
 
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
-                Assert.That(_stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index)).ToArray(), Is.EqualTo(((UInt256)value).ToBigEndian()));
+                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index), out UInt256 storageValue1);
+                Assert.That(storageValue1, Is.EqualTo((UInt256)value));
                 return this;
             }
 

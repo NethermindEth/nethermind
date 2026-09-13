@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
@@ -52,6 +53,47 @@ public class StorageProviderTests(bool useFlat)
     ];
 
     [Test]
+    public void Mixed_storage_deletes_updates_and_inserts_survive_persistence()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 100);
+            for (uint slot = 1; slot <= 3; slot++)
+                provider.Set(new StorageCell(TestItem.AddressA, slot), (UInt256)(slot + 6));
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Set(new StorageCell(TestItem.AddressA, 1), UInt256.Zero);
+            provider.Set(new StorageCell(TestItem.AddressA, 2), UInt256.Zero);
+            provider.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)10);
+            provider.Set(new StorageCell(TestItem.AddressA, 4), (UInt256)11);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            uint[] expected = [0, 0, 10, 11];
+            using (Assert.EnterMultipleScope())
+            {
+                for (uint slot = 1; slot <= expected.Length; slot++)
+                {
+                    provider.Get(new StorageCell(TestItem.AddressA, slot), out UInt256 value);
+                    Assert.That(value, Is.EqualTo((UInt256)expected[slot - 1]), $"slot {slot}");
+                }
+            }
+        }
+    }
+
+    [Test]
     public void Empty_commit_restore()
     {
         using Context ctx = new(useFlat);
@@ -72,11 +114,12 @@ public class StorageProviderTests(bool useFlat)
         scope.Dispose();
 
         Assert.That(
-            () => provider.Set(in storageCell, _values[1]),
+            () => provider.Set(in storageCell, new UInt256(_values[1], isBigEndian: true)),
             Throws.InvalidOperationException);
 
         using IDisposable nextScope = provider.BeginScope(IWorldState.PreGenesis);
-        Assert.That(provider.Get(in storageCell).IsZero(), Is.True);
+        provider.Get(in storageCell, out UInt256 storageValue1);
+        Assert.That(storageValue1.IsZero, Is.True);
     }
 
     [Test]
@@ -86,7 +129,7 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         for (int i = 0; i < changeCount; i++)
         {
-            provider.Set(new StorageCell(ctx.Address1, (UInt256)i), _values[1]);
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)i), new UInt256(_values[1], isBigEndian: true));
         }
 
         provider.Commit(Frontier.Instance);
@@ -182,12 +225,17 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
+        Snapshot[] snapshots = new Snapshot[4];
+        snapshots[0] = provider.TakeSnapshot();
+        for (int i = 1; i < snapshots.Length; i++)
+        {
+            provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[i], isBigEndian: true));
+            snapshots[i] = provider.TakeSnapshot();
+        }
+        provider.Restore(snapshots[snapshot + 1]);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue2);
+        Assert.That(storageValue2, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     [Test]
@@ -195,16 +243,17 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         provider.Commit(Frontier.Instance);
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[1]));
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue3);
+        Assert.That(storageValue3, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     [Test]
@@ -216,24 +265,62 @@ public class StorageProviderTests(bool useFlat)
 
         // tx0: capture the block original (zero), then write; changes stay uncommitted (BuildUp stacking).
         provider.TakeSnapshot(newTransactionStart: true);
-        provider.Get(cell);
-        provider.Set(cell, _values[1]);
+        provider.Get(cell, out _);
+        provider.Set(cell, new UInt256(_values[1], isBigEndian: true));
 
         // tx1 stacks on tx0. Its original is the value entering tx1 (_values[1]) and must stay stable
         // across repeated same-slot writes (the case the removed chain walk resolved in O(N^2)).
         provider.TakeSnapshot(newTransactionStart: true);
-        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        provider.GetOriginal(in cell, out UInt256 originalValue);
+        Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
         for (int i = 2; i <= 6; i++)
         {
-            provider.Set(cell, _values[i]);
-            Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+            provider.Set(cell, new UInt256(_values[i], isBigEndian: true));
+            provider.GetOriginal(in cell, out originalValue);
+            Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
         }
 
         // A revert within tx1 must leave the transaction original unchanged.
         int mid = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
-        provider.Set(cell, _values[7]);
+        provider.Set(cell, new UInt256(_values[7], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, mid, Snapshot.EmptyPosition);
-        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        provider.GetOriginal(in cell, out originalValue);
+        Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+    }
+
+    [Test]
+    public void Original_value_requires_capture_even_when_a_write_head_exists([Values] bool writeFirst, [Values(0ul, 1ul, ulong.MaxValue)] ulong index)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, index);
+        StorageCell other = new(ctx.Address1, index ^ 1);
+        provider.Get(in other, out _);
+        if (writeFirst) provider.Set(in cell, UInt256.One);
+
+        Assert.Throws<InvalidOperationException>(() => provider.GetOriginal(in cell, out _));
+    }
+
+    [Test]
+    public void Original_value_cache_ends_with_the_capture_round([Values] bool write, [Values] bool reset, [Values(2UL, (ulong)uint.MaxValue << 1)] ulong round)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        typeof(PersistentStorageProvider).GetField("_originalsRound", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(provider._persistentStorageProvider, round);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Get(in cell, out _);
+        provider.GetOriginal(in cell, out UInt256 original);
+        Assert.That(original, Is.EqualTo(UInt256.Zero));
+        if (write) provider.Set(in cell, UInt256.One);
+
+        if (reset) provider.Reset(resetBlockChanges: false);
+        else provider.Commit(Frontier.Instance);
+
+        Assert.Throws<InvalidOperationException>(() => provider.GetOriginal(in cell, out _));
+        provider.Get(in cell, out _);
+        provider.GetOriginal(in cell, out original);
+        Assert.That(original, Is.EqualTo(write && !reset ? UInt256.One : UInt256.Zero));
     }
 
     [Test]
@@ -241,12 +328,13 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 3), new UInt256(_values[3], isBigEndian: true));
         provider.Restore(Snapshot.EmptyPosition, snapshot, Snapshot.EmptyPosition);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[Math.Min(snapshot + 1, 1)]));
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue4);
+        Assert.That(storageValue4, Is.EqualTo(new UInt256(_values[Math.Min(snapshot + 1, 1)], isBigEndian: true)));
     }
 
     [Test]
@@ -254,30 +342,36 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 3), new UInt256(_values[3], isBigEndian: true));
         provider.Commit(Frontier.Instance);
-        provider.Set(new StorageCell(ctx.Address2, 1), _values[4]);
-        provider.Set(new StorageCell(ctx.Address2, 2), _values[5]);
-        provider.Set(new StorageCell(ctx.Address2, 3), _values[6]);
+        provider.Set(new StorageCell(ctx.Address2, 1), new UInt256(_values[4], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address2, 2), new UInt256(_values[5], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address2, 3), new UInt256(_values[6], isBigEndian: true));
         provider.Commit(Frontier.Instance);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[7]);
-        provider.Set(new StorageCell(ctx.Address1, 2), _values[8]);
-        provider.Set(new StorageCell(ctx.Address1, 3), _values[9]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[7], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[8], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 3), new UInt256(_values[9], isBigEndian: true));
         provider.Commit(Frontier.Instance);
-        provider.Set(new StorageCell(ctx.Address2, 1), _values[10]);
-        provider.Set(new StorageCell(ctx.Address2, 2), _values[11]);
-        provider.Set(new StorageCell(ctx.Address2, 3), _values[12]);
+        provider.Set(new StorageCell(ctx.Address2, 1), new UInt256(_values[10], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address2, 2), new UInt256(_values[11], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address2, 3), new UInt256(_values[12], isBigEndian: true));
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[7]));
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[8]));
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 3)).ToArray(), Is.EqualTo(_values[9]));
-        Assert.That(provider.Get(new StorageCell(ctx.Address2, 1)).ToArray(), Is.EqualTo(_values[10]));
-        Assert.That(provider.Get(new StorageCell(ctx.Address2, 2)).ToArray(), Is.EqualTo(_values[11]));
-        Assert.That(provider.Get(new StorageCell(ctx.Address2, 3)).ToArray(), Is.EqualTo(_values[12]));
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue5);
+        Assert.That(storageValue5, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
+        provider.Get(new StorageCell(ctx.Address1, 2), out UInt256 storageValue6);
+        Assert.That(storageValue6, Is.EqualTo(new UInt256(_values[8], isBigEndian: true)));
+        provider.Get(new StorageCell(ctx.Address1, 3), out UInt256 storageValue7);
+        Assert.That(storageValue7, Is.EqualTo(new UInt256(_values[9], isBigEndian: true)));
+        provider.Get(new StorageCell(ctx.Address2, 1), out UInt256 storageValue8);
+        Assert.That(storageValue8, Is.EqualTo(new UInt256(_values[10], isBigEndian: true)));
+        provider.Get(new StorageCell(ctx.Address2, 2), out UInt256 storageValue9);
+        Assert.That(storageValue9, Is.EqualTo(new UInt256(_values[11], isBigEndian: true)));
+        provider.Get(new StorageCell(ctx.Address2, 3), out UInt256 storageValue10);
+        Assert.That(storageValue10, Is.EqualTo(new UInt256(_values[12], isBigEndian: true)));
     }
 
     [Test]
@@ -285,13 +379,14 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 3), _values[3]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 3), new UInt256(_values[3], isBigEndian: true));
         provider.Restore(Snapshot.Empty);
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue11);
+        Assert.That(storageValue11.IsZero, Is.True);
     }
 
     [Test]
@@ -299,28 +394,33 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, 2, Snapshot.EmptyPosition);
-        provider.Restore(Snapshot.EmptyPosition, 1, Snapshot.EmptyPosition);
-        provider.Restore(Snapshot.EmptyPosition, 0, Snapshot.EmptyPosition);
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-        provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
-        provider.Get(new StorageCell(ctx.Address1, 1));
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        Snapshot initial = provider.TakeSnapshot();
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+        Snapshot first = provider.TakeSnapshot();
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
+        Snapshot second = provider.TakeSnapshot();
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[3], isBigEndian: true));
+        Snapshot third = provider.TakeSnapshot();
+        provider.Restore(third);
+        provider.Restore(second);
+        provider.Restore(first);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[3], isBigEndian: true));
+        provider.Restore(initial);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
+        provider.Get(new StorageCell(ctx.Address1, 1), out _);
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue12);
+        Assert.That(storageValue12.IsZero, Is.True);
     }
 
     [Test]
@@ -335,7 +435,7 @@ public class StorageProviderTests(bool useFlat)
             storageProvider.CreateAccount(ctx.Address1, 0);
             storageProvider.CreateAccount(ctx.Address2, 0);
             storageProvider.Commit(Frontier.Instance);
-            storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+            storageProvider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
             storageProvider.Commit(Frontier.Instance);
             storageProvider.Commit(Frontier.Instance);
             storageProvider.CommitTree(0);
@@ -346,7 +446,7 @@ public class StorageProviderTests(bool useFlat)
         // block 2
         using (IDisposable _ = storageProvider.BeginScope(newBase))
         {
-            storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+            storageProvider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
             storageProvider.Commit(Frontier.Instance);
             storageProvider.CommitTree(0);
         }
@@ -355,7 +455,8 @@ public class StorageProviderTests(bool useFlat)
         {
             Assert.That(storageProvider.AccountExists(ctx.Address1), Is.True);
 
-            byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
+            storageProvider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue51);
+            byte[] valueAfter = storageValue51.ToMinimalBigEndian();
 
             Assert.That(valueAfter, Is.EqualTo(_values[1]));
         }
@@ -386,12 +487,12 @@ public class StorageProviderTests(bool useFlat)
 
             for (int i = 0; i < written.Length; i++)
             {
-                provider.Set(new StorageCell(written[i], 1), _values[i + 1]);
+                provider.Set(new StorageCell(written[i], 1), new UInt256(_values[i + 1], isBigEndian: true));
             }
 
             for (int i = 0; i < 64; i++)
             {
-                provider.Get(new StorageCell(new Address(Keccak.Compute($"r{i}")), 1));
+                provider.Get(new StorageCell(new Address(Keccak.Compute($"r{i}")), 1), out _);
             }
 
             provider.Commit(Frontier.Instance);
@@ -404,7 +505,8 @@ public class StorageProviderTests(bool useFlat)
         {
             for (int i = 0; i < written.Length; i++)
             {
-                Assert.That(provider.Get(new StorageCell(written[i], 1)).ToArray(), Is.EqualTo(_values[i + 1]),
+                provider.Get(new StorageCell(written[i], 1), out UInt256 storedValue);
+                Assert.That(storedValue, Is.EqualTo(new UInt256(_values[i + 1], isBigEndian: true)),
                     $"storage for written contract {i} was not persisted");
             }
         }
@@ -418,13 +520,14 @@ public class StorageProviderTests(bool useFlat)
         WorldState storageProvider = BuildStorageProvider(ctx);
         for (int i = 0; i < Resettable.StartCapacity; i++)
         {
-            storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[i % 2]);
+            storageProvider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[i % 2], isBigEndian: true));
         }
 
         storageProvider.Commit(Frontier.Instance);
         ctx.StateProvider.Commit(Frontier.Instance);
 
-        byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1)).ToArray();
+        storageProvider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue52);
+        byte[] valueAfter = storageValue52.ToMinimalBigEndian();
         Assert.That(valueAfter, Is.EqualTo(_values[(Resettable.StartCapacity + 1) % 2]));
     }
 
@@ -437,14 +540,17 @@ public class StorageProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
         // Should be 0 if not set
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue13);
+        Assert.That(storageValue13.IsZero, Is.True);
 
         // Should be 0 if loading from the same contract but different index
-        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
+        provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue14);
+        Assert.That(storageValue14.IsZero, Is.True);
 
         // Should be 0 if loading from the same index but different contract
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero(), Is.True);
+        provider.GetTransientState(new StorageCell(ctx.Address2, 1), out UInt256 storageValue15);
+        Assert.That(storageValue15.IsZero, Is.True);
     }
 
     /// <summary>
@@ -456,8 +562,9 @@ public class StorageProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
 
-        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
+        provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue16);
+        Assert.That(storageValue16, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -471,11 +578,11 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         Snapshot[] snapshots = new Snapshot[4];
         snapshots[0] = provider.TakeSnapshot();
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         snapshots[1] = provider.TakeSnapshot();
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
         snapshots[2] = provider.TakeSnapshot();
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[3]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[3], isBigEndian: true));
         snapshots[3] = provider.TakeSnapshot();
 
         Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
@@ -484,7 +591,8 @@ public class StorageProviderTests(bool useFlat)
 
         provider.Restore(snapshots[snapshot + 1]);
 
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray(), Is.EqualTo(_values[snapshot + 1]));
+        provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue17);
+        Assert.That(storageValue17, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -496,11 +604,167 @@ public class StorageProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
 
-        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
+        provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue18);
+        Assert.That(storageValue18, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
 
         provider.Commit(Frontier.Instance);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+        provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue19);
+        Assert.That(storageValue19.IsZero, Is.True);
+    }
+
+    private static readonly UInt256[] StorageWords = [UInt256.Zero, UInt256.One, UInt256.MaxValue, new(0x0123456789abcdef, 0xfedcba9876543210, 0x1020304050607080, 0x8070605040302010)];
+
+    [Test]
+    public void Transient_writes_copy_values_and_skip_unchanged_values([ValueSource(nameof(StorageWords))] UInt256 value, [Values] bool traced)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = BuildStorageProvider(ctx);
+        if (traced)
+        {
+            TracedAccessWorldState decorator = new(provider, parallel: false);
+            decorator.SetGeneratingBlockAccessList(new());
+            provider = decorator;
+        }
+        StorageCell cell = new(ctx.Address1, 1);
+        UInt256 expected = value;
+        provider.SetTransientState(cell, in value);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(cell, in value);
+        Assert.That(provider.TakeSnapshot(), Is.EqualTo(snapshot));
+        value ^= UInt256.One;
+        provider.GetTransientState(cell, out UInt256 storageValue20);
+        Assert.That(storageValue20, Is.EqualTo(expected));
+        provider.Restore(Snapshot.Empty);
+        provider.GetTransientState(cell, out UInt256 storageValue21);
+        Assert.That(storageValue21.IsZero, Is.True);
+    }
+
+    [Test]
+    public void Transient_clear_is_revertible([Values] bool destroy, [Values(0UL, 7UL)] ulong initialValue)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        StorageCell otherCell = new(ctx.Address2, 1);
+        provider.SetTransientState(in cell, UInt256.One);
+        provider.SetTransientState(in cell, (UInt256)initialValue);
+        provider.SetTransientState(in otherCell, (UInt256)9);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.GetTransientState(in cell, out UInt256 cleared);
+        provider.GetTransientState(in otherCell, out UInt256 other);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero));
+            Assert.That(other, Is.EqualTo((UInt256)9));
+            Assert.That(provider.TakeSnapshot().StorageSnapshot.TransientStorageSnapshot,
+                Is.EqualTo(snapshot.StorageSnapshot.TransientStorageSnapshot + (initialValue == 0 ? 0 : 1)));
+        }
+
+        provider.Restore(snapshot);
+        provider.GetTransientState(in cell, out UInt256 restored);
+        Assert.That(restored, Is.EqualTo((UInt256)initialValue));
+    }
+
+    [Test]
+    public void Transient_write_invokes_decorator_override()
+    {
+        using Context ctx = new(useFlat);
+        CountingWorldStateDecorator decorator = new(BuildStorageProvider(ctx));
+        IWorldState provider = decorator;
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.SetTransientState(cell, UInt256.One);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decorator.TransientWrites, Is.EqualTo(1));
+            provider.GetTransientState(cell, out UInt256 storageValue22);
+            Assert.That(storageValue22, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+        }
+    }
+
+    [Test]
+    public void Writes_coalesce_between_snapshots([Values] bool revertChild, [Values] bool transient)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        void Set(byte[] value)
+        {
+            if (transient) provider.SetTransientState(cell, new UInt256(value, isBigEndian: true));
+            else provider.Set(cell, new UInt256(value, isBigEndian: true));
+        }
+        byte[] Get()
+        {
+            UInt256 value;
+            if (transient) provider.GetTransientState(in cell, out value);
+            else provider.Get(in cell, out value);
+            return value.ToMinimalBigEndian();
+        }
+        int Position(Snapshot snapshot) => transient ? snapshot.StorageSnapshot.TransientStorageSnapshot : snapshot.StorageSnapshot.PersistentStorageSnapshot;
+        Snapshot initial = provider.TakeSnapshot();
+        for (int i = 1; i <= 4; i++) Set(_values[i]);
+        Snapshot parent = provider.TakeSnapshot();
+        Assert.That(Position(parent), Is.EqualTo(Position(initial) + 1));
+
+        for (int i = 5; i <= 8; i++) Set(_values[i]);
+        Snapshot child = provider.TakeSnapshot();
+        Assert.That(Position(child), Is.EqualTo(Position(parent) + 1));
+        if (revertChild)
+        {
+            provider.Restore(parent);
+            Assert.That(Get(), Is.EqualTo(_values[4]));
+        }
+
+        for (int i = 9; i <= 12; i++) Set(_values[i]);
+        Assert.That(Get(), Is.EqualTo(_values[12]));
+        provider.Restore(parent);
+        Assert.That(Get(), Is.EqualTo(_values[4]));
+        provider.Restore(initial);
+        Assert.That(Get().IsZero(), Is.True);
+    }
+
+    [Test]
+    public void Journal_matches_snapshot_model([Values] bool transient)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell[] cells = [new(ctx.Address1, 1), new(ctx.Address1, 2), new(ctx.Address2, 1)];
+        UInt256[] values = new UInt256[cells.Length];
+        List<(Snapshot Snapshot, UInt256[] Values)> snapshots = [(provider.TakeSnapshot(), (UInt256[])values.Clone())];
+        Random random = new(1153);
+        for (int step = 0; step < 2048; step++)
+        {
+            switch (random.Next(5))
+            {
+                case 0:
+                    snapshots.Add((provider.TakeSnapshot(), (UInt256[])values.Clone()));
+                    break;
+                case 1:
+                    int index = random.Next(snapshots.Count);
+                    provider.Restore(snapshots[index].Snapshot);
+                    values = (UInt256[])snapshots[index].Values.Clone();
+                    snapshots.RemoveRange(index + 1, snapshots.Count - index - 1);
+                    break;
+                default:
+                    int slot = random.Next(cells.Length);
+                    values[slot] = StorageWords[random.Next(StorageWords.Length)];
+                    if (transient) provider.SetTransientState(cells[slot], in values[slot]);
+                    else provider.Set(cells[slot], in values[slot]);
+                    break;
+            }
+
+            for (int slot = 0; slot < cells.Length; slot++)
+            {
+                UInt256 actual;
+                if (transient) provider.GetTransientState(in cells[slot], out actual);
+                else provider.Get(in cells[slot], out actual);
+                Assert.That(actual, Is.EqualTo((UInt256)values[slot]), $"Step {step}, slot {slot}");
+            }
+        }
     }
 
     /// <summary>
@@ -512,11 +776,13 @@ public class StorageProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
 
-        provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).ToArray(), Is.EqualTo(_values[1]));
+        provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
+        provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue23);
+        Assert.That(storageValue23, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
 
         provider.Reset();
-        Assert.That(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero(), Is.True);
+        provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue24);
+        Assert.That(storageValue24.IsZero, Is.True);
     }
 
     /// <summary>
@@ -534,16 +800,16 @@ public class StorageProviderTests(bool useFlat)
         snapshots[0] = provider.TakeSnapshot();
 
         // Only update transient
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         snapshots[1] = provider.TakeSnapshot();
 
         // Update both
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[9]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[9], isBigEndian: true));
         snapshots[2] = provider.TakeSnapshot();
 
         // Only update persistent
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[8]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[8], isBigEndian: true));
         snapshots[3] = provider.TakeSnapshot();
 
         provider.Restore(snapshots[snapshot + 1]);
@@ -558,7 +824,8 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(snapshots[2].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(0, 1)));
         Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
 
-        Assert.That(_values[snapshot + 1], Is.EqualTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).ToArray()));
+        provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue25);
+        Assert.That(storageValue25, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -576,16 +843,16 @@ public class StorageProviderTests(bool useFlat)
         snapshots[0] = (provider).TakeSnapshot();
 
         // Only update persistent
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         snapshots[1] = (provider).TakeSnapshot();
 
         // Update both
-        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[9]);
+        provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[2], isBigEndian: true));
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[9], isBigEndian: true));
         snapshots[2] = (provider).TakeSnapshot();
 
         // Only update transient
-        provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[8]);
+        provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[8], isBigEndian: true));
         snapshots[3] = (provider).TakeSnapshot();
 
         provider.Restore(snapshots[snapshot + 1]);
@@ -598,7 +865,8 @@ public class StorageProviderTests(bool useFlat)
 
         Assert.That(snapshots, Is.EqualTo(new[] { Snapshot.Empty, new Snapshot(new Snapshot.Storage(0, Snapshot.EmptyPosition), Snapshot.EmptyPosition), new Snapshot(new Snapshot.Storage(1, 0), Snapshot.EmptyPosition), new Snapshot(new Snapshot.Storage(1, 1), Snapshot.EmptyPosition) }));
 
-        Assert.That(_values[snapshot + 1], Is.EqualTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray()));
+        provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue26);
+        Assert.That(storageValue26, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
     /// <summary>
@@ -612,12 +880,14 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
-        provider.Get(accessedStorageCell);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, new UInt256([1, 2, 3], isBigEndian: true));
+        provider.Get(accessedStorageCell, out _);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
-        Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
-        Assert.That(provider.Get(nonAccessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+        provider.Get(accessedStorageCell, out UInt256 storageValue27);
+        Assert.That(storageValue27, Is.EqualTo(UInt256.Zero));
+        provider.Get(nonAccessedStorageCell, out UInt256 storageValue28);
+        Assert.That(storageValue28, Is.EqualTo(UInt256.Zero));
     }
 
     // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be
@@ -636,7 +906,7 @@ public class StorageProviderTests(bool useFlat)
             foreach (Address address in (Address[])[TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
             {
                 provider.CreateAccount(address, 1);
-                provider.Set(new StorageCell(address, 1), _values[1]);
+                provider.Set(new StorageCell(address, 1), new UInt256(_values[1], isBigEndian: true));
             }
 
             provider.Commit(Frontier.Instance);
@@ -661,26 +931,35 @@ public class StorageProviderTests(bool useFlat)
                 provider.ClearStorage(TestItem.AddressA);
                 provider.ClearStorage(TestItem.AddressB);
                 // Would follow the clears, so it also pins that the slot writes are not reached.
-                provider.Set(new StorageCell(TestItem.AddressA, 2), _values[2]);
+                provider.Set(new StorageCell(TestItem.AddressA, 2), new UInt256(_values[2], isBigEndian: true));
             }
 
             provider.Commit(Frontier.Instance);
             using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
 
-            IWorldStateScopeProvider.IStorageWriteBatch storageBatch = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
             IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
             bool accepts = stop != StorageWriteStop.BeforeTheFirstClear;
+            RejectingStorageWriteBatch storageBatch = new(() => accepts = false);
             writeBatch.AcceptsStorageWrites.Returns(_ => accepts);
             writeBatch.CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>()).Returns(storageBatch);
-            // What the real batch does: a clear drops the pre-block slots it held, and it has nothing left to complete.
-            storageBatch.When(b => b.Clear()).Do(_ => accepts = false);
 
             snapshot.WriteTo(writeBatch);
 
             writeBatch.Received(expectedStorageBatches).CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>());
-            storageBatch.Received(expectedStorageBatches).Clear();
-            storageBatch.DidNotReceiveWithAnyArgs().Set(Arg.Any<UInt256>(), Arg.Any<byte[]>());
+            Assert.That(storageBatch.ClearCount, Is.EqualTo(expectedStorageBatches));
         }
+    }
+
+    private sealed class RejectingStorageWriteBatch(Action onClear) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public int ClearCount { get; private set; }
+        public void Set(in UInt256 index, in UInt256 value) => Assert.Fail("Storage writes must stop after the batch rejects them.");
+        public void Clear()
+        {
+            ClearCount++;
+            onClear();
+        }
+        public void Dispose() { }
     }
 
     public enum StorageWriteStop
@@ -690,9 +969,9 @@ public class StorageProviderTests(bool useFlat)
         AtAContractClear,
     }
 
-    [TestCase(StorageClearRollback.Snapshot)]
-    [TestCase(StorageClearRollback.ResetKeepingBlockChanges)]
-    public void Rolling_back_storage_clear_preserves_committed_storage(StorageClearRollback rollback)
+    [Test]
+    public void Rolling_back_storage_clear_preserves_committed_storage(
+        [Values] StorageClearRollback rollback, [Values] bool journaled)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
@@ -703,8 +982,8 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(IWorldState.PreGenesis))
         {
             provider.CreateAccount(TestItem.AddressA, 100);
-            provider.Set(previouslyRead, _values[7]);
-            provider.Set(readAfterClear, _values[8]);
+            provider.Set(previouslyRead, new UInt256(_values[7], isBigEndian: true));
+            provider.Set(readAfterClear, new UInt256(_values[8], isBigEndian: true));
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
@@ -712,16 +991,22 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
+            provider.Get(previouslyRead, out UInt256 storageValue29);
+            Assert.That(storageValue29, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
+            if (journaled) provider.Set(in previouslyRead, in storageValue29);
             Snapshot snapshot = provider.TakeSnapshot();
 
             provider.ClearStorage(TestItem.AddressA);
-            Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
-            Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+            provider.Get(previouslyRead, out UInt256 storageValue30);
+            Assert.That(storageValue30, Is.EqualTo(UInt256.Zero));
+            provider.Get(readAfterClear, out UInt256 storageValue31);
+            Assert.That(storageValue31, Is.EqualTo(UInt256.Zero));
+            provider.GetOriginal(in readAfterClear, out UInt256 originalAfterClear);
+            Assert.That(originalAfterClear, Is.EqualTo(UInt256.Zero));
 
             if (rollback == StorageClearRollback.ResetKeepingBlockChanges)
             {
-                provider.Set(previouslyRead, _values[1]);
+                provider.Set(previouslyRead, new UInt256(_values[1], isBigEndian: true));
                 provider.ClearStorage(TestItem.AddressA);
             }
 
@@ -734,12 +1019,18 @@ public class StorageProviderTests(bool useFlat)
                 provider.Reset(resetBlockChanges: false);
             }
 
+            Assert.Throws<InvalidOperationException>(() => provider.GetOriginal(in readAfterClear, out _));
+
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(provider.Get(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
-                Assert.That(provider.GetOriginal(previouslyRead).ToArray(), Is.EqualTo(_values[7]));
-                Assert.That(provider.Get(readAfterClear).ToArray(), Is.EqualTo(_values[8]));
-                Assert.That(provider.GetOriginal(readAfterClear).ToArray(), Is.EqualTo(_values[8]));
+                provider.Get(previouslyRead, out UInt256 storageValue32);
+                Assert.That(storageValue32, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
+                provider.GetOriginal(in previouslyRead, out UInt256 previouslyReadOriginal);
+                Assert.That(previouslyReadOriginal, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)));
+                provider.Get(readAfterClear, out UInt256 storageValue33);
+                Assert.That(storageValue33, Is.EqualTo(new UInt256(_values[8], isBigEndian: true)));
+                provider.GetOriginal(in readAfterClear, out UInt256 readAfterClearOriginal);
+                Assert.That(readAfterClearOriginal, Is.EqualTo(new UInt256(_values[8], isBigEndian: true)));
             }
 
             provider.Commit(Frontier.Instance);
@@ -775,7 +1066,7 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell existingCell = new(ctx.Address1, 1);
 
-        provider.Set(existingCell, _values[1]);
+        provider.Set(existingCell, new UInt256(_values[1], isBigEndian: true));
         provider.Commit(Frontier.Instance);
         object blockChange = GetBlockChange(provider, ctx.Address1);
         Snapshot snapshot = provider.TakeSnapshot();
@@ -783,7 +1074,7 @@ public class StorageProviderTests(bool useFlat)
         provider.ClearStorage(ctx.Address1);
         for (int i = 0; i < ReadCount; i++)
         {
-            provider.Get(new StorageCell(ctx.Address1, (UInt256)(i + 2)));
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)(i + 2)), out _);
         }
 
         object clearedDictionary = GetDictionary(blockChange);
@@ -811,10 +1102,11 @@ public class StorageProviderTests(bool useFlat)
         provider.MarkStorageDestroyed(ctx.Address1);
         provider.Commit(Frontier.Instance);
 
-        provider.Set(cell, _values[7]);
+        provider.Set(cell, new UInt256(_values[7], isBigEndian: true));
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[7]), "revived contract's write must survive the previous round's destroy mark");
+        provider.Get(cell, out UInt256 storageValue34);
+        Assert.That(storageValue34, Is.EqualTo(new UInt256(_values[7], isBigEndian: true)), "revived contract's write must survive the previous round's destroy mark");
     }
 
     [Test]
@@ -828,7 +1120,7 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(cell, [7]);
+            provider.Set(cell, (UInt256)7);
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
@@ -836,12 +1128,14 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock))
         {
-            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(new byte[] { 7 }), "precondition: committed value visible");
+            provider.Get(cell, out UInt256 storageValue35);
+            Assert.That(storageValue35, Is.EqualTo((UInt256)7), "precondition: committed value visible");
 
             provider.MarkStorageDestroyed(TestItem.AddressA);
             provider.Commit(Frontier.Instance);
 
-            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "committed prior-block storage must read zero after destroy");
+            provider.Get(cell, out UInt256 storageValue36);
+            Assert.That(storageValue36, Is.EqualTo(UInt256.Zero), "committed prior-block storage must read zero after destroy");
         }
     }
 
@@ -853,16 +1147,18 @@ public class StorageProviderTests(bool useFlat)
         StorageCell rewritten = new(ctx.Address1, 1);
         StorageCell untouched = new(ctx.Address1, 2);
 
-        provider.Set(rewritten, _values[1]);
-        provider.Set(untouched, _values[2]);
+        provider.Set(rewritten, new UInt256(_values[1], isBigEndian: true));
+        provider.Set(untouched, new UInt256(_values[2], isBigEndian: true));
         provider.MarkStorageDestroyed(ctx.Address1);
         provider.Commit(Frontier.Instance);
 
-        provider.Set(rewritten, _values[3]);
+        provider.Set(rewritten, new UInt256(_values[3], isBigEndian: true));
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(rewritten).ToArray(), Is.EqualTo(_values[3]), "revived contract's rewritten slot must hold the new value");
-        Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of a destroyed contract must read zero, not the pre-destroy write");
+        provider.Get(rewritten, out UInt256 storageValue37);
+        Assert.That(storageValue37, Is.EqualTo(new UInt256(_values[3], isBigEndian: true)), "revived contract's rewritten slot must hold the new value");
+        provider.Get(untouched, out UInt256 storageValue38);
+        Assert.That(storageValue38, Is.EqualTo(UInt256.Zero), "un-rewritten slot of a destroyed contract must read zero, not the pre-destroy write");
     }
 
     [Test]
@@ -878,7 +1174,7 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(cell, [7]);
+            provider.Set(cell, (UInt256)7);
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
@@ -908,7 +1204,8 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "destroyed storage must be gone from the persisted store, not only from the in-block marker");
+            provider.Get(cell, out UInt256 storageValue39);
+            Assert.That(storageValue39, Is.EqualTo(UInt256.Zero), "destroyed storage must be gone from the persisted store, not only from the in-block marker");
         }
     }
 
@@ -923,14 +1220,16 @@ public class StorageProviderTests(bool useFlat)
         StorageCell rewritten = new(ctx.Address1, 1);
         StorageCell untouched = new(ctx.Address1, 2);
 
-        provider.Set(rewritten, _values[1]);
-        provider.Set(untouched, _values[2]);
+        provider.Set(rewritten, new UInt256(_values[1], isBigEndian: true));
+        provider.Set(untouched, new UInt256(_values[2], isBigEndian: true));
         provider.ClearStorage(ctx.Address1);
-        provider.Set(rewritten, _values[3]);
+        provider.Set(rewritten, new UInt256(_values[3], isBigEndian: true));
         provider.Commit(Frontier.Instance);
 
-        Assert.That(provider.Get(rewritten).ToArray(), Is.EqualTo(_values[3]), "redeploy write after in-round destroy must survive the commit");
-        Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of the destroyed contract must stay zero");
+        provider.Get(rewritten, out UInt256 storageValue40);
+        Assert.That(storageValue40, Is.EqualTo(new UInt256(_values[3], isBigEndian: true)), "redeploy write after in-round destroy must survive the commit");
+        provider.Get(untouched, out UInt256 storageValue41);
+        Assert.That(storageValue41, Is.EqualTo(UInt256.Zero), "un-rewritten slot of the destroyed contract must stay zero");
     }
 
     [Test]
@@ -943,8 +1242,8 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), (UInt256)1);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), (UInt256)2);
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
@@ -960,8 +1259,8 @@ public class StorageProviderTests(bool useFlat)
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
             provider.ClearStorage(TestItem.AddressA);
-            provider.Set(new StorageCell(TestItem.AddressA, 101), [10]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Set(new StorageCell(TestItem.AddressA, 101), (UInt256)10);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), (UInt256)2);
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(baseBlock.Number + 1);
@@ -978,8 +1277,8 @@ public class StorageProviderTests(bool useFlat)
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
             provider.ClearStorage(TestItem.AddressA);
-            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), (UInt256)1);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), (UInt256)2);
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(baseBlock.Number + 1);
@@ -1002,8 +1301,8 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), (UInt256)1);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), (UInt256)2);
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
@@ -1031,7 +1330,8 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            Assert.That(provider.Get(new StorageCell(TestItem.AddressA, 100)).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+            provider.Get(new StorageCell(TestItem.AddressA, 100), out UInt256 storageValue42);
+            Assert.That(storageValue42, Is.EqualTo(UInt256.Zero));
 
             provider.Commit(Frontier.Instance);
             provider.CommitTree(0);
@@ -1048,8 +1348,8 @@ public class StorageProviderTests(bool useFlat)
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
+            provider.Set(new StorageCell(TestItem.AddressA, 100), (UInt256)1);
+            provider.Set(new StorageCell(TestItem.AddressA, 200), (UInt256)2);
             provider.ClearStorage(TestItem.AddressA);
             provider.DeleteAccount(TestItem.AddressA);
 
@@ -1068,13 +1368,15 @@ public class StorageProviderTests(bool useFlat)
         PreBlockCaches preBlockCaches = new(TestPreBlockCachesConfig.Small);
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, new UInt256([1, 2, 3], isBigEndian: true));
 
         WorldState provider = BuildStorageProvider(ctx);
-        Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo([1, 2, 3]));
+        provider.Get(accessedStorageCell, out UInt256 storageValue43);
+        Assert.That(storageValue43, Is.EqualTo((UInt256)0x010203));
         provider.ClearStorage(TestItem.AddressA);
         provider.Commit(Paris.Instance);
-        Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+        provider.Get(accessedStorageCell, out UInt256 storageValue44);
+        Assert.That(storageValue44, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -1085,20 +1387,20 @@ public class StorageProviderTests(bool useFlat)
         StorageCell first = new(ctx.Address1, 100);
         StorageCell second = new(ctx.Address1, 101);
         StorageCell untouched = new(ctx.Address1, 102);
-        provider.Set(first, _values[1]);
-        provider.Set(second, _values[2]);
-        provider.Set(untouched, _values[3]);
+        provider.Set(first, new UInt256(_values[1], isBigEndian: true));
+        provider.Set(second, new UInt256(_values[2], isBigEndian: true));
+        provider.Set(untouched, new UInt256(_values[3], isBigEndian: true));
         provider.Commit(Frontier.Instance);
-        provider.Get(first);
-        provider.Get(second);
-        provider.Get(untouched);
-        provider.Set(first, _values[4]);
-        provider.Set(second, _values[5]);
+        provider.Get(first, out _);
+        provider.Get(second, out _);
+        provider.Get(untouched, out _);
+        provider.Set(first, new UInt256(_values[4], isBigEndian: true));
+        provider.Set(second, new UInt256(_values[5], isBigEndian: true));
         Snapshot snapshot = provider.TakeSnapshot();
         if (clearStorage) provider.ClearStorage(ctx.Address1);
-        provider.Set(first, _values[6]);
-        provider.Set(second, _values[7]);
-        provider.Set(first, _values[8]);
+        provider.Set(first, new UInt256(_values[6], isBigEndian: true));
+        provider.Set(second, new UInt256(_values[7], isBigEndian: true));
+        provider.Set(first, new UInt256(_values[8], isBigEndian: true));
         if (restore) provider.Restore(snapshot);
         ReadCollectingStorageTracer tracer = new();
 
@@ -1108,9 +1410,12 @@ public class StorageProviderTests(bool useFlat)
         byte[] secondValue = _values[restore ? 5 : 7];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.Get(first).ToArray(), Is.EqualTo(firstValue));
-            Assert.That(provider.Get(second).ToArray(), Is.EqualTo(secondValue));
-            Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(_values[clearStorage && !restore ? 0 : 3]));
+            provider.Get(first, out UInt256 storageValue45);
+            Assert.That(storageValue45, Is.EqualTo(new UInt256(firstValue, isBigEndian: true)));
+            provider.Get(second, out UInt256 storageValue46);
+            Assert.That(storageValue46, Is.EqualTo(new UInt256(secondValue, isBigEndian: true)));
+            provider.Get(untouched, out UInt256 storageValue47);
+            Assert.That(storageValue47, Is.EqualTo(new UInt256(_values[clearStorage && !restore ? 0 : 3], isBigEndian: true)));
             Assert.That(tracer.Changes, Has.Count.EqualTo(clearStorage && !restore ? 3 : 2));
             Assert.That(tracer.Changes[0].Cell, Is.EqualTo(first), "storage changes follow surviving-head insertion order");
             Assert.That(tracer.Changes[1].Cell, Is.EqualTo(second));
@@ -1129,7 +1434,7 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell readCell = new(TestItem.AddressA, 1);
 
-        provider.Get(readCell);
+        provider.Get(readCell, out _);
 
         ReadCollectingStorageTracer tracer = new();
         provider.Commit(Frontier.Instance, tracer);
@@ -1154,10 +1459,10 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 1);
 
-        provider.Set(cell, _values[1]);
+        provider.Set(cell, new UInt256(_values[1], isBigEndian: true));
         provider.Commit(Frontier.Instance);
 
-        provider.Get(cell);
+        provider.Get(cell, out _);
 
         switch (boundary)
         {
@@ -1170,14 +1475,15 @@ public class StorageProviderTests(bool useFlat)
             case RoundBoundary.CommitAfterWrite:
                 // A write in the round is what routes the commit through CommitCore, the clear
                 // site that a read-only commit skips.
-                provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
+                provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
                 provider.Commit(Frontier.Instance);
                 break;
         }
 
-        provider.Get(cell);
+        provider.Get(cell, out _);
 
-        Assert.That(provider.GetOriginal(cell).ToArray(), Is.EqualTo(_values[1]));
+        provider.GetOriginal(in cell, out UInt256 originalValue);
+        Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
     }
 
     [Test]
@@ -1191,7 +1497,7 @@ public class StorageProviderTests(bool useFlat)
         using (worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 0);
-            worldState.Set(cell, [1, 2, 3]);
+            worldState.Set(cell, new UInt256((ReadOnlySpan<byte>)[1, 2, 3], isBigEndian: true));
             worldState.Commit(SpuriousDragon.Instance);
             worldState.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
@@ -1204,7 +1510,8 @@ public class StorageProviderTests(bool useFlat)
             Snapshot before = worldState.TakeSnapshot();
             worldState.ClearStorage(TestItem.AddressA);
             Snapshot after = worldState.TakeSnapshot();
-            byte[] value = worldState.Get(cell).ToArray();
+            worldState.Get(cell, out UInt256 storageValue48);
+            byte[] value = storageValue48.ToMinimalBigEndian();
 
             using (Assert.EnterMultipleScope())
             {
@@ -1226,7 +1533,7 @@ public class StorageProviderTests(bool useFlat)
         using (worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 0);
-            worldState.Set(cell, [1, 2, 3]);
+            worldState.Set(cell, new UInt256((ReadOnlySpan<byte>)[1, 2, 3], isBigEndian: true));
             worldState.Commit(Frontier.Instance);
             worldState.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).WithNumber(0).TestObject;
@@ -1245,7 +1552,8 @@ public class StorageProviderTests(bool useFlat)
 
             worldState.ClearStorage(TestItem.AddressA);
 
-            Assert.That(worldState.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
+            worldState.Get(cell, out UInt256 storageValue49);
+            Assert.That(storageValue49, Is.EqualTo(UInt256.Zero));
         }
     }
 
@@ -1261,7 +1569,7 @@ public class StorageProviderTests(bool useFlat)
         {
             // Set something
             worldState.CreateAccount(TestItem.AddressA, 10);
-            worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("aaaa"));
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), new UInt256(Bytes.FromHexString("aaaa"), isBigEndian: true));
             worldState.Commit(SpuriousDragon.Instance);
             worldState.CommitTree(0);
             stateRoot = worldState.StateRoot;
@@ -1270,7 +1578,7 @@ public class StorageProviderTests(bool useFlat)
         using (IDisposable _ = worldState.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject))
         {
             // Set storage to a different value
-            worldState.Set(new StorageCell(TestItem.AddressA, 1), Bytes.FromHexString("bbbb"));
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), new UInt256(Bytes.FromHexString("bbbb"), isBigEndian: true));
             worldState.Commit(SpuriousDragon.Instance);
 
             // Delete but no clear storage
@@ -1283,7 +1591,8 @@ public class StorageProviderTests(bool useFlat)
 
         using (IDisposable _ = worldState.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressA, 1)).IsZero(), Is.True);
+            worldState.Get(new StorageCell(TestItem.AddressA, 1), out UInt256 storageValue50);
+            Assert.That(storageValue50.IsZero, Is.True);
         }
     }
 
@@ -1301,7 +1610,7 @@ public class StorageProviderTests(bool useFlat)
         for (int i = 0; i < numItems; i++)
         {
             UInt256 asUInt256 = (UInt256)(i + 1);
-            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), asUInt256.ToBigEndian());
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), new UInt256(asUInt256.ToBigEndian(), isBigEndian: true));
         }
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(1);
@@ -1311,7 +1620,7 @@ public class StorageProviderTests(bool useFlat)
 
         for (int i = 0; i < numItems; i++)
         {
-            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), [0]);
+            worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), (UInt256)0);
         }
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(2);
@@ -1332,18 +1641,18 @@ public class StorageProviderTests(bool useFlat)
         worldState.CommitTree(0);
         Hash256 emptyHash = worldState.StateRoot;
 
-        worldState.Set(new StorageCell(TestItem.AddressA, 1), _values[11]);
-        worldState.Set(new StorageCell(TestItem.AddressA, 2), _values[12]);
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), new UInt256(_values[11], isBigEndian: true));
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), new UInt256(_values[12], isBigEndian: true));
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(1);
 
         Hash256 fullHash = worldState.StateRoot;
         Assert.That(fullHash, Is.Not.EqualTo(emptyHash));
 
-        worldState.Get(new StorageCell(TestItem.AddressA, 1));
-        worldState.Get(new StorageCell(TestItem.AddressA, 2));
-        worldState.Set(new StorageCell(TestItem.AddressA, 1), [0]);
-        worldState.Set(new StorageCell(TestItem.AddressA, 2), [0]);
+        worldState.Get(new StorageCell(TestItem.AddressA, 1), out _);
+        worldState.Get(new StorageCell(TestItem.AddressA, 2), out _);
+        worldState.Set(new StorageCell(TestItem.AddressA, 1), (UInt256)0);
+        worldState.Set(new StorageCell(TestItem.AddressA, 2), (UInt256)0);
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(2);
 
@@ -1361,7 +1670,7 @@ public class StorageProviderTests(bool useFlat)
 
         using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
         caches.MainScope = null;
-        ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
+        ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), new UInt256(_values[1], isBigEndian: true));
 
         if (populator)
             mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
@@ -1491,10 +1800,10 @@ public class StorageProviderTests(bool useFlat)
         {
             public void Dispose() => baseStorageBatch?.Dispose();
 
-            public void Set(in UInt256 index, byte[] value)
+            public void Set(in UInt256 index, in UInt256 value)
             {
                 baseStorageBatch.Set(in index, value);
-                writtenData.Slots[new StorageCell(address, index)] = value;
+                writtenData.Slots[new StorageCell(address, index)] = value.ToMinimalBigEndian();
             }
 
             public void Clear()

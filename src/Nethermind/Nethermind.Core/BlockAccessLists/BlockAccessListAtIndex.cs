@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
@@ -34,6 +33,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
+    private ulong _storageJournalEpoch;
 
     private readonly List<CodeChange> _previousCodeChanges = [];
 
@@ -74,6 +74,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
         _accountChanges.ClearAndTrim();
         _changes.Clear();
+        _storageJournalEpoch = 0;
         _previousCodeChanges.Clear();
         _lastReadAddress = null;
         _lastReadChanges = null;
@@ -99,13 +100,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         UInt256 preTxBalance = accountChanges.PreTxBalance ??= before;
 
         BalanceChange? previous = accountChanges.BalanceChange;
-        _changes.Add(new Change
+        _changes.Add(new Change(previousValue: previous?.Value ?? default)
         {
             Account = accountChanges,
             Type = ChangeType.BalanceChange,
             HasPrevious = previous.HasValue,
             PreviousIndex = previous?.Index ?? 0,
-            PreviousValue = new ChangeValue(previous?.Value ?? default),
         });
 
         accountChanges.BalanceChange = preTxBalance != after
@@ -149,13 +149,12 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
         NonceChange? previous = accountChanges.NonceChange;
-        _changes.Add(new Change
+        _changes.Add(new Change(previousValue: previous?.Value ?? 0UL)
         {
             Account = accountChanges,
             Type = ChangeType.NonceChange,
             HasPrevious = previous.HasValue,
             PreviousIndex = previous?.Index ?? 0,
-            PreviousValue = new ChangeValue(previous?.Value ?? 0UL),
         });
 
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
@@ -175,7 +174,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     }
 
     /// <summary>Records a storage-slot read and returns the account entry in a single account resolution.</summary>
-    public AccountChangesAtIndex RecordStorageReadAndGet(Address address, UInt256 key)
+    public AccountChangesAtIndex RecordStorageReadAndGet(Address address, in UInt256 key)
     {
         AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
         if (!accountChanges.HasStorageChange(key))
@@ -183,79 +182,69 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         return accountChanges;
     }
 
-    public void AddStorageChange(Address address, UInt256 key, UInt256 before, UInt256 after)
+    public void AddStorageChange(Address address, in UInt256 key, in UInt256 before, in UInt256 after)
     {
         if (before == after) return;
 
-        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+        AccountChangesAtIndex accountChanges = RecordReadAndGet(address);
 
-        accountChanges.TryRemoveStorageChange(key, out StorageChange? oldStorageChange);
-
-        UInt256 preTxStorage = accountChanges.GetOrCapturePreTxStorage(key, before);
-
-        _changes.Add(new Change
+        ref StorageChange slotChange = ref CollectionsMarshal.GetValueRefOrAddDefault(accountChanges.StorageChanges, key, out bool hasPrevious);
+        if (accountChanges.GetOrCapturePreTxStorage(in key, in before, _storageJournalEpoch, out UInt256 preTxStorage))
         {
-            Account = accountChanges,
-            Slot = key,
-            Type = ChangeType.StorageChange,
-            HasPrevious = oldStorageChange.HasValue,
-            PreviousIndex = oldStorageChange?.Index ?? 0,
-            PreviousValue = new ChangeValue(oldStorageChange?.Value ?? default),
-        });
+            // One undo per slot between snapshot boundaries also covers interleaved writes to other slots.
+            _changes.Add(new Change(slot: key, previousValue: slotChange.Value)
+            {
+                Account = accountChanges,
+                Type = ChangeType.StorageChange,
+                HasPrevious = hasPrevious,
+                PreviousIndex = slotChange.Index,
+            });
+        }
 
         if (preTxStorage != after)
         {
-            accountChanges.SetStorageChange(key, new StorageChange(Index, after));
-            accountChanges.RemoveStorageRead(key);
+            slotChange = new StorageChange(Index, after);
+            // An existing change already excludes this slot from the read set.
+            if (!hasPrevious) accountChanges.RemoveStorageRead(key);
         }
         else
         {
+            accountChanges.RemoveStorageChange(key);
             accountChanges.AddStorageRead(key);
         }
     }
 
-    public void AddStorageChange(in StorageCell storageCell, UInt256 before, UInt256 after)
-        => AddStorageChange(storageCell.Address, storageCell.Index, before, after);
+    public void AddStorageChange(in StorageCell storageCell, in UInt256 before, in UInt256 after)
+        => AddStorageChange(storageCell.Address, in storageCell.Index, in before, in after);
 
     public void AddStorageRead(in StorageCell storageCell) => AddStorageRead(storageCell.Address, storageCell.Index);
 
-    public void AddStorageRead(Address address, UInt256 key)
-    {
-        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
-        if (!accountChanges.HasStorageChange(key))
-        {
-            accountChanges.AddStorageRead(key);
-        }
-    }
+    public void AddStorageRead(Address address, in UInt256 key) => RecordStorageReadAndGet(address, in key);
 
     public void DeleteAccount(Address address, UInt256 oldBalance)
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        using ArrayPoolListRef<UInt256> changedSlots = new(accountChanges.StorageChangeCount);
         foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
         {
-            changedSlots.Add(kv.Key);
-            _changes.Add(new Change
+            accountChanges.AddStorageRead(kv.Key);
+            _changes.Add(new Change(slot: kv.Key, previousValue: kv.Value.Value)
             {
                 Account = accountChanges,
                 Type = ChangeType.StorageChange,
-                Slot = kv.Key,
                 HasPrevious = true,
                 PreviousIndex = kv.Value.Index,
-                PreviousValue = new ChangeValue(kv.Value.Value),
             });
         }
 
         if (accountChanges.NonceChange is { } nonce)
         {
-            _changes.Add(new Change
+            _changes.Add(new Change(previousValue: nonce.Value)
             {
                 Account = accountChanges,
                 Type = ChangeType.NonceChange,
                 HasPrevious = true,
                 PreviousIndex = nonce.Index,
-                PreviousValue = new ChangeValue(nonce.Value),
             });
         }
 
@@ -271,21 +260,22 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
 
         // SELFDESTRUCT clears storage (changes become reads), nonce and code
-        foreach (UInt256 slot in changedSlots.AsSpan())
-        {
-            accountChanges.RemoveStorageChange(slot);
-            accountChanges.AddStorageRead(slot);
-        }
+        accountChanges.StorageChanges.Clear();
         accountChanges.NonceChange = null;
         accountChanges.CodeChange = null;
 
         AddBalanceChange(address, oldBalance, 0);
     }
 
-    public int TakeSnapshot() => _changes.Count;
+    public int TakeSnapshot()
+    {
+        _storageJournalEpoch++;
+        return _changes.Count;
+    }
 
     public void Restore(int snapshot)
     {
+        _storageJournalEpoch++;
         // Intentionally does not reset _lastReadAddress/_lastReadChanges: Restore reverts entry values
         // in place and never evicts an entry, so the cached reference stays valid. See class invariant.
         snapshot = int.Max(0, snapshot);
@@ -304,7 +294,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             {
                 case ChangeType.BalanceChange:
                     accountChanges.BalanceChange = change.HasPrevious
-                        ? new BalanceChange(change.PreviousIndex, change.PreviousValue.Balance)
+                        ? new BalanceChange(change.PreviousIndex, change.PreviousValue)
                         : null;
                     break;
                 case ChangeType.CodeChange:
@@ -320,19 +310,19 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                     break;
                 case ChangeType.NonceChange:
                     accountChanges.NonceChange = change.HasPrevious
-                        ? new NonceChange(change.PreviousIndex, change.PreviousValue.Nonce)
+                        ? new NonceChange(change.PreviousIndex, change.PreviousValue.u0)
                         : null;
                     break;
                 case ChangeType.StorageChange:
                     UInt256 slot = change.Slot;
-                    accountChanges.RemoveStorageChange(slot);
                     if (change.HasPrevious)
                     {
-                        accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue.Storage));
+                        accountChanges.SetStorageChange(slot, new StorageChange(change.PreviousIndex, change.PreviousValue));
                         accountChanges.RemoveStorageRead(slot);
                     }
                     else
                     {
+                        accountChanges.RemoveStorageChange(slot);
                         // No prior change in this tx — the slot was accessed (SSTORE implies
                         // SLOAD at the EVM level), so mark it as a read to preserve that the
                         // slot was touched even though the change was reverted.
@@ -364,12 +354,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     private AccountChangesAtIndex GetOrAddAccountChanges(Address address)
     {
-        if (!_accountChanges.TryGetValue(address, out AccountChangesAtIndex? existing))
-        {
-            existing = RentAccountChanges(address);
-            _accountChanges.Add(address, existing);
-        }
-        return existing;
+        ref AccountChangesAtIndex? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(_accountChanges, address, out _);
+        return existing ??= RentAccountChanges(address);
     }
 
     private AccountChangesAtIndex RentAccountChanges(Address address)
@@ -390,30 +376,14 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         StorageChange = 3,
     }
 
-    private readonly struct Change
+    private readonly struct Change(in UInt256 previousValue = default, in UInt256 slot = default)
     {
-        public AccountChangesAtIndex Account { get; init; }
+        public required AccountChangesAtIndex Account { get; init; }
         public ChangeType Type { get; init; }
         public bool HasPrevious { get; init; }
         public uint PreviousIndex { get; init; }
-        public UInt256 Slot { get; init; }
-        public ChangeValue PreviousValue { get; init; }
-    }
-
-    private readonly struct ChangeValue
-    {
-        private readonly UInt256 _data;
-
-        public ChangeValue(UInt256 balance) => _data = balance;
-
-        public ChangeValue(ulong nonce) => _data = new UInt256(nonce);
-
-        public ChangeValue(in EvmWord storage) => _data = Unsafe.As<EvmWord, UInt256>(ref Unsafe.AsRef(in storage));
-
-        public UInt256 Balance => _data;
-
-        public ulong Nonce => _data.u0;
-
-        public EvmWord Storage => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in _data));
+        public readonly UInt256 Slot = slot;
+        // Balance or storage value as written; a nonce occupies the low limb.
+        public readonly UInt256 PreviousValue = previousValue;
     }
 }

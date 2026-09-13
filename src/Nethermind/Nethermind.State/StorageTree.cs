@@ -54,51 +54,16 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        private static byte[] EncodeNonZeroValue(byte[] value)
+        private static byte[] EncodeNonZeroValue(ReadOnlySpan<byte> value)
         {
             byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
             Rlp.Encode(value, encoded);
             return encoded;
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value) =>
-            new(in key, value.IsZero() ? [] : EncodeNonZeroValue(value));
-
-        [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
-        {
-            ValueHash256[] lookup = Lookup;
-            ulong u0 = index.u0;
-            if (index.IsUint64 && u0 < (uint)lookup.Length)
-            {
-                return GetArray(
-                    in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0),
-                    storageRoot);
-            }
-
-            return GetWithKeyGenerate(in index, storageRoot);
-
-            [SkipLocalsInit]
-            byte[] GetWithKeyGenerate(in UInt256 index, Hash256? storageRoot)
-            {
-                ComputeKey(index, out ValueHash256 key);
-                return GetArray(in key, storageRoot);
-            }
-        }
-
-        public byte[] GetArray(in ValueHash256 key, Hash256? rootHash = null)
-        {
-            ReadOnlySpan<byte> rawKey = key.Bytes;
-            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
-
-            if (value.IsEmpty)
-            {
-                return ZeroBytes;
-            }
-
-            RlpReader rlp = new(value);
-            return rlp.DecodeByteArray();
-        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, ReadOnlySpan<byte> value, bool isZero) =>
+            new(in key, isZero ? [] : EncodeNonZeroValue(value));
 
         public void Commit() => Commit(false, WriteFlags.None);
 
@@ -106,40 +71,99 @@ namespace Nethermind.State
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
-        public byte[] Get(in UInt256 index) => Get(index, null);
-
-        public void HintSet(in UInt256 index, byte[]? value)
-        {
-        }
+        [SkipLocalsInit]
+        public void Get(in UInt256 index, out UInt256 value) => Get(in index, out value, null);
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, byte[] value)
+        internal void Get(in UInt256 index, out UInt256 value, Hash256? storageRoot)
         {
             ValueHash256[] lookup = Lookup;
             ulong u0 = index.u0;
             if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value);
+                Get(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), out value, storageRoot);
             }
             else
             {
-                SetWithKeyGenerate(in index, value);
-            }
-
-            [SkipLocalsInit]
-            void SetWithKeyGenerate(in UInt256 index, byte[] value)
-            {
-                ComputeKey(index, out ValueHash256 key);
-                SetInternal(in key, value);
+                GetWithKeyGenerate(in index, out value, storageRoot);
             }
         }
 
-        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true) => SetInternal(in key, value, rlpEncode);
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GetWithKeyGenerate(in UInt256 index, out UInt256 value, Hash256? storageRoot)
+        {
+            ComputeKey(in index, out ValueHash256 key);
+            Get(in key, out value, storageRoot);
+        }
 
-        private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
+        [SkipLocalsInit]
+        private void Get(in ValueHash256 key, out UInt256 value, Hash256? storageRoot)
+        {
+            ReadOnlySpan<byte> encoded = Get(key.Bytes, storageRoot);
+            if (encoded.IsEmpty)
+            {
+                value = default;
+                return;
+            }
+            RlpReader reader = new(encoded);
+            ReadOnlySpan<byte> decoded = reader.DecodeByteArraySpan();
+            if (decoded.Length > 32) throw new TrieException("Storage value exceeds 256 bits");
+            value = new UInt256(decoded, isBigEndian: true);
+        }
+
+        public void HintSet(in UInt256 index)
+        {
+        }
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value) => Set(in index, value, value.IsZero());
+
+        [SkipLocalsInit]
+        internal void Set(in UInt256 index, ReadOnlySpan<byte> value, bool isZero)
+        {
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
+            {
+                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value, isZero);
+            }
+            else
+            {
+                SetWithKeyGenerate(in index, value, isZero);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, ReadOnlySpan<byte> value, bool isZero)
+            {
+                ComputeKey(index, out ValueHash256 key);
+                SetInternal(in key, value, isZero);
+            }
+        }
+
+        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
+        {
+            if (rlpEncode)
+            {
+                SetInternal(in key, value);
+            }
+            else if (value.IsZero())
+            {
+                Set(key.Bytes, []);
+            }
+            else
+            {
+                Set(key.Bytes, new CappedArray<byte>(value));
+            }
+        }
+
+        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value) => SetInternal(in hash, value, value.IsZero());
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value, bool isZero)
         {
             ReadOnlySpan<byte> rawKey = hash.Bytes;
-            if (value.IsZero())
+            if (isZero)
             {
                 Set(rawKey, []);
             }
@@ -147,7 +171,7 @@ namespace Nethermind.State
             {
                 // Bind the CappedArray overload the Rlp one used to forward to, so a non-zero write
                 // keeps bypassing the virtual byte[] entry point that HealingStorageTree overrides.
-                Set(rawKey, new CappedArray<byte>(rlpEncode ? EncodeNonZeroValue(value) : value));
+                Set(rawKey, new CappedArray<byte>(EncodeNonZeroValue(value)));
             }
         }
     }

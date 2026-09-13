@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -82,7 +83,7 @@ public class PersistedSnapshotTests
         {
             byte[] value = new byte[32];
             value[31] = 0xFF;
-            c.Storages[(TestItem.AddressA, (UInt256)42)] = new SlotValue(value);
+            c.Storages[(TestItem.AddressA, (UInt256)42)] = new UInt256(value, isBigEndian: true);
         })).SetName("Storage_SingleSlot");
 
         // Single significant byte < 0x80: RLP wraps it to the byte itself (1 byte), so the
@@ -91,14 +92,14 @@ public class PersistedSnapshotTests
         {
             byte[] value = new byte[32];
             value[31] = 0x05;
-            c.Storages[(TestItem.AddressA, (UInt256)9)] = new SlotValue(value);
+            c.Storages[(TestItem.AddressA, (UInt256)9)] = new UInt256(value, isBigEndian: true);
         })).SetName("Storage_SmallSingleByteSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
         {
             byte[] value = new byte[32];
             value[31] = 0xAB;
-            c.Storages[(TestItem.AddressA, UInt256.Zero)] = new SlotValue(value);
+            c.Storages[(TestItem.AddressA, UInt256.Zero)] = new UInt256(value, isBigEndian: true);
         })).SetName("Storage_ZeroSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -106,7 +107,7 @@ public class PersistedSnapshotTests
             c.Storages[(TestItem.AddressA, (UInt256)1)] = null;
             byte[] val = new byte[32];
             val[31] = 0xFF;
-            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(val);
+            c.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(val, isBigEndian: true);
         })).SetName("Storage_NullSlot");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -114,9 +115,9 @@ public class PersistedSnapshotTests
             byte[] val1 = new byte[32]; val1[31] = 0x01;
             byte[] val2 = new byte[32]; val2[31] = 0x02;
             byte[] val3 = new byte[32]; val3[31] = 0x03;
-            c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(val1);
-            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(val2);
-            c.Storages[(TestItem.AddressB, (UInt256)5)] = new SlotValue(val3);
+            c.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(val1, isBigEndian: true);
+            c.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(val2, isBigEndian: true);
+            c.Storages[(TestItem.AddressB, (UInt256)5)] = new UInt256(val3, isBigEndian: true);
         })).SetName("Storage_MultipleAddresses");
 
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
@@ -152,8 +153,8 @@ public class PersistedSnapshotTests
 
             byte[] slotVal1 = new byte[32]; slotVal1[31] = 0xFF;
             byte[] slotVal2 = new byte[32]; slotVal2[0] = 0x01; slotVal2[31] = 0x02;
-            c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal1);
-            c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(slotVal2);
+            c.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slotVal1, isBigEndian: true);
+            c.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(slotVal2, isBigEndian: true);
             c.Storages[(TestItem.AddressB, (UInt256)42)] = null;
 
             c.SelfDestructedStorageAddresses[TestItem.AddressD] = false;
@@ -212,16 +213,17 @@ public class PersistedSnapshotTests
         for (int i = 0; i < 32; i++) full[i] = (byte)(i + 1); // RLP = 0xa0 + 32 bytes
 
         SnapshotContent content = new();
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(small);
-        content.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(high);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(small, isBigEndian: true);
+        content.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(high, isBigEndian: true);
         content.Storages[(TestItem.AddressA, (UInt256)3)] = null;
-        content.Storages[(TestItem.AddressB, (UInt256)4)] = new SlotValue(full);
+        content.Storages[(TestItem.AddressB, (UInt256)4)] = new UInt256(full, isBigEndian: true);
+        content.Storages[(TestItem.AddressB, (UInt256)5)] = UInt256.Zero;
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
-        Dictionary<(Address, UInt256), SlotValue?> scanned = [];
+        Dictionary<(Address, UInt256), UInt256?> scanned = [];
         using (WholeReadSession session = persisted.BeginWholeReadSession())
         {
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
@@ -230,10 +232,17 @@ public class PersistedSnapshotTests
                     scanned[(entry.Address, slot.Slot)] = slot.Value;
         }
 
-        Assert.That(scanned[(TestItem.AddressA, (UInt256)1)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(small));
-        Assert.That(scanned[(TestItem.AddressA, (UInt256)2)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(high));
+        foreach (KeyValuePair<(Address, UInt256), UInt256?> entry in scanned)
+        {
+            Assert.That(persisted.TryGetSlot(entry.Key.Item1, entry.Key.Item2, out UInt256? value), Is.True);
+            Assert.That(value, Is.EqualTo(entry.Value));
+        }
+
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)1)]!.Value.ToBigEndian(), Is.EqualTo(small));
+        Assert.That(scanned[(TestItem.AddressA, (UInt256)2)]!.Value.ToBigEndian(), Is.EqualTo(high));
         Assert.That(scanned[(TestItem.AddressA, (UInt256)3)], Is.Null, "deleted slot must surface as null");
-        Assert.That(scanned[(TestItem.AddressB, (UInt256)4)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(full));
+        Assert.That(scanned[(TestItem.AddressB, (UInt256)4)]!.Value.ToBigEndian(), Is.EqualTo(full));
+        Assert.That(scanned[(TestItem.AddressB, (UInt256)5)], Is.EqualTo((UInt256?)UInt256.Zero), "zero must remain distinct from a deleted slot");
     }
 
     // Drives the scanner across every entry kind in one pass: normal vs deleted account,
@@ -250,7 +259,7 @@ public class PersistedSnapshotTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).WithNonce(3).TestObject;
         content.Accounts[TestItem.AddressC] = null;                          // deleted marker
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slotVal, isBigEndian: true);
         content.Storages[(TestItem.AddressA, (UInt256)2)] = null;
         content.SelfDestructedStorageAddresses[TestItem.AddressD] = false;   // 0x00 destructed
         content.SelfDestructedStorageAddresses[TestItem.AddressE] = true;    // 0x01 new-account
@@ -273,7 +282,7 @@ public class PersistedSnapshotTests
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
         Dictionary<Address, (bool HasAccount, UInt256? Balance, bool? Sd)> perAddr = [];
-        Dictionary<(Address, UInt256), SlotValue?> slots = [];
+        Dictionary<(Address, UInt256), UInt256?> slots = [];
         int stateNodes = 0, storageNodes = 0;
 
         using (WholeReadSession session = persisted.BeginWholeReadSession())
@@ -309,7 +318,7 @@ public class PersistedSnapshotTests
         Assert.That(perAddr[TestItem.AddressD].Sd, Is.False, "0x00 marker → destructed");
         Assert.That(perAddr[TestItem.AddressE].Sd, Is.True, "0x01 marker → new account");
 
-        Assert.That(slots[(TestItem.AddressA, (UInt256)1)]!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(slotVal));
+        Assert.That(slots[(TestItem.AddressA, (UInt256)1)]!.Value.ToBigEndian(), Is.EqualTo(slotVal));
         Assert.That(slots[(TestItem.AddressA, (UInt256)2)], Is.Null, "deleted slot surfaces as null");
 
         Assert.That(stateNodes, Is.EqualTo(3), "one state node per depth tier");
@@ -341,11 +350,11 @@ public class PersistedSnapshotTests
             v[30] = (byte)((i >> 8) & 0xFF);
             v[31] = (byte)(i & 0xFF);
             expected[i] = v;
-            content.Storages[(big, (UInt256)i)] = new SlotValue(v);
+            content.Storages[(big, (UInt256)i)] = new UInt256(v, isBigEndian: true);
         }
         content.Accounts[next] = Build.An.Account.WithBalance(2000).TestObject;
         byte[] nextSlot = new byte[32]; nextSlot[31] = 0x2A;
-        content.Storages[(next, (UInt256)42)] = new SlotValue(nextSlot);
+        content.Storages[(next, (UInt256)42)] = new UInt256(nextSlot, isBigEndian: true);
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -360,7 +369,7 @@ public class PersistedSnapshotTests
             {
                 accounts[e.Address] = (e.HasAccount, e.Account?.Balance);
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                    slots[(e.Address, s.Slot)] = s.Value?.AsReadOnlySpan.ToArray();
+                    slots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
             }
         }
 
@@ -396,11 +405,11 @@ public class PersistedSnapshotTests
             byte[] v = new byte[32];
             v[30] = (byte)((i >> 8) & 0xFF);
             v[31] = (byte)(i & 0xFF);
-            content.Storages[(big, (UInt256)i)] = new SlotValue(v);
+            content.Storages[(big, (UInt256)i)] = new UInt256(v, isBigEndian: true);
         }
         content.Accounts[next] = Build.An.Account.WithBalance(2000).TestObject;
         byte[] nextSlotValue = new byte[32]; nextSlotValue[31] = 0x2A;
-        content.Storages[(next, (UInt256)42)] = new SlotValue(nextSlotValue);
+        content.Storages[(next, (UInt256)42)] = new UInt256(nextSlotValue, isBigEndian: true);
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -423,7 +432,7 @@ public class PersistedSnapshotTests
                 {
                     nextEntry = (e.HasAccount, e.Account?.Balance);
                     foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                        nextSlots[(e.Address, s.Slot)] = s.Value?.AsReadOnlySpan.ToArray();
+                        nextSlots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
                 }
             }
         }
@@ -483,7 +492,7 @@ public class PersistedSnapshotTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(5).TestObject;
         content.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(9).TestObject; // 2nd address → real address BTree
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slotVal);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slotVal, isBigEndian: true);
         content.SelfDestructedStorageAddresses[TestItem.AddressA] = true;
         TreePath statePath = new(Keccak.Compute("sp"), 4);
         content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
@@ -495,16 +504,15 @@ public class PersistedSnapshotTests
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
-        SlotValue sv = default;
         // Unknown address: BTree seek misses.
         Assert.That(persisted.TryGetAccount(TestItem.AddressB, out Account? accB), Is.False);
         Assert.That(accB, Is.Null);
-        Assert.That(persisted.TryGetSlot(TestItem.AddressB, (UInt256)1, ref sv), Is.False);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressB, (UInt256)1, out UInt256? sv), Is.False);
         Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressB), Is.Null);
 
         // Present address, absent slot index; present address with no slot/self-destruct sub-tag.
-        Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)999, ref sv), Is.False);
-        Assert.That(persisted.TryGetSlot(TestItem.AddressC, (UInt256)1, ref sv), Is.False);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)999, out sv), Is.False);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressC, (UInt256)1, out sv), Is.False);
         Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressC), Is.Null);
 
         // Absent state node.
@@ -533,9 +541,8 @@ public class PersistedSnapshotTests
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
-        SlotValue sv = default;
         Assert.That(persisted.TryGetAccount(TestItem.AddressA, out _), Is.False);
-        Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref sv), Is.False);
+        Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out _), Is.False);
         Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressA), Is.Null);
         Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("p"), 4), out _), Is.False);
         Assert.That(persisted.TryLoadStorageNodeRlp(new ValueHash256(Keccak.Compute("h").Bytes), new TreePath(Keccak.Compute("p"), 4), out _), Is.False);
@@ -561,7 +568,7 @@ public class PersistedSnapshotTests
         SnapshotContent older = new();
         older.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
-        older.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(v1);
+        older.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(v1, isBigEndian: true);
         older.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
         TreePath statePath = new(Keccak.Compute("st-p"), 4);
         older.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
@@ -572,7 +579,7 @@ public class PersistedSnapshotTests
         SnapshotContent newer = new();
         newer.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(200).TestObject;
         newer.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(7).TestObject;
-        newer.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(v2);
+        newer.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(v2, isBigEndian: true);
 
         byte[] olderData = PersistedSnapshotBuilderTestExtensions.Build(
             new Snapshot(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing), _blobs);
@@ -596,12 +603,12 @@ public class PersistedSnapshotTests
 
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
         // Slot: newer holds slot 2, older holds slot 1; both resolve.
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)2, -1, start, out byte[]? sv2), Is.True);
-        Assert.That(sv2![^1], Is.EqualTo((byte)0x22)); // ToEvmBytes strips leading zeros
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv1), Is.True);
-        Assert.That(sv1![^1], Is.EqualTo((byte)0x11));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)2, -1, start, out UInt256? sv2), Is.True);
+        Assert.That(sv2!.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x22));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out UInt256? sv1), Is.True);
+        Assert.That(sv1!.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x11));
         // Slot below the self-destruct boundary resolves to null (storage wiped).
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)999, 0, start, out byte[]? svNull), Is.True);
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)999, 0, start, out UInt256? svNull), Is.True);
         Assert.That(svNull, Is.Null);
         // Slot fully absent (no boundary) falls through.
         Assert.That(stack.TryGetSlot(TestItem.AddressF, (UInt256)1, -1, start, out _), Is.False);
@@ -748,14 +755,14 @@ public class PersistedSnapshotTests
         byte[] val3 = new byte[32]; val3[31] = 0x03;
 
         SnapshotContent content1 = new();
-        content1.Storages[(addrA, (UInt256)1)] = new SlotValue(val1);
-        content1.Storages[(addrB, (UInt256)5)] = new SlotValue(val2);
+        content1.Storages[(addrA, (UInt256)1)] = new UInt256(val1, isBigEndian: true);
+        content1.Storages[(addrB, (UInt256)5)] = new UInt256(val2, isBigEndian: true);
         Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _blobs);
 
         SnapshotContent content2 = new();
-        content2.Storages[(addrA, (UInt256)1)] = new SlotValue(val3);
-        content2.Storages[(addrA, (UInt256)2)] = new SlotValue(val2);
+        content2.Storages[(addrA, (UInt256)1)] = new UInt256(val3, isBigEndian: true);
+        content2.Storages[(addrA, (UInt256)2)] = new UInt256(val2, isBigEndian: true);
         Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _blobs);
 
@@ -763,17 +770,14 @@ public class PersistedSnapshotTests
         byte[] merged = PersistedSnapshotBuilderTestExtensions.NWayMergeSnapshots(toMerge);
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s2, merged);
 
-        SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, ref slot1), Is.True);
-        Assert.That(slot1.ToEvmBytes()[0], Is.EqualTo(0x03));
+        Assert.That(persisted.TryGetSlot(addrA, (UInt256)1, out UInt256? slot1), Is.True);
+        Assert.That(slot1.GetValueOrDefault().ToMinimalBigEndian()[0], Is.EqualTo(0x03));
 
-        SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, ref slot2), Is.True);
-        Assert.That(slot2.ToEvmBytes()[0], Is.EqualTo(0x02));
+        Assert.That(persisted.TryGetSlot(addrA, (UInt256)2, out UInt256? slot2), Is.True);
+        Assert.That(slot2.GetValueOrDefault().ToMinimalBigEndian()[0], Is.EqualTo(0x02));
 
-        SlotValue slot5 = default;
-        Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, ref slot5), Is.True);
-        Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));
+        Assert.That(persisted.TryGetSlot(addrB, (UInt256)5, out UInt256? slot5), Is.True);
+        Assert.That(slot5.GetValueOrDefault().ToMinimalBigEndian()[0], Is.EqualTo(0x02));
     }
 
     private static IEnumerable<TestCaseData> NullSlotMergeCases()
@@ -782,37 +786,42 @@ public class PersistedSnapshotTests
         nonZero[31] = 0xFF;
 
         yield return new TestCaseData(
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(nonZero, isBigEndian: true)),
             (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
             (Action<PersistedSnapshot>)(persisted =>
             {
-                SlotValue slot = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
-                Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out UInt256? slot), Is.True);
+                Assert.That(slot, Is.Null, "Null slot should override value after merge");
             })).SetName("NullOverridesValue");
 
         yield return new TestCaseData(
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(7)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = UInt256.Zero),
             (Action<PersistedSnapshot>)(persisted =>
             {
-                SlotValue slot = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot), Is.True);
-                Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out UInt256? slot), Is.True);
+                Assert.That(slot, Is.EqualTo(UInt256.Zero));
+            })).SetName("ExplicitZeroOverridesValue");
+
+        yield return new TestCaseData(
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(nonZero, isBigEndian: true)),
+            (Action<PersistedSnapshot>)(persisted =>
+            {
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out UInt256? slot), Is.True);
+                Assert.That(slot, Is.EqualTo(new UInt256(nonZero, isBigEndian: true)), "Value should override null slot after merge");
             })).SetName("ValueOverridesNull");
 
         yield return new TestCaseData(
             (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)1)] = null),
-            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)2)] = new SlotValue(nonZero)),
+            (Action<SnapshotContent>)(c => c.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(nonZero, isBigEndian: true)),
             (Action<PersistedSnapshot>)(persisted =>
             {
-                SlotValue slot1 = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, ref slot1), Is.True);
-                Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out UInt256? slot1), Is.True);
+                Assert.That(slot1, Is.Null, "Null slot from older should be preserved");
 
-                SlotValue slot2 = default;
-                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)2, ref slot2), Is.True);
-                Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
+                Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)2, out UInt256? slot2), Is.True);
+                Assert.That(slot2.GetValueOrDefault().ToBigEndian().AsSpan().IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
             })).SetName("NullPreservedAndValueCarried");
     }
 
@@ -865,7 +874,7 @@ public class PersistedSnapshotTests
         {
             byte[] val = new byte[32];
             BinaryPrimitives.WriteInt32BigEndian(val.AsSpan(28, 4), i + 1);
-            content.Storages[(addr, (UInt256)i + 1)] = new SlotValue(val);
+            content.Storages[(addr, (UInt256)i + 1)] = new UInt256(val, isBigEndian: true);
         }
 
         Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -887,11 +896,10 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryGetSelfDestructFlag(addr), Is.EqualTo((bool?)true));
 
         UInt256 probeIndex = (UInt256)(Math.Min(slotCount, 3));
-        SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot1), Is.True);
+        Assert.That(persisted.TryGetSlot(addr, probeIndex, out UInt256? slot1), Is.True);
         byte[] expectedSlotVal = new byte[32];
         BinaryPrimitives.WriteInt32BigEndian(expectedSlotVal.AsSpan(28, 4), (int)probeIndex);
-        Assert.That(slot1.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+        Assert.That(slot1.GetValueOrDefault().ToBigEndian().AsSpan().SequenceEqual(expectedSlotVal), Is.True);
 
         Assert.That(persisted.TryLoadStorageNodeRlp(addrHash, storagePath, out byte[]? nodeRlp1), Is.True);
         Assert.That(nodeRlp1, Is.EqualTo(storageNode.FullRlp.ToArray()));
@@ -899,18 +907,16 @@ public class PersistedSnapshotTests
         // Second pass: results must match.
         Assert.That(persisted.TryGetAccount(addr, out Account? acc2), Is.True);
         Assert.That(acc2!.Balance, Is.EqualTo(expectedAccount.Balance));
-        SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot2), Is.True);
-        Assert.That(slot2.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+        Assert.That(persisted.TryGetSlot(addr, probeIndex, out UInt256? slot2), Is.True);
+        Assert.That(slot2.GetValueOrDefault().ToBigEndian().AsSpan().SequenceEqual(expectedSlotVal), Is.True);
 
         // AdviseDontNeed advises the mmap range cold; the next reads re-fault any dropped page
         // and the binary search must still resolve correctly.
         persisted.AdviseDontNeed();
         Assert.That(persisted.TryGetAccount(addr, out Account? acc3), Is.True);
         Assert.That(acc3!.Nonce, Is.EqualTo(expectedAccount.Nonce));
-        SlotValue slot3 = default;
-        Assert.That(persisted.TryGetSlot(addr, probeIndex, ref slot3), Is.True);
-        Assert.That(slot3.AsReadOnlySpan.SequenceEqual(expectedSlotVal), Is.True);
+        Assert.That(persisted.TryGetSlot(addr, probeIndex, out UInt256? slot3), Is.True);
+        Assert.That(slot3.GetValueOrDefault().ToBigEndian().AsSpan().SequenceEqual(expectedSlotVal), Is.True);
 
         // Fresh miss for an unrelated address still works after AdviseDontNeed.
         Assert.That(persisted.TryGetAccount(TestItem.AddressB, out _), Is.False);

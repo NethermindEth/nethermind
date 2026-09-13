@@ -141,7 +141,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.GASLIMIT] = OpcodeHandler<BlkUInt64Opcode<EvmInstructions.OpGasLimit<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
 
         if (spec.ChainIdOpcodeEnabled)
-            lookup[(int)Instruction.CHAINID] = OpcodeHandler<Env32BytesOpcode<EvmInstructions.OpChainId<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.CHAINID] = OpcodeHandler<BlkUInt256Opcode<EvmInstructions.OpChainId<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         if (spec.SelfBalanceOpcodeEnabled)
             lookup[(int)Instruction.SELFBALANCE] = OpcodeHandler<SelfBalanceOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.BaseFeeEnabled)

@@ -55,7 +55,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
             inner.SetAccount(addr, account);
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             RecordAddressPreimage(addr);
             RecordSlotPreimage(slot);
@@ -75,7 +75,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
                 Address addr = new(addrPreimage);
                 UInt256 slot = new(slotPreimage, isBigEndian: true);
                 RlpReader ctx = new(rlpValue);
-                inner.SetStorage(addr, slot, SlotValue.FromSpanWithoutLeadingZero(ctx.DecodeByteArraySpan()));
+                inner.SetStorage(addr, slot, BaseFlatPersistence.DecodeSlotValue(ctx.DecodeByteArraySpan()));
             }
             else
             {

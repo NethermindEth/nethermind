@@ -337,12 +337,14 @@ public class BlockAccessListDecoderTests
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
-    [Test]
-    public void Can_decode_then_encode_storage_change()
+    [TestCase("00", "0xc28080")]
+    [TestCase("01", "0xc28001")]
+    [TestCase("80", "0xc3808180")]
+    [TestCase("0de0b6b3a7640000", "0xca80880de0b6b3a7640000")]
+    [TestCase("c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd", "0xe280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")]
+    public void Can_decode_then_encode_storage_change(string valueHex, string expectedRlp)
     {
-        StorageChange expected = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-
-        string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
+        StorageChange expected = new(0, new UInt256(Bytes.FromHexString(valueHex), isBigEndian: true));
 
         RlpReader ctx = new(Bytes.FromHexString(expectedRlp));
         StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);

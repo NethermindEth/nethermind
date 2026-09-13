@@ -18,20 +18,20 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
     private const int NodeSizeEstimate = 650;
 
     private readonly SortedMergeDictionary<HashedKey<Address>, Account?> _accounts = new();
-    private readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _storages = new();
+    private readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?> _storages = new();
     private readonly SortedMergeDictionary<HashedKey<Address>, bool> _selfDestructedStorageAddresses = new();
     private readonly SortedMergeDictionary<HashedKey<TreePath>, TrieNode> _stateNodes = new();
     private readonly SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _storageNodes = new();
 
     internal SortedMergeDictionary<HashedKey<Address>, Account?> SortedAccounts => _accounts;
-    internal SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> SortedStorages => _storages;
+    internal SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?> SortedStorages => _storages;
     internal SortedMergeDictionary<HashedKey<Address>, bool> SortedSelfDestructs => _selfDestructedStorageAddresses;
     internal SortedMergeDictionary<HashedKey<TreePath>, TrieNode> SortedStateNodes => _stateNodes;
     internal SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> SortedStorageNodes => _storageNodes;
 
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _selfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _storages;
+    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _storageNodes;
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _stateNodes;
 
@@ -42,7 +42,7 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
 
     public bool TryGetAccount(HashedKey<Address> key, out Account? acc) => _accounts.TryGetValue(key, out acc);
     public bool HasSelfDestruct(HashedKey<Address> key) => _selfDestructedStorageAddresses.TryGetValue(key, out bool _);
-    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out SlotValue? value) => _storages.TryGetValue(key, out value);
+    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value) => _storages.TryGetValue(key, out value);
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node) => _stateNodes.TryGetValue(key, out node!);
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node) => _storageNodes.TryGetValue(key, out node!);
 

@@ -213,8 +213,8 @@ public partial class EthRpcModule(
 
         try
         {
-            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
-            return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
+            _stateReader.GetStorage(header!, address, positionIndex, out UInt256 storage);
+            return ResultWrapper<byte[]>.Success(storage.IsZero ? Bytes32.Zero.Unwrap() : storage.ToBigEndian());
         }
         catch (MissingTrieNodeException e)
         {
@@ -242,7 +242,6 @@ public partial class EthRpcModule(
             return GetStateFailureResult<StorageValuesResult>(header);
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
-        buffer.AsSpan(0, requests.TotalSlots * 32).Clear();
         int bufferOffset = 0;
 
         Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
@@ -252,10 +251,9 @@ public partial class EthRpcModule(
             Memory<byte>[] values = new Memory<byte>[slotKeys.Length];
             for (int i = 0; i < slotKeys.Length; i++)
             {
-                ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, entry.Key, slotKeys[i]);
+                _stateReader.GetStorage(header, entry.Key, in slotKeys[i], out UInt256 storage);
                 Memory<byte> slot = buffer.AsMemory(bufferOffset, 32);
-                if (!storage.IsEmpty)
-                    storage.CopyTo(slot.Span[(32 - storage.Length)..]);
+                storage.ToBigEndian(slot.Span);
                 values[i] = slot;
                 bufferOffset += 32;
             }

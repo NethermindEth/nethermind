@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,10 +115,10 @@ public class HistoricalTraceReExecutionTests
 
             worldState.AddToBalance(ExistingAddr, 50, spec);
             worldState.IncrementNonce(ExistingAddr);
-            worldState.Set(new StorageCell(ExistingAddr, ExistingSlot), updatedExistingSlotValue);
+            worldState.Set(new StorageCell(ExistingAddr, ExistingSlot), new UInt256(updatedExistingSlotValue, isBigEndian: true));
 
             worldState.CreateAccount(freshAddr, balance: 7, nonce: 1);
-            worldState.Set(new StorageCell(freshAddr, freshSlot), freshSlotValue);
+            worldState.Set(new StorageCell(freshAddr, freshSlot), new UInt256(freshSlotValue, isBigEndian: true));
 
             worldState.Commit(spec);
             worldState.RecalculateStateRoot();
@@ -130,11 +131,13 @@ public class HistoricalTraceReExecutionTests
             {
                 Assert.That(existingBalanceAfter, Is.EqualTo((UInt256)350));
                 Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)4));
-                Assert.That(worldState.Get(new StorageCell(ExistingAddr, ExistingSlot)).ToArray(), Is.EqualTo(updatedExistingSlotValue));
+                worldState.Get(new StorageCell(ExistingAddr, ExistingSlot), out UInt256 storageValue1);
+                Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(updatedExistingSlotValue));
 
                 Assert.That(freshReadBack.Balance, Is.EqualTo((UInt256)7));
                 Assert.That(freshReadBack.Nonce, Is.EqualTo((ulong)1));
-                Assert.That(worldState.Get(new StorageCell(freshAddr, freshSlot)).ToArray(), Is.EqualTo(freshSlotValue));
+                worldState.Get(new StorageCell(freshAddr, freshSlot), out UInt256 storageValue2);
+                Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(freshSlotValue));
 
                 Assert.That(worldState.StateRoot, Is.EqualTo(TestItem.KeccakB));
             }

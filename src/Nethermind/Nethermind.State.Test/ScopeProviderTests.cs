@@ -89,7 +89,10 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_CanSaveToStorage([Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries)
+    public void Test_CanSaveToStorage(
+        [Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries,
+        [Values(1, 3, 32)] int valueLength,
+        [Values(1UL, 1023UL, 1024UL, ulong.MaxValue)] ulong index, [Values] bool delete)
     {
         using Context ctx = new(useFlat);
 
@@ -103,20 +106,33 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, estimatedEntries);
-                storageSet.Set(1, [1, 2, 3]);
+                Span<byte> value = stackalloc byte[valueLength];
+                value.Fill(0xff);
+                storageSet.Set(index, new UInt256(value, isBigEndian: true));
+                value.Clear();
             }
 
+            if (delete)
+            {
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+                using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, estimatedEntries);
+                storageSet.Set(index, UInt256.Zero);
+            }
             scope.Commit(1);
             stateRoot = scope.RootHash;
         }
 
         Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(2));
+        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(delete ? 1 : 2));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            Assert.That(storage.Get(1), Is.EqualTo([1, 2, 3]));
+            byte[] expected = new byte[delete ? 1 : valueLength];
+            if (!delete) expected.AsSpan().Fill(0xff);
+            storage.Get(index, out UInt256 slotRead124);
+            Assert.That(slotRead124.ToMinimalBigEndian(), Is.EqualTo(expected));
+            if (delete) Assert.That(storage.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 
@@ -154,7 +170,7 @@ public class ScopeProviderTests(bool useFlat)
         using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
         using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
         {
-            storageSet.Set(1, [1, 2, 3]);
+            storageSet.Set(1, new UInt256([1, 2, 3], isBigEndian: true));
         }
 
         writeBatch.Set(TestItem.AddressA, null);
@@ -176,12 +192,12 @@ public class ScopeProviderTests(bool useFlat)
 
                 using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 2))
                 {
-                    storageA.Set(1, [10, 20]);
-                    storageA.Set(2, [30, 40]);
+                    storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
+                    storageA.Set(2, new UInt256([30, 40], isBigEndian: true));
                 }
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1);
-                storageB.Set(5, [50, 60]);
+                storageB.Set(5, new UInt256([50, 60], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -220,13 +236,16 @@ public class ScopeProviderTests(bool useFlat)
                 StorageCell cellB5 = new(TestItem.AddressB, 5);
 
                 Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
-                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
+                storageTreeA.Get(1, out UInt256 slotRead228);
+                Assert.That(sink.Storage[cellA1], Is.EqualTo(slotRead228.ToMinimalBigEndian()));
 
                 Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
-                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
+                storageTreeA.Get(2, out UInt256 slotRead231);
+                Assert.That(sink.Storage[cellA2], Is.EqualTo(slotRead231.ToMinimalBigEndian()));
 
                 Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
-                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+                storageTreeB.Get(5, out UInt256 slotRead234);
+                Assert.That(sink.Storage[cellB5], Is.EqualTo(slotRead234.ToMinimalBigEndian()));
             }
         }
     }
@@ -246,7 +265,7 @@ public class ScopeProviderTests(bool useFlat)
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
                 for (int i = 1; i <= slotCount; i++)
                 {
-                    storageA.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                    storageA.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true));
                 }
             }
 
@@ -271,7 +290,8 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 1; i <= slotCount; i++)
             {
                 StorageCell cell = new(TestItem.AddressA, (UInt256)i);
-                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i)), $"slot {i}");
+                storageTreeA.Get((UInt256)i, out UInt256 slotRead279);
+                Assert.That(sink.Storage[cell], Is.EqualTo(slotRead279.ToMinimalBigEndian()), $"slot {i}");
             }
         }
     }
@@ -290,7 +310,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -331,11 +351,11 @@ public class ScopeProviderTests(bool useFlat)
             writeBatch.Set(TestItem.AddressC, new Account(1, 300));
             writeBatch.Set(TestItem.AddressE, new Account(0, 0));
             using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-            storageA.Set(SlotA1.Index, [10, 20]);
+            storageA.Set(SlotA1.Index, new UInt256([10, 20], isBigEndian: true));
             using IWorldStateScopeProvider.IStorageWriteBatch storageC = writeBatch.CreateStorageWriteBatch(TestItem.AddressC, 1);
-            storageC.Set(SlotC5.Index, [5]);
+            storageC.Set(SlotC5.Index, new UInt256([5], isBigEndian: true));
             using IWorldStateScopeProvider.IStorageWriteBatch storageE = writeBatch.CreateStorageWriteBatch(TestItem.AddressE, 1);
-            storageE.Set(SlotE1.Index, [3]);
+            storageE.Set(SlotE1.Index, new UInt256([3], isBigEndian: true));
         }
 
         scope.Commit(1);
@@ -358,10 +378,10 @@ public class ScopeProviderTests(bool useFlat)
             consumer.GetBalance(TestItem.AddressB);
             consumer.GetBalance(TestItem.AddressC);
             consumer.AccountExists(TestItem.AddressD);
-            consumer.Get(in SlotA1);
-            consumer.Get(in SlotC5);
+            consumer.Get(in SlotA1, out _);
+            consumer.Get(in SlotC5, out _);
             consumer.GetBalance(TestItem.AddressE);
-            consumer.Get(in SlotE1);
+            consumer.Get(in SlotE1, out _);
         }
 
         return (caches, consumer);
@@ -388,8 +408,8 @@ public class ScopeProviderTests(bool useFlat)
 
     private static byte[] CachedSlot(PreBlockCaches caches, in StorageCell cell)
     {
-        Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] value), Is.True, $"{cell} is cached");
-        return value;
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out UInt256 value), Is.True, $"{cell} is cached");
+        return value.ToMinimalBigEndian();
     }
 
     [Test]
@@ -403,7 +423,7 @@ public class ScopeProviderTests(bool useFlat)
         {
             ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
             ws.DeleteAccount(TestItem.AddressB);
-            ws.Set(in SlotA1, [7]);
+            ws.Set(in SlotA1, (UInt256)7);
         });
 
         bool carried = caches.PrepareFor(newRoot);
@@ -422,7 +442,8 @@ public class ScopeProviderTests(bool useFlat)
         using (consumer.BeginScope(HeaderAt(newRoot, 2)))
         {
             Assert.That(consumer.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)400));
-            Assert.That(consumer.Get(in SlotA1).ToArray(), Is.EqualTo(new byte[] { 7 }));
+            consumer.Get(in SlotA1, out UInt256 storageValue1);
+            Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
         }
     }
 
@@ -435,7 +456,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseStorageRoot = CachedAccount(caches, TestItem.AddressA).StorageRoot;
 
         // No account-level change: the account's new storage root only exists once the storage tree is committed.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.Set(in SlotA1, [7]));
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.Set(in SlotA1, (UInt256)7));
 
         bool carried = caches.PrepareFor(newRoot);
 
@@ -494,7 +515,7 @@ public class ScopeProviderTests(bool useFlat)
         {
             if (!preExistingStorage) ws.CreateAccount(cleared, 1);
             ws.ClearStorage(cleared);
-            ws.Set(in written, [9]);
+            ws.Set(in written, (UInt256)9);
         });
 
         bool carried = caches.PrepareFor(newRoot);
@@ -506,9 +527,9 @@ public class ScopeProviderTests(bool useFlat)
                 "unrelated slots survive only when the cleared account had no storage to begin with");
             Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage),
                 "the cleared account's pre-block slots must not survive the clear");
-            Assert.That(caches.StorageCache.TryGetValue(in written, out byte[] writtenValue), Is.EqualTo(!preExistingStorage),
+            Assert.That(caches.StorageCache.TryGetValue(in written, out UInt256 writtenValue), Is.EqualTo(!preExistingStorage),
                 "a clear abandons the rest of the block, which would refill the cache with one block's writes");
-            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new byte[] { 9 }));
+            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new UInt256(9)));
         }
     }
 
@@ -554,7 +575,7 @@ public class ScopeProviderTests(bool useFlat)
         using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
         {
             if (!preExistingStorage) consumer.CreateAccount(destroyed, 1);
-            consumer.Set(in written, [7]);
+            consumer.Set(in written, (UInt256)7);
             consumer.Commit(Cancun.Instance);
             consumer.GetBalance(destroyed);
             consumer.MarkStorageDestroyed(destroyed);
@@ -591,7 +612,7 @@ public class ScopeProviderTests(bool useFlat)
         {
             ws.AccountExists(TestItem.AddressD);
             ws.CreateAccount(TestItem.AddressD, 1);
-            ws.Set(in slotD1, [7]);
+            ws.Set(in slotD1, (UInt256)7);
             ws.DeleteAccount(TestItem.AddressD);
             ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
         });
@@ -621,7 +642,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
             ws.CreateAccount(TestItem.AddressD, 1);
-            ws.Set(in slotD1, [7]);
+            ws.Set(in slotD1, (UInt256)7);
             ws.DeleteAccount(TestItem.AddressD);
             ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
         });
@@ -648,7 +669,7 @@ public class ScopeProviderTests(bool useFlat)
         // That is not a removal: C keeps its storage, and nothing may be cleared for it.
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
-            ws.Get(in SlotC5);
+            ws.Get(in SlotC5, out _);
             ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
         });
 
@@ -674,11 +695,11 @@ public class ScopeProviderTests(bool useFlat)
         // holding nothing of the slot rather than the value it had before the block.
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
-            ws.Get(in SlotA1);
+            ws.Get(in SlotA1, out _);
             Snapshot snapshot = ws.TakeSnapshot();
             ws.ClearStorage(TestItem.AddressA);
             ws.Restore(snapshot);
-            ws.Set(in SlotA1, [7]);
+            ws.Set(in SlotA1, (UInt256)7);
         });
 
         bool carried = caches.PrepareFor(newRoot);
@@ -688,7 +709,8 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(carried, Is.True);
             Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "asserted before the read below caches it again");
-            Assert.That(consumer.Get(in SlotA1).ToArray(), Is.EqualTo(new byte[] { 7 }));
+            consumer.Get(in SlotA1, out UInt256 storageValue2);
+            Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
             Assert.That(CachedAccount(caches, TestItem.AddressA).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "the account keeps its storage");
         }
     }
@@ -701,7 +723,7 @@ public class ScopeProviderTests(bool useFlat)
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
         // A zero write is a delete for the tree, but a read of the slot must still be served as zero, not as a miss.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.Set(in SlotA1, [0]));
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.Set(in SlotA1, (UInt256)0));
 
         bool carried = caches.PrepareFor(newRoot);
 
@@ -710,7 +732,8 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(carried, Is.True);
             Assert.That(CachedSlot(caches, in SlotA1).IsZero(), Is.True);
-            Assert.That(consumer.Get(in SlotA1).IsZero(), Is.True);
+            consumer.Get(in SlotA1, out UInt256 storageValue3);
+            Assert.That(storageValue3.IsZero, Is.True);
         }
     }
 
@@ -727,7 +750,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
             Snapshot snapshot = ws.TakeSnapshot();
-            ws.Set(in slotE2, [1]);
+            ws.Set(in slotE2, (UInt256)1);
             ws.Restore(snapshot);
             ws.AddToBalance(TestItem.AddressE, UInt256.Zero, Cancun.Instance, out _);
         });
@@ -740,7 +763,8 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(carried, Is.True);
             Assert.That(CachedAccount(caches, TestItem.AddressE), Is.Null);
             Assert.That(caches.StorageCache.TryGetValue(in SlotE1, out _), Is.False, "the removed account's slots must not survive it");
-            Assert.That(consumer.Get(in SlotE1).IsZero(), Is.True, "the state agrees the storage is gone");
+            consumer.Get(in SlotE1, out UInt256 storageValue4);
+            Assert.That(storageValue4.IsZero, Is.True, "the state agrees the storage is gone");
         }
     }
 
@@ -759,7 +783,7 @@ public class ScopeProviderTests(bool useFlat)
         using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
         {
             consumer.CreateAccount(TestItem.AddressD, 1);
-            consumer.Set(in slotD1, [7]);
+            consumer.Set(in slotD1, (UInt256)7);
             consumer.GetBalance(TestItem.AddressA);
             consumer.MarkStorageDestroyed(TestItem.AddressA);
             consumer.DeleteAccount(TestItem.AddressA);
@@ -770,7 +794,7 @@ public class ScopeProviderTests(bool useFlat)
 
             consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
             // Cached within the second block, so replaying the first block's removal would clear it away again.
-            consumer.Get(in SlotC5);
+            consumer.Get(in SlotC5, out _);
             consumer.Commit(Cancun.Instance);
             consumer.CommitTree(3);
             secondRoot = consumer.StateRoot;
@@ -799,7 +823,7 @@ public class ScopeProviderTests(bool useFlat)
             // Execution always loads an account before writing its storage; without that the contract's fate is
             // unknown at block end and the write-back clears its slots instead of writing them.
             state.GetBalance(TestItem.AddressA);
-            state.Set(in SlotA1, [7]);
+            state.Set(in SlotA1, (UInt256)7);
             state.Commit(Cancun.Instance);
 
             // Taken where CommitTree takes it, once the storage roots are flushed, then held while the next block
@@ -810,8 +834,8 @@ public class ScopeProviderTests(bool useFlat)
             Hash256 firstRoot = state.StateRoot;
 
             state.GetBalance(TestItem.AddressC);
-            state.Set(in SlotA1, [9]);
-            state.Set(in SlotC5, [9]);
+            state.Set(in SlotA1, (UInt256)9);
+            state.Set(in SlotC5, (UInt256)9);
             state.Commit(Cancun.Instance);
             state.CommitTree(3);
 
@@ -840,11 +864,11 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 secondRoot;
         using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
         {
-            consumer.Set(in SlotA1, [7]);
+            consumer.Set(in SlotA1, (UInt256)7);
             consumer.Commit(Cancun.Instance);
             consumer.CommitTree(2);
 
-            consumer.Set(in slotA2, [8]);
+            consumer.Set(in slotA2, (UInt256)8);
             consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
             consumer.Commit(Cancun.Instance);
             consumer.CommitTree(3);
@@ -1165,7 +1189,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1275,7 +1299,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_PopulatorStorageWrite_WarmsTheSlotAndTheContractsAccount()
+    public void Test_PopulatorStorageWrite_WarmsTheSlotAndTheContractsAccount([Values(1, 8)] int repetitions)
     {
         using Context ctx = new(useFlat);
         Hash256 baseRoot = CommitBaseState(ctx);
@@ -1285,13 +1309,38 @@ public class ScopeProviderTests(bool useFlat)
         StorageCell slotA2 = new(TestItem.AddressA, 2);
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
         {
-            ws.Set(in SlotA1, [7]);
-            ws.Set(in slotA2, [8]);
+            for (int i = 0; i < repetitions; i++) ws.Set(in SlotA1, (UInt256)(7 + i));
+            for (int i = 0; i < repetitions; i++) ws.Set(in slotA2, (UInt256)(8 + i));
         });
 
         mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
         mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slotA2.Index);
         mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorSlotHint_IsRenewedAfterScopeReuse([Values] bool resetTransactionChanges)
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        PreBlockCaches caches = NewCaches();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        WorldState state = new(populator, LimboLogs.Instance);
+
+        for (int round = 0; round < 2; round++)
+        {
+            using (state.BeginScope(HeaderAt(baseRoot, 1)))
+            {
+                Snapshot snapshot = state.TakeSnapshot();
+                state.Set(in SlotA1, (UInt256)7);
+                state.Restore(snapshot);
+                if (resetTransactionChanges) state.Reset(resetBlockChanges: false);
+                state.Set(in SlotA1, (UInt256)8);
+            }
+            mainScope.Received(round + 1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
+        }
     }
 
     [Test]
@@ -1335,7 +1384,7 @@ public class ScopeProviderTests(bool useFlat)
         {
             ws.GetBalance(TestItem.AddressB);
             ws.AddToBalance(TestItem.AddressA, 1, Cancun.Instance, out _);
-            ws.Set(in SlotC5, [9]);
+            ws.Set(in SlotC5, (UInt256)9);
             ws.CreateAccount(TestItem.AddressD, 1);
         });
 
@@ -1352,7 +1401,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
         Hash256 baseRoot = CommitBaseState(ctx);
 
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1));
+        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1, out _));
 
         mainScope.DidNotReceive().HintWarmSlot(Arg.Any<ValueAddress>(), Arg.Any<UInt256>());
         mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
@@ -1390,7 +1439,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storage.Set(1, [1, 2, 3]);
+                storage.Set(1, new UInt256([1, 2, 3], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1409,7 +1458,7 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock, populatorMetrics))
         {
             scope.Get(TestItem.AddressA);
-            scope.CreateStorageTree(TestItem.AddressA).Get(1);
+            scope.CreateStorageTree(TestItem.AddressA).Get(1, out _);
         }
 
         Assert.That(populatorMetrics.PreBlockAccountHits + populatorMetrics.PreBlockAccountMisses, Is.Zero);
@@ -1423,8 +1472,8 @@ public class ScopeProviderTests(bool useFlat)
             scope.Get(TestItem.AddressA);
             scope.Get(TestItem.AddressB);
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            storage.Get(1);
-            storage.Get(2);
+            storage.Get(1, out _);
+            storage.Get(2, out _);
         }
 
         Assert.That(consumerMetrics.PreBlockAccountHits, Is.EqualTo(1));
@@ -1434,7 +1483,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_NullStorageCacheEntry_FallsBackToBackingTree()
+    public void Test_ZeroStorageCacheEntry_DoesNotReadBackingTree()
     {
         using Context ctx = new(useFlat);
 
@@ -1445,7 +1494,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storage.Set(1, [10, 20]);
+                storage.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1454,19 +1503,19 @@ public class ScopeProviderTests(bool useFlat)
 
         PreBlockCaches caches = NewCaches();
         StorageCell cell = new(TestItem.AddressA, 1);
-        caches.StorageCache.Set(in cell, null);
         LocalMetrics metrics = new();
         PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
 
         using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, metrics);
-        byte[] value = readScope.CreateStorageTree(TestItem.AddressA).Get(1);
+        caches.StorageCache.Set(in cell, UInt256.Zero);
+        readScope.CreateStorageTree(TestItem.AddressA).Get(1, out UInt256 slotRead1472);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(value, Is.EqualTo(new byte[] { 10, 20 }));
-            Assert.That(metrics.PreBlockStorageHits, Is.Zero);
-            Assert.That(metrics.PreBlockStorageMisses, Is.EqualTo(1));
+            Assert.That(slotRead1472, Is.EqualTo(UInt256.Zero));
+            Assert.That(metrics.PreBlockStorageHits, Is.EqualTo(1));
+            Assert.That(metrics.PreBlockStorageMisses, Is.Zero);
         }
     }
 
@@ -1482,7 +1531,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storage.Set(1, [10, 20]);
+                storage.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1498,16 +1547,18 @@ public class ScopeProviderTests(bool useFlat)
         {
             using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
             IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);
-            Assert.That(capturedStorageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
+            capturedStorageTree.Get(1, out UInt256 slotRead1510);
+            Assert.That(slotRead1510.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 1 }));
             Assert.That(capture.Cells, Does.Contain(cell));
         }
 
         Assert.That(caches.StorageCache.TryGetValue(in cell, out _), Is.False);
         using IWorldStateScopeProvider.IScope uncapturedReadScope = populator.BeginScope(baseBlock);
         IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
-        Assert.That(uncapturedStorageTree.Get(1), Is.EqualTo(new byte[] { 10, 20 }));
-        Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] cached), Is.True);
-        Assert.That(cached, Is.EqualTo(new byte[] { 10, 20 }));
+        uncapturedStorageTree.Get(1, out UInt256 slotRead1517);
+        Assert.That(slotRead1517.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 10, 20 }));
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out UInt256 cached), Is.True);
+        Assert.That(cached, Is.EqualTo(new UInt256([10, 20], isBigEndian: true)));
     }
 
     [Test]
@@ -1525,7 +1576,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new UInt256([10, 20], isBigEndian: true));
             }
 
             scope.Commit(1);
@@ -1568,8 +1619,8 @@ public class ScopeProviderTests(bool useFlat)
                 Accounts[address] = account;
         }
 
-        public void OnStorageRead(in StorageCell storageCell, byte[] value)
-            => Storage[storageCell] = value;
+        public void OnStorageRead(in StorageCell storageCell, in UInt256 value)
+            => Storage[storageCell] = value.ToMinimalBigEndian();
     }
 #nullable disable
 }

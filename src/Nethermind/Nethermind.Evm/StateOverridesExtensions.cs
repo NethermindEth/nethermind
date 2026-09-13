@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -70,7 +69,7 @@ public static class StateOverridesExtensions
         {
             foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), new UInt256(value.Bytes, isBigEndian: true));
             }
         }
 

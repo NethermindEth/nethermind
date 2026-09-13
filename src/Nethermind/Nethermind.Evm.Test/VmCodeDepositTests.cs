@@ -9,6 +9,7 @@ using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
@@ -58,11 +59,13 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = TestState.Get(storageCell).ToArray();
+            TestState.Get(storageCell, out UInt256 storageValue1);
+            byte[] result = storageValue1.ToMinimalBigEndian();
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
-            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
+            TestState.Get(new StorageCell(TestItem.AddressC, 0), out UInt256 storageValue2);
+            byte[] returnData = storageValue2.ToMinimalBigEndian();
             Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
         }
 
@@ -98,11 +101,13 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = TestState.Get(storageCell).ToArray();
+            TestState.Get(storageCell, out UInt256 storageValue3);
+            byte[] result = storageValue3.ToMinimalBigEndian();
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
-            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
+            TestState.Get(new StorageCell(TestItem.AddressC, 0), out UInt256 storageValue4);
+            byte[] returnData = storageValue4.ToMinimalBigEndian();
             Assert.That(returnData, Is.EqualTo(deployed.Bytes.ToArray()), "address returned");
         }
 

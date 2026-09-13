@@ -71,8 +71,17 @@ public class GenesisBuilder(
             {
                 foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                 {
+                    ReadOnlySpan<byte> storageValue = storage.Value;
+                    if (storageValue.Length > 32)
+                    {
+                        storageValue = storageValue.WithoutLeadingZeros();
+                        if (storageValue.Length > 32)
+                        {
+                            throw new InvalidOperationException($"Genesis storage value for {address} at {storage.Key} exceeds 32 bytes.");
+                        }
+                    }
                     stateProvider.Set(new StorageCell(address, storage.Key),
-                        storage.Value.WithoutLeadingZeros().ToArray());
+                        new UInt256(storageValue, isBigEndian: true));
                 }
             }
 

@@ -4,6 +4,8 @@
 using System;
 using System.Globalization;
 using Nethermind.Int256;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
 using NUnit.Framework;
@@ -16,6 +18,27 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class UInt256ConverterTests : ConverterTestBase<UInt256>
 {
+    [Test]
+    public void Storage_fields_preserve_json_values()
+    {
+        EthereumJsonSerializer serializer = new();
+        UInt256 value = UInt256.MaxValue;
+        AssertField(new StorageCell(TestItem.AddressA, value), "index");
+        AssertField(new ReadOnlySlotChanges(value), "key");
+        AssertField(new GeneratedSlotChanges(value), "key");
+        AssertField(new BalanceChange(3, value), "value");
+        SlotChangeAtIndex slot = new(value, new StorageChange(3, value));
+        AssertField(slot, "key");
+        using JsonDocument document = JsonDocument.Parse(serializer.Serialize(slot));
+        Assert.That(document.RootElement.GetProperty("change").GetProperty("value").GetString(), Is.EqualTo("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
+
+        void AssertField<T>(T item, string name)
+        {
+            using JsonDocument json = JsonDocument.Parse(serializer.Serialize(item));
+            Assert.That(json.RootElement.GetProperty(name).GetString(), Is.EqualTo("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
+        }
+    }
+
     static readonly UInt256Converter converter = new();
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
     static bool Equals(UInt256 integer, UInt256 bigInteger) => integer.Equals(bigInteger);

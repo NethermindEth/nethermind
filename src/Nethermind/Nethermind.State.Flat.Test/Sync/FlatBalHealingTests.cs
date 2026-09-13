@@ -426,7 +426,7 @@ public class FlatBalHealingTests
     private bool FlatSlotExists(Address address, UInt256 slot)
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync);
-        SlotValue value = default;
+        UInt256 value = default;
         return reader.TryGetSlot(address, slot, ref value);
     }
 
@@ -493,7 +493,7 @@ public class FlatBalHealingTests
                 foreach (Slot slot in slots)
                 {
                     storage.Set(slot.Key, slot.Value);
-                    batch.SetStorage(spec.Address, slot.Key, SlotValue.FromSpanWithoutLeadingZero(slot.Value));
+                    batch.SetStorage(spec.Address, slot.Key, BaseFlatPersistence.DecodeSlotValue(slot.Value));
                 }
                 storage.Commit();
                 account = account.WithChangedStorageRoot(storage.RootHash);

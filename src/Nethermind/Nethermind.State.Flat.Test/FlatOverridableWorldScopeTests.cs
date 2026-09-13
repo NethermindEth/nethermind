@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Config;
@@ -132,8 +131,8 @@ public class FlatOverridableWorldScopeTests
                 writeBatch.Set(testAddress, testAccount);
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2);
-                storageBatch.Set(storageIndex1, storageValue1);
-                storageBatch.Set(storageIndex2, storageValue2);
+                storageBatch.Set(storageIndex1, new UInt256(storageValue1, isBigEndian: true));
+                storageBatch.Set(storageIndex2, new UInt256(storageValue2, isBigEndian: true));
             }
             scope.Commit(1);
             baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
@@ -156,17 +155,17 @@ public class FlatOverridableWorldScopeTests
         }
 
         // Verify storage readable through GlobalStateReader
-        ReadOnlySpan<byte> readValue1 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex1);
-        ReadOnlySpan<byte> readValue2 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex2);
+        overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex1, out UInt256 readValue1);
+        overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex2, out UInt256 readValue2);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(readValue1.ToArray(), Is.EqualTo(storageValue1), "Storage slot 1 should be readable");
-            Assert.That(readValue2.ToArray(), Is.EqualTo(storageValue2), "Storage slot 2 should be readable");
+            Assert.That(readValue1, Is.EqualTo(new UInt256(storageValue1, isBigEndian: true)), "Storage slot 1 should be readable");
+            Assert.That(readValue2, Is.EqualTo(new UInt256(storageValue2, isBigEndian: true)), "Storage slot 2 should be readable");
         }
 
         // Verify non-existent slot returns zeros
-        ReadOnlySpan<byte> nonExistent = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, 999);
-        Assert.That(nonExistent.ToArray().All(b => b == 0), Is.True, "Non-existent storage slot should return zeros");
+        overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, 999, out UInt256 nonExistent);
+        Assert.That(nonExistent, Is.EqualTo(UInt256.Zero), "Non-existent storage slot should return zeros");
     }
 
     [Test]

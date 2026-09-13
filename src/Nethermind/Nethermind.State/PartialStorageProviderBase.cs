@@ -3,13 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.State
@@ -22,6 +22,7 @@ namespace Nethermind.State
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
+        private int _protectedPosition = Resettable.EmptyPosition;
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -31,15 +32,15 @@ namespace Nethermind.State
         /// Get the storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell) => GetCurrentValue(in storageCell);
+        /// <param name="value">Value at cell</param>
+        public void Get(in StorageCell storageCell, out UInt256 value) => GetCurrentValue(in storageCell, out value);
 
         /// <summary>
         /// Set the provided value to storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public virtual void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
+        public virtual void Set(in StorageCell storageCell, in UInt256 newValue) => PushUpdate(in storageCell, newValue);
 
         /// <summary>
         /// Creates a restartable snapshot.
@@ -49,6 +50,7 @@ namespace Nethermind.State
         public int TakeSnapshot(bool newTransactionStart)
         {
             int position = _changes.Count - 1;
+            _protectedPosition = position;
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {position}");
             if (newTransactionStart && position != Resettable.EmptyPosition)
             {
@@ -73,6 +75,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {currentPosition}");
             }
 
+            _protectedPosition = snapshot;
             if (snapshot == currentPosition)
             {
                 return;
@@ -153,6 +156,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
+            _protectedPosition = Resettable.EmptyPosition;
             _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
         }
@@ -161,19 +165,23 @@ namespace Nethermind.State
         /// Attempt to get the current value at the storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <param name="bytes">Resulting value</param>
+        /// <param name="value">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, [NotNullWhen(true)] out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out UInt256 value)
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
-            // skip hashing the 52-byte cell — TryGetValue would miss anyway.
-            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out HeadChange head))
+            // skip hashing the 52-byte cell.
+            if (_intraBlockCache.Count != 0)
             {
-                bytes = head.Value;
-                return true;
+                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
+                if (!Unsafe.IsNullRef(ref head))
+                {
+                    value = head.Value;
+                    return true;
+                }
             }
 
-            bytes = null;
+            value = default;
             return false;
         }
 
@@ -181,20 +189,33 @@ namespace Nethermind.State
         /// Get the current value at the specified location
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at location</returns>
-        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
+        /// <param name="value">Value at location</param>
+        protected abstract void GetCurrentValue(in StorageCell storageCell, out UInt256 value);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, in UInt256 value)
         {
             // Overwrites the head in place, never removes+re-adds — ClearStorage relies on this
-            // to legally call Set while enumerating _intraBlockCache.
+            // to legally clear slots while enumerating _intraBlockCache.
             ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            PushUpdate(in cell, value, ref head, exists);
+        }
+
+        protected void PushUpdate(in StorageCell cell, in UInt256 value, ref HeadChange head, bool exists)
+        {
             int prevIdx = exists ? head.CurrentIdx : -1;
+
+            if (prevIdx > _protectedPosition)
+            {
+                // No snapshot can observe the intermediate value of this entry.
+                CollectionsMarshal.AsSpan(_changes)[prevIdx].Value = value;
+                head.Value = value;
+                return;
+            }
 
             // The first write to a cell in a tx (head at or before the tx boundary) captures the
             // overwritten value as the tx original; later writes carry it forward.
@@ -209,7 +230,8 @@ namespace Nethermind.State
         protected void PushStorageClear(int journalIndex)
         {
             StorageCell marker = default;
-            _changes.Add(new Change(in marker, StorageTree.ZeroBytes, StorageChangeType.StorageClear, journalIndex, -1));
+            _changes.Add(new Change(in marker, UInt256.Zero, StorageChangeType.StorageClear, journalIndex, -1));
+            _protectedPosition = _changes.Count - 1;
         }
 
         protected virtual void RestoreStorageClear(int journalIndex) =>
@@ -223,23 +245,27 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block.
-            // Set never adds or removes keys here, so enumerating while mutating is legal.
-            foreach (KeyValuePair<StorageCell, HeadChange> cellByAddress in _intraBlockCache)
+            // Clearing existing entries never adds or removes keys, so enumeration remains valid.
+            foreach (StorageCell cell in _intraBlockCache.Keys)
             {
-                if (cellByAddress.Key.Address == address)
+                if (cell.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, cell);
+                    ClearSlot(in cell, ref head, exists: true);
                 }
             }
         }
 
+        protected virtual void ClearSlot(in StorageCell cell, ref HeadChange head, bool exists) =>
+            PushUpdate(in cell, UInt256.Zero, ref head, exists);
+
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, StorageChangeType changeType, int prevIdx, int originalIdx)
+        protected struct Change(in StorageCell storageCell, in UInt256 value, StorageChangeType changeType, int prevIdx, int originalIdx)
         {
             public readonly StorageCell StorageCell = storageCell;
-            public readonly byte[] Value = value;
+            public UInt256 Value = value;
             public readonly StorageChangeType ChangeType = changeType;
 
             /// <summary>
@@ -269,9 +295,9 @@ namespace Nethermind.State
         /// Head of a cell's change chain, with the newest value and original-index inlined so reads
         /// and <see cref="PersistentStorageProvider.GetOriginal"/> resolve with a single lookup.
         /// </summary>
-        protected readonly struct HeadChange(byte[] value, int currentIdx, int originalIdx)
+        protected struct HeadChange(in UInt256 value, int currentIdx, int originalIdx)
         {
-            public readonly byte[] Value = value;
+            public UInt256 Value = value;
             public readonly int CurrentIdx = currentIdx;
             public readonly int OriginalIdx = originalIdx;
         }

@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -54,16 +55,8 @@ public static class RecentRootStore
         }
 
         StorageCell cell = RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
-        ReadOnlySpan<byte> stored = state.Get(cell);
-        if (stored.Length > HashLength)
-        {
-            return false;
-        }
-
-        // Storage values are minimal big-endian; pad to a full word before comparing.
-        Span<byte> padded = stackalloc byte[HashLength];
-        stored.CopyTo(padded.Slice(HashLength - stored.Length));
-        return new ValueHash256(padded) == EntryHash(sourceId, slot, root);
+        state.Get(cell, out UInt256 stored);
+        return stored.ToValueHash() == EntryHash(sourceId, slot, root);
     }
 
     public static void Write(IWorldState state, Address sourceAddress, in ValueHash256 salt, in ValueHash256 root, ulong currentSlot, IReleaseSpec spec)
@@ -71,7 +64,7 @@ public static class RecentRootStore
         ValueHash256 sourceId = SourceId(sourceAddress, salt);
         StorageCell cell = RingBufferCell(sourceId, currentSlot % Eip8272Constants.RecentRootLength);
         ValueHash256 entryHash = EntryHash(sourceId, currentSlot, root);
-        state.Set(cell, entryHash.Bytes.WithoutLeadingZeros().ToArray());
+        state.Set(cell, new UInt256(entryHash.Bytes, isBigEndian: true));
     }
 
     public static bool AreReferencesValid(IWorldState state, ReadOnlySpan<(ValueHash256 SourceId, ulong Slot, ValueHash256 Root)> references, ulong currentSlot)

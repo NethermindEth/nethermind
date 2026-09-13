@@ -32,10 +32,11 @@ public class FlatStateReader(
         return false;
     }
 
-    public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+    public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        return reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address)) ?? [];
+        reader.GetSlot(address, index, reader.DetermineSelfDestructSnapshotIdx(address), out UInt256? slot);
+        value = slot.GetValueOrDefault();
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];

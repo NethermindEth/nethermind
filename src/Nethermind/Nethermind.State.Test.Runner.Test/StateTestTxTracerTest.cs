@@ -13,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Evm.Test;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -306,7 +305,7 @@ public class StateTestTxTracerTest : GethLikeTracerTestsBase
     public void Refund_decreases_when_a_storage_clear_is_reversed()
     {
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), [1]);
+        TestState.Set(new StorageCell(Recipient, 0), UInt256.One);
         TestState.Commit(Spec);
         byte[] code = Prepare.EvmCode
             .PersistData("0x0", HexZero)

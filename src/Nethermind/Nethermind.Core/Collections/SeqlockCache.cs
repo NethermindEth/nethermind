@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 
 namespace Nethermind.Core.Collections;
@@ -38,11 +38,15 @@ namespace Nethermind.Core.Collections;
 ///
 /// Array layout: [way0_set0..way0_setN, way1_set0..way1_setN] (split, not interleaved).
 /// </summary>
+/// <remarks>
+/// Entry sequences wrap after 65,536 writes without clearing the cache. Validation assumes that fewer than
+/// 65,536 publications to the same entry occur between observing its header and rechecking it or acquiring
+/// its write lock. An operation delayed across a full sequence cycle can encounter ABA.
+/// </remarks>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
-/// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
+/// <typeparam name="TValue">The cached value type; null and default values are allowed.</typeparam>
 public sealed class SeqlockCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
-    where TValue : class?
 {
     /// <summary>
     /// Default number of set-index bits: 16384 sets × 2 ways = 32768 total entries.
@@ -96,12 +100,7 @@ public sealed class SeqlockCache<TKey, TValue>
     private readonly Entry[] _entries;
 
     /// <summary>
-    /// Current epoch counter (unshifted, informational / debugging).
-    /// </summary>
-    private long _epoch;
-
-    /// <summary>
-    /// Pre-shifted epoch tag: (_epoch &lt;&lt; EpochShift) &amp; EpochMask.
+    /// Pre-shifted epoch tag, or an unmatchable sentinel after epoch exhaustion.
     /// Readers use this directly to avoid shift/mask in the hot path.
     /// </summary>
     private long _shiftedEpoch;
@@ -123,7 +122,6 @@ public sealed class SeqlockCache<TKey, TValue>
         _sets = 1 << setsBits;
         _setMask = _sets - 1;
         _entries = new Entry[_sets << 1]; // sets * 2 ways
-        _epoch = 0;
         _shiftedEpoch = 0;
     }
 
@@ -155,7 +153,7 @@ public sealed class SeqlockCache<TKey, TValue>
             TValue? storedValue = e0.Value;
             // Keep the trailing re-read after the Key/Value loads. The header read above is a load-acquire, which
             // already stops those loads moving in front of it, so only this side needs a fence.
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            Volatile.ReadBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -173,7 +171,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            Volatile.ReadBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -259,7 +257,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            Volatile.ReadBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -277,7 +275,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            Volatile.ReadBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -293,7 +291,7 @@ public sealed class SeqlockCache<TKey, TValue>
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void SetCore(in TKey key, TValue? value, int idx0, int idx1, long hashPart)
+    private void SetCore(in TKey key, in TValue? value, int idx0, int idx1, long hashPart)
     {
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long tagToStore = epochTag | hashPart | OccupiedBit;
@@ -309,13 +307,13 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey k0 = e0.Key;
             TValue? v0 = e0.Value;
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            Volatile.ReadBarrier();
 
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h0 == h0_2 && k0.Equals(in key))
             {
-                if (ReferenceEquals(v0, value)) return; // fast-path: same key+value, no-op
-                WriteEntry(ref e0, h0_2, in key, value, tagToStore);
+                if (SameValue(in v0, in value)) return;
+                WriteEntry(ref e0, h0_2, in key, value, tagToStore, keyMatches: true);
                 return;
             }
             h0 = h0_2;
@@ -329,13 +327,13 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey k1 = e1.Key;
             TValue? v1 = e1.Value;
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            Volatile.ReadBarrier();
 
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (h1 == h1_2 && k1.Equals(in key))
             {
-                if (ReferenceEquals(v1, value)) return; // fast-path: same key+value, no-op
-                WriteEntry(ref e1, h1_2, in key, value, tagToStore);
+                if (SameValue(in v1, in value)) return;
+                WriteEntry(ref e1, h1_2, in key, value, tagToStore, keyMatches: true);
                 return;
             }
             h1 = h1_2;
@@ -367,7 +365,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Set(in TKey key, TValue? value)
+    public void Set(in TKey key, in TValue? value)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & _setMask;
@@ -380,7 +378,7 @@ public sealed class SeqlockCache<TKey, TValue>
     /// <summary>
     /// Single-writer upsert that is never silently dropped: overwrites every live copy of <paramref name="key"/>
     /// (both ways are checked, since concurrent best-effort writers can leave the same key in both) or inserts
-    /// it when absent. Copies that already hold <paramref name="value"/> by reference are left untouched.
+    /// it when absent. Equal value types and identical references are left untouched.
     /// </summary>
     /// <remarks>
     /// The caller must be the only writer. Any observed lock or lost CAS means another writer is live, and the
@@ -388,9 +386,9 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </remarks>
     /// <returns>
     /// <see langword="true"/> when every copy of the key now holds <paramref name="value"/>; <see langword="false"/>
-    /// when another writer was observed, in which case a stale copy may remain and the caller must <see cref="Clear"/>.
+    /// when the write could not complete, in which case a stale copy may remain and the caller must <see cref="Clear"/>.
     /// </returns>
-    public bool TrySetExclusive(in TKey key, TValue? value)
+    public bool TrySetExclusive(in TKey key, in TValue? value)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & _setMask;
@@ -413,10 +411,12 @@ public sealed class SeqlockCache<TKey, TValue>
         bool inWay1 = (h1 & TagMask) == tagToStore && e1.Key.Equals(in key);
         if (inWay0 || inWay1)
         {
-            // Write-backs mostly re-offer the very reference the cache holds; those need no CAS.
-            if ((!inWay0 || ReferenceEquals(e0.Value, value)) && (!inWay1 || ReferenceEquals(e1.Value, value))) return true;
-            if (inWay0 && !WriteEntry(ref e0, h0, in key, value, tagToStore)) return false;
-            return !inWay1 || WriteEntry(ref e1, h1, in key, value, tagToStore);
+            bool sameValue = (!inWay0 || SameValue(in e0.Value, in value)) && (!inWay1 || SameValue(in e1.Value, in value));
+            Volatile.ReadBarrier();
+            if (h0 != Volatile.Read(ref e0.HashEpochSeqLock) || h1 != Volatile.Read(ref e1.HashEpochSeqLock)) return false;
+            if (sameValue) return true;
+            if (inWay0 && !WriteEntry(ref e0, h0, in key, value, tagToStore, keyMatches: true)) return false;
+            return !inWay1 || WriteEntry(ref e1, h1, in key, value, tagToStore, keyMatches: true);
         }
 
         // Absent: same victim preference as Set (stale/empty first, else alternate by hash bit).
@@ -433,11 +433,14 @@ public sealed class SeqlockCache<TKey, TValue>
     /// Kept out-of-line: the CAS atomic dominates latency, so call overhead is invisible,
     /// while de-duplication reclaims ~350 bytes of inlined copies across SetCore call sites.
     /// </summary>
-    /// <returns><see langword="false"/> when the entry was locked or the CAS lost to a concurrent writer.</returns>
+    /// <returns><see langword="false"/> when contention or exhausted/stale version tags prevent publication.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore)
+    private bool WriteEntry(ref Entry entry, long existing, in TKey key, in TValue? value, long tagToStore, bool keyMatches = false)
     {
         if (existing < 0) return false; // locked
+
+        // Do not let a delayed writer restore an older epoch or publish after epoch exhaustion.
+        if (!keyMatches && ((existing & EpochMask) > (tagToStore & EpochMask) || (tagToStore & SeqMask) != 0)) return false;
 
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
         long lockedHeader = tagToStore | newSeq | LockMarker;
@@ -447,7 +450,8 @@ public sealed class SeqlockCache<TKey, TValue>
             return false;
         }
 
-        entry.Key = key;
+        // A matching snapshot and successful CAS let the writer retain the stored key.
+        if (!keyMatches) entry.Key = key;
         entry.Value = value;
 
         Volatile.Write(ref entry.HashEpochSeqLock, tagToStore | newSeq);
@@ -458,26 +462,33 @@ public sealed class SeqlockCache<TKey, TValue>
     /// Clears all cached entries by incrementing the global epoch tag (O(1)).
     /// Entries with stale epochs are treated as empty on subsequent lookups.
     /// </summary>
+    /// <remarks>After all epoch tags have been used, the cache remains empty rather than reusing a tag.</remarks>
     public void Clear()
     {
         long oldShifted = Volatile.Read(ref _shiftedEpoch);
 
         while (true)
         {
+            if ((oldShifted & SeqMask) != 0) return;
             long oldEpoch = (oldShifted & EpochMask) >> EpochShift;
             long newEpoch = oldEpoch + 1;
-            long newShifted = (newEpoch << EpochShift) & EpochMask;
+            // An unmatchable tag disables the cache rather than reusing epochs after exhaustion.
+            long newShifted = oldShifted == EpochMask ? EpochMask | SeqInc : newEpoch << EpochShift;
 
             long prev = Interlocked.CompareExchange(ref _shiftedEpoch, newShifted, oldShifted);
             if (prev == oldShifted)
             {
-                Volatile.Write(ref _epoch, newEpoch);
                 return;
             }
 
             oldShifted = prev;
         }
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool SameValue(in TValue? left, in TValue? right) => typeof(TValue).IsValueType
+        ? EqualityComparer<TValue>.Default.Equals(left!, right!)
+        : ReferenceEquals(left, right);
 
     /// <summary>
     /// Cache entry struct.

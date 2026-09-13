@@ -13,6 +13,33 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 public class AccountChangesAtIndexTests
 {
     [Test]
+    public void Account_growth_and_reuse_preserve_distinct_read_sets([Values(1, 65)] int count)
+    {
+        BlockAccessListAtIndex slice = new();
+        Address[] addresses = new Address[count];
+        for (int i = 0; i < count; i++) addresses[i] = new Address(i.ToString("x40"));
+
+        for (int round = 0; round < 2; round++)
+        {
+            for (int i = 0; i < count; i++)
+                slice.AddStorageRead(addresses[i], (UInt256)(100 * round + i));
+
+            Assert.That(slice.AccountCount, Is.EqualTo(count));
+            for (int i = 0; i < count; i++)
+            {
+                AccountChangesAtIndex account = slice.GetAccountChanges(addresses[i])!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(account.Address, Is.EqualTo(addresses[i]));
+                    Assert.That(account.StorageReads, Is.EquivalentTo(new UInt256[] { (UInt256)(100 * round + i) }));
+                    Assert.That(account.StorageChanges, Is.Empty);
+                }
+            }
+            slice.Clear();
+        }
+    }
+
+    [Test]
     public void Clear_trims_oversized_account_changes_before_pooling()
     {
         const int EntryCount = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
@@ -25,7 +52,7 @@ public class AccountChangesAtIndexTests
             UInt256 slot = (UInt256)i;
             accountChanges.SetStorageChange(slot, storageChange);
             accountChanges.AddStorageRead(slot);
-            accountChanges.GetOrCapturePreTxStorage(slot, UInt256.One);
+            accountChanges.GetOrCapturePreTxStorage(slot, UInt256.One, 0, out _);
         }
 
         int changesCapacityBeforeClear = accountChanges.StorageChanges.Capacity;
@@ -50,5 +77,10 @@ public class AccountChangesAtIndexTests
             Assert.That(reused, Is.SameAs(accountChanges));
             Assert.That(reused.Address, Is.EqualTo(TestItem.AddressB));
         }
+
+        Assert.That(reused.GetOrCapturePreTxStorage(UInt256.Zero, (UInt256)77, 0, out UInt256 original), Is.True);
+        Assert.That(original, Is.EqualTo((UInt256)77));
+        Assert.That(reused.GetOrCapturePreTxStorage(UInt256.Zero, (UInt256)99, 0, out original), Is.False);
+        Assert.That(original, Is.EqualTo((UInt256)77));
     }
 }

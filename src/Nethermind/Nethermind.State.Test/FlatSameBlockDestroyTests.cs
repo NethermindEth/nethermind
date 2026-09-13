@@ -4,7 +4,6 @@
 using System.Threading;
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -12,6 +11,10 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using NUnit.Framework;
+
+using Nethermind.Int256;
+
+using System;
 
 namespace Nethermind.Store.Test;
 
@@ -32,8 +35,8 @@ public class FlatSameBlockDestroyTests
         using (worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(contract, 1);
-            worldState.Set(slot, [0x01]);
-            worldState.Set(new StorageCell(contract, 1), [0x02]);
+            worldState.Set(slot, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
+            worldState.Set(new StorageCell(contract, 1), new UInt256((ReadOnlySpan<byte>)[0x02], isBigEndian: true));
             worldState.Commit(Frontier.Instance);
 
             worldState.GetBalance(contract);
@@ -52,17 +55,17 @@ public class FlatSameBlockDestroyTests
             header = Build.A.BlockHeader.WithNumber(0).WithStateRoot(worldState.StateRoot).TestObject;
         }
 
-        byte[] beforeFlush = reader.GetStorage(header, contract, 0).ToArray();
+        reader.GetStorage(header, contract, 0, out UInt256 beforeFlush);
         container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
-        byte[] afterFlush = reader.GetStorage(header, contract, 0).ToArray();
-        byte[] afterFlushSlot1 = reader.GetStorage(header, contract, 1).ToArray();
+        reader.GetStorage(header, contract, 0, out UInt256 afterFlush);
+        reader.GetStorage(header, contract, 1, out UInt256 afterFlushSlot1);
         bool accountExists = reader.TryGetAccount(header, contract, out AccountStruct account);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(beforeFlush.IsZero(), Is.True, "read through the snapshot bundle");
-            Assert.That(afterFlush.IsZero(), Is.True, "read from the persisted flat column: a contract destroyed in the block it was created in ends the block with no storage");
-            Assert.That(afterFlushSlot1.IsZero(), Is.True);
+            Assert.That(beforeFlush.IsZero, Is.True, "read through the snapshot bundle");
+            Assert.That(afterFlush.IsZero, Is.True, "read from the persisted flat column: a contract destroyed in the block it was created in ends the block with no storage");
+            Assert.That(afterFlushSlot1.IsZero, Is.True);
             Assert.That(accountExists, Is.EqualTo(recreatedInSameBlock), "the persisted state is the block's, not an empty one: the re-created account is there and the destroyed one is not");
             if (recreatedInSameBlock) Assert.That(account.Nonce, Is.Zero);
         }

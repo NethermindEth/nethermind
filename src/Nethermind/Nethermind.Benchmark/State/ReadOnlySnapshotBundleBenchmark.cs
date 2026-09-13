@@ -144,8 +144,7 @@ public class ReadOnlySnapshotBundleBenchmark
                     IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
                     for (int s = 0; s < slots; s++)
                     {
-                        storageBatch.Set((UInt256)(ulong)(s + 1),
-                            new byte[] { (byte)((s + 1) & 0xFF) });
+                        storageBatch.Set((UInt256)(ulong)(s + 1), new UInt256(new byte[] { (byte)((s + 1) & 0xFF) }, isBigEndian: true));
                     }
 
                     storageBatch.Dispose();
@@ -327,10 +326,11 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_hitAccounts[_index++ % _hitAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot()
+    public UInt256? GetSlot()
     {
         (Address addr, UInt256 slot) = _hitSlots[_index++ % _hitSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
@@ -355,10 +355,11 @@ public class ReadOnlySnapshotBundleBenchmark
     }
 
     [Benchmark]
-    public byte[] GetSlot_SameAccount()
+    public UInt256? GetSlot_SameAccount()
     {
         (Address addr, UInt256 slot) = _sameAccountSlots[_index++ % _sameAccountSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
@@ -374,10 +375,11 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_missAccounts[_index++ % _missAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot_Miss()
+    public UInt256? GetSlot_Miss()
     {
         (Address addr, UInt256 slot) = _missSlots[_index++ % _missSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]

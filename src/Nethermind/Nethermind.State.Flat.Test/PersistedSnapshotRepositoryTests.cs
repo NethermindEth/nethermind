@@ -161,7 +161,7 @@ public class PersistedSnapshotRepositoryTests
         byte[] slotBytes = new byte[32];
         slotBytes[31] = 0xAB;
         slotBytes[30] = 0xCD;
-        SlotValue slotValue = new(slotBytes);
+        UInt256 slotValue = new(slotBytes, isBigEndian: true);
 
         TreePath statePath = new(Keccak.Compute("state_path"), 4);
         byte[] stateRlp = [0xC2, 0x80, 0x80];
@@ -186,9 +186,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
 
-        SlotValue readSlot = default;
-        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, ref readSlot), Is.True);
-        Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
+        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, out UInt256? readSlot), Is.True);
+        Assert.That(readSlot.GetValueOrDefault().ToBigEndian(), Is.EqualTo(slotBytes));
 
         Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
 
@@ -583,7 +582,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(123).TestObject;
         byte[] slot = new byte[32]; slot[31] = 0x55;
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slot);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slot, isBigEndian: true);
         PersistedSnapshot persisted = tier.ConvertToPersistedBase(
             new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
 
@@ -593,8 +592,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
         Assert.That(a!.Balance, Is.EqualTo((UInt256)123));
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv), Is.True);
-        Assert.That(sv![^1], Is.EqualTo((byte)0x55));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out UInt256? sv), Is.True);
+        Assert.That(sv!.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x55));
 
         // Absent addresses: the real bloom excludes them (or the snapshot misses) → fall through.
         foreach (Address absent in new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF })

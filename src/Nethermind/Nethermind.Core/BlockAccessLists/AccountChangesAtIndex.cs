@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
@@ -24,62 +23,42 @@ public class AccountChangesAtIndex(Address address)
 
     public UInt256? PreTxBalance { get; internal set; }
     public byte[]? PreTxCode { get; internal set; }
-    private Dictionary<UInt256, UInt256>? _preTxStorage;
+    private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
 
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
     private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
 
-    public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;
     public HashSet<UInt256> StorageReads => _storageReads;
 
-    public bool HasStorageChange(UInt256 key) => _storageChanges.ContainsKey(key);
+    public bool HasStorageChange(in UInt256 key) => _storageChanges.ContainsKey(key);
 
-    public bool TryGetStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
-    {
-        if (_storageChanges.TryGetValue(key, out StorageChange existing))
-        {
-            storageChange = existing;
-            return true;
-        }
-        storageChange = null;
-        return false;
-    }
-
-    public void SetStorageChange(UInt256 key, StorageChange storageChange)
+    public void SetStorageChange(in UInt256 key, StorageChange storageChange)
         => _storageChanges[key] = storageChange;
 
-    public bool RemoveStorageChange(UInt256 key) => _storageChanges.Remove(key);
+    public bool RemoveStorageChange(in UInt256 key) => _storageChanges.Remove(key);
 
-    public bool TryRemoveStorageChange(UInt256 key, [NotNullWhen(true)] out StorageChange? storageChange)
+    public void AddStorageRead(in UInt256 key) => _storageReads.Add(key);
+
+    public bool RemoveStorageRead(in UInt256 key) => _storageReads.Remove(key);
+
+    /// <summary>Returns the transaction's original value and whether this snapshot epoch needs an undo record.</summary>
+    public bool GetOrCapturePreTxStorage(in UInt256 key, in UInt256 captureValue, ulong journalEpoch, out UInt256 value)
     {
-        if (_storageChanges.Remove(key, out StorageChange existing))
-        {
-            storageChange = existing;
-            return true;
-        }
-        storageChange = null;
-        return false;
+        _preTxStorage ??= new Dictionary<UInt256, PreTxStorage>(8, UInt256Comparer.GetOptimized());
+        ref PreTxStorage slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
+        bool needsUndo = !exists || slot.JournalEpoch != journalEpoch;
+        if (!exists) slot = new(in captureValue, journalEpoch);
+        else if (needsUndo) slot.JournalEpoch = journalEpoch;
+        value = slot.Value;
+        return needsUndo;
     }
 
-    public void AddStorageRead(UInt256 key) => _storageReads.Add(key);
-
-    public bool RemoveStorageRead(UInt256 key) => _storageReads.Remove(key);
-
-    public UInt256 GetOrCapturePreTxStorage(UInt256 key, in UInt256 captureValue)
+    private struct PreTxStorage(in UInt256 value, ulong journalEpoch)
     {
-        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8, UInt256Comparer.GetOptimized());
-        ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
-        if (!exists) slot = captureValue;
-        return slot;
-    }
-
-    public void ClearStorage()
-    {
-        _storageChanges.Clear();
-        _storageReads.Clear();
-        _preTxStorage?.Clear();
+        public readonly UInt256 Value = value;
+        public ulong JournalEpoch = journalEpoch;
     }
 
     public void Reset(Address address)

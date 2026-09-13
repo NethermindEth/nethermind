@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
@@ -123,9 +124,9 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
             }
             else
             {
-                SlotValue value = default;
+                UInt256 value = default;
                 if (reader.TryGetStorageRaw(address, path.Path, ref value))
-                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value.ToEvmBytes()).Bytes);
+                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value).Bytes);
             }
 
             return null;

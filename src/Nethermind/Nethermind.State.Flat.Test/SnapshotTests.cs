@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
@@ -45,7 +46,7 @@ public class SnapshotTests
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
-            content.Storages[new((TestItem.AddressA, 1))] = new SlotValue(TestItem.KeccakA.Bytes);
+            content.Storages[new((TestItem.AddressA, 1))] = new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true);
         });
 
         long estimate = snapshot.EstimateMemory();

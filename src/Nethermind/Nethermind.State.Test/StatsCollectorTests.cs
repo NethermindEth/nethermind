@@ -42,7 +42,7 @@ namespace Nethermind.Store.Test
                 for (int i = 0; i < 1000; i++)
                 {
                     StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                    stateProvider.Set(storageCell, new byte[] { (byte)i });
+                    stateProvider.Set(storageCell, new UInt256(new byte[] { (byte)i }, isBigEndian: true));
                 }
 
                 stateProvider.Commit(Istanbul.Instance);

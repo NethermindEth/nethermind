@@ -34,7 +34,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
 
     private (TracedAccessWorldState tws, IDisposable scope) CreateTracingState(
-        Action<IWorldState>? genesisSetup = null)
+        Action<IWorldState>? genesisSetup = null, Func<IWorldState, IWorldState>? decorate = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
         Hash256 stateRoot;
@@ -47,7 +47,7 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        TracedAccessWorldState tws = new(inner, parallel: parallel);
+        TracedAccessWorldState tws = new(decorate?.Invoke(inner) ?? inner, parallel: parallel);
         tws.SetGeneratingBlockAccessList(new());
         IDisposable scope = tws.BeginScope(baseBlock);
         tws.SetIndex(0);
@@ -202,22 +202,74 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [Test]
-    public void Set_RecordsStorageChange()
+    public void Set_RecordsStorageChange([Values] bool supplyCurrentValue)
     {
         StorageCell cell = new(TestItem.AddressA, 1);
+        CountingWorldStateDecorator decorator = null!;
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-            ws.CreateAccount(TestItem.AddressA, 0));
+            ws.CreateAccount(TestItem.AddressA, 0), ws => decorator = new(ws));
         using (scope)
         {
-            tws.Set(cell, [0x01]);
+            tws.Get(in cell, out UInt256 currentValue);
+            int reads = decorator.Reads;
+            if (supplyCurrentValue)
+                tws.Set(in cell, UInt256.One, in currentValue);
+            else
+                tws.Set(in cell, UInt256.One);
 
+            int expectedReads = supplyCurrentValue ? 0 : 1;
+#if DEBUG
+            // The supplied-current-value assertion reads the underlying state in checked builds.
+            expectedReads++;
+#endif
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
-                Assert.That(ac.ChangedSlots, Does.Contain((UInt256)1));
+                Assert.That(ac.StorageChanges.ContainsKey((UInt256)1), Is.True);
+                Assert.That(decorator.Writes, Is.EqualTo(1));
+                Assert.That(decorator.Reads - reads, Is.EqualTo(expectedReads));
             }
+        }
+    }
+
+    private static readonly UInt256[] StorageWriteValues = [0, 1, 2, ulong.MaxValue, UInt256.MaxValue];
+
+    [Test]
+    public void Set_WithCurrentValue_PreservesOriginalAndRollback([ValueSource(nameof(StorageWriteValues))] UInt256 next, [Values] bool evictReadCache)
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+        {
+            ws.CreateAccount(TestItem.AddressA, 0);
+            ws.Set(in cell, UInt256.One);
+        });
+        using (scope)
+        {
+            Snapshot snapshot = tws.TakeSnapshot();
+            tws.Get(in cell, out UInt256 currentValue);
+            tws.Set(in cell, in next, in currentValue);
+            tws.GetOriginal(in cell, out UInt256 original);
+            if (evictReadCache) tws.Get(new StorageCell(cell.Address, 2), out _);
+            tws.Get(in cell, out UInt256 actual);
+            AccountChangesAtIndex changes = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original, Is.EqualTo(UInt256.One));
+                Assert.That(actual, Is.EqualTo(next));
+                Assert.That(changes.StorageChangeCount, Is.EqualTo(next == 1 ? 0 : 1));
+            }
+
+            tws.Get(in cell, out actual);
+            Assert.That(actual, Is.EqualTo(next));
+
+            tws.Restore(snapshot);
+            tws.Get(in cell, out actual);
+            Assert.That(actual, Is.EqualTo(UInt256.One));
+            tws.Get(in cell, out actual);
+            Assert.That(actual, Is.EqualTo(UInt256.One));
+            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(cell.Address)!.StorageChangeCount, Is.Zero);
         }
     }
 
@@ -230,10 +282,10 @@ public class TracedAccessWorldStateTests(bool parallel)
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            _ = tws.Get(cell);
+            tws.Get(cell, out _);
             if (useGetOriginal)
             {
-                _ = tws.GetOriginal(cell);
+                tws.GetOriginal(in cell, out _);
             }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
@@ -529,28 +581,34 @@ public class TracedAccessWorldStateTests(bool parallel)
     }
 
     [Test]
-    public void RepeatedStorageWrites_SameTx_UsesLatestValue_InParallel()
+    public void RepeatedStorageWrites_SameTx_UsesLatestValue([Values(0, 64)] int additionalSlots)
     {
-        if (!parallel) Assert.Ignore("Storage cache only used in parallel mode");
 
         StorageCell cell = new(TestItem.AddressA, 1);
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            tws.Set(cell, [0x01]);
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo(UInt256.One));
-            tws.Set(cell, [0x02]);
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
+            tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x01], isBigEndian: true));
+            tws.Get(cell, out UInt256 storageValue1);
+            Assert.That(storageValue1, Is.EqualTo(UInt256.One));
+            for (int i = 0; i < additionalSlots; i++)
+            {
+                tws.Set(new StorageCell(cell.Address, (UInt256)(i + 2)), UInt256.MaxValue);
+            }
+            tws.Get(cell, out UInt256 valueAfterGrowth);
+            Assert.That(valueAfterGrowth, Is.EqualTo(UInt256.One));
+            tws.Set(cell, new UInt256((ReadOnlySpan<byte>)[0x02], isBigEndian: true));
+            tws.Get(cell, out UInt256 storageValue2);
+            Assert.That(storageValue2, Is.EqualTo((UInt256)2));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
-                Assert.That(ac.TryGetStorageChange((UInt256)1, out StorageChange? change), Is.True);
-                // StorageChange.Value is EvmWord (BE wire form) — compare via the ctor's round-trip.
-                Assert.That(change!.Value.Value, Is.EqualTo(new StorageChange(0, (UInt256)2).Value));
+                Assert.That(ac!.StorageChangeCount, Is.EqualTo(additionalSlots + 1));
+                Assert.That(ac.StorageChanges.TryGetValue((UInt256)1, out StorageChange change), Is.True);
+                Assert.That(change.Value, Is.EqualTo((UInt256)2));
             }
         }
     }
