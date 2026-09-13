@@ -99,7 +99,15 @@ public class BlockProcessingBenchmark
 
     /// <summary>The fork the whole scenario set runs under.</summary>
     /// <remarks>Amsterdam turns on EIP-7928 block access lists, which decorate every state read. That layer
-    /// is what the ethpandaops bal-full suite exercises and what an Osaka-only benchmark cannot see.</remarks>
+    /// is what the ethpandaops bal-full suite exercises and what an Osaka-only benchmark cannot see.
+    /// <para>Caveat on which BAL path this measures: the scenario blocks carry no supplied
+    /// <see cref="Block.BlockAccessList"/>, so <c>BlockAccessListManager</c> takes the <em>producer</em>
+    /// path — sequential execution, no read pre-warming, plus a per-block RLP encode and Keccak of the
+    /// generated list. The bal-full rig measures the <em>validator</em> path (parallel, prefetched, no
+    /// encode/hash). The BAL decoration cost per read is common to both; the parallelism, warming and
+    /// encode/hash are not, so read the Amsterdam column as the decorated-read producer shape rather than
+    /// as the rig's validator shape. Attaching each block's generated BAL to flip onto the validator path
+    /// is possible but needs a matching header hash to pass validation, which is left out here.</para></remarks>
     [Params("Osaka", "Amsterdam")]
     public string Fork { get; set; } = "Osaka";
 
@@ -131,7 +139,10 @@ public class BlockProcessingBenchmark
     /// because a real transfer overwhelmingly targets an existing account; otherwise the first tx of each
     /// block pays EIP-8037's ~183k NEW_ACCOUNT state charge and OOGs on Amsterdam. Deliberately outside
     /// <see cref="SampleAccessList"/>: an address that exists makes the pre-warmer load its declared
-    /// slots, which would change the pre-existing AccessList_50 and MixedBlock numbers.</summary>
+    /// slots, which would change the pre-existing AccessList_50 and MixedBlock numbers. Seeding it does
+    /// shift the transfer-shaped series (SingleTransfer/Transfers_50/Transfers_200/Eip1559_200/MixedBlock)
+    /// slightly — the recipient is now a leaf update and a warm read rather than a fresh insert — which is
+    /// the more mainnet-like shape and is unavoidable if Amsterdam is to run at all.</summary>
     private static readonly Address TransferTargetAddress = new("0x00000000000000000000000000000000000000ba");
 
     /// <summary>Reads one warm slot over and over, the shape of the sload_same_key benchmark.</summary>
