@@ -186,9 +186,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
 
-        UInt256 readSlot = default;
-        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, ref readSlot), Is.True);
-        Assert.That(readSlot.ToBigEndian(), Is.EqualTo(slotBytes));
+        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, out UInt256? readSlot), Is.True);
+        Assert.That(readSlot.GetValueOrDefault().ToBigEndian(), Is.EqualTo(slotBytes));
 
         Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
 

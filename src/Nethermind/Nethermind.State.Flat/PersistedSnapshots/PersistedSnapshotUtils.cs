@@ -101,12 +101,10 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
-                UInt256 slotValue = default;
-                if (!persisted.TryGetSlot(addr, slot, ref slotValue))
+                if (!persisted.TryGetSlot(addr, slot, out UInt256? slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
-                UInt256 expected = kv.Value ?? default;
-                if (slotValue != expected)
+                if (slotValue != kv.Value)
                     throw new InvalidOperationException($"Storage {addr}:{slot} mismatch");
             }
 

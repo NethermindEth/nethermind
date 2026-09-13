@@ -230,18 +230,21 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, ref UInt256 slotValue)
+    public bool TryGetSlot(Address address, in UInt256 index, out UInt256? slotValue)
     {
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(
                 in reader, new Bound(0, reader.Length), address, in index, out Bound b))
+        {
+            slotValue = null;
             return false;
+        }
         Span<byte> buf = stackalloc byte[PersistedSnapshotTags.RlpSlotValueBufferSize];
         Span<byte> raw = buf[..checked((int)b.Length)];
         reader.TryRead(b.Offset, raw);
         // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
         ReadOnlySpan<byte> value = raw.Length == 0 ? raw : new RlpReader(raw).DecodeByteArraySpan();
-        slotValue = BaseFlatPersistence.DecodeSlotValue(value);
+        slotValue = raw.IsEmpty ? null : BaseFlatPersistence.DecodeSlotValue(value);
         return true;
     }
 

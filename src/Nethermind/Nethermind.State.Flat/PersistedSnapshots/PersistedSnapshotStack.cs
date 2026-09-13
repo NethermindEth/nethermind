@@ -122,8 +122,7 @@ public sealed class PersistedSnapshotStack(
                 BloomFilter bloom = snap.Bloom;
                 if (bloom.MightContain(addrBloomKey) && bloom.MightContain(slotBloomKey))
                 {
-                    UInt256 slotValue = default;
-                    if (snap.TryGetSlot(address, in index, ref slotValue))
+                    if (snap.TryGetSlot(address, in index, out UInt256? slotValue))
                     {
                         if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - lookupStart, _readStoragePersistedLabel);
                         value = slotValue;

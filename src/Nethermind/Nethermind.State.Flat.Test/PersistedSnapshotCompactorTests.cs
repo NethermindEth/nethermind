@@ -121,8 +121,7 @@ public class PersistedSnapshotCompactorTests
 
             for (int i = 1; i <= n; i++)
             {
-                UInt256 slot = default;
-                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
+                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, out UInt256? slot), Is.True,
                     $"Slot {i} must survive merge");
                 Assert.That(slot, Is.EqualTo((UInt256)((byte)i) << 248),
                     $"Slot {i} value mismatch");
@@ -371,12 +370,10 @@ public class PersistedSnapshotCompactorTests
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
 
-                    UInt256 slot1 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
                     Assert.That(slot1, Is.EqualTo((UInt256)(0x42) << 248));
 
-                    UInt256 slot2 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
                     Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
 
                     Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressB), Is.Not.Null,
@@ -445,10 +442,8 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    UInt256 slot1 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
-                    UInt256 slot2 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.False, "Older slot must be cleared by newer destruct");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
                     Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
                     Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
                 }))
@@ -506,8 +501,7 @@ public class PersistedSnapshotCompactorTests
                 {
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100), "Account-only EOA copied verbatim");
-                    UInt256 slotA = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slotA), Is.False, "EOA has no slots");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slotA), Is.False, "EOA has no slots");
 
                     Assert.That(s.TryGetAccount(TestItem.AddressC, out Account? c), Is.True);
                     Assert.That(c!.Balance, Is.EqualTo((UInt256)300), "Account survives verbatim copy");

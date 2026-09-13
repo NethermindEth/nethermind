@@ -100,6 +100,23 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetSlot_OverlayPresenceControlsFallback([Values] bool hasEntry, [Values] bool explicitZero)
+    {
+        Address address = TestItem.AddressA;
+        UInt256 index = 42;
+        UInt256? overlayValue = explicitZero ? UInt256.Zero : null;
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.Storages[(address, index)] = new UInt256(7)),
+            MakeSnapshot(c =>
+            {
+                if (hasEntry) c.Storages[(address, index)] = overlayValue;
+            })));
+
+        bundle.GetSlot(address, in index, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(hasEntry ? overlayValue : new UInt256(7)));
+    }
+
+    [Test]
     public void GetSlot_StopsAtSelfDestructIndex_AndReturnsNull()
     {
         // Two snapshots, neither holds the slot. Iteration goes 1 -> 0.
@@ -113,16 +130,15 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
-    public void GetSlot_FallsBackToPersistence_WithMetricBranches([Values] bool detailedMetrics)
+    public void GetSlot_FallsBackToPersistence_PreservesPresence([Values] bool detailedMetrics, [Values] bool found)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        // Returning false leaves the UInt256 at default (zero) -> exercises the "value is zero" metric branch.
-        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(false);
+        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(found);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
         bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1, out UInt256? value);
-        Assert.That(value, Is.EqualTo(default(UInt256)));
+        Assert.That(value, Is.EqualTo(found ? UInt256.Zero : (UInt256?)null));
     }
 
     [Test]
