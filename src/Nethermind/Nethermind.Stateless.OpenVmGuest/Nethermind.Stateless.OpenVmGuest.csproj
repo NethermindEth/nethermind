@@ -13,6 +13,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Main, the ZkvmThrow export and the failure protocol are identical in
+         all three guests; only WriteOutput differs, and each guest supplies it
+         as the other half of the partial class. Compiled in rather than
+         referenced: ZkvmThrow is an UnmanagedCallersOnly export the runtime
+         looks up in the guest assembly itself. -->
+    <Compile Include="..\Nethermind.Stateless.Guest.Shared\GuestProgram.cs" Link="GuestProgram.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
   </ItemGroup>
 

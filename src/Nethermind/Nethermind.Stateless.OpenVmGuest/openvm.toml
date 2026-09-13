@@ -1,7 +1,15 @@
 # VM extension set the guest is built against. It has to list every accelerator
-# the bindings library can reach (bflat-openvm's accel-rs init.rs declares the
-# moduli and curves in this order - the order is part of the ABI) plus the base
-# rv64 instruction set, io, keccak, sha2 and bigint.
+# the bindings library can reach, plus the base rv64 instruction set, io,
+# keccak, sha2 and bigint.
+#
+# THE ORDER OF THE MODULI AND CURVES IS PART OF THE ABI. OpenVM dispatches an
+# accelerated operation by the index of its modulus or curve in these lists, so
+# a list that disagrees with the one the guest was compiled against does not
+# fail to load - it computes the right operation on the wrong field. Transcribed
+# from accel-rs init.rs in NethermindEth/bflat-openvm, as shipped in
+# Nethermind.OpenVM.Runtime 1.0.0-preview.1, which Directory.Packages.props
+# pins exactly for this reason. Re-check this file against init.rs whenever that
+# pin moves; nothing enforces the coupling automatically.
 [app_vm_config.rv64i]
 [app_vm_config.rv64m]
 [app_vm_config.io]

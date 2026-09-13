@@ -6,18 +6,11 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
-# One image serves every guest: the bflat build carries the zisk, sp1 and
-# openvm layouts side by side, so all three guests are compiled by the same
-# toolchain and runtime. Pinned by digest - :latest moves with every CI run.
-#
-# This is the .NET 10 PERF image. The variant is not a preference: the min
-# profile does not carry perf-36 (atomics as plain load/modify/store), so a
-# guest built from it fails the --error-on-atomic gate below with ~240 A
-# instructions, and no zkVM here implements the A extension. Between the two
-# .NET lines, 10 runs ~2.6% fewer SP1 cycles and ~2.5% fewer ZisK steps than
-# 11 on the nine stateless-tests mainnet blocks; 11 gives ~6.5% smaller
-# binaries, which matters less than proving cost.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:ef3296763c7b8163d9f7f13de95839e03397f7a6ea9c4a6d7f902dadc843934a
+
+# Toolchain image, ISA gates, optimisation/trim flags and the managed closure:
+# shared by all three guests so they cannot drift apart. BIN_DIR must be set
+# before the include - BFLAT_REFS expands it.
+include $(MAKEFILE_DIR)/../zkvm-guest.mk
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF -
 # ghcr.io/succinctlabs/sp1 carries the Rust toolchain for BUILDING guests and
 # nothing that runs one - so this is our own: NethermindEth/bflat-sp1 builds a
@@ -35,49 +28,6 @@ SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0@sha256:6df3e8ade2d183f7d5a6146d5deb
 # which reads exactly like a broken guest. Check this first.
 SP1_SHM_SIZE ?= 8g
 SP1_RUNNER ?=
-# SP1 decodes rv64im only and reads the whole .text up front, panicking on the
-# first word it cannot decode. So even unreachable F/D/C/A instructions are
-# fatal - fail at build time instead.
-ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
-# The guest has no instruction cache, so the code-size cost of inlining buys nothing back
-# and favouring speed is close to free. Must land together with the TrieNode seqlock
-# collapse: -Ot over the seqlock builds a guest whose output success flag is 0. The
-# mechanism is unconfirmed, but the suspicion is that under --error-on-atomic the
-# Interlocked/Volatile the seqlock was built on lower to non-atomic sequences that happen to
-# work at the default optimization level and do not survive -Ot. That would not be specific
-# to the seqlock: PatriciaTree.Set and Microsoft.Extensions.ObjectPool carry the same
-# constructs and compile correctly today, so suspect them first if the guest ever starts
-# failing silently again.
-OPT_FLAGS ?= -Ot
-# The guest never reads the stack-trace name table or the symbol tables.
-TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
-BFLAT_REFS := \
-  -r {std}/System.Diagnostics.StackTrace.dll \
-  -r {std}/System.Diagnostics.Tracing.dll \
-  -r {std}/System.Memory.dll \
-  -r {std}/System.Runtime.dll \
-  -r {std}/System.Runtime.InteropServices.dll \
-  -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
-  -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
-  -r $(BIN_DIR)/Nethermind.Abi.dll \
-  -r $(BIN_DIR)/Nethermind.Blockchain.dll \
-  -r $(BIN_DIR)/Nethermind.Config.dll \
-  -r $(BIN_DIR)/Nethermind.Consensus.dll \
-  -r $(BIN_DIR)/Nethermind.Core.dll \
-  -r $(BIN_DIR)/Nethermind.Crypto.dll \
-  -r $(BIN_DIR)/Nethermind.Db.dll \
-  -r $(BIN_DIR)/Nethermind.Evm.dll \
-  -r $(BIN_DIR)/Nethermind.Evm.Precompiles.dll \
-  -r $(BIN_DIR)/Nethermind.Int256.dll \
-  -r $(BIN_DIR)/Nethermind.Logging.dll \
-  -r $(BIN_DIR)/Nethermind.Serialization.Rlp.dll \
-  -r $(BIN_DIR)/Nethermind.Serialization.Ssz.dll \
-  -r $(BIN_DIR)/Nethermind.Specs.dll \
-  -r $(BIN_DIR)/Nethermind.State.dll \
-  -r $(BIN_DIR)/Nethermind.Stateless.Executor.dll \
-  -r $(BIN_DIR)/Nethermind.Trie.dll \
-  -r $(BIN_DIR)/Nethermind.TxPool.dll \
-  -r $(BIN_DIR)/Nethermind.Zkvm.Abstractions.dll
 
 dotnet-build:
 	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.Sp1Guest.csproj
@@ -89,6 +39,7 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.Sp1Guest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		$(SHARED_MOUNT) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc sp1 \
 		$(OPT_FLAGS) \
@@ -102,7 +53,8 @@ build: dotnet-build
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libsp1.bflat.manifest \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
-		$(SRC_DIR)/Program.cs
+		$(GUEST_OUT) \
+		$(GUEST_SOURCES)
 	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
 	rm -f $(GUEST_DIR)/Program.map.xml; \
 	if [ -z "$$len" ]; then echo "error: could not read __embedded_resourcedata from the ILC map" >&2; exit 1; fi; \
@@ -149,10 +101,6 @@ clean:
 		$(GUEST_DIR)/Program.o \
 		$(GUEST_DIR)/Program.map.xml
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
-
-# Without this, a recipe that dies mid-write leaves its partial output on disk
-# and the next run reuses it because it is newer than its prerequisite.
-.DELETE_ON_ERROR:
 
 .PHONY: \
 	build \

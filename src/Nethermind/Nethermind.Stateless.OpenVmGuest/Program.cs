@@ -2,29 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using Nethermind.Stateless.Execution;
 using Nethermind.Zkvm.Abstractions;
 
-namespace Nethermind.Stateless.OpenVmGuest;
+namespace Nethermind.Stateless.Guest;
 
-class Program
+partial class Program
 {
     /// <summary>Length in bytes of the Keccak-256 digest this guest publishes.</summary>
     const int DigestLength = 32;
 
-    static int Main()
-    {
-        ReadOnlySpan<byte> input = IO.ReadInput();
-        ReadOnlySpan<byte> output = StatelessExecutor.Execute(input);
-
-        WriteOutput(output);
-
-        return 0;
-    }
-
-    /// <summary>Publishes the validation result as this guest's proven output.</summary>
+    /// <inheritdoc/>
     /// <remarks>
     /// What is proven is the Keccak-256 of the result, not the result itself.
     /// OpenVM's public output is a fixed 32-byte window and the result is 43
@@ -41,7 +28,7 @@ class Program
     /// asymmetry in the contract is what to be careful about.
     /// </para>
     /// </remarks>
-    static void WriteOutput(ReadOnlySpan<byte> output)
+    private static partial void WriteOutput(ReadOnlySpan<byte> output)
     {
         // The full result, for debugging: only the digest is provable, so this
         // is the only place the bytes behind it are visible at all. Anything
@@ -53,34 +40,5 @@ class Program
         Accelerators.Keccak256(output, digest);
 
         IO.WriteOutput(digest);
-    }
-
-    static bool _handlingException;
-
-    [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
-    static unsafe void HandleException(void* exception)
-    {
-        if (_handlingException || StatelessExecutor.FailureOutput.IsEmpty)
-            Environment.Exit(1);
-
-        _handlingException = true;
-
-        if (exception is null)
-        {
-            IO.PrintLine("An unknown error occurred.");
-        }
-        else
-        {
-            // SAFETY: a non-null `exception` is guaranteed by the runtime
-            // to point to a valid managed exception object.
-            nint ptr = (nint)exception;
-            Exception ex = Unsafe.As<nint, Exception>(ref ptr);
-
-            IO.PrintLine($"{ex.GetType().FullName}: {ex.Message}");
-        }
-
-        WriteOutput(StatelessExecutor.FailureOutput.Span);
-
-        Environment.Exit(0);
     }
 }
