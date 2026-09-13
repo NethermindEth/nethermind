@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -20,6 +21,17 @@ public class SnapshotTests
 
     [SetUp]
     public void SetUp() => _pool = new ResourcePool(new FlatDbConfig());
+
+    [Test]
+    public void Storage_value_layout_matches_memory_estimate_assumptions()
+    {
+        // SnapshotContentCounts budgets both the UInt256 key and nullable value at these sizes.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unsafe.SizeOf<UInt256>(), Is.EqualTo(32));
+            Assert.That(Unsafe.SizeOf<UInt256?>(), Is.EqualTo(40));
+        }
+    }
 
     [Test]
     public void CountsSealOnFirstObservationNotBefore()

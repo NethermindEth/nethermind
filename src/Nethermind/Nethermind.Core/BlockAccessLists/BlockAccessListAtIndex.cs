@@ -355,6 +355,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     private AccountChangesAtIndex GetOrAddAccountChanges(Address address)
     {
         ref AccountChangesAtIndex? existing = ref CollectionsMarshal.GetValueRefOrAddDefault(_accountChanges, address, out _);
+        // Renting touches only the pool and rented entry, never _accountChanges, so the ref stays valid.
         return existing ??= RentAccountChanges(address);
     }
 
