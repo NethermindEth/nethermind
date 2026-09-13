@@ -161,8 +161,6 @@ potential forced kill; it is not a substitute for verified snapshot isolation.
 See [the 2026-09-13 calibration](CALIBRATION-20260913.md) for measured results
 and excluded diagnostic runs.
 
-- Local tests cover ordering, repeated/colliding image tags, failed execution,
-  missing metrics, warmup failure and leftover snapshot/container detection.
 - One sequential campaign runs on each architecture and emits usable artifacts.
 - Same-image calibration reports CV with its sample count and metric source.
 - All accepted samples have no exceptions or invalid blocks, normal Nethermind
