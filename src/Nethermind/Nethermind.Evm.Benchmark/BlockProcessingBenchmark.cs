@@ -106,8 +106,9 @@ public class BlockProcessingBenchmark
     /// generated list. The bal-full rig measures the <em>validator</em> path (parallel, prefetched, no
     /// encode/hash). The BAL decoration cost per read is common to both; the parallelism, warming and
     /// encode/hash are not, so read the Amsterdam column as the decorated-read producer shape rather than
-    /// as the rig's validator shape. Attaching each block's generated BAL to flip onto the validator path
-    /// is possible but needs a matching header hash to pass validation, which is left out here.</para></remarks>
+    /// as the rig's validator shape. Flipping onto the validator path is feasible — attach each block's
+    /// generated BAL (the header hash is a sync-layer check, not on the processing path) — and is left as a
+    /// follow-up because it changes what the arm measures rather than because anything blocks it.</para></remarks>
     [Params("Osaka", "Amsterdam")]
     public string Fork { get; set; } = "Osaka";
 
