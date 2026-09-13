@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -72,7 +73,7 @@ public class BlockhashLookupBenchmark
         worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, _spec);
         _store.ApplyBlockhashStateChanges(_header, _spec);
         // Arm the memo the way branch processing does; unarmed callers read the store directly.
-        _provider.Prefetch(_header, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+        _provider.Prefetch(_header, CancellationToken.None).GetAwaiter().GetResult();
 
         // Fill the ring for the whole chain so the sweep row has distinct servable numbers.
         for (ulong k = 1; k < 42; k++)

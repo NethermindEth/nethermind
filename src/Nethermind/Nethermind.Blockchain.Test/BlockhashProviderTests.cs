@@ -504,7 +504,7 @@ public class BlockhashProviderTests
     /// storage-backed one, so the block-tree case doubles as a control against regressing it. The allocating
     /// overload is measured in the same run, so the comparison fails loudly rather than passing vacuously.</remarks>
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Blockhash_span_lookup_does_not_allocate([Values(true, false)] bool blockHashInState)
+    public void Blockhash_span_lookup_does_not_allocate([Values] bool blockHashInState)
     {
         const int Iterations = 1000;
 
