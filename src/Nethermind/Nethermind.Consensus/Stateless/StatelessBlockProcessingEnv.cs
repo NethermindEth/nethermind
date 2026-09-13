@@ -59,7 +59,7 @@ public class StatelessBlockProcessingEnv(
     public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
         new WorldState(
             new TrieStoreScopeProvider(
-                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableParentHeaderProvider.Instance, logManager
             ),
             logManager
         )

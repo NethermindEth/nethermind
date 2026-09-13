@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -15,11 +17,13 @@ public class FlatScopeProvider(
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
+    IParentHeaderProvider parentHeaderProvider,
     ILogManager logManager,
     bool isReadOnly)
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+    private readonly IParentHeaderProvider _parentHeaderProvider = parentHeaderProvider;
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
@@ -29,6 +33,45 @@ public class FlatScopeProvider(
     });
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+
+    public bool HasStateForTarget(BlockHeader targetBlock)
+    {
+        ArgumentNullException.ThrowIfNull(targetBlock);
+        return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+    }
+
+    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        ArgumentNullException.ThrowIfNull(targetBlock);
+        if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))
+        {
+            scope = null;
+            return false;
+        }
+
+        try
+        {
+            scope = BeginScope(parent, metrics);
+            return true;
+        }
+        catch (StateUnavailableException)
+        {
+            scope = null;
+            return false;
+        }
+    }
+
+    private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
+    {
+        if (targetBlock.IsGenesis)
+        {
+            parent = null;
+            return true;
+        }
+
+        parent = _parentHeaderProvider.FindParentHeader(targetBlock);
+        return parent is not null;
+    }
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {

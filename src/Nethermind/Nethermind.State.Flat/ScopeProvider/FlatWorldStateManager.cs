@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Blockchain;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -22,6 +24,7 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
+    IParentHeaderProvider parentHeaderProvider,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
@@ -31,6 +34,7 @@ public class FlatWorldStateManager(
         configuration,
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
+        parentHeaderProvider,
         logManager,
         isReadOnly: false);
 
@@ -53,6 +57,7 @@ public class FlatWorldStateManager(
             configuration,
             new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
+            parentHeaderProvider,
             logManager,
             isReadOnly: true);
 

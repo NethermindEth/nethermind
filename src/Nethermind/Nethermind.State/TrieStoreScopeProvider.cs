@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -34,9 +35,15 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = false) : IWorldStateScopeProvider
+public class TrieStoreScopeProvider(
+    ITrieStore trieStore,
+    IKeyValueStoreWithBatching codeDb,
+    IParentHeaderProvider parentHeaderProvider,
+    ILogManager logManager,
+    bool codeDbIsPersistent = false) : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore = trieStore;
+    private readonly IParentHeaderProvider _parentHeaderProvider = parentHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
@@ -47,6 +54,55 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+
+    public bool HasStateForTarget(BlockHeader targetBlock)
+    {
+        ArgumentNullException.ThrowIfNull(targetBlock);
+        return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+    }
+
+    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        ArgumentNullException.ThrowIfNull(targetBlock);
+        if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))
+        {
+            scope = null;
+            return false;
+        }
+
+        IDisposable trieStoreCloser = _trieStore.BeginScope(parent);
+        try
+        {
+            if (!HasRoot(parent))
+            {
+                trieStoreCloser.Dispose();
+                scope = null;
+                return false;
+            }
+
+            StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
+            backingStateTree.RootHash = parent?.StateRoot ?? Keccak.EmptyTreeHash;
+            scope = new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+            return true;
+        }
+        catch
+        {
+            trieStoreCloser.Dispose();
+            throw;
+        }
+    }
+
+    private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
+    {
+        if (targetBlock.IsGenesis)
+        {
+            parent = null;
+            return true;
+        }
+
+        parent = _parentHeaderProvider.FindParentHeader(targetBlock);
+        return parent is not null;
+    }
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {

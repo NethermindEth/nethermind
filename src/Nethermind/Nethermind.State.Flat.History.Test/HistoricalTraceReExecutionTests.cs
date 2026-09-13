@@ -14,6 +14,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
@@ -163,6 +164,7 @@ public class HistoricalTraceReExecutionTests
         new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },
         new NoopTrieWarmer(),
         ResourcePool.Usage.ReadOnlyProcessingEnv,
+        UnavailableParentHeaderProvider.Instance,
         LimboLogs.Instance,
         isReadOnly: false);
 }

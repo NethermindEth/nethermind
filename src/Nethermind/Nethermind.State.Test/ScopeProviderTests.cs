@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -44,17 +46,17 @@ public class ScopeProviderTests(bool useFlat)
         public TestMemDb CodeKv { get; }
         private readonly IContainer _container;
 
-        public Context(bool useFlat, TestMemDb kv = null, TestMemDb codeKv = null)
+        public Context(bool useFlat, IParentHeaderProvider parentHeaderProvider, TestMemDb kv = null, TestMemDb codeKv = null)
         {
             if (useFlat)
             {
-                (ScopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider();
+                (ScopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider(parentHeaderProvider);
             }
             else
             {
                 Kv = kv ?? new TestMemDb();
                 CodeKv = codeKv ?? new TestMemDb();
-                ScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(Kv), CodeKv, LimboLogs.Instance);
+                ScopeProvider = new TrieStoreScopeProvider(new TestRawTrieStore(Kv), CodeKv, parentHeaderProvider, LimboLogs.Instance);
             }
         }
 
@@ -62,9 +64,188 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void TargetScope_UsesParentStateAndPreservesTargetHeader()
+    {
+        TestParentHeaderProvider parentHeaderProvider = new();
+        using Context ctx = new(useFlat, parentHeaderProvider: parentHeaderProvider);
+        Hash256 stateRoot = CommitBaseState(ctx);
+        parentHeaderProvider.Parent = HeaderAt(stateRoot, 1);
+        BlockHeader target = Build.A.BlockHeader
+            .WithParent(parentHeaderProvider.Parent)
+            .WithStateRoot(TestItem.KeccakA)
+            .WithTimestamp(12345)
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.True);
+            Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+            Assert.That(scope, Is.Not.Null);
+            Assert.That(scope!.Get(TestItem.AddressA), Is.Not.Null);
+            scope.Dispose();
+        }
+    }
+
+    [Test]
+    public void TargetScope_CanBeReopenedAfterDisposal()
+    {
+        TestParentHeaderProvider parentHeaderProvider = new();
+        using Context ctx = new(useFlat, parentHeaderProvider: parentHeaderProvider);
+        Hash256 stateRoot = CommitBaseState(ctx);
+        parentHeaderProvider.Parent = HeaderAt(stateRoot, 1);
+        BlockHeader target = Build.A.BlockHeader.WithParent(parentHeaderProvider.Parent).WithTimestamp(24680).TestObject;
+
+        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
+        firstScope!.Dispose();
+
+        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
+        secondScope!.Dispose();
+    }
+
+    [Test]
+    public void TargetScope_ReturnsFalseForUnknownParentAndAllowsRetry()
+    {
+        TestParentHeaderProvider parentHeaderProvider = new();
+        using Context ctx = new(useFlat, parentHeaderProvider: parentHeaderProvider);
+        BlockHeader target = Build.A.BlockHeader.WithNumber(2).WithParentHash(TestItem.KeccakA).TestObject;
+
+        Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(scope, Is.Null);
+
+        parentHeaderProvider.Parent = HeaderAt(Keccak.EmptyTreeHash, 1);
+        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out scope), Is.True);
+        scope!.Dispose();
+    }
+
+    [Test]
+    public void TargetScope_ReturnsFalseWhenParentStateRootIsMissing()
+    {
+        BlockHeader parent = HeaderAt(TestItem.KeccakA, 1);
+        using Context ctx = new(useFlat, parentHeaderProvider: new TestParentHeaderProvider { Parent = parent });
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(54321).TestObject;
+
+        Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(scope, Is.Null);
+    }
+
+    [Test]
+    public void TargetScope_GenesisUsesPreGenesisState()
+    {
+        TestParentHeaderProvider parentHeaderProvider = new() { ThrowOnLookup = true };
+        using Context ctx = new(useFlat, parentHeaderProvider: parentHeaderProvider);
+        BlockHeader target = Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+        scope!.Dispose();
+        Assert.That(parentHeaderProvider, Is.Not.Null);
+    }
+
+    [Test]
+    public void DecoratedTargetScope_ForwardsTargetAndAvailability()
+    {
+        TargetScopeProvider inner = new();
+        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
+            new WorldStateScopeOperationLogger(inner, LimboLogs.Instance), _ => { });
+        BlockHeader firstTarget = Build.A.BlockHeader.WithTimestamp(9876).TestObject;
+        BlockHeader secondTarget = Build.A.BlockHeader.WithTimestamp(5432).TestObject;
+
+        Assert.That(decorated.HasStateForTarget(firstTarget), Is.True);
+        Assert.That(decorated.TryBeginScope(firstTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
+        firstScope!.Dispose();
+        Assert.That(decorated.HasStateForTarget(secondTarget), Is.True);
+        Assert.That(decorated.TryBeginScope(secondTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
+        secondScope!.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.Targets[0], Is.SameAs(firstTarget));
+            Assert.That(inner.Targets[1], Is.SameAs(firstTarget));
+            Assert.That(inner.Targets[2], Is.SameAs(secondTarget));
+            Assert.That(inner.Targets[3], Is.SameAs(secondTarget));
+        }
+    }
+
+    [Test]
+    public void PrewarmerTargetScope_ForwardsTargetAndAvailability()
+    {
+        TargetScopeProvider inner = new();
+        PrewarmerScopeProvider decorated = new(inner, new PrewarmerState(NewCaches(), isPrewarmer: true), LimboLogs.Instance);
+        BlockHeader target = Build.A.BlockHeader.WithTimestamp(6543).TestObject;
+
+        Assert.That(decorated.HasStateForTarget(target), Is.True);
+        Assert.That(decorated.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+        scope!.Dispose();
+
+        Assert.That(inner.LastTarget, Is.SameAs(target));
+        Assert.That(inner.LastMetrics, Is.Not.Null);
+    }
+
+    [Test]
+    public void TargetAwareMethodsWithUnavailableParentReturnFalse()
+    {
+        using Context context = new(false, TestParentHeaderProvider.Unavailable);
+        BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithParentHash(TestItem.KeccakA).TestObject;
+
+        Assert.That(context.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(context.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(scope, Is.Null);
+    }
+
+    [Test]
+    public void TargetAwareMethodsWithAbsentParentReturnFalse([Values(false, true)] bool useFlat)
+    {
+        using Context context = new(useFlat, parentHeaderProvider: TestParentHeaderProvider.Unavailable);
+        BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithParentHash(TestItem.KeccakA).TestObject;
+
+        Assert.That(context.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(context.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(scope, Is.Null);
+    }
+
+    [Test]
+    public void LegacyScopeProviderUsesNotSupportedDefaults()
+    {
+        IWorldStateScopeProvider provider = new LegacyScopeProvider();
+        BlockHeader target = Build.A.BlockHeader.WithNumber(1).TestObject;
+
+        Assert.That(() => provider.HasStateForTarget(target), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => provider.TryBeginScope(target, new LocalMetrics(), out _), Throws.TypeOf<NotSupportedException>());
+    }
+
+    [Test]
+    public void WorldStateTargetScope_FailedAcquisitionLeavesScopeReusableAndProtectsNestedScope([Values] bool decorated)
+    {
+        TargetScopeProvider provider = new() { TryResult = false };
+        IWorldState state = decorated
+            ? new TargetWorldStateDecorator(new WorldState(provider, LimboLogs.Instance))
+            : new WorldState(provider, LimboLogs.Instance);
+        BlockHeader target = Build.A.BlockHeader.WithTimestamp(1).TestObject;
+
+        Assert.That(state.HasStateForTarget(target), Is.False);
+        Assert.That(provider.LastTarget, Is.SameAs(target));
+        Assert.That(state.TryBeginScope(target, out IDisposable failedScope), Is.False);
+        Assert.That(provider.LastTarget, Is.SameAs(target));
+        Assert.That(failedScope, Is.Null);
+        Assert.That(state.IsInScope, Is.False);
+
+        provider.TryResult = true;
+        Assert.That(state.HasStateForTarget(target), Is.True);
+        Assert.That(provider.LastTarget, Is.SameAs(target));
+        Assert.That(state.TryBeginScope(target, out IDisposable scope), Is.True);
+        Assert.That(provider.LastTarget, Is.SameAs(target));
+        Assert.That(state.IsInScope, Is.True);
+        Assert.That(() => state.TryBeginScope(target, out _), Throws.InvalidOperationException);
+        Assert.That(state.IsInScope, Is.True);
+        scope!.Dispose();
+        Assert.That(state.IsInScope, Is.False);
+    }
+
+    [Test]
     public void Test_CanSaveToState()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -94,7 +275,7 @@ public class ScopeProviderTests(bool useFlat)
         [Values(1, 3, 32)] int valueLength,
         [Values(1UL, 1023UL, 1024UL, ulong.MaxValue)] ulong index, [Values] bool delete)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -139,7 +320,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_CanSaveToCode()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
@@ -161,7 +342,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_NullAccountWithNonEmptyStorageDoesNotThrow()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
 
         // Simulates the EIP-161 scenario: storage is flushed for an account that was
@@ -179,7 +360,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_HintBalWithSink_MatchesIndividualReads()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         // Setup: write accounts with storage
         Hash256 stateRoot;
@@ -253,7 +434,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads([Values(10, 1500)] int slotCount)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -299,7 +480,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_HintBal_DoesNotThrow()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -415,7 +596,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ConsumerCommit_WritesTheBlocksFinalValuesBackIntoTheCarriedCaches()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -450,7 +631,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_StorageOnlyChange_CachesTheAccountWithItsNewStorageRoot()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Hash256 baseStorageRoot = CachedAccount(caches, TestItem.AddressA).StorageRoot;
@@ -475,7 +656,7 @@ public class ScopeProviderTests(bool useFlat)
     [TestCase(false, TestName = "Test_PrepareFor_TheParentRoot_ClearsTheCachesThatMovedOn")]
     public void Test_PrepareFor_AfterACommit(bool committedRoot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _));
@@ -503,7 +684,7 @@ public class ScopeProviderTests(bool useFlat)
     [TestCase(false, TestName = "Test_StorageClear_OfAnAccountWithoutStorage_KeepsTheStorageCache")]
     public void Test_StorageClear(bool preExistingStorage)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Address cleared = preExistingStorage ? TestItem.AddressA : TestItem.AddressD;
@@ -536,7 +717,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_DestroyedAccount_DropsItsCachedSlots()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -563,7 +744,7 @@ public class ScopeProviderTests(bool useFlat)
     [TestCase(false, TestName = "Test_AccountDestroyedAcrossTwoFlushes_CreatedInTheBlock_LeavesNoTrace")]
     public void Test_AccountDestroyedAcrossTwoFlushes(bool preExistingStorage)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Address destroyed = preExistingStorage ? TestItem.AddressA : TestItem.AddressD;
@@ -601,7 +782,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_StorageWrittenForAnAccountThatEndsAbsent_IsNotCached()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         StorageCell slotD1 = new(TestItem.AddressD, 1);
@@ -632,7 +813,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_StorageWrittenWithoutTheAccountEverLoaded_DropsTheStorageCache()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         StorageCell slotD1 = new(TestItem.AddressD, 1);
@@ -661,7 +842,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_DirectStorageRead_OfAnAccountTheBlockNeverLoaded_ClearsNothing()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -687,7 +868,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_RevertedStorageClear_LeavesNoStaleCachedValue()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -718,7 +899,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_SlotSetToZero_IsCachedAsZero()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -740,7 +921,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_TouchedEmptyAccountWithStorage_IsRemovedWithItsCachedSlots()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         StorageCell slotE2 = new(TestItem.AddressE, 2);
@@ -771,7 +952,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_TwoBlocksInOneScope_CarryTheCachesThroughBothCommits()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -812,7 +993,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_DetachedStorageChanges_SurviveTheNextBlock()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         PreBlockCaches caches = NewCaches();
         caches.PrepareFor(baseRoot);
@@ -853,7 +1034,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_SecondBlockInAScope_LeavesTheFirstsDetachedChangesAlone()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -887,7 +1068,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ScopeEndingWithoutACommit_LeavesTheCachesAtTheBaseState()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
@@ -1127,7 +1308,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ConsumerScope_AtAnotherState_ClearsStaleCaches()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         Hash256 otherRoot;
@@ -1180,7 +1361,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_HintBal_Smoke_PrewarmerWrapped()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -1214,7 +1395,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_MainScope_RegisteredForConsumerScopeLifetime([Values] bool isPrewarmer)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider provider = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer), LimboLogs.Instance);
@@ -1277,7 +1458,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorAccountRead_WarmsNothing()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         // A read leaves the account's leaf alone, so the commit never walks its path.
@@ -1289,7 +1470,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorAccountWrite_WarmsTheAccount()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot,
@@ -1301,7 +1482,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorStorageWrite_WarmsTheSlotAndTheContractsAccount([Values(1, 8)] int repetitions)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         // The storage root lives in the account, so writing a slot rewrites the contract's leaf as well, and
@@ -1346,7 +1527,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorStorageDestroy_WarmsTheContractsAccount()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         // Destroying storage moves the root without writing a slot, so nothing else on the write path hints it.
@@ -1362,7 +1543,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorStorageClear_WarmsTheContractsAccount()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
@@ -1377,7 +1558,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorBlock_WarmsWhatTheCommitRewritesAndNothingElse()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
@@ -1398,7 +1579,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorStorageRead_WarmsNothing()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
 
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1, out _));
@@ -1410,7 +1591,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorHintWarmSlot_RoutesToMainScope()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
@@ -1430,7 +1611,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PreBlockCacheCounters_CountConsumerProbesOnly()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -1485,7 +1666,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_ZeroStorageCacheEntry_DoesNotReadBackingTree()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -1522,7 +1703,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorStorageCapture_SkipsBackingReadWithoutCachingSpeculativeValue()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -1566,7 +1747,7 @@ public class ScopeProviderTests(bool useFlat)
     {
         Assume.That(useFlat, Is.True);
 
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
@@ -1602,6 +1783,48 @@ public class ScopeProviderTests(bool useFlat)
                 scope.HintWarmSlot(in addressA, 1);
             });
         }
+    }
+
+    private sealed class TargetWorldStateDecorator(IWorldState state) : WorldStateDecorator(state);
+
+    private sealed class LegacyScopeProvider : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader baseBlock) => true;
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => Substitute.For<IWorldStateScopeProvider.IScope>();
+    }
+
+    private sealed class TargetScopeProvider : IWorldStateScopeProvider
+    {
+        public bool TryResult { get; set; } = true;
+        public List<BlockHeader> Targets { get; } = [];
+        public BlockHeader LastTarget { get; private set; }
+        public LocalMetrics LastMetrics { get; private set; }
+
+        public bool HasRoot(BlockHeader baseBlock) => true;
+
+        public bool HasStateForTarget(BlockHeader targetBlock)
+        {
+            LastTarget = targetBlock;
+            Targets.Add(targetBlock);
+            return TryResult;
+        }
+
+        public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            LastTarget = targetBlock;
+            Targets.Add(targetBlock);
+            LastMetrics = metrics;
+            if (!TryResult)
+            {
+                scope = null;
+                return false;
+            }
+
+            scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+            return true;
+        }
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => Substitute.For<IWorldStateScopeProvider.IScope>();
     }
 
 #nullable enable

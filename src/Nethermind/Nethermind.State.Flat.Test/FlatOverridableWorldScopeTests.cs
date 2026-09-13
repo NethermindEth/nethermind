@@ -79,6 +79,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<IProcessExitSource>(_ => new CancellationTokenSourceProcessExitSource(_cancellationTokenSource))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
+                .AddSingleton<IParentHeaderProvider>(UnavailableParentHeaderProvider.Instance)
                 .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
@@ -267,6 +268,30 @@ public class FlatOverridableWorldScopeTests
             // Verify no calls to main FlatDbManager
             Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
         }
+    }
+
+    [Test]
+    public void ResetOverrides_PreservesAlreadyOpenedScopeLease()
+    {
+        using TestContext ctx = new();
+        FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
+        Account account = TestItem.GenerateRandomAccount();
+        BlockHeader? block = null;
+
+        using (IWorldStateScopeProvider.IScope commitScope = overridableScope.WorldState.BeginScope(null))
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = commitScope.StartWriteBatch(1);
+            writeBatch.Set(TestItem.AddressA, account);
+            commitScope.Commit(1);
+            block = Build.A.BlockHeader.WithNumber(1).WithStateRoot(commitScope.RootHash).TestObject;
+        }
+
+        IWorldStateScopeProvider.IScope heldScope = overridableScope.WorldState.BeginScope(block);
+        overridableScope.ResetOverrides();
+
+        Assert.That(heldScope.Get(TestItem.AddressA)!.Balance, Is.EqualTo(account.Balance));
+        heldScope.Dispose();
+        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block, TestItem.AddressA, out _), Is.False);
     }
 
     [Test]
