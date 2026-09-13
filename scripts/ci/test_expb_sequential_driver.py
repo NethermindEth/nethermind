@@ -248,6 +248,96 @@ class ExpbSequentialDriverTests(unittest.TestCase):
 
         cv_cell = next(line for line in summary.splitlines() if line.startswith("| 1 |"))
         self.assertIn("mismatched block ids", cv_cell)
+        aggregate_row = next(line for line in summary.splitlines() if line.startswith("| `repo:image-a`"))
+        self.assertIn("| 2 | n/a | n/a |", aggregate_row)
+
+    def test_summary_suppresses_mean_for_mixed_source_or_count(self):
+        def record(image_id: str, source: str, count: str, average: str) -> dict:
+            return {
+                "image_id": image_id,
+                "run": 1,
+                "status": "success",
+                "metrics": {
+                    "SOURCE": source,
+                    "COUNT": count,
+                    "AVG": average,
+                    "AVG_EXACT": average,
+                },
+                "sse_block_ids": [10, 11] if source == "SSE" else [],
+            }
+
+        cases = (
+            ("mixed source", [record("image-a", "SSE", "2", "10"), record("image-a", "TTFB", "2", "12")]),
+            ("mismatched count", [record("image-a", "SSE", "2", "10"), record("image-a", "SSE", "3", "12")]),
+        )
+        for name, samples in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                args = Namespace(
+                    images_json='[{"id":"image-a","image":"repo:image-a"}]',
+                    output_dir=str(root / "campaign"),
+                    run_count=2,
+                    measurement_mode="standard",
+                )
+                campaign = sequential_driver.Campaign.__new__(sequential_driver.Campaign)
+                campaign.args = args
+                campaign.output_dir = root / "campaign"
+                campaign.output_dir.mkdir()
+                campaign.aborted = False
+                campaign.failures = 0
+                campaign.preflight = None
+                campaign.samples = samples
+                campaign.write_summary()
+                summary = (campaign.output_dir / "summary.md").read_text()
+                aggregate_row = next(line for line in summary.splitlines() if line.startswith("| `repo:image-a`"))
+                self.assertIn("| 2 | n/a | n/a |", aggregate_row)
+
+    def test_summary_aggregates_successes_and_compares_comparable_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = Namespace(
+                images_json='[{"id":"image-a","image":"repo:a","tag":"a"},{"id":"image-b","image":"repo:b","tag":"b"}]',
+                output_dir=str(root / "campaign"),
+                run_count=2,
+                measurement_mode="standard",
+            )
+            campaign = sequential_driver.Campaign.__new__(sequential_driver.Campaign)
+            campaign.args = args
+            campaign.output_dir = root / "campaign"
+            campaign.output_dir.mkdir()
+            campaign.aborted = False
+            campaign.failures = 2
+            campaign.preflight = None
+            def record(image_id: str, run: int, status: str, average: str) -> dict:
+                return {
+                    "image_id": image_id,
+                    "run": run,
+                    "status": status,
+                    "started_at": "2026-09-13T00:00:00Z",
+                    "metrics_source": "SSE",
+                    "sse_block_ids": [100, 101],
+                    "metrics": {
+                        "SOURCE": "SSE",
+                        "COUNT": "2",
+                        "AVG": average,
+                        "AVG_EXACT": average,
+                        "MEDIAN": average,
+                        "P95": average,
+                    },
+                }
+            campaign.samples = [
+                record("image-a", 1, "success", "10.00"),
+                record("image-a", 2, "failed", "99.00"),
+                record("image-b", 1, "success", "12.00"),
+                record("image-b", 2, "failed", "98.00"),
+            ]
+            campaign.write_summary()
+            summary = (campaign.output_dir / "summary.md").read_text()
+
+        self.assertIn("| `a` (image-a) | 1 | 10.00 | +0.00% |", summary)
+        self.assertIn("| `b` (image-b) | 1 | 12.00 | +20.00% |", summary)
+        failed_row = next(line for line in summary.splitlines() if "| `a` (image-a) | 2 |" in line)
+        self.assertIn("| n/a | n/a |", failed_row)
 
     def test_delivery_count_gate_uses_k6_rows_when_sse_is_shorter(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -276,6 +366,38 @@ class ExpbSequentialDriverTests(unittest.TestCase):
         self.assertEqual(1, sample["delivered_count"])
         self.assertEqual(2, sample["expected_amount"])
         self.assertFalse(sample["delivery_count_valid"])
+        self.assertEqual("failed", sample["status"])
+
+    def test_partial_sse_coverage_fails_without_replacing_the_recorded_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            campaign = sequential_driver.Campaign(self.campaign_args(root, amount="3"))
+            process = Mock()
+            process.stdout = iter(
+                (
+                    "[payload-server] client_metric block_number=10 processing_ms=10\n"
+                    "| 10 | 100 | 10.0 |\n"
+                    "| 11 | 100 | 10.0 |\n"
+                    "| 12 | 100 | 10.0 |\n"
+                    "Nethermind is shut down\nCleanup completed\n"
+                ).splitlines(keepends=True)
+            )
+            process.wait.return_value = 0
+            process.poll.return_value = 0
+            with (
+                patch.object(campaign, "render_config", side_effect=lambda _image, _run, path: path.write_text("scenario: test\n") or "scenario"),
+                patch.object(sequential_driver.subprocess, "Popen", return_value=process),
+                patch.object(sequential_driver, "verify_cleanup", return_value=(True, [])),
+                patch.object(sequential_driver, "verify_snapshot_scratch", return_value=(True, [])),
+            ):
+                sample = campaign.run_sample(
+                    {"id": "image-a", "image": "repo:image-a", "tag": "image-a", "date": "n/a"}, 1
+                )
+
+        self.assertEqual("SSE", sample["metrics_source"])
+        self.assertEqual(1, sample["metrics_count"])
+        self.assertEqual(3, sample["delivered_count"])
+        self.assertFalse(sample["sse_coverage_valid"])
         self.assertEqual("failed", sample["status"])
 
     def test_compute_warm_requires_concrete_success_for_each_delivered_row(self):

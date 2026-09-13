@@ -13,9 +13,11 @@ import datetime as dt
 import json
 import math
 import os
+import platform
 from pathlib import Path
 import re
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -118,6 +120,12 @@ def coefficient_of_variation(values: Iterable[float]) -> str:
         return "unavailable"
     variance = sum((number - mean) ** 2 for number in numbers) / (len(numbers) - 1)
     return f"{math.sqrt(variance) / abs(mean) * 100:.2f}%"
+
+
+def percentage_delta(value: float | None, baseline: float | None) -> str:
+    if value is None or baseline is None or baseline == 0:
+        return "n/a"
+    return f"{(value - baseline) / baseline * 100:+.2f}%"
 
 
 def parse_output(log: str) -> tuple[dict[str, str], list[str], list[str], list[dict[str, Any]]]:
@@ -350,6 +358,8 @@ class Campaign:
         self.failures = 0
         self.samples: list[dict[str, Any]] = []
         self.preflight: dict[str, Any] | None = None
+        self.runner_architecture = platform.machine() or "unknown"
+        self.runner_hostname = socket.gethostname() or "unknown"
         self.flags = parse_flags(args.additional_extra_flags or "")
         self.client_env = parse_client_env(args.client_env or "")
         if args.measurement_mode == "compute-warm":
@@ -514,6 +524,8 @@ class Campaign:
             "image": image["image"],
             "tag": image["tag"],
             "date": image["date"],
+            "architecture": self.runner_architecture,
+            "runner_hostname": self.runner_hostname,
             "run": run,
             "started_at": started,
             "config": str(config_path),
@@ -722,6 +734,16 @@ class Campaign:
         delivered_count = metadata.get("delivered_count", 0)
         valid_delivery = isinstance(expected_amount, int) and delivered_count == expected_amount
         metadata["delivery_count_valid"] = valid_delivery
+        sse_count = int(metrics.get("COUNT", "0")) if metrics.get("SOURCE") == "SSE" else None
+        if sse_count is None:
+            sse_coverage_valid = True
+        else:
+            sse_coverage_valid = delivered_count > 0 and sse_count >= 1 and sse_count in {
+                delivered_count,
+                delivered_count - 1,
+            }
+        metadata["sse_count"] = sse_count
+        metadata["sse_coverage_valid"] = sse_coverage_valid
         lines = [f"{key}={value}" for key, value in metrics.items()]
         lines.extend(
             [
@@ -734,6 +756,8 @@ class Campaign:
                 f"EXPECTED_AMOUNT={metadata.get('expected_amount', 'unavailable')}",
                 f"DELIVERED_COUNT={metadata.get('delivered_count', 0)}",
                 f"DELIVERY_COUNT_VALID={'true' if valid_delivery else 'false'}",
+                f"SSE_COUNT={sse_count if sse_count is not None else 'n/a'}",
+                f"SSE_COVERAGE_VALID={'true' if sse_coverage_valid else 'false'}",
                 f"CLEANUP_VERIFIED={'true' if cleanup_ok else 'false'}",
                 f"NORMAL_SHUTDOWN={'true' if normal_shutdown else 'false'}",
                 f"CLEANUP_COMPLETED_MARKER={'true' if cleanup_completed else 'false'}",
@@ -769,6 +793,10 @@ class Campaign:
                 failure_reasons.append(f"delivery count expected {expected_amount}, got {delivered_count}")
             else:
                 failure_reasons.append("delivery count expectation is unavailable")
+        if not sse_coverage_valid:
+            failure_reasons.append(
+                f"SSE coverage expected {delivered_count} or {max(1, delivered_count - 1)}, got {sse_count}"
+            )
         if not valid_metrics:
             failure_reasons.append("processing metrics are missing")
         if not normal_shutdown:
@@ -809,27 +837,95 @@ class Campaign:
         return metadata
 
     def write_summary(self) -> None:
+        images = load_image_plan(self.args.images_json)
         by_image: dict[str, list[dict[str, Any]]] = {}
         for sample in self.samples:
             by_image.setdefault(sample["image_id"], []).append(sample)
+
+        aggregates: dict[str, float | None] = {}
+        signatures: dict[str, tuple[Any, ...] | None] = {}
+        metric_runs_by_image: dict[str, list[dict[str, Any]]] = {}
+        for image in images:
+            runs = by_image.get(image["id"], [])
+            metric_runs = [
+                sample
+                for sample in runs
+                if sample.get("status") == "success"
+                and sample.get("metrics", {}).get("AVG")
+                and sample.get("metrics", {}).get("COUNT")
+            ]
+            metric_runs_by_image[image["id"]] = metric_runs
+            if metric_runs:
+                aggregates[image["id"]] = sum(
+                    float(sample["metrics"].get("AVG_EXACT", sample["metrics"]["AVG"]))
+                    for sample in metric_runs
+                ) / len(metric_runs)
+            else:
+                aggregates[image["id"]] = None
+
+            source_values = {
+                sample.get("metrics", {}).get("SOURCE", sample.get("metrics_source", "none"))
+                for sample in metric_runs
+            }
+            count_values = {sample["metrics"]["COUNT"] for sample in metric_runs}
+            if len(source_values) != 1 or len(count_values) != 1:
+                signatures[image["id"]] = None
+            else:
+                source = next(iter(source_values))
+                count = next(iter(count_values))
+                if source == "SSE":
+                    sequences = [
+                        tuple(sample["sse_block_ids"])
+                        for sample in metric_runs
+                        if isinstance(sample.get("sse_block_ids"), list)
+                    ]
+                    if len(sequences) != len(metric_runs) or len(set(sequences)) != 1:
+                        signatures[image["id"]] = None
+                    else:
+                        signatures[image["id"]] = (source, count, sequences[0])
+                else:
+                    signatures[image["id"]] = (source, count)
+            if signatures[image["id"]] is None:
+                aggregates[image["id"]] = None
+
+        baseline_id = images[0]["id"] if images else None
+        baseline_mean = aggregates.get(baseline_id) if baseline_id else None
+        baseline_signature = signatures.get(baseline_id) if baseline_id else None
+        runner_architecture = getattr(self, "runner_architecture", None) or platform.machine() or "unknown"
+        runner_hostname = getattr(self, "runner_hostname", None) or socket.gethostname() or "unknown"
+
+        def aggregate_delta(image_id: str) -> str:
+            value = aggregates.get(image_id)
+            if image_id == baseline_id and value is not None and baseline_signature is not None:
+                return "+0.00%"
+            if (
+                value is None
+                or baseline_mean is None
+                or baseline_signature is None
+                or signatures.get(image_id) is None
+                or signatures[image_id] != baseline_signature
+            ):
+                return "n/a"
+            return percentage_delta(value, baseline_mean)
+
         summary: list[str] = [
             "## EXPB Multi-Image Campaign",
             "",
-            f"Images: {len(by_image)} | Runs per image: {self.args.run_count} | Measurement mode: `{self.args.measurement_mode}`",
+            f"Images: {len(images)} | Runs per image: {self.args.run_count} | Measurement mode: `{self.args.measurement_mode}`",
+            f"Runner: `{runner_hostname}` | Architecture: `{runner_architecture}`",
             "",
-            "| # | Image | Run | Date | Status | Source | Count | AVG (ms) | CV across runs |",
-            "|---:|---|---:|---|---|---|---:|---:|---:|",
+            "| # | Image | Run | Date | Status | Source | Count | AVG (ms) | Median (ms) | P95 (ms) | Image mean AVG (ms) | AVG Delta vs First | CV across runs |",
+            "|---:|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
         ]
         row = 0
-        for image in load_image_plan(self.args.images_json):
+        for image in images:
             runs = by_image.get(image["id"], [])
             successful = [sample for sample in runs if sample.get("status") == "success"]
-            sources = {sample.get("metrics_source", "none") for sample in successful}
-            metric_runs = [
-                sample
-                for sample in successful
-                if sample.get("metrics", {}).get("AVG") and sample.get("metrics", {}).get("COUNT")
-            ]
+            metric_runs = metric_runs_by_image[image["id"]]
+            sources = {
+                sample.get("metrics", {}).get("SOURCE", sample.get("metrics_source", "none"))
+                for sample in metric_runs
+            }
             counts = {sample["metrics"]["COUNT"] for sample in metric_runs}
             sse_runs = [sample for sample in metric_runs if sample.get("metrics", {}).get("SOURCE") == "SSE"]
             sse_block_sequences = [
@@ -849,18 +945,40 @@ class Campaign:
                     for sample in metric_runs
                 ]
                 cv = coefficient_of_variation(avgs)
+            image_mean = aggregates[image["id"]]
+            image_mean_text = f"{image_mean:.2f}" if image_mean is not None else "n/a"
+            delta = aggregate_delta(image["id"])
             for sample in runs:
                 row += 1
                 metrics = sample.get("metrics", {})
                 status = sample.get("status", "failed")
                 if sample.get("cleanup_problems"):
                     status = "failed (cleanup)"
+                sample_mean = image_mean_text if sample.get("status") == "success" else "n/a"
+                sample_delta = delta if sample.get("status") == "success" else "n/a"
                 summary.append(
-                    f"| {row} | `{image['tag']}` ({image['id']}) | {sample['run']} | {image['date']} | {status} | {metrics.get('SOURCE', 'n/a')} | {metrics.get('COUNT', 'n/a')} | {metrics.get('AVG', 'n/a')} | {cv} |"
+                    f"| {row} | `{image['tag']}` ({image['id']}) | {sample['run']} | {image['date']} | {status} | {metrics.get('SOURCE', 'n/a')} | {metrics.get('COUNT', 'n/a')} | {metrics.get('AVG', 'n/a')} | {metrics.get('MEDIAN', 'n/a')} | {metrics.get('P95', 'n/a')} | {sample_mean} | {sample_delta} | {cv} |"
                 )
             if not runs:
                 row += 1
-                summary.append(f"| {row} | `{image['tag']}` ({image['id']}) | - | {image['date']} | missing | n/a | n/a | n/a | unavailable |")
+                summary.append(
+                    f"| {row} | `{image['tag']}` ({image['id']}) | - | {image['date']} | missing | n/a | n/a | n/a | n/a | n/a | n/a | n/a | unavailable |"
+                )
+        summary.extend(
+            [
+                "",
+                "### Per-image aggregates",
+                "",
+                "| Image | Successful runs | Mean AVG (ms) | AVG Delta vs First |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+        for image in images:
+            metric_runs = metric_runs_by_image[image["id"]]
+            image_mean = aggregates[image["id"]]
+            summary.append(
+                f"| `{image['tag']}` ({image['id']}) | {len(metric_runs)} | {f'{image_mean:.2f}' if image_mean is not None else 'n/a'} | {aggregate_delta(image['id'])} |"
+            )
         summary.extend(
             [
                 "",
@@ -881,6 +999,8 @@ class Campaign:
                     "finished_at": utc_now(),
                     "run_count": self.args.run_count,
                     "measurement_mode": self.args.measurement_mode,
+                    "architecture": runner_architecture,
+                    "runner_hostname": runner_hostname,
                     "aborted": self.aborted,
                     "failure_count": self.failures,
                     "preflight": self.preflight,
@@ -942,11 +1062,15 @@ class Campaign:
         return 1 if self.failures else 0
 
     def write_manifest(self) -> None:
+        runner_architecture = getattr(self, "runner_architecture", None) or platform.machine() or "unknown"
+        runner_hostname = getattr(self, "runner_hostname", None) or socket.gethostname() or "unknown"
         (self.output_dir / "campaign.json").write_text(
             json.dumps(
                 {
                     "run_count": self.args.run_count,
                     "measurement_mode": self.args.measurement_mode,
+                    "architecture": runner_architecture,
+                    "runner_hostname": runner_hostname,
                     "aborted": self.aborted,
                     "failure_count": self.failures,
                     "preflight": self.preflight,
