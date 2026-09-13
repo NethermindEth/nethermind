@@ -142,6 +142,24 @@ public class MetricsIntegrationTests
     }
 
     [Test]
+    public void Code_staged_when_a_scope_ends_is_not_reported_as_written()
+    {
+        long startCodeWrites = Metrics.MainThreadCodeWrites;
+        long startCodeBytesWritten = Metrics.MainThreadCodeBytesWritten;
+
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        using (EvmTestHarness harness = new())
+        {
+            // Staged for CodeDb and never committed: closing the scope drops the whole batch, so this
+            // must be unwound before the scope folds its counters into the globals.
+            harness.DeployCode(TestItem.AddressC, code);
+        }
+
+        Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
+        Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
+    }
+
+    [Test]
     public void EIP7702_delegation_set_increments_metric()
     {
         PrivateKey sender = TestItem.PrivateKeyA;

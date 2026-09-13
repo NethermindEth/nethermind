@@ -474,10 +474,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// reference it. Dropping it loses nothing: such code is already durable in CodeDb, which is why
     /// the account carries its hash, so the staging is a redundant re-write rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
-    /// same code would be suppressed and lost. The staged-write counters are rolled back too, so on the
-    /// <see cref="Restore"/> and <see cref="Reset"/>-without-block-changes paths they keep reporting the
-    /// bytes that actually reach CodeDb; a full reset drops the whole batch after the counters have
-    /// already been flushed, so it does not roll them back.
+    /// same code would be suppressed and lost. The staged-write counters are rolled back too, so they
+    /// keep reporting the bytes that actually reach CodeDb.
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
@@ -1031,19 +1029,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public void Reset(bool resetBlockChanges = true)
     {
         if (_logger.IsTrace) Trace();
+        // The changes being discarded are exactly the ones the journal covers (it is cleared on every
+        // commit), so unwind it on both paths: otherwise its code either reaches CodeDb unreferenced
+        // or, when the batch is dropped below, stays counted as written without ever being written.
+        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         if (resetBlockChanges)
         {
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
             _removedWithStorage.Clear();
             _codeBatch?.Clear();
-            _codeInsertJournal.Clear();
-        }
-        else
-        {
-            // The batch survives this reset, but the changes being discarded are exactly the ones the
-            // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
-            if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
