@@ -48,11 +48,8 @@ namespace Nethermind.AuRa.Test.Validators
         public bool should_validate_correctly(Address address, ulong index) =>
             _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index, out _);
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(4)]
-        [TestCase(10)]
-        public void should_get_current_sealers_count(int validatorCount) =>
+        [Test]
+        public void should_get_current_sealers_count([Values(1, 2, 4, 10)] int validatorCount) =>
             Assert.That(GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length, Is.EqualTo(validatorCount));
 
         [TestCase(1, ExpectedResult = 1)]

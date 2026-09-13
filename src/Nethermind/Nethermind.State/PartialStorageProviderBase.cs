@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -16,10 +17,10 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase(ILogManager? logManager)
+    internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
-        protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
 
         // stack of snapshot indexes on changes for start of each transaction
@@ -162,7 +163,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, [NotNullWhen(true)] out byte[]? bytes)
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.

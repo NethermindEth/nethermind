@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -98,10 +96,20 @@ public static unsafe partial class Bytes
         }
         else
         {
-            // scalar fallback
-            for (int i = 0; i < thisSpan.Length; i++)
+            // Whole words, then a byte tail: the widest access the target has without SIMD.
+            // Correct at any base; the win needs a word-aligned start, which Bloom's byte[256] has.
+            int i = 0;
+            for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
             {
-                Unsafe.Add(ref thisRef, i) |= Unsafe.Add(ref valueRef, i);
+                ref byte destination = ref Unsafe.Add(ref thisRef, i);
+                Unsafe.WriteUnaligned(ref destination,
+                    Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
+            }
+
+            for (; i < thisSpan.Length; i++)
+            {
+                ref byte destination = ref Unsafe.Add(ref thisRef, i);
+                destination = (byte)(destination | Unsafe.Add(ref valueRef, i));
             }
         }
     }
@@ -157,9 +165,18 @@ public static unsafe partial class Bytes
             if (i == thisSpan.Length) return;
         }
 
+        // Whole words, then a byte tail, as in Or above.
+        for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            Unsafe.WriteUnaligned(ref destination,
+                Unsafe.ReadUnaligned<ulong>(ref destination) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
+        }
+
         for (; i < thisSpan.Length; i++)
         {
-            Unsafe.Add(ref thisRef, i) ^= Unsafe.Add(ref valueRef, i);
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            destination = (byte)(destination ^ Unsafe.Add(ref valueRef, i));
         }
     }
 
@@ -188,39 +205,6 @@ public static unsafe partial class Bytes
         }
 
         return result;
-    }
-
-    /// <summary>Counts the leading zero bits of the 32-byte big-endian word at <paramref name="word"/>.</summary>
-    /// <remarks>
-    /// The word is taken by reference because every caller already holds it in memory; by value it would
-    /// have to be homed on the frame again to reach a single byte of it.
-    /// <para>
-    /// Scalar on every target. A vector form exists — compare against zero, take the mask, index the
-    /// first non-zero byte — but its dependency chain runs through a mask extraction, and measured
-    /// against this chain it lost on every word distribution: 21% on uniformly random magnitudes, 45%
-    /// on full-width words, and about 2x inside the interpreter, where the operation sits on the
-    /// critical path rather than overlapping across loop iterations.
-    /// </para>
-    /// </remarks>
-    /// <returns>The number of leading zero bits; 256 for a zero word.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int CountLeadingZeroBits(ref byte word)
-    {
-        ref ulong parts = ref Unsafe.As<byte, ulong>(ref word);
-        ulong part = BinaryPrimitives.ReverseEndianness(parts);
-        if (part != 0)
-            return BitOperations.LeadingZeroCount(part);
-
-        part = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref parts, 1));
-        if (part != 0)
-            return 64 + BitOperations.LeadingZeroCount(part);
-
-        part = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref parts, 2));
-        if (part != 0)
-            return 128 + BitOperations.LeadingZeroCount(part);
-
-        part = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref parts, 3));
-        return part == 0 ? 256 : 192 + BitOperations.LeadingZeroCount(part);
     }
 
     [StackTraceHidden, DoesNotReturn]

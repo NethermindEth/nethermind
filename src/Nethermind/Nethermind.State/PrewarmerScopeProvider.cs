@@ -311,7 +311,7 @@ public class PrewarmerScopeProvider(
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+            if (preBlockCache.TryGetValue(in storageCell, out byte[]? value) && value is not null)
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
@@ -353,7 +353,7 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index);
-            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+            if (preBlockCache.TryGetValue(in storageCell, out byte[]? value) && value is not null)
             {
                 return value;
             }

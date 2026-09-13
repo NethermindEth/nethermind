@@ -16,23 +16,9 @@ namespace Nethermind.Trie.ZkEvm.Test;
 /// </remarks>
 public class GuestNibblesTests
 {
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(17)]
-    [TestCase(31)]
-    [TestCase(32)]
-    [TestCase(33)]
-    public void Expand_nibbles_matches_the_scalar_reference(int count)
+    [Test]
+    public void Expand_nibbles_matches_the_scalar_reference(
+        [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33)] int count)
     {
         byte[] bytes = Fill(count, seed: 7);
         byte[] expected = ExpandReference(bytes);
@@ -44,17 +30,13 @@ public class GuestNibblesTests
     }
 
     /// <remarks>
-    /// The SWAR body consumes four bytes at a time, so <c>count % 4</c> selects which scalar tail
-    /// runs. Every high nibble is 0x0 and every low nibble 0xF here, which catches a swapped pair
-    /// that a symmetric byte value would hide.
+    /// The counts walk the word body, the four-byte body and the scalar tail, and each combination of
+    /// them. Every high nibble is 0x0 and every low nibble 0xF here, which catches a swapped pair that
+    /// a symmetric byte value would hide.
     /// </remarks>
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(6)]
-    [TestCase(7)]
-    public void Expand_nibbles_orders_the_pair_high_then_low_across_every_tail(int count)
+    [Test]
+    public void Expand_nibbles_orders_the_pair_high_then_low_across_every_body_and_tail(
+        [Values(1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)] int count)
     {
         byte[] bytes = new byte[count];
         Array.Fill(bytes, (byte)0x0F);
@@ -69,26 +51,23 @@ public class GuestNibblesTests
         }
     }
 
+    /// <remarks>
+    /// The pad is a full word wide, so the 64-bit store of a body that ran one iteration too far shows
+    /// up at every count, not only where it would overshoot into the next word.
+    /// </remarks>
     [Test]
-    public void Expand_nibbles_writes_nothing_beyond_the_pairs()
+    public void Expand_nibbles_writes_nothing_beyond_the_pairs([Values(1, 3, 4, 5, 7, 8, 9, 12, 16)] int count)
     {
-        const int count = 6;
-        byte[] actual = new byte[(count * 2) + 4];
+        byte[] actual = new byte[(count * 2) + sizeof(ulong)];
         Array.Fill(actual, (byte)0xCC);
 
         Nibbles.ExpandNibbles(ref Ref(Fill(count, seed: 3)), ref Ref(actual), count);
 
-        Assert.That(actual[(count * 2)..], Is.EqualTo(new byte[] { 0xCC, 0xCC, 0xCC, 0xCC }));
+        Assert.That(actual[(count * 2)..], Is.All.EqualTo((byte)0xCC));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(16)]
-    [TestCase(33)]
-    public void Common_prefix_length_matches_the_bcl_when_equal(int length)
+    [Test]
+    public void Common_prefix_length_matches_the_bcl_when_equal([Values(0, 1, 7, 8, 9, 16, 33)] int length)
     {
         byte[] left = Fill(length, seed: 11);
         byte[] right = (byte[])left.Clone();
@@ -160,6 +139,85 @@ public class GuestNibblesTests
         }
 
         return nibbles;
+    }
+
+    [Test]
+    public void Pack_nibbles_matches_the_scalar_reference(
+        [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33)] int count)
+    {
+        byte[] nibbles = Nibble(count * 2, seed: 3);
+        byte[] expected = PackReference(nibbles);
+        byte[] actual = new byte[count];
+
+        Nibbles.PackNibbles(ref Ref(nibbles), ref Ref(actual), count);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    /// <remarks>
+    /// The SWAR body writes four bytes per word read, so <c>count % 4</c> selects which scalar tail
+    /// runs. Every high nibble is 0x0 and every low nibble 0xF, which catches a swapped pair that a
+    /// symmetric value would hide - the failure a naive lane order produces.
+    /// </remarks>
+    [Test]
+    public void Pack_nibbles_keeps_the_high_nibble_first([Values(1, 2, 3, 4, 5, 7, 8, 9)] int count)
+    {
+        byte[] nibbles = new byte[count * 2];
+        for (int i = 0; i < nibbles.Length; i++) nibbles[i] = (byte)(i % 2 == 0 ? 0x0 : 0xF);
+        byte[] actual = new byte[count];
+
+        Nibbles.PackNibbles(ref Ref(nibbles), ref Ref(actual), count);
+
+        Assert.That(actual, Is.EqualTo(PackReference(nibbles)));
+        Assert.That(actual, Is.All.EqualTo((byte)0x0F));
+    }
+
+    /// <summary>Packing is the exact inverse of expanding, for every length either tail can take.</summary>
+    [Test]
+    public void Pack_undoes_expand([Values(1, 3, 4, 5, 8, 16, 17, 33)] int count)
+    {
+        byte[] bytes = Fill(count, seed: 11);
+        byte[] nibbles = new byte[count * 2];
+        Nibbles.ExpandNibbles(ref Ref(bytes), ref Ref(nibbles), count);
+        byte[] roundTripped = new byte[count];
+
+        Nibbles.PackNibbles(ref Ref(nibbles), ref Ref(roundTripped), count);
+
+        Assert.That(roundTripped, Is.EqualTo(bytes));
+    }
+
+    /// <remarks>
+    /// The pad is a full word wide and the counts straddle <c>count % 4</c>, so a word store that ran
+    /// one iteration too far is visible at the counts where it would not land on the boundary.
+    /// </remarks>
+    [Test]
+    public void Pack_nibbles_writes_no_further_than_count([Values(1, 3, 4, 5, 6, 7, 8, 9)] int count)
+    {
+        byte[] nibbles = Nibble(count * 2, seed: 5);
+        byte[] actual = new byte[count + sizeof(uint)];
+        Array.Fill(actual, (byte)0xAA);
+
+        Nibbles.PackNibbles(ref Ref(nibbles), ref Ref(actual), count);
+
+        Assert.That(actual[count..], Is.All.EqualTo((byte)0xAA));
+    }
+
+    private static byte[] Nibble(int length, int seed)
+    {
+        byte[] nibbles = new byte[length];
+        for (int i = 0; i < length; i++) nibbles[i] = (byte)((i * 7 + seed) & 15);
+        return nibbles;
+    }
+
+    private static byte[] PackReference(byte[] nibbles)
+    {
+        byte[] bytes = new byte[nibbles.Length / 2];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = (byte)((nibbles[i * 2] << 4) | nibbles[(i * 2) + 1]);
+        }
+
+        return bytes;
     }
 
     private static ref byte Ref(byte[] bytes) => ref MemoryMarshal.GetArrayDataReference(bytes);

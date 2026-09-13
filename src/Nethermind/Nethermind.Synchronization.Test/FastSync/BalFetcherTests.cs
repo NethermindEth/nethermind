@@ -26,12 +26,20 @@ namespace Nethermind.Synchronization.Test.FastSync;
 
 public class BalFetcherTests
 {
+    public enum FetchOutcome
+    {
+        Success,
+        Failure,
+        Cancellation,
+    }
+
     private const int BlockCount = 300;
     private const int AllocateTimeoutMs = 5;
 
     private readonly Dictionary<ValueHash256, byte[]> _balByHash = [];
     private int _largestRequest;
     private int _responseLimit;
+    private int _disposedAllocations;
     private IBlockTree _blockTree = null!;
     private MemDb _balDb = null!;
     private BlockAccessListStore _balStore = null!;
@@ -44,6 +52,7 @@ public class BalFetcherTests
         _balByHash.Clear();
         _largestRequest = 0;
         _responseLimit = int.MaxValue;
+        _disposedAllocations = 0;
         _blockTree = Substitute.For<IBlockTree>();
         _balDb = new MemDb();
         _balStore = new BlockAccessListStore(_balDb);
@@ -92,7 +101,7 @@ public class BalFetcherTests
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
         _pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(SyncPeerAllocation.FailedAllocation);
+            .Returns(new SyncPeerAllocation(AllocationContexts.State));
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
@@ -100,6 +109,32 @@ public class BalFetcherTests
         Assert.That(_balStore.Exists(11, b11.Hash!), Is.False);
 
         await _pool.Received().Allocate(Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.State, AllocateTimeoutMs, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Disposes_allocation_after_fetch([Values(FetchOutcome.Success, FetchOutcome.Failure, FetchOutcome.Cancellation)] FetchOutcome outcome)
+    {
+        BlockHeader from = Block(10, bal: null);
+        BlockHeader b11 = Block(11, [0x01, 0x02]);
+        PeerInfo peer = Snap2Peer(outcome);
+        AllocatePeer(peer);
+
+        if (outcome == FetchOutcome.Cancellation)
+        {
+            Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
+        }
+        else
+        {
+            bool result = await _fetcher.EnsureRange(from, b11, default);
+            Assert.That(result, Is.EqualTo(outcome == FetchOutcome.Success));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            int expectedDisposals = outcome == FetchOutcome.Failure ? 50 : 1;
+            Assert.That(_disposedAllocations, Is.EqualTo(expectedDisposals));
+            Assert.That(peer.IsAllocated(AllocationContexts.State), Is.False);
+        }
     }
 
     [Test]
@@ -229,15 +264,24 @@ public class BalFetcherTests
 
     private void AllocatePeer(PeerInfo peer) =>
         _pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => new SyncPeerAllocation(peer, (AllocationContexts)ci[1]));
+            .Returns(ci =>
+            {
+                AllocationContexts contexts = ci.Arg<AllocationContexts>();
+                SyncPeerAllocation allocation = new(contexts, null, () => _disposedAllocations++);
+                allocation.AllocatePeer(peer);
+                return allocation;
+            });
 
-    private PeerInfo Snap2Peer()
+    private PeerInfo Snap2Peer(FetchOutcome outcome = FetchOutcome.Success)
     {
         ISnapSyncPeer snap = Substitute.For<ISnapSyncPeer>();
         snap.SnapProtocolVersion.Returns(SnapVersions.Snap2);
         snap.GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
+                if (outcome == FetchOutcome.Failure) throw new InvalidOperationException("fetch failed");
+                if (outcome == FetchOutcome.Cancellation) throw new OperationCanceledException();
+
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
                 int served = Math.Min(requested.Count, _responseLimit);

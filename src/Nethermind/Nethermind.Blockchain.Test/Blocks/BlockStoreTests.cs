@@ -19,9 +19,8 @@ namespace Nethermind.Blockchain.Test.Blocks;
 [Parallelizable(ParallelScope.All)]
 public class BlockStoreTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Test_can_insert_get_and_remove_blocks(bool cached)
+    [Test]
+    public void Test_can_insert_get_and_remove_blocks([Values] bool cached)
     {
         TestMemDb db = new();
         BlockStore store = new(db);
@@ -50,9 +49,8 @@ public class BlockStoreTests
         db.KeyWasWrittenWithFlags(key, WriteFlags.DisableWAL);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Test_can_get_block_that_was_stored_with_hash(bool cached)
+    [Test]
+    public void Test_can_get_block_that_was_stored_with_hash([Values] bool cached)
     {
         TestMemDb db = new();
         BlockStore store = new(db);

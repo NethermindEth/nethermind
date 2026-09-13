@@ -76,9 +76,8 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [TestCase("8.8.8.8")]
-        [TestCase("fd00:beef:cafe::11")]
-        public void Can_do_enode_with_discovery_port_roundtrip(string host)
+        [Test]
+        public void Can_do_enode_with_discovery_port_roundtrip([Values("8.8.8.8", "fd00:beef:cafe::11")] string host)
         {
             NetworkNode node = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse(host), 30303, 30304))
             {

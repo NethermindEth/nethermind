@@ -26,8 +26,8 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, UInt256>? _preTxStorage;
 
-    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
-    private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
+    private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
 
     public Dictionary<UInt256, StorageChange>.KeyCollection ChangedSlots => _storageChanges.Keys;
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
@@ -69,7 +69,7 @@ public class AccountChangesAtIndex(Address address)
 
     public UInt256 GetOrCapturePreTxStorage(UInt256 key, in UInt256 captureValue)
     {
-        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8);
+        _preTxStorage ??= new Dictionary<UInt256, UInt256>(8, UInt256Comparer.GetOptimized());
         ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxStorage, key, out bool exists);
         if (!exists) slot = captureValue;
         return slot;

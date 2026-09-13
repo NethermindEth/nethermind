@@ -224,9 +224,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
     }
 
-    [TestCase(100)]
-    [TestCase(1000)]
-    public void ManyBaseSnapshots_ShareUnderlyingFiles(int count)
+    [Test]
+    public void ManyBaseSnapshots_ShareUnderlyingFiles([Values(100, 1000)] int count)
     {
         // Regression for the old "Blob arena id space exhausted (65535 arenas per tier)"
         // bug: ids were minted per base-conversion call, so 65k base

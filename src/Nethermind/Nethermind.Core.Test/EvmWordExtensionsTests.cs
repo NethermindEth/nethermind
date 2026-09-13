@@ -10,11 +10,8 @@ namespace Nethermind.Core.Test;
 
 public class EvmWordExtensionsTests
 {
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(0x5a)]
-    [TestCase(0xff)]
-    public void ByteSwap_reverses_deterministic_bytes_and_round_trips(int seed)
+    [Test]
+    public void ByteSwap_reverses_deterministic_bytes_and_round_trips([Values(0, 1, 0x5a, 0xff)] int seed)
     {
         byte[] input = new byte[32];
         for (int i = 0; i < input.Length; i++) input[i] = unchecked((byte)(seed + i));

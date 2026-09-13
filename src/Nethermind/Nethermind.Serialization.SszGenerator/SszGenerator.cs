@@ -403,8 +403,6 @@ internal static class SszCodecHelpers
         }
         try
         {
-            // Clearing the in-use prefix is sufficient; MerkleizeProgressive only reads it.
-            chunks.Clear();
             int fullByteLength = value.Length / 32 * 32;
             if (fullByteLength > 0)
             {

@@ -65,12 +65,8 @@ public class CliqueTests
         _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
     }
 
-    [TestCase(Block1Rlp)]
-    [TestCase(Block2Rlp)]
-    [TestCase(Block3Rlp)]
-    [TestCase(Block4Rlp)]
-    [TestCase(Block5Rlp)]
-    public void Test_real_block(string blockRlp)
+    [Test]
+    public void Test_real_block([Values(Block1Rlp, Block2Rlp, Block3Rlp, Block4Rlp, Block5Rlp)] string blockRlp)
     {
         Block block = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
         bool validHeader = _sealValidator.ValidateParams(_blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None), block.Header);

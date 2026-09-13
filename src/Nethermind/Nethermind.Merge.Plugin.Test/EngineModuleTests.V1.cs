@@ -24,6 +24,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -36,6 +37,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -661,6 +663,98 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task same_head_finalization_notifies_pos_switcher_and_blocks_terminal_replacement()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "1000001" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        PoSSwitcher poSSwitcher = chain.PoSSwitcher as PoSSwitcher
+            ?? throw new AssertionException("Expected the merge test chain to use PoSSwitcher.");
+        await chain.AddBlockThroughPoW();
+        Block terminalBlock = chain.BlockTree.Head!;
+        Block replacementTerminalBlock = Build.A.Block
+            .WithNumber(terminalBlock.Number)
+            .WithDifficulty(terminalBlock.Difficulty)
+            .WithTotalDifficulty(terminalBlock.TotalDifficulty)
+            .WithGasLimit(terminalBlock.GasLimit + 1)
+            .TestObject;
+        Hash256 terminalBlockHash = terminalBlock.Hash!;
+
+        Assert.That(poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header), Is.True);
+        Assert.That(replacementTerminalBlock.IsTerminalBlock(chain.SpecProvider), Is.True);
+
+        ExecutionPayload postMergeBlock = await SendNewBlockV1(rpc, chain);
+        ResultWrapper<ForkchoiceUpdatedV1Result> firstHeadUpdate = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(postMergeBlock.BlockHash, Keccak.Zero, terminalBlockHash));
+        Assert.That(firstHeadUpdate.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(poSSwitcher.TransitionFinished, Is.False);
+
+        bool? transitionFinishedWhenBlockTreeFinalized = null;
+        chain.BlockTree.BlocksFinalized += (_, _) => transitionFinishedWhenBlockTreeFinalized = poSSwitcher.TransitionFinished;
+        ForkchoiceStateV1 sameHeadFinalization = new(postMergeBlock.BlockHash, terminalBlockHash, terminalBlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(sameHeadFinalization);
+        bool replacementUpdated = poSSwitcher.TryUpdateTerminalBlock(replacementTerminalBlock.Header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(0));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(terminalBlockHash));
+            Assert.That(transitionFinishedWhenBlockTreeFinalized, Is.True);
+            Assert.That(poSSwitcher.TransitionFinished, Is.True);
+            Assert.That(replacementUpdated, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task restart_with_provisional_terminal_metadata_keeps_observing_new_head_candidates()
+    {
+        using MemDb metadataDb = new();
+        const string terminalTotalDifficulty = "1000001";
+        Block terminalBlock;
+
+        using (MergeTestBlockchain initialChain = await CreateBlockchain(
+                   null,
+                   new MergeConfig { TerminalTotalDifficulty = terminalTotalDifficulty },
+                   configurer: builder => builder.AddKeyedSingleton<IDb>(DbNames.Metadata, metadataDb)))
+        {
+            PoSSwitcher poSSwitcher = initialChain.PoSSwitcher as PoSSwitcher
+                ?? throw new AssertionException("Expected the merge test chain to use PoSSwitcher.");
+            await initialChain.AddBlockThroughPoW();
+            terminalBlock = initialChain.BlockTree.Head!;
+            Assert.That(poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header), Is.True);
+        }
+
+        using MergeTestBlockchain restartedChain = await CreateBlockchain(
+            null,
+            new MergeConfig { TerminalTotalDifficulty = terminalTotalDifficulty },
+            configurer: builder => builder.AddKeyedSingleton<IDb>(DbNames.Metadata, metadataDb));
+        Block parent = restartedChain.BlockTree.Head!;
+        Block replacementTerminalBlock = Build.A.Block
+            .WithNumber(terminalBlock.Number)
+            .WithParent(parent)
+            .WithDifficulty(terminalBlock.Difficulty)
+            .WithTotalDifficulty(terminalBlock.TotalDifficulty)
+            .WithGasLimit(terminalBlock.GasLimit + 1)
+            .TestObject;
+
+        Assert.That(
+            restartedChain.BlockTree.SuggestBlock(replacementTerminalBlock, BlockTreeSuggestOptions.ForceDontSetAsMain),
+            Is.EqualTo(AddBlockResult.Added));
+        Assert.That(restartedChain.BlockTree.TryUpdateMainChain(
+            replacementTerminalBlock.Header,
+            wereProcessed: true,
+            preloadedBlocks: new[] { replacementTerminalBlock }), Is.True);
+
+        RlpReader persistedNumber = new(metadataDb.Get(MetadataDbKeys.TerminalPoWNumber));
+        RlpReader persistedHash = new(metadataDb.Get(MetadataDbKeys.TerminalPoWHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedNumber.DecodeULong(), Is.EqualTo(replacementTerminalBlock.Number));
+            Assert.That(persistedHash.DecodeKeccak(), Is.EqualTo(replacementTerminalBlock.Hash));
+        }
+    }
+
+    [Test]
     public async Task forkchoiceUpdatedV1_should_update_safe_block_hash()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -955,10 +1049,8 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(2));
     }
 
-    [TestCase(null)]
-    [TestCase(1000000000)]
-    [TestCase(1000001)]
-    public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
+    [Test]
+    public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd([Values(null, 1000000000, 1000001)] long? terminalTotalDifficulty)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -971,10 +1063,8 @@ public partial class EngineModuleTests
         Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
     }
 
-    [TestCase(null)]
-    [TestCase(1000000000)]
-    [TestCase(1000001)]
-    public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
+    [Test]
+    public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd([Values(null, 1000000000, 1000001)] long? terminalTotalDifficulty)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
@@ -1202,9 +1292,8 @@ public partial class EngineModuleTests
         await rpc.engine_getPayloadV1(Bytes.FromHexString(fcu1.Data.PayloadId!));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task executePayloadV1_processes_passed_transactions(bool moveHead)
+    [Test]
+    public async Task executePayloadV1_processes_passed_transactions([Values] bool moveHead)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -1715,16 +1804,20 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.IsMainChain(a3.BlockHash), Is.False, "precondition: a3's marker was flipped to b3");
         }
 
-        // Count FindHeader calls made by the repeated FCU only. Safe=Keccak.Zero skips its
-        // ValidateBlockHash lookup. Baseline: 1 to resolve head, 1 for finalized validation,
-        // 1 for IsOnMainChainBehindFinalized (FindFinalizedHeader), plus the IsInconsistent walk
-        // (1 under the optimization, 2 without).
-        spy!.ResetCounters();
+        // Watch the parent probes of the repeated FCU only. The walk steps a3 -> a2 and has to stop
+        // there; continuing would step a2 -> a1. Only the walk passes a height, so a probe of a1 at
+        // H=1 is its unambiguous signature - the finalized hash a1 is resolved without one.
+        spy!.Reset();
         ForkchoiceStateV1 repeated = new(headBlockHash: a3.BlockHash, finalizedBlockHash: a1.BlockHash, safeBlockHash: Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
         Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        Assert.That(spy.FindHeaderCalls, Is.EqualTo(4), "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spy.WasProbedAsParent(a2.BlockHash, a2.BlockNumber), Is.True, "the walk has to step a3 -> a2");
+            Assert.That(spy.WasProbedAsParent(a1.BlockHash, a1.BlockNumber), Is.False,
+                "walk must stop at the first main-chain ancestor (a2) rather than continue to a1");
+        }
     }
 
     [Test]

@@ -177,10 +177,8 @@ public class NodeRecordSignerTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(3)]
-    [TestCase(5)]
-    public void Eth_entry_rejects_fork_hash_with_wrong_length(int forkHashLength)
+    [Test]
+    public void Eth_entry_rejects_fork_hash_with_wrong_length([Values(0, 3, 5)] int forkHashLength)
     {
         byte[] forkHash = new byte[forkHashLength];
         Assert.That(() => new EthEntry(forkHash, 0UL), Throws.TypeOf<ArgumentException>());

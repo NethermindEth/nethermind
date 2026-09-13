@@ -6,25 +6,25 @@ using Nethermind.Evm.Tracing;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// The tracer capabilities the dispatch specializes on, taken from the tracer running the
-/// transaction.
+/// Selects tracing and cancellation capabilities supported by the current build.
 /// </summary>
 /// <remarks>
-/// Each is read once per transaction, so routing them through this type costs nothing at run time.
-/// It exists so the zkEVM build can answer with a constant: an ahead-of-time compiler emits every
-/// reachable specialization, and a guest that never traces and never cancels would otherwise carry a
-/// second opcode table and a second dispatch loop it can never enter. See
-/// <c>DispatchFlags.zkevm.cs</c>.
+/// The standard build forwards tracer capabilities through identity methods that inline away.
+/// The zkEVM build returns constants so ahead-of-time compilation can remove unsupported dispatch
+/// specializations and per-site tracing branches. See <c>DispatchFlags.zkevm.cs</c>.
 /// </remarks>
 internal static partial class DispatchFlags
 {
-    /// <summary>Whether the coming transaction reports every opcode to the tracer.</summary>
-    public static bool Tracing(bool tracerIsTracingInstructions) => tracerIsTracingInstructions;
+    /// <summary>Whether this build supports EVM tracing.</summary>
+    public const bool ConstTracing = true;
+
+    /// <summary>Whether the requested EVM tracing capability is enabled.</summary>
+    public static bool Tracing(bool isTracing) => isTracing;
 
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;
 
     /// <summary>Rejects a tracer this build cannot serve.</summary>
-    /// <remarks>Both capabilities are taken from the tracer here, so every tracer is servable.</remarks>
+    /// <remarks>Capabilities are taken from the tracer here, so every tracer is servable.</remarks>
     public static void Validate(ITxTracer tracer) { }
 }

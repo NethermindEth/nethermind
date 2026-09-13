@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Stats.Model;
-
 namespace Nethermind.Bootnode;
 
 internal sealed record NodeDto(
@@ -18,32 +16,7 @@ internal sealed record NodeDto(
     bool IsBootnode,
     DateTimeOffset FirstSeenUtc,
     DateTimeOffset LastSeenUtc,
-    int SeenCount)
-{
-    public static NodeDto FromNode(
-        Node node,
-        string protocol,
-        bool active,
-        DateTimeOffset firstSeenUtc,
-        DateTimeOffset lastSeenUtc,
-        int seenCount,
-        bool isBootnode,
-        string? configuredEnode) =>
-        new(
-            node.Id.ToString(false),
-            node.IdHash.ToString(),
-            node.Host,
-            node.Port,
-            node.DiscoveryPort,
-            configuredEnode ?? (protocol == "configured" ? node.ToString(Node.Format.ENode) : null),
-            node.Enr?.ToString(),
-            protocol,
-            active,
-            isBootnode,
-            firstSeenUtc,
-            lastSeenUtc,
-            seenCount);
-}
+    int SeenCount);
 
 internal sealed record BootnodeIdentity(string Enode, string Enr, ulong EnrSequence, string NodeId, string Address);
 

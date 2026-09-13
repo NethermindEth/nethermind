@@ -145,9 +145,7 @@ public class WorldStateManagerTests
     }
 
     [Test]
-    [TestCase(false)]
-    [TestCase(true)]
-    public void CreateReadOnlyTrieStore_can_resolve_state_root(bool useFlat)
+    public void CreateReadOnlyTrieStore_can_resolve_state_root([Values] bool useFlat)
     {
         IConfigProvider configProvider = new ConfigProvider();
         if (useFlat)

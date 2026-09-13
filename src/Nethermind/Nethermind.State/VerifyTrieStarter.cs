@@ -34,11 +34,11 @@ public class VerifyTrieStarter(IWorldStateManager worldStateManager, IProcessExi
         {
             try
             {
-                if (_logger.IsInfo) _logger!.Info($"Collecting trie stats and verifying that no nodes are missing staring from block {stateAtBlock} with state root {stateAtBlock.StateRoot}...");
+                if (_logger.IsInfo) _logger.Info($"Collecting trie stats and verifying that no nodes are missing staring from block {stateAtBlock} with state root {stateAtBlock.StateRoot}...");
 
                 if (!worldStateManager.VerifyTrie(stateAtBlock, exitSource.Token))
                 {
-                    if (_logger.IsError) _logger!.Error($"Verify trie failed");
+                    if (_logger.IsError) _logger.Error($"Verify trie failed");
                 }
             }
             // Only a shutdown-driven cancellation is expected here; an OCE from any other token means the

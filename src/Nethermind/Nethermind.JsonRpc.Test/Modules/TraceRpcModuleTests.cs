@@ -1402,10 +1402,8 @@ public class TraceRpcModuleTests
         public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forkAware.TryGetForkSpec(forkName, out spec);
     }
 
-    [TestCase(nameof(Berlin))]
-    [TestCase(nameof(Istanbul))]
-    [TestCase(nameof(Cancun))]
-    public async Task trace_block_with_valid_fork_name_returns_success(string forkName)
+    [Test]
+    public async Task trace_block_with_valid_fork_name_returns_success([Values(nameof(Berlin), nameof(Istanbul), nameof(Cancun))] string forkName)
     {
         Context context = new();
         await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));

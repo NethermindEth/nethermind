@@ -15,6 +15,7 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
+    IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
 {
@@ -45,17 +46,30 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        bool historical = reader.IsHistorical;
+        if (historical) reader.Dispose();
 
-        if (reader.IsHistorical)
+        if (historical)
         {
+            try
+            {
+                if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
+            }
+            catch (StateUnavailableException e)
+            {
+                throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
+            }
+
             throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
         }
 
-        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
-
-        PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
-        patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+        using (reader)
+        {
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
+            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
+        }
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));

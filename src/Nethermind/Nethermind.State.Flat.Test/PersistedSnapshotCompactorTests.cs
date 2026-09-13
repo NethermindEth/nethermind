@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -14,6 +18,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -40,6 +45,27 @@ public class PersistedSnapshotCompactorTests
         try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task EnqueueAsync_FailedHandoff_ReturnsBatchToPool(bool disposed)
+    {
+        using FlatTestContainer tier = new();
+        using CancellationTokenSource cancellation = new();
+        ArrayPool<StateId> pool = Substitute.For<ArrayPool<StateId>>();
+        StateId[] rented = new StateId[1];
+        pool.Rent(1).Returns(rented);
+        using ArrayPoolList<StateId> batch = new(pool, 1) { new StateId(1, Keccak.EmptyTreeHash) };
+
+        if (disposed)
+            await tier.Compactor.DisposeAsync();
+        else
+            await cancellation.CancelAsync();
+
+        Type exceptionType = disposed ? typeof(ObjectDisposedException) : typeof(OperationCanceledException);
+        Assert.That(async () => await tier.Compactor.EnqueueAsync(batch, 0, cancellation.Token), Throws.InstanceOf(exceptionType));
+        pool.Received(1).Return(rented, Arg.Any<bool>());
+    }
+
     /// <summary>
     /// Regression for large-tier compactions where N approaches the typical
     /// <c>compactSize/CompactSize</c> ceiling (~32). Each source carries a unique account
@@ -49,10 +75,8 @@ public class PersistedSnapshotCompactorTests
     /// here flag mis-cached keys, missed bound refresh after <c>MoveNext</c>, or
     /// destruct-barrier/slot-bound mismatches in <c>MergeEntries</c>.
     /// </summary>
-    [TestCase(8)]
-    [TestCase(16)]
-    [TestCase(32)]
-    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots(int n)
+    [Test]
+    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots([Values(8, 16, 32)] int n)
     {
         // CompactSize=4. n is a power of 2 in {8, 16, 32}, so n & -n == n: block n's natural
         // window covers the whole (0, n] range and DoCompactSnapshot triggers a single merge.
@@ -750,9 +774,8 @@ public class PersistedSnapshotCompactorTests
     /// runs for every cursor address. Newest-wins on Account / first-non-empty on Address
     /// preimage / TryAdd on SD must all hold after the staged DenseByteIndex round-trips.
     /// </summary>
-    [TestCase(40)]
-    [TestCase(120)]
-    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips(int accountCount)
+    [Test]
+    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips([Values(40, 120)] int accountCount)
     {
         using FlatTestContainer tier = new(
             arenaFileSizeBytes: 256 * 1024,

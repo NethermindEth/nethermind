@@ -83,6 +83,35 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Cold_account_read_tracks_writes_and_rollback([Values] bool exists)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            if (exists) provider.CreateAccount(_address1, 1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        Assert.That(provider.AccountExists(_address1), Is.EqualTo(exists));
+        Snapshot snapshot = provider.TakeSnapshot();
+        if (exists) provider.AddToBalance(_address1, 2, Frontier.Instance);
+        else provider.CreateAccount(_address1, 3);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)3));
+
+        provider.Restore(snapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.AccountExists(_address1), Is.EqualTo(exists));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(exists ? UInt256.One : UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
         using Context ctx = new(useFlat);
@@ -274,6 +303,21 @@ public class StateProviderTests(bool useFlat)
         }
 
         Assert.That(action, Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void InsertCode_after_scope_disposal_throws()
+    {
+        using Context ctx = new(useFlat);
+        WorldState worldState = (WorldState)ctx.WorldState;
+        IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        scope.Dispose();
+        byte[] code = [0x00];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        Assert.That(
+            () => worldState._stateProvider.InsertCode(_address1, codeHash, code, Frontier.Instance),
+            Throws.TypeOf<InvalidOperationException>());
     }
 
     [TestCase(false, Description = "code of a reverted deployment is dropped")]

@@ -2,7 +2,7 @@ name: CodeQL analysis
 
 on:
   push:
-    tags: ['*', '!zisk-guest-*']
+    tags: ['*', '!zisk-guest-*', '!bootnode-*']
   schedule:
     - cron: '0 0 * * 0'
   workflow_dispatch:
