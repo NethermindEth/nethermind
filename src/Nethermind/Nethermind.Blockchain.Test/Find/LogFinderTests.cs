@@ -350,7 +350,8 @@ public class LogFinderTests
 
         if (cancelBeforeEnumeration) cancellationTokenSource.Cancel();
 
-        Action action = () => _ = logs.ToArray();
+        FilterLog[] result = [];
+        Action action = () => result = logs.ToArray();
 
         if (cancelBeforeEnumeration)
         {
@@ -362,6 +363,7 @@ public class LogFinderTests
         else
         {
             Assert.DoesNotThrow(action);
+            Assert.That(result, Has.Length.EqualTo(5), "uncancelled enumeration must return every fixture log");
         }
     }
 
