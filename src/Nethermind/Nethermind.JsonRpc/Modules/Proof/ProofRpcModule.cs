@@ -99,6 +99,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             scope.Component.Trace(block, receiptsTracer);
 
             TxReceipt[] tracedReceipts = receiptsTracer.TxReceipts.ToArray();
+            // A retrace that does not reproduce every transaction still yields a proof of the wrong trie, served as a success.
+            if (tracedReceipts.Length != txs.Length)
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail(
+                    $"Unable to re-execute block {block.Header.ToString(BlockHeader.Format.Short)} for a receipt proof",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
 

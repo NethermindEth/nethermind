@@ -285,6 +285,35 @@ public class ProofRpcModuleTests
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 
+    /// <remarks>
+    /// <c>BlockchainProcessor.Process</c> returns null after only a debug log when the parent is not a known block —
+    /// what a node that expired the parent header while keeping the transaction index and receipts reaches — leaving
+    /// the receipts tracer empty. <c>ReceiptTrie.CalculateReceiptProofs</c> does not throw on that: the proof is built
+    /// by walking toward the encoded index, not by indexing the receipt array, so without the guard the caller is
+    /// served a Success whose <c>receiptProof</c> is an empty array.
+    /// </remarks>
+    [Test]
+    public async Task When_the_retrace_yields_no_receipts_transaction_receipt_fails_instead_of_proving_an_empty_trie()
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = block.Transactions[0].Hash!;
+
+        ITracer tracer = Substitute.For<ITracer>();
+        IDisposable scopeCloser = Substitute.For<IDisposable>();
+        IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
+        tracerEnv.BuildAndOverride(header: null).ReturnsForAnyArgs(new Scope<ITracer>(tracer, scopeCloser));
+        // Only the retrace is substituted: the block and the stored receipts it is asked to prove are both real.
+        ArrangeReceiptFinder(block, txHash, _receiptStorage.Get(block), tracerEnv);
+
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, false);
+
+        // The receipts tracer is left empty only if the substitute really stood in for the block retrace.
+        tracer.ReceivedWithAnyArgs(1).Trace(null!, null!);
+        scopeCloser.Received(1).Dispose();
+        Assert.That(response, Is.EqualTo(
+            """{"jsonrpc":"2.0","error":{"code":-32002,"message":"Unable to re-execute block 1 (0xda4b91...9f813d) for a receipt proof"},"id":67}"""));
+    }
+
     /// <summary>
     /// A transaction <c>proof_getTransactionReceipt</c> cannot serve, either because its block cannot be resolved at
     /// all, or because a resolved block and receipt set cannot serve it.
