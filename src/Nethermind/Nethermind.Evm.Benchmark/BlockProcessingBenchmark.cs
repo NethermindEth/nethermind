@@ -331,8 +331,11 @@ public class BlockProcessingBenchmark
     /// <remarks>One transaction of 50: distinct salts keep the addresses collision-free within the block
     /// (a second tx would recompute the same addresses and every create would collide), and one tx is
     /// below the pre-warmer's 3-transaction trigger, so this scenario deliberately runs unwarmed. The
-    /// 25M gas limit is sized for Amsterdam, where EIP-8037 state gas makes an empty-initcode CREATE2
-    /// ~183k gas against Osaka's ~32k — a smaller budget OOGs silently under NoValidation.</remarks>
+    /// 16M gas limit is sized for Amsterdam, where EIP-8037 state gas makes an empty-initcode CREATE2
+    /// ~195k gas against Osaka's ~32k (50 creates ≈ 9.8M) — a smaller budget OOGs silently under
+    /// NoValidation. It is deliberately kept under EIP-7825's 16,777,216 per-tx cap: a larger limit is
+    /// invalid on Osaka and, on Amsterdam, would route the creates through the state reservoir instead of
+    /// the spill path every other scenario uses.</remarks>
     private const int CreatesPerCall = 50;
 
     /// <summary>CREATE2 of an empty contract followed by an immediate query of the created address,
@@ -451,7 +454,7 @@ public class BlockProcessingBenchmark
         _staticCallEoaBlock = BuildBlock(BuildCallsTo(EoaCallCallerAddress, 10, 0));
         _staticCallPrecompileBlock = BuildBlock(BuildCallsTo(PrecompileCallCallerAddress, 10, 0));
         _sstoreDirtyBlock = BuildBlock(BuildCallsTo(SstoreCallerAddress, 10, 0));
-        _create2Block = BuildBlock(BuildCallsTo(Create2CallerAddress, 1, 0, gasLimit: 25_000_000));
+        _create2Block = BuildBlock(BuildCallsTo(Create2CallerAddress, 1, 0, gasLimit: 16_000_000));
 
         // MixedBlock: 100 legacy + 60 EIP-1559 + 30 access-list + 10 contract calls
         Transaction[] mixedTxs = new Transaction[200];
