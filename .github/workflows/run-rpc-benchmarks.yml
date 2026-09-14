@@ -765,14 +765,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Without this guard a partial tree reaches the benchmark as `chmod: No such file or directory`,
-          # which reads like the scripts are missing from the branch rather than from the workspace.
-          # Globbed rather than testing the directory: a half-restored tree can leave the directory behind
-          # with none of its scripts in it.
+          # The shared workspace can come out of actions/checkout with core.sparseCheckout re-enabled and
+          # every path flagged skip-worktree (inherited from another job's sparse checkout), so the tree
+          # is partial while git status is clean. Repair it here, after checkout, instead of failing.
           shopt -s nullglob
           scripts=(scripts/rpc-bench/*.sh)
           if [[ "${#scripts[@]}" -eq 0 ]]; then
-            echo "::error::scripts/rpc-bench/*.sh is missing after checkout - the shared workspace was left in a partial state. Re-run the job to re-clone it."
+            echo "::warning::scripts/rpc-bench/*.sh is missing after checkout; clearing inherited sparse-checkout state and re-materializing the tree."
+            git config --unset-all core.sparseCheckout || true
+            git config --unset-all core.sparseCheckoutCone || true
+            git config --unset-all index.sparse || true
+            rm -f .git/info/sparse-checkout
+            git ls-files -z | git update-index -z --no-skip-worktree --stdin
+            git checkout --force HEAD -- .
+            scripts=(scripts/rpc-bench/*.sh)
+          fi
+          if [[ "${#scripts[@]}" -eq 0 ]]; then
+            echo "::error::scripts/rpc-bench/*.sh is still missing after repairing the workspace."
             exit 1
           fi
           chmod +x "${scripts[@]}"
