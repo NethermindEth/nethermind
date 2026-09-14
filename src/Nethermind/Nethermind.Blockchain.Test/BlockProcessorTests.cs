@@ -118,19 +118,23 @@ public class BlockProcessorTests
 
     [TestCase(ProcessingOptions.None, false, TestName = "None")]
     [TestCase(ProcessingOptions.NoValidation, false, TestName = "NoValidation")]
+    [TestCase(ProcessingOptions.ReadOnlyChain, false, TestName = "ReadOnlyChain")]
     [TestCase(ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.LoadNonceFromState, false, TestName = "ReplayWithoutReadOnlyChain")]
     [TestCase(Tracer.ReadOnlyReplay | ProcessingOptions.StoreReceipts, false, TestName = "ReadOnlyReplayWithStoreReceipts")]
-    [TestCase(ProcessingOptions.ReadOnlyChain, true, TestName = "ReadOnlyChain")]
+    [TestCase(ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, true, TestName = "ReadOnlyChainWithoutValidation")]
+    [TestCase(ProcessingOptions.ProducingBlock, true, TestName = "ProducingBlock")]
     [TestCase(Tracer.ReadOnlyReplay, true, TestName = "ReadOnlyReplay")]
-    public void TransactionTraceBoundary_Get_ReturnsBoundaryOnlyForReadOnlyReplayWithoutReceiptPersistence(ProcessingOptions options, bool expectBoundary)
+    public void TransactionTraceBoundary_Get_ReturnsBoundaryOnlyForUnvalidatedReadOnlyReplayWithoutReceiptPersistence(ProcessingOptions options, bool expectBoundary)
     {
         IBlockTracer tracer = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, TestItem.KeccakA);
         Assert.That(TransactionTraceBoundary.Get(tracer, options), expectBoundary ? Is.SameAs(tracer) : Is.Null,
-            "prefix completion applies only when the chain is read-only and receipts are not persisted");
+            "an unfinalized prefix is only acceptable when the chain is read-only, the block is not validated and receipts are not persisted");
     }
 
-    [Test]
-    public async Task TransactionTraceBlockProcessor_WhenOptionsAreNotReadOnlyReplay_LeavesSuggestedBlockArtifactsUntouched()
+    [TestCase(ProcessingOptions.None, TestName = "None")]
+    [TestCase(ProcessingOptions.NoValidation, TestName = "NoValidation")]
+    [TestCase(Tracer.ReadOnlyReplay, TestName = "ReadOnlyReplay")]
+    public async Task TransactionTraceBlockProcessor_NeverCopiesArtifactsOntoSuggestedBlock(ProcessingOptions options)
     {
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
         BlockHeader parent = chain.BlockTree.Head!.Header;
@@ -138,7 +142,7 @@ public class BlockProcessorTests
         using StampedExecutionArtifacts artifacts = new(block);
 
         using IDisposable scope = chain.MainWorldState.BeginScope(parent);
-        chain.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+        chain.BlockProcessor.ProcessOne(block, options, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
 
         artifacts.AssertUntouched(block);
     }
