@@ -25,7 +25,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         UInt256 r = decoderContext.DecodeUInt256();
         UInt256 s = decoderContext.DecodeUInt256();
 
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
             decoderContext.Check(check);
         }

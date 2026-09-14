@@ -60,7 +60,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
         _payOriginalValue = (coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
-                            && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit);
+                            && (coreOpts & ExecutionOptions.SkipValidationAndCommit) != ExecutionOptions.SkipValidationAndCommit;
         return base.Execute(tx, tracer, _payOriginalValue ? opts | ExecutionOptions.SkipValidationAndCommit : opts);
     }
 

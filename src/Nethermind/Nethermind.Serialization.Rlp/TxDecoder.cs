@@ -98,7 +98,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         ReadOnlySpan<byte> transactionSequence = rlp.Data.Slice(position, rlp.PeekNextRlpLength(position));
 
         TxType txType = TxType.Legacy;
-        if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0)
         {
             if (rlp.Data[position] <= Transaction.MaxTxType) // it is typed transactions
             {

@@ -181,7 +181,7 @@ internal class XdcTransactionProcessor(
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         IXdcReleaseSpec spec = GetSpec(header) as IXdcReleaseSpec;
 
-        bool restore = opts.HasFlag(ExecutionOptions.Restore);
+        bool restore = (opts & ExecutionOptions.Restore) != 0;
 
         // maybe a better approach would be adding an XdcGasPolicy
         TransactionResult result;
