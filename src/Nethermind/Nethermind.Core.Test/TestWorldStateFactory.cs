@@ -81,7 +81,10 @@ public static class TestWorldStateFactory
         return builder.Build();
     }
 
-    public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
+    public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager) =>
+        CreateWorldStateManagerForTest(dbProvider, UnavailableStateHeaderProvider.Instance, logManager);
+
+    public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, IStateHeaderProvider stateHeaderProvider, ILogManager logManager)
     {
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
@@ -93,10 +96,10 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, logManager);
+        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider,
             new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null, logManager),
-            UnavailableStateHeaderProvider.Instance, logManager);
+            stateHeaderProvider, logManager);
     }
 }

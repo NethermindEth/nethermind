@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
@@ -64,6 +65,50 @@ public class WorldStateManagerTests
         Assert.That(overridable.WorldState.HasStateForTarget(target), Is.True);
         Assert.That(overridable.WorldState.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope overridableScope), Is.True);
         overridableScope!.Dispose();
+    }
+
+    [Test]
+    public void OverridableScopeResolvesTargetsFromInMemoryHeadersItCommitted()
+    {
+        WorldStateManager manager = TestWorldStateFactory.CreateWorldStateManagerForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
+        using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
+        IWorldStateScopeProvider worldState = overridable.WorldState;
+
+        // Mirrors OverridableEnv.BuildAndOverride: overrides are committed into the in-memory base header itself.
+        BlockHeader overriddenBase = Build.A.BlockHeader.WithNumber(1).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        overriddenBase.StateRoot = CommitAccount(worldState.BeginScope(overriddenBase, new LocalMetrics()), overriddenBase.Number, TestItem.AddressA);
+        BlockHeader child = Build.A.BlockHeader.WithParent(overriddenBase).TestObject;
+
+        Assert.That(worldState.HasStateForTarget(child), Is.True);
+        Assert.That(worldState.TryBeginScope(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope childScope), Is.True);
+        Assert.That(childScope!.Get(TestItem.AddressA), Is.Not.Null);
+        child.StateRoot = CommitAccount(childScope, child.Number, TestItem.AddressB);
+        BlockHeader grandchild = Build.A.BlockHeader.WithParent(child).TestObject;
+
+        Assert.That(worldState.HasStateForTarget(grandchild), Is.True);
+        Assert.That(worldState.TryBeginScope(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope grandchildScope), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(grandchildScope!.Get(TestItem.AddressA), Is.Not.Null);
+            Assert.That(grandchildScope.Get(TestItem.AddressB), Is.Not.Null);
+        }
+        grandchildScope.Dispose();
+
+        overridable.ResetOverrides();
+        Assert.That(worldState.HasStateForTarget(grandchild), Is.False);
+    }
+
+    private static Hash256 CommitAccount(IWorldStateScopeProvider.IScope scope, ulong blockNumber, Address address)
+    {
+        using (scope)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(address, new Account(1, 100));
+            }
+            scope.Commit(blockNumber);
+            return scope.RootHash;
+        }
     }
 
     [Test]
