@@ -1,0 +1,33 @@
+name: Recover EXPB artifacts
+
+on:
+  push:
+    branches:
+      - fix/expb-artifact-recovery-34830974869
+    paths:
+      - .github/workflows/recover-expb-artifacts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 10
+    steps:
+      - name: Recreate workspace and verify campaign
+        working-directory: /
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /mnt/sda/expb-data/campaigns/34830974869/1/campaign.json
+          mkdir -p "$GITHUB_WORKSPACE"
+
+      - name: Upload recovered campaign
+        uses: actions/upload-artifact@v4
+        with:
+          name: expb-campaign-recovered-34830974869
+          path: /mnt/sda/expb-data/campaigns/34830974869/1
+          if-no-files-found: error
+          retention-days: 30
