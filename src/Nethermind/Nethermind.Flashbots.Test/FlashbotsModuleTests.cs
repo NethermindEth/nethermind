@@ -29,13 +29,44 @@ public partial class FlashbotsModuleTests
     [TestCaseSource(nameof(InvalidSubmissions))]
     public virtual async Task ValidateBuilderSubmissionV3_Invalid(Func<Block, BlobsBundleV1> bundleFactory, string expectedError)
     {
-        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        // The block built below is not a faithful execution result (its header carries no gas used); block validation
+        // is switched off so that the blobs bundle checks are what gets exercised.
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance, flashbotsConfig: new FlashbotsConfig { EnableValidation = false });
         IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
 
         Block block = CreateBlock(chain);
         BlobsBundleV1 bundle = bundleFactory(block);
 
-        BuilderBlockValidationRequest request = new(
+        BuilderBlockValidationRequest request = BuildRequest(block, bundle);
+
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+
+        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", request);
+        JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        Assert.That(jsonResponse, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task ValidateBuilderSubmissionV3_RejectsABlockWhoseHeaderDoesNotMatchItsExecution()
+    {
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
+
+        Block block = CreateBlock(chain);
+        BuilderBlockValidationRequest request = BuildRequest(block, new BlobsBundleV1(block));
+
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
+
+        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+        Assert.That(result.Result.Error, Does.StartWith("Block processing failed"),
+            "the default configuration must not report a block with a bogus header as valid");
+    }
+
+    private BuilderBlockValidationRequest BuildRequest(Block block, BlobsBundleV1 bundle) =>
+        new(
             new BidTrace(
                 0, block.Header.ParentHash!,
                 block.Header.Hash!,
@@ -52,16 +83,6 @@ public partial class FlashbotsModuleTests
             block.Header.GasLimit,
             new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
         );
-
-        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result.Result.Error, Is.EqualTo(expectedError));
-        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
-
-        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", request);
-        JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-        Assert.That(jsonResponse, Is.Not.Null);
-    }
 
     private static IEnumerable<TestCaseData> InvalidSubmissions()
     {
