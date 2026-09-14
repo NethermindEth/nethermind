@@ -202,7 +202,8 @@ jobs:
           # Neither lookup may abort the step: without an output the Slack gate below reads
           # as false, which would drop the alert this job exists to send.
           if ! jobs=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
-            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name'); then
+            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
+                           | [.name, ((.completed_at // "") | fromdateiso8601? // 0)] | @tsv'); then
             echo "::warning title=Sync master validation::could not list failed jobs"
             jobs=""
           fi
@@ -214,22 +215,33 @@ jobs:
             echo "::warning title=Sync master validation::could not list artifacts, so no failure counts as preempted"
             names=""
           fi
-          labels=$(printf '%s\n' "$names" | sed -n "s/^preempted-${RUN_ATTEMPT}-//p")
-          prefixes=$(jq -r --arg labels "$labels" \
-            '($labels | split("\n") | map(select(length > 0))) as $preempted
-             | .[] | select(.runner_label as $r | $preempted | index($r))
-             | "Sync \(.network) (\(.mode))"' <<<"$MATRIX")
+          markers=$(printf '%s\n' "$names" \
+            | sed -n "s/^preempted-${RUN_ATTEMPT}-\([0-9][0-9]*\)-\(.*\)$/\1 \2/p")
+          reclaims=$(jq -r --arg markers "$markers" \
+            '($markers | split("\n") | map(select(length > 0)) | map(split(" "))) as $m
+             | . as $matrix
+             | $m[] as $one
+             | $matrix[] | select(.runner_label == $one[1])
+             | "\($one[0])\tSync \(.network) (\(.mode))"' <<<"$MATRIX")
 
           listed=0
           unexplained=""
-          while IFS= read -r job; do
+          while IFS=$'\t' read -r job ended; do
             [ -n "$job" ] || continue
             listed=$((listed + 1))
+            case "$ended" in '' | *[!0-9]*) ended=0 ;; esac
             explained=false
-            while IFS= read -r prefix; do
+            while IFS=$'\t' read -r at prefix; do
               [ -n "$prefix" ] || continue
-              case "$job" in "${prefix}"*) explained=true; break ;; esac
-            done <<<"$prefixes"
+              case "$job" in "${prefix}"*) ;; *) continue ;; esac
+              # A reclaim only explains a failure it could have caused. One that finished
+              # before the VM was taken was already broken, and an unknown time on either
+              # side is not evidence of anything.
+              if [ "$at" -gt 0 ] && [ "$ended" -gt 0 ] && [ "$at" -le "$ended" ]; then
+                explained=true
+                break
+              fi
+            done <<<"$reclaims"
             if [ "$explained" = true ]; then
               echo "ignoring ${job}: its runner was preempted"
             else

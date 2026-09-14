@@ -216,6 +216,6 @@ jobs:
         if: ${{ always() && steps.destroy.outputs.preempted == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: preempted-${{ github.run_attempt }}-${{ inputs.runner_label }}
+          name: preempted-${{ github.run_attempt }}-${{ steps.destroy.outputs.preempted_at }}-${{ inputs.runner_label }}
           path: preempted.txt
           retention-days: 1

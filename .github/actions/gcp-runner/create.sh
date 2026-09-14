@@ -17,22 +17,29 @@ fi
 JIT_FILE="${RUNNER_TEMP}/jitconfig.b64"
 RUNNER_ID=""
 
+ON_SIGNAL=false
+
 cleanup_failed() {
   local zone="${1:-}"
   # A create call can fail after the instance exists (timeout, partial failure), so fall
   # back to a lookup rather than leaving it for --max-run-duration to reap hours later.
   # The lookup must not be fatal: the runner registration and credential file below still
   # have to be cleaned up even when it fails.
-  if [ -z "$zone" ]; then
+  if [ -z "$zone" ] && [ "$ON_SIGNAL" != true ]; then
     zone=$(resolve_zone "$INSTANCE_NAME") || zone=""
   fi
   if [ -n "$zone" ]; then
-    echo "::group::serial console output"
-    gcloud compute instances get-serial-port-output "$INSTANCE_NAME" \
-      --project="$PROJECT_ID" --zone="$zone" 2>/dev/null || true
-    echo "::endgroup::"
-    gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
-      --zone="$zone" --quiet --delete-disks=all 2>/dev/null || true
+    if [ "$ON_SIGNAL" != true ]; then
+      echo "::group::serial console output"
+      gcloud compute instances get-serial-port-output "$INSTANCE_NAME" \
+        --project="$PROJECT_ID" --zone="$zone" 2>/dev/null || true
+      echo "::endgroup::"
+      gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
+        --zone="$zone" --quiet --delete-disks=all 2>/dev/null || true
+    else
+      gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
+        --zone="$zone" --quiet --delete-disks=all --async 2>/dev/null || true
+    fi
   fi
   if [ -n "$RUNNER_ID" ]; then
     gh api --method DELETE \
@@ -41,8 +48,15 @@ cleanup_failed() {
   rm -f "$JIT_FILE"
 }
 
-# A cancelled create step would otherwise leave the instance it had already inserted.
-trap 'cleanup_failed; exit 143' INT TERM
+# A cancelled create step would otherwise leave the instance it had already inserted. The
+# runner allows only seconds before SIGKILL, so this path uses the zone already in hand,
+# skips the console dump and only submits the delete rather than waiting for it.
+on_signal() {
+  ON_SIGNAL=true
+  cleanup_failed "${CHOSEN_ZONE:-${zone:-}}"
+  exit 143
+}
+trap on_signal INT TERM
 
 response=$(jq -n \
     --arg name "$INSTANCE_NAME" \
@@ -153,11 +167,6 @@ for model in "${MODELS[@]}"; do
       INSTANCE_JSON="$out"
       break 2
     fi
-    if grep -qE "$FATAL_CREATE_ERR" <<<"$err"; then
-      echo "::error title=GCP runner::non-retryable create failure: ${err}"
-      cleanup_failed
-      exit 1
-    fi
     if grep -qE "$QUOTA_CREATE_ERR" <<<"$err"; then
       # Quota is per-region, so the sibling zones would fail identically.
       QUOTA_BLOCKED+="${region} "
@@ -170,6 +179,11 @@ for model in "${MODELS[@]}"; do
       echo "::notice title=GCP runner::${zone} has no ${model} capacity, trying next"
       delete_partial "$zone"
       continue
+    fi
+    if grep -qE "$FATAL_CREATE_ERR" <<<"$err"; then
+      echo "::error title=GCP runner::non-retryable create failure: ${err}"
+      cleanup_failed
+      exit 1
     fi
     echo "::error title=GCP runner::unrecognised create failure in ${zone}: ${err}"
     cleanup_failed

@@ -133,6 +133,9 @@ outputs:
   preempted:
     description: Whether the VM was reclaimed by GCE rather than deleted by this action.
     value: ${{ steps.destroy.outputs.preempted }}
+  preempted_at:
+    description: Epoch seconds of the reclaim, or 0 when it could not be determined.
+    value: ${{ steps.destroy.outputs.preempted_at }}
   terminated_by:
     description: >-
       One of deleted-by-action, already-deleted, deleted-concurrently, preempted,

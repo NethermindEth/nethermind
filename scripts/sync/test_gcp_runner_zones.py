@@ -5,6 +5,8 @@
 """Regression coverage for the gcp-runner zone ordering and create-error classification."""
 
 import os
+import re
+import shlex
 import subprocess
 import tempfile
 import textwrap
@@ -97,43 +99,61 @@ class OrderZonesTest(unittest.TestCase):
 
 
 class CreateErrorClassificationTest(unittest.TestCase):
-    """Each gcloud message must match exactly one class, so create.sh picks one branch."""
+    """create.sh tries quota, then retryable, then fatal, so a message is classified by
+    precedence rather than by matching exactly one pattern."""
 
-    CASES = {
-        "QUOTA_CREATE_ERR": [
-            "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
-            " - Quota 'LOCAL_SSD_TOTAL_GB' exceeded. Limit: 15000.0 in region europe-west1.",
+    def classify(self, message):
+        return sh(
+            f"msg={shlex.quote(message)}; "
+            'if grep -qE "$QUOTA_CREATE_ERR" <<<"$msg"; then echo quota; '
+            'elif grep -qE "$RETRYABLE_CREATE_ERR" <<<"$msg"; then echo retryable; '
+            'elif grep -qE "$FATAL_CREATE_ERR" <<<"$msg"; then echo fatal; '
+            "else echo unrecognised; fi"
+        )
+
+    def test_a_regional_quota_is_worth_trying_another_region(self):
+        self.assertEqual(
+            self.classify(
+                "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
+                " - Quota 'LOCAL_SSD_TOTAL_GB' exceeded. Limit: 15000.0 in region europe-west1."
+            ),
+            "quota",
+        )
+
+    def test_a_global_quota_fails_fast_instead_of_walking_every_region(self):
+        for message in (
+            "ERROR: - Quota 'CPUS_ALL_REGIONS' exceeded. Limit: 1000.0 globally.",
             "Constraint QUOTA_EXCEEDED violated",
-        ],
-        "RETRYABLE_CREATE_ERR": [
+        ):
+            with self.subTest(message=message[:50]):
+                self.assertEqual(self.classify(message), "fatal")
+
+    def test_capacity_messages_are_retryable(self):
+        for message in (
             "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
             " - The zone 'projects/p/zones/europe-west1-b' does not have enough resources"
             " available to fulfill the request.",
             "ZONE_RESOURCE_POOL_EXHAUSTED",
-        ],
-        "FATAL_CREATE_ERR": [
-            "ERROR: (gcloud.compute.instances.create) PERMISSION_DENIED: Required"
-            " 'compute.instances.create' permission for 'projects/p/zones/z/instances/i'",
-        ],
-    }
+        ):
+            with self.subTest(message=message[:50]):
+                self.assertEqual(self.classify(message), "retryable")
 
-    def matches(self, message):
-        names = ["QUOTA_CREATE_ERR", "RETRYABLE_CREATE_ERR", "FATAL_CREATE_ERR"]
-        hits = sh(
-            "; ".join(
-                f'grep -qE "${name}" <<<{message!r} && echo {name} || true' for name in names
-            )
+    def test_permission_errors_are_fatal(self):
+        self.assertEqual(
+            self.classify(
+                "ERROR: (gcloud.compute.instances.create) PERMISSION_DENIED: Required"
+                " 'compute.instances.create' permission for 'projects/p/zones/z/instances/i'"
+            ),
+            "fatal",
         )
-        return hits.split()
-
-    def test_each_message_matches_exactly_its_own_class(self):
-        for name, messages in self.CASES.items():
-            for message in messages:
-                with self.subTest(message=message[:60]):
-                    self.assertEqual(self.matches(message), [name])
 
     def test_an_unrecognised_message_matches_nothing(self):
-        self.assertEqual(self.matches("ERROR: something entirely new"), [])
+        self.assertEqual(self.classify("ERROR: something entirely new"), "unrecognised")
+
+    def test_create_sh_checks_the_classes_in_that_order(self):
+        # classify() above models create.sh's branch order; pin it so the two cannot drift.
+        order = re.findall(r"\$(QUOTA|RETRYABLE|FATAL)_CREATE_ERR", (ACTION / "create.sh").read_text())
+        self.assertEqual(order, ["QUOTA", "RETRYABLE", "FATAL"])
 
 
 class CreateZoneWalkTest(unittest.TestCase):
@@ -150,7 +170,12 @@ class CreateZoneWalkTest(unittest.TestCase):
     fi
     case ",${CAPACITY_ZONES:-}," in
       *",${zone},"*) echo "ERROR: The zone '$zone' does not have enough resources available." >&2 ;;
-      *) echo "ERROR: - Quota 'LOCAL_SSD_TOTAL_GB' exceeded. Limit: 15000.0 in region ${zone%-*}." >&2 ;;
+      *)
+        if [ "${QUOTA_SCOPE:-region}" = global ]; then
+          echo "ERROR: - Quota 'CPUS_ALL_REGIONS' exceeded. Limit: 1000.0 globally." >&2
+        else
+          echo "ERROR: - Quota 'LOCAL_SSD_TOTAL_GB' exceeded. Limit: 15000.0 in region ${zone%-*}." >&2
+        fi ;;
     esac
     exit 1
     """
@@ -218,6 +243,7 @@ class CreateZoneWalkTest(unittest.TestCase):
                 "GITHUB_OUTPUT": str(tmp / "out"),
                 "ZONES": zones,
                 "ZONE_ORDER": "listed",
+                "QUOTA_SCOPE": "region",
                 "PROVISIONING_MODEL": "STANDARD",
                 **overrides,
             }
@@ -261,6 +287,15 @@ class CreateZoneWalkTest(unittest.TestCase):
             ["europe-west1-b", "europe-west4-a", "europe-west1-b", "europe-west4-a"],
         )
         self.assertIn("regions at quota:", out)
+
+    def test_a_global_quota_stops_after_one_attempt(self):
+        code, out, attempts = self.create(
+            "europe-west1-b,europe-west1-c,europe-west4-a,europe-north1-a",
+            SUCCEED_ZONE="",
+            QUOTA_SCOPE="global",
+        )
+        self.assertEqual(code, 1, out)
+        self.assertEqual(attempts, ["europe-west1-b"])
 
     def test_rotation_moves_the_first_zone_tried_off_the_head_of_the_list(self):
         zones = "europe-west1-b,europe-west1-c,europe-west4-a,europe-north1-a"

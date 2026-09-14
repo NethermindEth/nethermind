@@ -22,6 +22,11 @@ WORKFLOW = REPO / ".github" / "workflows" / "sync-master-validation.yml"
 sys.path.insert(0, str(REPO / "scripts" / "ci"))
 from test_reap_stale_overlays import extract_step_bodies  # noqa: E402
 
+# A reclaim is recorded, then GitHub notices the runner is gone and fails the job.
+RECLAIM_AT = 1_760_000_000
+JOB_ENDED = RECLAIM_AT + 60
+
+
 MATRIX = (
     '[{"network":"mainnet","mode":"Flat","runner_label":"f-1-master-mainnet"},'
     '{"network":"mainnet","mode":"HalfPath","runner_label":"hp-1-master-mainnet"},'
@@ -67,13 +72,17 @@ class NotifyGatingTest(unittest.TestCase):
             stub.write_text(GH_STUB)
             stub.chmod(0o755)
 
-            (tmp / "jobs").write_text("".join(f"{n}\n" for n in failed_jobs))
-            (tmp / "artifacts").write_text(
-                "".join(
-                    f"preempted-{marker_attempt or attempt}-{label}\n"
-                    for label in preempted_labels
-                )
-            )
+            rows = []
+            for job in failed_jobs:
+                name, ended = job if isinstance(job, tuple) else (job, JOB_ENDED)
+                rows.append(f"{name}\t{ended or 0}\n")
+            (tmp / "jobs").write_text("".join(rows))
+
+            markers = []
+            for entry in preempted_labels:
+                label, at = entry if isinstance(entry, tuple) else (entry, RECLAIM_AT)
+                markers.append(f"preempted-{marker_attempt or attempt}-{at}-{label}\n")
+            (tmp / "artifacts").write_text("".join(markers))
             (tmp / "step.sh").write_text(self.body)
             output = tmp / "output"
             output.touch()
@@ -198,6 +207,37 @@ class NotifyGatingTest(unittest.TestCase):
         out = self.collect(["Sync gnosis (Flat) / sync"], [], fail_endpoint="jobs")
         self.assertEqual(out["should_page"], "true")
         self.assertEqual(out["failed_jobs"], "(check run for details)")
+
+
+    def test_a_failure_that_finished_before_the_reclaim_still_pages(self):
+        # The sync broke on its own, then GCE took the VM before teardown. The reclaim did
+        # not cause the failure, so it must not absorb it.
+        out = self.collect(
+            [("Sync mainnet (Flat) / sync", RECLAIM_AT - 600)],
+            [("f-1-master-mainnet", RECLAIM_AT)],
+        )
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "Sync mainnet (Flat) / sync")
+
+    def test_a_reclaim_at_the_moment_the_job_ended_still_silences(self):
+        out = self.collect(
+            [("Sync mainnet (Flat) / sync", RECLAIM_AT)],
+            [("f-1-master-mainnet", RECLAIM_AT)],
+        )
+        self.assertEqual(out["should_page"], "false")
+
+    def test_an_undetermined_reclaim_time_pages(self):
+        # destroy.sh writes 0 when it cannot read the operation; that is not evidence.
+        out = self.collect(
+            ["Sync mainnet (Flat) / sync"], [("f-1-master-mainnet", 0)]
+        )
+        self.assertEqual(out["should_page"], "true")
+
+    def test_a_job_with_no_end_time_pages(self):
+        out = self.collect(
+            [("Sync mainnet (Flat) / sync", None)], ["f-1-master-mainnet"]
+        )
+        self.assertEqual(out["should_page"], "true")
 
 
 if __name__ == "__main__":

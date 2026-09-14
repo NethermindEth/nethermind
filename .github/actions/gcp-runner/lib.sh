@@ -23,10 +23,11 @@ resolve_zone() {
   printf '%s' "$out"
 }
 
-# Quota is separate from fatal because it is per-region: another region may still work.
+# Only a quota GCE reports against a region is worth retrying elsewhere; a project- or
+# global-scope one (CPUS_ALL_REGIONS) is worded without it and stays fatal, so it fails fast.
 RETRYABLE_CREATE_ERR='ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone'
-QUOTA_CREATE_ERR='QUOTA_EXCEEDED|Quota .* exceeded'
-FATAL_CREATE_ERR='PERMISSION_DENIED|Required .* permission'
+QUOTA_CREATE_ERR='Quota .* exceeded.* in region '
+FATAL_CREATE_ERR='PERMISSION_DENIED|Required .* permission|QUOTA_EXCEEDED|Quota .* exceeded'
 
 # Rotates a comma-separated zone list by a hash of the seed, keeping each region's zones
 # together, so concurrent creates spread out. Deterministic: a re-run repeats the order.

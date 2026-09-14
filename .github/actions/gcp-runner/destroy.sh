@@ -8,6 +8,7 @@ INSTANCE_NAME=$(derive_instance_name "$RUNNER_LABEL")
 echo "instance name: ${INSTANCE_NAME}"
 
 PREEMPTED=false
+PREEMPTED_AT=0
 DELETE_FAILED=false
 
 # A failed lookup must not be mistaken for an absent instance, or a transient API error
@@ -79,6 +80,11 @@ else
   if grep -qx 'compute.instances.preempted' <<<"$ops"; then
     PREEMPTED=true
     TERMINATED_BY=preempted
+    # Epoch seconds, so a caller can tell a reclaim apart from a failure that preceded it.
+    preempted_at=$(gcloud compute operations list --project="$PROJECT_ID" --zones="$ZONES" \
+      --filter="targetLink~/instances/${INSTANCE_NAME}$ AND operationType=compute.instances.preempted" \
+      --format='value(insertTime)' --limit=1 2>/dev/null || true)
+    PREEMPTED_AT=$(date -d "$preempted_at" +%s 2>/dev/null || echo 0)
     echo "::warning title=GCP runner::${RUNNER_LABEL} was preempted — infrastructure reclaim, not a sync failure"
     # Surface it on the run summary too: the matrix boundary reduces this to a plain failed
     # entry, so without this the distinction is only visible deep in a job log.
@@ -120,6 +126,7 @@ fi
   echo "instance_name=${INSTANCE_NAME}"
   echo "zone=${ZONE}"
   echo "preempted=${PREEMPTED}"
+  echo "preempted_at=${PREEMPTED_AT}"
   echo "terminated_by=${TERMINATED_BY}"
 } >> "$GITHUB_OUTPUT"
 
