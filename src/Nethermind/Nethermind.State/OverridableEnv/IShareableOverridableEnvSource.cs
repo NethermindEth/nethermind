@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Evm;
 
@@ -24,4 +25,7 @@ public interface IShareableOverridableEnvSource<T> : IDisposable
     /// be resolved through one.
     /// </remarks>
     Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
+
+    /// <inheritdoc cref="IOverridableEnv.TryBuildAndOverrideAtTarget"/>
+    bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, [NotNullWhen(true)] out Scope<T>? scope);
 }

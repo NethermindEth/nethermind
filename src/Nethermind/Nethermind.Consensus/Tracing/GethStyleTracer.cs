@@ -135,9 +135,7 @@ public class GethStyleTracer(
                       ?? throw new InvalidOperationException($"Cannot find block {blockHash}");
         if (block.IsGenesis) throw new GenesisNotTraceableException();
 
-        BlockHeader? parent = FindParent(block);
-
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
         return tracer.BuildResult();
@@ -149,9 +147,8 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(options);
 
         Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        BlockHeader parent = FindParent(block);
 
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
@@ -168,8 +165,7 @@ public class GethStyleTracer(
                         .GetAll()
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        BlockHeader parent = FindParent(block);
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
@@ -189,14 +185,14 @@ public class GethStyleTracer(
             block = block.WithReplacedBodyCloned(block.Body);
         }
 
-        BlockHeader baseBlockHeader = useBlockAsBase ? block.Header : FindParent(block);
-
         options.BlockOverrides?.ApplyOverrides(block.Header);
         if (options.NoBaseFee)
         {
             block.Header.BaseFeePerGas = UInt256.Zero;
         }
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
+        using Scope<BlockProcessingComponents> scope = useBlockAsBase
+            ? blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides)
+            : blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
@@ -229,8 +225,7 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        BlockHeader parent = FindParent(block);
-        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
@@ -251,21 +246,6 @@ public class GethStyleTracer(
             tracer.TryDispose();
             throw;
         }
-    }
-
-    private BlockHeader? FindParent(Block block)
-    {
-        BlockHeader? parent = null;
-
-        if (!block.IsGenesis)
-        {
-            parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-
-            if (parent?.Hash is null)
-                throw new InvalidOperationException("Cannot trace blocks with invalid parents");
-        }
-
-        return parent;
     }
 
     private static Block GetBlockToTrace(Rlp blockRlp)

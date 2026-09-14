@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -42,6 +43,28 @@ public sealed class ShareableOverridableEnvSource<T>(
             throw;
         }
         return new Scope<T>(innerScope.Component, new ReturnOnDispose(env, innerScope, this));
+    }
+
+    public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, [NotNullWhen(true)] out Scope<T>? scope)
+    {
+        IOverridableEnv<T> env = Rent();
+        Scope<T>? innerScope;
+        try
+        {
+            if (!env.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride: null, out innerScope))
+            {
+                Release(env);
+                scope = null;
+                return false;
+            }
+        }
+        catch
+        {
+            ReleasePoisoned(env);
+            throw;
+        }
+        scope = new Scope<T>(innerScope.Component, new ReturnOnDispose(env, innerScope, this));
+        return true;
     }
 
     public void Dispose()

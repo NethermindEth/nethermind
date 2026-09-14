@@ -194,7 +194,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverrideAtTarget(block.Header);
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
@@ -203,7 +203,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForTarget(block.Header) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero;
 
         BlockReceiptsTracer blockReceiptsTracer = new();
 

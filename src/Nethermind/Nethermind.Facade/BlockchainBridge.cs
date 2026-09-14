@@ -730,6 +730,9 @@ namespace Nethermind.Facade
                 return scope;
             }
 
+            public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<BlockchainBridge.BlockProcessingComponents>? scope) =>
+                inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out scope);
+
             public void Dispose() => scope.Dispose();
         }
     }

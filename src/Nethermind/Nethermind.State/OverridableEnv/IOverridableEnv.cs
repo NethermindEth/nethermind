@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Core;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -26,6 +27,17 @@ public interface IOverridableEnv : IModule
     /// header they own (e.g. a clone), never a shared block-tree header.
     /// </remarks>
     IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null);
+
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/> (its parent state) and applies
+    /// the overrides on top of it.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="BuildAndOverride"/> no header is mutated: the parent is the block tree's and a block override
+    /// belongs to the caller's own target header.
+    /// </remarks>
+    /// <returns><c>false</c> when the parent header or its state is unavailable.</returns>
+    bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out IDisposable? scope);
 }
 
 /// <summary>
@@ -43,4 +55,28 @@ public interface IOverridableEnv<T>
     /// see <see cref="IOverridableEnv.BuildAndOverride"/>. Callers must pass a header they own (e.g. a clone).
     /// </remarks>
     Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null);
+
+    /// <inheritdoc cref="IOverridableEnv.TryBuildAndOverrideAtTarget"/>
+    bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<T>? scope);
+}
+
+public static class OverridableEnvExtensions
+{
+    /// <inheritdoc cref="IOverridableEnv.TryBuildAndOverrideAtTarget"/>
+    /// <exception cref="InvalidOperationException">The parent header or its state is unavailable.</exception>
+    public static IDisposable BuildAndOverrideAtTarget(this IOverridableEnv env, BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null) =>
+        env.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out IDisposable? scope) ? scope : ThrowUnavailable<IDisposable>(targetBlock);
+
+    /// <inheritdoc cref="IOverridableEnv.TryBuildAndOverrideAtTarget"/>
+    /// <exception cref="InvalidOperationException">The parent header or its state is unavailable.</exception>
+    public static Scope<T> BuildAndOverrideAtTarget<T>(this IOverridableEnv<T> env, BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null) =>
+        env.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out Scope<T>? scope) ? scope : ThrowUnavailable<Scope<T>>(targetBlock);
+
+    /// <inheritdoc cref="IOverridableEnv.TryBuildAndOverrideAtTarget"/>
+    /// <exception cref="InvalidOperationException">The parent header or its state is unavailable.</exception>
+    public static Scope<T> BuildAndOverrideAtTarget<T>(this IShareableOverridableEnvSource<T> source, BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride = null) =>
+        source.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, out Scope<T>? scope) ? scope : ThrowUnavailable<Scope<T>>(targetBlock);
+
+    private static TScope ThrowUnavailable<TScope>(BlockHeader targetBlock) =>
+        throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 }
