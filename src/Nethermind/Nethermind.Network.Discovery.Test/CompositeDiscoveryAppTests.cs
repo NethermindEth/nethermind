@@ -226,7 +226,7 @@ public class CompositeDiscoveryAppTests
         finally
         {
             await pool.StopAsync();
-            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
@@ -270,7 +270,7 @@ public class CompositeDiscoveryAppTests
         finally
         {
             await pool.StopAsync();
-            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
@@ -311,7 +311,7 @@ public class CompositeDiscoveryAppTests
             finally
             {
                 await pool.StopAsync();
-                await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+                await ShutdownEventLoopAsync(eventLoopGroup);
             }
 
             underlyingLogger.Received(1).Error(
@@ -356,7 +356,7 @@ public class CompositeDiscoveryAppTests
             finally
             {
                 await pool.StopAsync();
-                await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+                await ShutdownEventLoopAsync(eventLoopGroup);
             }
         }
 
@@ -390,7 +390,7 @@ public class CompositeDiscoveryAppTests
             {
                 await pool.StopAsync();
             }
-            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
@@ -421,9 +421,19 @@ public class CompositeDiscoveryAppTests
         finally
         {
             await pool.StopAsync();
-            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
+
+    /// <summary>Shuts <paramref name="eventLoopGroup"/> down, failing rather than hanging when it does not terminate.</summary>
+    /// <remarks>
+    /// While confirming shutdown, DotNetty queues a wake-up task that its own next confirmation then reads as
+    /// pending work, so a task landing in the queue at that moment leaves the event loop spinning instead of
+    /// terminating. Bounding the wait turns that livelock into a failure of this test rather than a hang that
+    /// takes down the whole test host.
+    /// </remarks>
+    private static Task ShutdownEventLoopAsync(IEventLoopGroup eventLoopGroup)
+        => eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1)).WaitAsync(TimeSpan.FromSeconds(5));
 
     private static NodeRecord CreateDualStackRecord()
     {

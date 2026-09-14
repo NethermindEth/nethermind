@@ -48,7 +48,7 @@ public class WarmStorageReadBenchmark
     private StorageCell _unwritten;
     private StorageCell _written;
     private StorageCell _otherContractWritten;
-    private static readonly byte[] Value = [7];
+    private static readonly UInt256 Value = (UInt256)7;
 
     [Params(true, false)]
     public bool UseFlat { get; set; }
@@ -70,7 +70,7 @@ public class WarmStorageReadBenchmark
                 worldState.CreateAccount(address, 1, 1);
                 for (int i = 0; i < 128; i++)
                 {
-                    worldState.Set(new StorageCell(address, (UInt256)i), Value);
+                    worldState.Set(new StorageCell(address, (UInt256)i), in Value);
                 }
             }
 
@@ -83,7 +83,8 @@ public class WarmStorageReadBenchmark
         // The measurement is meaningless against an empty root, so refuse to run rather than report it.
         // The probe cell is a parameter so each call site shows which value the guard checks, rather
         // than the guard reaching for a field the caller has to remember to assign first.
-        if (!worldState.Get(in probe).SequenceEqual(Value))
+        worldState.Get(in probe, out UInt256 seeded);
+        if (seeded != Value)
         {
             throw new InvalidOperationException("The measurement scope does not see the seeded storage.");
         }
@@ -104,22 +105,22 @@ public class WarmStorageReadBenchmark
         _alternating = Create(in _unwritten);
 
         // Same contract: the read cannot skip the journal, because this contract really has entries there.
-        _dirtyJournal.WorldState.Set(_written, Value);
+        _dirtyJournal.WorldState.Set(in _written, in Value);
 
         // Another contract entirely: the journal is non-empty, but not for the contract being read.
-        _otherWritten.WorldState.Set(_otherContractWritten, Value);
+        _otherWritten.WorldState.Set(in _otherContractWritten, in Value);
 
         // Both contracts journalled: alternating journal hits defeat the last-contract memo, so every
         // read pays the contract-map probe the gate adds in front of the journal probe.
-        _alternating.WorldState.Set(_written, Value);
-        _alternating.WorldState.Set(_otherContractWritten, Value);
+        _alternating.WorldState.Set(in _written, in Value);
+        _alternating.WorldState.Set(in _otherContractWritten, in Value);
 
-        _cleanJournal.WorldState.Get(_unwritten);
-        _dirtyJournal.WorldState.Get(_unwritten);
-        _dirtyJournal.WorldState.Get(_written);
-        _otherWritten.WorldState.Get(_unwritten);
-        _alternating.WorldState.Get(_written);
-        _alternating.WorldState.Get(_otherContractWritten);
+        _cleanJournal.WorldState.Get(in _unwritten, out _);
+        _dirtyJournal.WorldState.Get(in _unwritten, out _);
+        _dirtyJournal.WorldState.Get(in _written, out _);
+        _otherWritten.WorldState.Get(in _unwritten, out _);
+        _alternating.WorldState.Get(in _written, out _);
+        _alternating.WorldState.Get(in _otherContractWritten, out _);
     }
 
     [GlobalCleanup]
@@ -134,49 +135,42 @@ public class WarmStorageReadBenchmark
     }
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke, Baseline = true)]
-    public int Unwritten_CleanJournal()
-    {
-        int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _cleanJournal.WorldState.Get(_unwritten).Length;
-        return n;
-    }
+    public ulong Unwritten_CleanJournal() => Read(_cleanJournal.WorldState, in _unwritten);
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int Unwritten_DirtyJournal()
-    {
-        int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.WorldState.Get(_unwritten).Length;
-        return n;
-    }
+    public ulong Unwritten_DirtyJournal() => Read(_dirtyJournal.WorldState, in _unwritten);
 
     /// <summary>A read-only contract in a block where a different contract has written.</summary>
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int Unwritten_OtherContractWritten()
-    {
-        int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _otherWritten.WorldState.Get(_unwritten).Length;
-        return n;
-    }
+    public ulong Unwritten_OtherContractWritten() => Read(_otherWritten.WorldState, in _unwritten);
 
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int WrittenSlot()
-    {
-        int n = 0;
-        for (int i = 0; i < OperationsPerInvoke; i++) n += _dirtyJournal.WorldState.Get(_written).Length;
-        return n;
-    }
+    public ulong WrittenSlot() => Read(_dirtyJournal.WorldState, in _written);
 
     /// <summary>Journal hits alternating between two written contracts, the shape of a CALL reading a
     /// slot its caller wrote: the last-contract memo misses on every read.</summary>
     [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
-    public int WrittenSlot_AlternatingContracts()
+    public ulong WrittenSlot_AlternatingContracts()
     {
-        int n = 0;
+        ulong n = 0;
         IWorldState worldState = _alternating.WorldState;
         for (int i = 0; i < OperationsPerInvoke / 2; i++)
         {
-            n += worldState.Get(_written).Length;
-            n += worldState.Get(_otherContractWritten).Length;
+            worldState.Get(in _written, out UInt256 first);
+            worldState.Get(in _otherContractWritten, out UInt256 second);
+            n += first.u0 + second.u0;
+        }
+
+        return n;
+    }
+
+    private static ulong Read(IWorldState worldState, in StorageCell cell)
+    {
+        ulong n = 0;
+        for (int i = 0; i < OperationsPerInvoke; i++)
+        {
+            worldState.Get(in cell, out UInt256 value);
+            n += value.u0;
         }
 
         return n;
