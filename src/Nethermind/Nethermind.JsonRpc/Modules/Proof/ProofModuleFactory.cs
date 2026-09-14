@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 // Standard read only chain setting
                 .AddModule(validationBlockProcessingModules)
                 .AddScoped<TransactionProcessorAdapterFactory>(CreateTraceAdapter)
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddScoped<IBlockValidator>(Always.Valid) // Why?
 

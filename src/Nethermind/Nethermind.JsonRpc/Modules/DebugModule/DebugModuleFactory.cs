@@ -22,7 +22,7 @@ public class DebugModuleFactory(
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
 
             // So the debug rpc change the adapter sometime.

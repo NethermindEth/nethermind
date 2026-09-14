@@ -26,7 +26,7 @@ public class TraceModuleFactory(
             .AddModule(validationBlockProcessingModules)
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
