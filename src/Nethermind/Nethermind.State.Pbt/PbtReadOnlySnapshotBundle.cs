@@ -105,7 +105,13 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
     {
         GuardDispose();
-        Dictionary<ValueHash256, Account?> visible = [];
+        if (snapshots.Count == 0)
+        {
+            using IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts();
+            while (accounts.MoveNext()) yield return accounts.Current;
+            yield break;
+        }
+        SortedDictionary<ValueHash256, Account?> visible = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)));
         using (IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts())
             while (accounts.MoveNext()) visible[accounts.Current.Key] = accounts.Current.Value;
         foreach (PbtSnapshot snapshot in snapshots)
@@ -117,11 +123,25 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
         GuardDispose();
+        if (snapshots.Count == 0)
+        {
+            foreach (KeyValuePair<PbtStorageFullKey, EvmWord> slot in EnumeratePersistedStorage(addressFilter))
+                yield return slot;
+            yield break;
+        }
         SortedDictionary<PbtStorageFullKey, EvmWord> visible = [];
+        foreach ((PbtStorageFullKey key, EvmWord value) in EnumeratePersistedStorage(addressFilter)) visible[key] = value;
+        foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
+        foreach ((PbtStorageFullKey key, EvmWord value) in visible)
+            if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
+    }
+
+    private IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumeratePersistedStorage(ValueHash256? addressFilter)
+    {
         if (addressFilter is null)
         {
             using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage();
-            while (storage.MoveNext()) visible[storage.Current.Key] = storage.Current.Value;
+            while (storage.MoveNext()) yield return storage.Current;
         }
         else
         {
@@ -131,12 +151,9 @@ public sealed class PbtReadOnlySnapshotBundle(
             {
                 prefix[0] = zone;
                 using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage(new PbtStorageFullKey(prefix));
-                while (storage.MoveNext()) visible[storage.Current.Key] = storage.Current.Value;
+                while (storage.MoveNext()) yield return storage.Current;
             }
         }
-        foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
-        foreach ((PbtStorageFullKey key, EvmWord value) in visible)
-            if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
     }
 
     internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves() =>

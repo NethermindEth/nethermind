@@ -118,9 +118,9 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     {
         private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(outer._codeDbOverlay);
 
-        public bool HasRoot(BlockHeader? baseBlock) => outer.HasStateForBlock(baseBlock);
+        public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => outer.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
         {
             StateId stateId = new(baseBlock);
             return new PbtWorldStateScope(

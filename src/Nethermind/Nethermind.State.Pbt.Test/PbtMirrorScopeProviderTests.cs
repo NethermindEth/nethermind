@@ -63,10 +63,10 @@ public class PbtMirrorScopeProviderTests
         authoritativeScope.CreateStorageTree(Eoa).Returns(storageTree);
 
         IWorldStateScopeProvider authoritative = Substitute.For<IWorldStateScopeProvider>();
-        authoritative.BeginScope(null, Arg.Any<LocalMetrics>()).Returns(authoritativeScope);
+        authoritative.BeginScope(null, null, Arg.Any<LocalMetrics>()).Returns(authoritativeScope);
 
         PbtMirrorScopeProvider provider = new(authoritative, ctx.Manager, ctx.ResourcePool);
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics());
 
         PbtMirrorMismatchException? mismatch = divergeOnSlot
             ? Assert.Throws<PbtMirrorMismatchException>(() => scope.CreateStorageTree(Eoa).Get(7))

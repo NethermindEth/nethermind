@@ -775,7 +775,7 @@ public class PbtNodeGroupTests
                     Assert.That(() => ValidateLeafGroup(groupKey, position, payload, streamingWriter), Throws.TypeOf<InvalidDataException>(), $"position {position}, bit {bit}");
                 else
 #endif
-                    Assert.That(ValidateLeafGroup(groupKey, position, payload, streamingWriter), Is.EqualTo(1), $"position {position}, bit {bit}");
+                Assert.That(ValidateLeafGroup(groupKey, position, payload, streamingWriter), Is.EqualTo(1), $"position {position}, bit {bit}");
                 payload[PbtNodeGroupCodec.HeaderLength + 3 + (bit >> 3)] ^= mask;
             }
         }

@@ -65,7 +65,7 @@ public class PbtMetricsTests
         await using PbtTestContext ctx = new();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
 
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics());
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {

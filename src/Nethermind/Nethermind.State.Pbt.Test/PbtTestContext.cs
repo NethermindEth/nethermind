@@ -26,7 +26,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     private readonly PbtCachedReaderPersistence _cachedReaderPersistence;
     private readonly PbtTrieNodeCache _trieNodeCache;
 
-    public SnapshotableMemColumnsDb<PbtColumns> Db { get; }
+    public IColumnsDb<PbtColumns> Db { get; }
     public MemDb CodeDb { get; } = new();
     public PbtConfig Config { get; }
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
@@ -45,7 +45,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     /// <summary>Resolves nothing unless a test supplies one, so scopes report their own EIP-8297 root.</summary>
     public IPbtChildHeaderSource ChildHeaders { get; }
 
-    public PbtTestContext(SnapshotableMemColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null, IMetricsConfig? metricsConfig = null)
+    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null, IMetricsConfig? metricsConfig = null)
     {
         metricsConfig ??= new MetricsConfig();
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");

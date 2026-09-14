@@ -28,9 +28,9 @@ public class FlatScopeProvider(
         return new WarmReadPool(concurrency);
     });
 
-    public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
     {
         StateId currentState = new(baseBlock);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);

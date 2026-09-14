@@ -263,18 +263,18 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public IDisposable BeginScope(BlockHeader? baseBlock)
+        public IDisposable BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock = null)
         {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
                 throw new InvalidOperationException("Cannot create nested worldstate scope.");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"} for target {targetBlock?.ToString(BlockHeader.Format.Short) ?? "null"}.");
 
             try
             {
-                _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
+                _currentScope = ScopeProvider.BeginScope(baseBlock, targetBlock, _localMetrics);
                 _stateProvider.SetScope(_currentScope);
                 _persistentStorageProvider.SetBackendScope(_currentScope);
             }
@@ -372,7 +372,7 @@ namespace Nethermind.State
             return _stateProvider.IsDeadAccount(address);
         }
 
-        public bool HasStateForBlock(BlockHeader? header) => ScopeProvider.HasRoot(header);
+        public bool HasStateForBlock(BlockHeader? baseBlock, BlockHeader? targetBlock = null) => ScopeProvider.HasRoot(baseBlock, targetBlock);
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {

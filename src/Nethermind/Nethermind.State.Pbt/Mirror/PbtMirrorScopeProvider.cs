@@ -29,12 +29,12 @@ public class PbtMirrorScopeProvider(
     private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
 
 
-    public bool HasRoot(BlockHeader? baseBlock) =>
-        authoritative.HasRoot(baseBlock) && manager.HasStateForBlock(new StateId(baseBlock));
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
+        authoritative.HasRoot(baseBlock, targetBlock) && manager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
     {
-        IWorldStateScopeProvider.IScope authoritativeScope = authoritative.BeginScope(baseBlock, metrics);
+        IWorldStateScopeProvider.IScope authoritativeScope = authoritative.BeginScope(baseBlock, targetBlock, metrics);
         try
         {
             StateId stateId = new(baseBlock);

@@ -89,7 +89,7 @@ public class PbtFlatDrivenPersistenceTests
         PbtScopeProvider provider = ctx.CreateScopeProvider();
 
         Hash256 root1;
-        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics()))
         {
             scope.Commit(0);
             Write(scope, TestItem.AddressA, 1, 100);
@@ -99,7 +99,7 @@ public class PbtFlatDrivenPersistenceTests
 
         BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(root1).TestObject;
         Hash256 root2;
-        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header1, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header1, null, new LocalMetrics()))
         {
             Write(scope, TestItem.AddressB, 2, 200);
             scope.Commit(2);

@@ -19,13 +19,13 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     private ILogger _logger = logManager.GetClassLogger<WorldStateScopeOperationLogger>();
     private long _currentScopeId = 0;
 
-    public bool HasRoot(BlockHeader? baseBlock) =>
-        baseScopeProvider.HasRoot(baseBlock);
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
+        baseScopeProvider.HasRoot(baseBlock, targetBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
     {
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
+        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, targetBlock, metrics), scopeId, _logger);
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope

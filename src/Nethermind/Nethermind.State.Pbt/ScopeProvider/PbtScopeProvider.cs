@@ -23,9 +23,9 @@ public class PbtScopeProvider(
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
     private readonly ITrieWarmer _trieWarmer = isReadOnly ? new NoopTrieWarmer() : trieWarmer;
 
-    public bool HasRoot(BlockHeader? baseBlock) => manager.HasStateForBlock(new StateId(baseBlock));
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => manager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
     {
         StateId stateId = new(baseBlock);
         return new PbtWorldStateScope(stateId, baseBlock, manager.GatherBundle(stateId, usage), _codeDb, manager, childHeaders, resourcePool, usage, isReadOnly, _trieWarmer, logManager);

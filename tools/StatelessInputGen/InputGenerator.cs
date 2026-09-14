@@ -135,7 +135,7 @@ internal static class InputGenerator
         {
             ExecutionRequestsProcessorFactory = ExecutionRequestsProcessorFactory.Instance
         };
-        using IDisposable scope = env.WorldState.BeginScope(headers[^1]);
+        using IDisposable scope = env.WorldState.BeginScope(headers[^1], block.Header);
         // Normal processed-block validation checks the recovered requests hash against the original header.
         env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, cancellationToken);
     }

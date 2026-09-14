@@ -28,8 +28,8 @@ internal static class ScopeProviderTestExtensions
 {
     // Test convenience overload: begins a scope with a throwaway metrics accumulator for tests that
     // call the scope provider directly and do not assert on the folded counters.
-    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader baseBlock)
-        => provider.BeginScope(baseBlock, new LocalMetrics());
+    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader baseBlock, BlockHeader targetBlock = null)
+        => provider.BeginScope(baseBlock, targetBlock, new LocalMetrics());
 }
 
 [TestFixture(false)]
@@ -651,7 +651,7 @@ public class ScopeProviderTests(bool useFlat)
         caches.StateCache.Set(in key, new Account(1, 100));
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
         PrewarmerScopeProvider provider = new(baseProvider, new PrewarmerState(caches, isPrewarmer), LimboLogs.Instance);
 
         bool ran = false;
@@ -680,7 +680,7 @@ public class ScopeProviderTests(bool useFlat)
         caches.ConsumerScopeOpened += () => throw new InvalidOperationException("join failed");
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         Assert.That(() => consumer.BeginScope(Build.A.BlockHeader.TestObject), Throws.InvalidOperationException);
@@ -738,7 +738,7 @@ public class ScopeProviderTests(bool useFlat)
             mainScopeDuringBaseDispose = caches.MainScope;
         });
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         using (consumer.BeginScope(Build.A.BlockHeader.TestObject))
@@ -816,7 +816,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.IScope populatorBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider.ITrieWarmupSession warmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope, populatorBaseScope);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope, populatorBaseScope);
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         PrewarmerScopeProvider populator = new(baseProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
         IWorldStateScopeProvider.IScope consumerScope = consumer.BeginScope(null);
@@ -869,7 +869,7 @@ public class ScopeProviderTests(bool useFlat)
         }
         caches.MainScope = mainScope;
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(populatorBaseScope);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(populatorBaseScope);
         PrewarmerScopeProvider populator = new(baseProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
         Assert.That(() => populator.BeginScope(null).Dispose(), Throws.Exception.SameAs(failure));
@@ -889,7 +889,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider.IScope replacement = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         IWorldStateScopeProvider.IScope consumerScope = consumer.BeginScope(null);
         caches.MainScope = replacement;
@@ -915,7 +915,7 @@ public class ScopeProviderTests(bool useFlat)
         mainScope.CreateTrieWarmupSession().Returns(firstBorrow, secondBorrow);
         caches.MainScope = mainScope;
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(_ => Substitute.For<IWorldStateScopeProvider.IScope>());
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(_ => Substitute.For<IWorldStateScopeProvider.IScope>());
         PrewarmerScopeProvider populator = new(baseProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
         IWorldStateScopeProvider.IScope firstScope = populator.BeginScope(null);
         using IWorldStateScopeProvider.IScope secondScope = populator.BeginScope(null);
@@ -974,7 +974,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
         inner.CreateTrieWarmupSession().Returns(trieWarmupSession);
         IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
-        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
+        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
 
         IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
             new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
@@ -992,6 +992,27 @@ public class ScopeProviderTests(bool useFlat)
 
         trieWarmupSession.Received(1).HintWarmAccount(addressA);
         trieWarmupSession.Received(1).HintWarmSlot(addressA, (UInt256)1);
+    }
+
+    [Test]
+    public void Test_WorldStateAndDecorators_ForwardTargetBlock()
+    {
+        IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
+        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
+            .Returns(Substitute.For<IWorldStateScopeProvider.IScope>());
+        innerProvider.HasRoot(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
+        IWorldStateScopeProvider decorated = new PrewarmerScopeProvider(
+            new WorldStateMetricsScopeProvider(new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { }),
+            new PrewarmerState(NewCaches(), isPrewarmer: false), LimboLogs.Instance);
+        WorldState state = new(decorated, LimboLogs.Instance);
+        BlockHeader baseBlock = HeaderAt(TestItem.KeccakA, 1);
+        BlockHeader targetBlock = HeaderAt(TestItem.KeccakB, 2);
+
+        Assert.That(state.HasStateForBlock(baseBlock, targetBlock), Is.True);
+        using (state.BeginScope(baseBlock, targetBlock)) { }
+
+        innerProvider.Received(1).HasRoot(baseBlock, targetBlock);
+        innerProvider.Received(1).BeginScope(baseBlock, targetBlock, Arg.Any<LocalMetrics>());
     }
 
     /// <summary>
@@ -1213,7 +1234,7 @@ public class ScopeProviderTests(bool useFlat)
         // filling the cache, so counting them would skew the exported coverage ratio.
         LocalMetrics populatorMetrics = new();
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
-        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock, populatorMetrics))
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock, null, populatorMetrics))
         {
             scope.Get(TestItem.AddressA);
             scope.CreateStorageTree(TestItem.AddressA).Get(1, out _);
@@ -1225,7 +1246,7 @@ public class ScopeProviderTests(bool useFlat)
         // Consumer probes count: AddressA / slot 1 were just populated (hits); AddressB / slot 2 are cold (misses).
         LocalMetrics consumerMetrics = new();
         PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
-        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(baseBlock, consumerMetrics))
+        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(baseBlock, null, consumerMetrics))
         {
             scope.Get(TestItem.AddressA);
             scope.Get(TestItem.AddressB);
@@ -1265,7 +1286,7 @@ public class ScopeProviderTests(bool useFlat)
         PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
 
-        using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, metrics);
+        using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, null, metrics);
         caches.StorageCache.Set(in cell, UInt256.Zero);
         readScope.CreateStorageTree(TestItem.AddressA).Get(1, out UInt256 slotRead1472);
 

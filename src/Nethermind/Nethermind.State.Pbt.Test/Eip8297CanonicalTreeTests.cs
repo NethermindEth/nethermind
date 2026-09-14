@@ -1210,10 +1210,10 @@ public class Eip8297CanonicalTreeTests
     private static IEnumerable<TestCaseData> BucketizationCases()
     {
         foreach (int count in new[] { 0, 1, 2, 3, 4, 16, 31, 32, 33, 256 })
-        foreach (int groupDepth in new[] { 0, 4, 20 })
-        foreach (int occupiedSlots in new[] { 1, 2, 16 })
-        foreach (int order in new[] { 0, 1, 2 })
-            yield return new TestCaseData(count, groupDepth, occupiedSlots, order);
+            foreach (int groupDepth in new[] { 0, 4, 20 })
+                foreach (int occupiedSlots in new[] { 1, 2, 16 })
+                    foreach (int order in new[] { 0, 1, 2 })
+                        yield return new TestCaseData(count, groupDepth, occupiedSlots, order);
     }
 
     [TestCaseSource(nameof(BucketizationCases))]
@@ -1274,18 +1274,18 @@ public class Eip8297CanonicalTreeTests
     {
         using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
         foreach (byte zone in new byte[] { 0xFF, 0x01, 0x00 })
-        foreach (byte shard in new byte[] { 0xFF, 0x00, 0x31, 0x3F })
-        {
-            byte[] key = new byte[zone == 0xFF ? 66 : 34];
-            key[0] = zone;
-            key[1] = shard;
-            PbtStorageFullKey fullKey = new(key);
-            batch.Set(fullKey, new ValueHash256(Value(1)));
-            batch.Delete(fullKey);
-            batch.Set(fullKey, new ValueHash256(Value(2)));
-            key[^1] = 1;
-            batch.Delete(new PbtStorageFullKey(key));
-        }
+            foreach (byte shard in new byte[] { 0xFF, 0x00, 0x31, 0x3F })
+            {
+                byte[] key = new byte[zone == 0xFF ? 66 : 34];
+                key[0] = zone;
+                key[1] = shard;
+                PbtStorageFullKey fullKey = new(key);
+                batch.Set(fullKey, new ValueHash256(Value(1)));
+                batch.Delete(fullKey);
+                batch.Set(fullKey, new ValueHash256(Value(2)));
+                key[^1] = 1;
+                batch.Delete(new PbtStorageFullKey(key));
+            }
         if (fallback) batch.Set(new PbtStorageFullKey(Bytes.FromHexString("0x42")), new ValueHash256(Value(3)));
         using PbtWriteBatchSet<PbtStorageFullKey> prepared = PbtWriteBatchSet<PbtStorageFullKey>.Create(batch.Build());
         PbtWriteOperation<PbtStorageFullKey>[] original = [.. batch.Operations];
@@ -1327,14 +1327,14 @@ public class Eip8297CanonicalTreeTests
         using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
         EipReferenceTree oracle = new();
         foreach (byte zone in new byte[] { 0x00, 0x01, 0xFF })
-        foreach (byte shard in new byte[] { 0x00, 0x01, 0xF0, 0xFF })
-        {
-            byte[] key = new byte[zone == 0xFF ? 66 : 34];
-            key[0] = zone;
-            key[1] = shard;
-            batch.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
-            oracle.Insert(key, Value(1));
-        }
+            foreach (byte shard in new byte[] { 0x00, 0x01, 0xF0, 0xFF })
+            {
+                byte[] key = new byte[zone == 0xFF ? 66 : 34];
+                key[0] = zone;
+                key[1] = shard;
+                batch.Set(new PbtStorageFullKey(key), new ValueHash256(Value(1)));
+                oracle.Insert(key, Value(1));
+            }
         using PbtNodeGroupStore preparedStore = new();
         using PbtNodeGroupStore genericStore = new();
         ValueHash256 initialRoot = persisted ? TrieUpdater.UpdateRoot(preparedStore, default, batch.Build()) : default;
@@ -1851,9 +1851,9 @@ public class Eip8297CanonicalTreeTests
         int[] groupDepths = [0, 4, 8, 12, 248, 252, 520, 524];
         int[] retainedMasks = [0x0000, 0x0001, 0x8000, 0x000A, 0xA000, 0xA55A, 0x8001, 0xFFFF];
         foreach (int groupDepth in groupDepths)
-        foreach (int retainedMask in retainedMasks)
-            yield return new TestCaseData(groupDepth, retainedMask)
-                .SetName($"Dense_group_paths_survive_collapse_and_restoration(depth={groupDepth}, retained=0x{retainedMask:X4})");
+            foreach (int retainedMask in retainedMasks)
+                yield return new TestCaseData(groupDepth, retainedMask)
+                    .SetName($"Dense_group_paths_survive_collapse_and_restoration(depth={groupDepth}, retained=0x{retainedMask:X4})");
     }
 
     [TestCaseSource(nameof(DenseGroupCollapseCases))]

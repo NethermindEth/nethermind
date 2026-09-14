@@ -24,14 +24,14 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public bool IsInScope => State.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-        => State.BeginScope(baseBlock);
+    public IDisposable BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock = null)
+        => State.BeginScope(baseBlock, targetBlock);
 
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
-    public bool HasStateForBlock(BlockHeader? baseBlock)
-        => State.HasStateForBlock(baseBlock);
+    public bool HasStateForBlock(BlockHeader? baseBlock, BlockHeader? targetBlock = null)
+        => State.HasStateForBlock(baseBlock, targetBlock);
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account)
         => State.TryGetAccount(address, out account);

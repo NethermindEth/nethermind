@@ -157,12 +157,12 @@ public class ParallelUpdateRootTests
         Dictionary<string, byte[]> surviving = [];
         List<(byte[] Key, byte[]? Value)> initial = [];
         foreach (string zone in new[] { "00", "01", "FF" })
-        foreach (string sibling in new[] { "0F", "10", "F0" })
-        foreach (string suffix in new[] { "00", "01", "F0" })
-        {
-            string padding = new('D', zone == "FF" ? 126 : 62);
-            initial.Add((Bytes.FromHexString(zone + sibling + padding + suffix), Value(1)));
-        }
+            foreach (string sibling in new[] { "0F", "10", "F0" })
+                foreach (string suffix in new[] { "00", "01", "F0" })
+                {
+                    string padding = new('D', zone == "FF" ? 126 : 62);
+                    initial.Add((Bytes.FromHexString(zone + sibling + padding + suffix), Value(1)));
+                }
         ValueHash256 root = default;
         ApplyAndCompare(store, initial);
         List<(byte[] Key, byte[]? Value)> changes = [];
@@ -448,15 +448,15 @@ public class ParallelUpdateRootTests
         List<(byte[] Key, byte[]? Value)> entries = [];
         byte[] zones = [0x01, 0x00, 0xFF];
         for (int partition = 0; partition < populatedZones; partition++)
-        for (int shard = 15; shard >= 0; shard--)
-        for (int suffix = 3; suffix >= 0; suffix--)
-        {
-            byte[] key = new byte[zones[partition] == 0xFF ? 66 : 34];
-            key[0] = zones[partition];
-            key[compressed ? 12 : 1] = (byte)(shard << 4);
-            key[^1] = (byte)(suffix ^ 1);
-            entries.Add((key, Value((byte)(suffix + 1))));
-        }
+            for (int shard = 15; shard >= 0; shard--)
+                for (int suffix = 3; suffix >= 0; suffix--)
+                {
+                    byte[] key = new byte[zones[partition] == 0xFF ? 66 : 34];
+                    key[0] = zones[partition];
+                    key[compressed ? 12 : 1] = (byte)(shard << 4);
+                    key[^1] = (byte)(suffix ^ 1);
+                    entries.Add((key, Value((byte)(suffix + 1))));
+                }
         return [.. entries];
     }
 

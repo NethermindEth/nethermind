@@ -46,9 +46,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
-    public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         StateTree backingStateTree = _backingStateTree ??= CreateStateTree();

@@ -138,25 +138,71 @@ public sealed class PbtSnapshotBundle(
             if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
     }
 
-    private IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
+    internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
     {
-        Dictionary<ValueHash256, Account?> visible = [];
-        foreach ((ValueHash256 hash, Account account) in readOnlyBundle.EnumerateAccounts()) visible[hash] = account;
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        SortedDictionary<ValueHash256, Account?> changes = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)));
         foreach (PbtSnapshot snapshot in snapshots)
-            foreach ((ValueHash256 hash, Account? account) in snapshot.Content.Accounts) visible[hash] = account;
-        foreach ((ValueHash256 hash, Account? account) in WriteBuffer.Accounts) visible[hash] = account;
-        foreach ((ValueHash256 hash, Account? account) in visible)
-            if (account is not null) yield return new(hash, account);
+            foreach ((ValueHash256 hash, Account? account) in snapshot.Content.Accounts) changes[hash] = account;
+        foreach ((ValueHash256 hash, Account? account) in WriteBuffer.Accounts) changes[hash] = account;
+        using IEnumerator<KeyValuePair<ValueHash256, Account?>> changed = changes.GetEnumerator();
+        bool hasChange = changed.MoveNext();
+        foreach (KeyValuePair<ValueHash256, Account> persisted in readOnlyBundle.EnumerateAccounts())
+        {
+            while (hasChange && changes.Comparer.Compare(changed.Current.Key, persisted.Key) < 0)
+            {
+                if (changed.Current.Value is { } account) yield return new(changed.Current.Key, account);
+                hasChange = changed.MoveNext();
+            }
+            if (hasChange && changed.Current.Key == persisted.Key)
+            {
+                if (changed.Current.Value is { } account) yield return new(changed.Current.Key, account);
+                hasChange = changed.MoveNext();
+            }
+            else yield return persisted;
+        }
+        while (hasChange)
+        {
+            if (changed.Current.Value is { } account) yield return new(changed.Current.Key, account);
+            hasChange = changed.MoveNext();
+        }
     }
 
-    private IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
+    internal IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
-        SortedDictionary<PbtStorageFullKey, EvmWord> visible = [];
-        foreach ((PbtStorageFullKey key, EvmWord value) in readOnlyBundle.EnumerateStorage(addressFilter)) visible[key] = value;
-        foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
-        PbtFlatState.ApplyStorage(visible, WriteBuffer, addressFilter);
-        foreach ((PbtStorageFullKey key, EvmWord value) in visible)
-            if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        SortedDictionary<PbtStorageFullKey, EvmWord> changes = [];
+        HashSet<ValueHash256> clearedAddresses = [];
+        foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
+        ApplyChanges(WriteBuffer);
+        using IEnumerator<KeyValuePair<PbtStorageFullKey, EvmWord>> changed = changes.GetEnumerator();
+        bool hasChange = changed.MoveNext();
+        foreach (KeyValuePair<PbtStorageFullKey, EvmWord> persisted in readOnlyBundle.EnumerateStorage(addressFilter))
+        {
+            while (hasChange && changed.Current.Key.CompareTo(persisted.Key) < 0)
+            {
+                if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
+                hasChange = changed.MoveNext();
+            }
+            if (hasChange && changed.Current.Key == persisted.Key)
+            {
+                if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
+                hasChange = changed.MoveNext();
+            }
+            else if (!clearedAddresses.Contains(PbtFlatState.StorageAddress(persisted.Key))) yield return persisted;
+        }
+        while (hasChange)
+        {
+            if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
+            hasChange = changed.MoveNext();
+        }
+
+        void ApplyChanges(PbtSnapshotContent content)
+        {
+            PbtFlatState.ApplyStorage(changes, content, addressFilter);
+            foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses)
+                if (addressFilter is null || addressHash == addressFilter.Value) clearedAddresses.Add(addressHash);
+        }
     }
 
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));

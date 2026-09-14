@@ -21,6 +21,75 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotBundleTests
 {
+    [TestCase(false, false, false)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(true, true, false)]
+    [TestCase(false, true, true)]
+    [TestCase(true, true, true)]
+    public void Enumeration_streams_base_and_disposes_iterator_on_early_exit(bool writable, bool storage, bool filtered)
+    {
+        PbtStorageFullKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
+        Reader reader = new(key, new ValueHash256(Value(1)))
+        {
+            Accounts = [new(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(1, 1))],
+            ThrowAfterFirst = true
+        };
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
+        using PbtSnapshotBundle bundle = new(new(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        if (storage)
+        {
+            ValueHash256? addressFilter = filtered ? PbtKeyDerivation.AddressKeyHash(TestItem.AddressA) : (ValueHash256?)null;
+            using IEnumerator<KeyValuePair<PbtStorageFullKey, EvmWord>> iterator = (writable ? bundle.EnumerateStorage(addressFilter) : readOnly.EnumerateStorage(addressFilter)).GetEnumerator();
+            Assert.That(iterator.MoveNext(), Is.True);
+        }
+        else
+        {
+            using IEnumerator<KeyValuePair<ValueHash256, Account>> iterator = (writable ? bundle.EnumerateAccounts() : readOnly.EnumerateAccounts()).GetEnumerator();
+            Assert.That(iterator.MoveNext(), Is.True);
+        }
+        Assert.That(reader.IteratorDisposals, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Enumeration_merges_local_deletes_clears_and_same_layer_rewrites([Values] bool filtered)
+    {
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 otherHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressB);
+        PbtStorageFullKey deleted = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtStorageFullKey rewritten = PbtStateKey.Storage(TestItem.AddressA, 1000);
+        PbtStorageFullKey cleared = PbtStateKey.Storage(TestItem.AddressA, 2000);
+        PbtStorageFullKey other = PbtStateKey.Storage(TestItem.AddressB, 1);
+        EvmWord original = EvmWordSlot.FromStripped(Value(1));
+        EvmWord replacement = EvmWordSlot.FromStripped(Value(2));
+        SortedDictionary<PbtStorageFullKey, EvmWord> persisted = new() { [deleted] = original, [rewritten] = original, [cleared] = original, [other] = original };
+        SortedDictionary<ValueHash256, Account> accounts = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)))
+        {
+            [addressHash] = new Account(1, 1),
+            [otherHash] = new Account(1, 1)
+        };
+        Reader reader = new(default, null) { Accounts = accounts, Storage = persisted };
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtSnapshotContent content = new();
+        content.ClearStorage(addressHash);
+        content.Storages[rewritten] = original;
+        content.Storages[deleted] = original;
+        content.Accounts[addressHash] = null;
+        PbtSnapshotPooledList snapshots = new(1) { new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing) };
+        using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        bundle.SetSlot(TestItem.AddressA, 1, default);
+        bundle.SetSlot(TestItem.AddressA, 1000, replacement);
+        bundle.SetAccount(TestItem.AddressB, new Account(2, 2));
+        SortedDictionary<PbtStorageFullKey, EvmWord> expected = new() { [rewritten] = replacement };
+        if (!filtered) expected[other] = original;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.EnumerateStorage(filtered ? addressHash : (ValueHash256?)null), Is.EqualTo(expected));
+            Assert.That(bundle.EnumerateAccounts(), Is.EqualTo(new[] { new KeyValuePair<ValueHash256, Account>(otherHash, new Account(2, 2)) }));
+        }
+    }
+
     [Test]
     public void SnapshotContent_ConcurrentSameGroupReplacementsReleasePreviousPayloads([Values] bool tombstones)
     {
@@ -1497,6 +1566,25 @@ public class PbtSnapshotBundleTests
 
     private sealed class Reader(PbtStorageFullKey key, ValueHash256? value) : IPbtPersistence.IReader
     {
+        public IEnumerable<KeyValuePair<ValueHash256, Account>> Accounts { get; init; } = [];
+        public IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> Storage { get; init; } = [];
+        public bool ThrowAfterFirst { get; init; }
+        public int IteratorDisposals { get; private set; }
+        private IEnumerator<T> Track<T>(IEnumerable<T> values)
+        {
+            try
+            {
+                foreach (T item in values)
+                {
+                    yield return item;
+                    if (ThrowAfterFirst) throw new InvalidOperationException("Enumeration must not read ahead.");
+                }
+            }
+            finally
+            {
+                IteratorDisposals++;
+            }
+        }
         public PbtNodePath GroupKey { get; set; } = new([], 0);
         public byte[]? GroupPayload { get; set; }
         public IRefCountingMemoryProvider MemoryProvider { get; set; } = PooledRefCountingMemoryProvider.Instance;
@@ -1513,12 +1601,14 @@ public class PbtSnapshotBundleTests
             CodeReadCount++;
             return Codes.GetValueOrDefault(codeHash);
         }
-        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
+        public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(Track(Accounts));
         public IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) =>
-            new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(EnumerateStorageCore(prefix));
+            new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(Track(EnumerateStorageCore(prefix)));
 
-        private IEnumerator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorageCore(PbtStorageFullKey? prefix)
+        private IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorageCore(PbtStorageFullKey? prefix)
         {
+            foreach (KeyValuePair<PbtStorageFullKey, EvmWord> slot in Storage)
+                if (prefix is null || prefix.Value.IsPrefixOf(slot.Key)) yield return slot;
             if (value is { } word && (prefix is null || prefix.Value.IsPrefixOf(key)))
                 yield return new(key, EvmWordSlot.FromStripped(word.Bytes));
         }

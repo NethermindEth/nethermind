@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Fixtures/Eip8347/genesis.json" />
+    <None Update="Fixtures/Eip8347/canonical/**/*;Fixtures/Eip8347/canonical-manifest.json;Fixtures/Eip8347/states/*.json;Fixtures/Eip8347/blocks.json;Fixtures/Eip8347/migration-rpc.json;Fixtures/Eip8347/builder-predeploys/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Blake3" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>

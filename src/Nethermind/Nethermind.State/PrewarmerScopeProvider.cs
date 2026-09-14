@@ -50,11 +50,11 @@ public class PrewarmerScopeProvider(
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
     private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
-    public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => baseProvider.HasRoot(baseBlock, targetBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
     {
-        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
+        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, targetBlock, metrics);
         if (!isPrewarmer)
         {
             try

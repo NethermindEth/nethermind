@@ -16,7 +16,14 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldStateScopeProvider
 {
-    bool HasRoot(BlockHeader? baseBlock);
+    /// <summary>Checks whether the state needed to open a scope is available.</summary>
+    /// <param name="baseBlock">The block whose post-state the scope opens at; null for the pre-genesis state.</param>
+    /// <param name="targetBlock">
+    /// The header of the block that will be executed on top of <paramref name="baseBlock"/>, or null when the
+    /// caller only reads or overrides the post-state of <paramref name="baseBlock"/> (calls, tracing, read-only
+    /// environments). Backends that do not select storage by target ignore it.
+    /// </param>
+    bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock);
 
     /// <summary>A borrowed, hint-only reference for warming trie paths.</summary>
     /// <remarks>Dispose releases one borrowed reference, not other callers' references to the same session.</remarks>
@@ -56,11 +63,13 @@ public interface IWorldStateScopeProvider
         }
     }
 
+    /// <param name="baseBlock"><inheritdoc cref="HasRoot" path="/param[@name='baseBlock']"/></param>
+    /// <param name="targetBlock"><inheritdoc cref="HasRoot" path="/param[@name='targetBlock']"/></param>
     /// <param name="metrics">
     /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
     /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
     /// </param>
-    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
+    IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics);
 
     public interface IScope : IDisposable
     {

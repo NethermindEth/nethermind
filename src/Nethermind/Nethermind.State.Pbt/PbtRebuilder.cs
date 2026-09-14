@@ -26,11 +26,18 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
     /// <param name="cancellationToken">Cancels consumption and tree updates before publication.</param>
     /// <param name="windowSize">Maximum received records per update; zero uses 2,000,000 records.</param>
     /// <returns>The completed canonical tree root.</returns>
-    public async Task<ValueHash256> Rebuild(
+    public Task<ValueHash256> Rebuild(
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,
-        int windowSize = 0)
+        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, WriteFlags.DisableWAL);
+
+    internal async Task<ValueHash256> Rebuild(
+        ChannelReader<ArrayPoolList<RebuildEntry>> source,
+        StateId targetState,
+        CancellationToken cancellationToken,
+        int windowSize,
+        WriteFlags stagingWriteFlags)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(windowSize);
         if (windowSize == 0) windowSize = DefaultWindowSize;
@@ -78,7 +85,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         {
             cancellationToken.ThrowIfCancellationRequested();
             using (IPbtPersistence.IReader reader = target.CreateReader())
-            using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL))
+            using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(stagingWriteFlags))
             using (PbtWriteBatch<PbtStorageFullKey> prepared = changes.Build())
             {
                 root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared);

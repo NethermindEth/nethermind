@@ -11,6 +11,34 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Whether to use the experimental EIP-8297 partitioned binary tree state backend. The state root will not match networks using the hexary Patricia trie.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
+    /// <summary>Whether to enable EIP-8347 migration alongside standard flat state. Requires a scheduled binaryTrieTime. Defaults to false.</summary>
+    [ConfigItem(Description = "Whether to enable EIP-8347 migration alongside standard flat state. Requires a scheduled binaryTrieTime.", DefaultValue = "false")]
+    bool MigrationEnabled { get; set; }
+
+    /// <summary>Path to the migration anchor manifest; null for genesis bootstrap or an already seeded PBT database. Defaults to null.</summary>
+    [ConfigItem(Description = "Path to the migration anchor manifest; null for genesis bootstrap or an already seeded PBT database. A populated PBT database imported from another source is rejected; delete it to re-anchor.", DefaultValue = "null")]
+    string? MigrationManifestPath { get; set; }
+
+    /// <summary>Path to the canonical EIP-8347 PBT snapshot; paired with MigrationPreimagesPath. Defaults to null.</summary>
+    [ConfigItem(Description = "Path to the canonical EIP-8347 PBT snapshot; paired with MigrationPreimagesPath.", DefaultValue = "null")]
+    string? MigrationSnapshotPath { get; set; }
+
+    /// <summary>Path to canonical EIP-8347 preimages; paired with MigrationSnapshotPath. Defaults to null.</summary>
+    [ConfigItem(Description = "Path to canonical EIP-8347 preimages; paired with MigrationSnapshotPath.", DefaultValue = "null")]
+    string? MigrationPreimagesPath { get; set; }
+
+    /// <summary>Path to a separate offline read-only preimage-flat source database. Defaults to null.</summary>
+    [ConfigItem(Description = "Path to a separate offline read-only preimage-flat source database.", DefaultValue = "null")]
+    string? MigrationPreimageSourcePath { get; set; }
+
+    /// <summary>Whether to generate a separate offline source from the MPT genesis allocation. Defaults to false.</summary>
+    [ConfigItem(Description = "Whether to generate a separate offline source from the MPT genesis allocation.", DefaultValue = "false")]
+    bool MigrationGenesisBootstrap { get; set; }
+
+    /// <summary>New directory for a verified offline snapshot, preimages and manifest; export then exit. Defaults to null.</summary>
+    [ConfigItem(Description = "Export verified portable artifacts from genesis bootstrap or an offline preimage source into a new directory, then exit before networking. Requires MigrationEnabled.", DefaultValue = "null", HiddenFromDocs = true)]
+    string? MigrationExportPath { get; set; }
+
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }

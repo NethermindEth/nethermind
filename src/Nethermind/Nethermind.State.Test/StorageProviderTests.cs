@@ -1917,9 +1917,9 @@ public class StorageProviderTests(bool useFlat)
     private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
     {
 
-        public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
+        public bool HasRoot(BlockHeader baseBlock, BlockHeader targetBlock) => scopeProvider.HasRoot(baseBlock, targetBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, BlockHeader targetBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, targetBlock, metrics), writtenData);
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {
@@ -2002,10 +2002,10 @@ public class StorageProviderTests(bool useFlat)
 
     private sealed class UnknownEmptinessScopeProvider(IWorldStateScopeProvider baseProvider) : IWorldStateScopeProvider
     {
-        public bool HasRoot(BlockHeader baseBlock) => baseProvider.HasRoot(baseBlock);
+        public bool HasRoot(BlockHeader baseBlock, BlockHeader targetBlock) => baseProvider.HasRoot(baseBlock, targetBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) =>
-            new ScopeDecorator(baseProvider.BeginScope(baseBlock, metrics));
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, BlockHeader targetBlock, LocalMetrics metrics) =>
+            new ScopeDecorator(baseProvider.BeginScope(baseBlock, null, metrics));
 
         private sealed class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope) : IWorldStateScopeProvider.IScope
         {

@@ -41,7 +41,7 @@ public class PbtWorldStateScopeTests
         PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
         PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
         Hash256 canonicalRoot;
-        using (IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(null, null, new LocalMetrics()))
         {
             Write(scope, 1);
             scope.Commit(1);
@@ -50,7 +50,7 @@ public class PbtWorldStateScopeTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(canonicalRoot).TestObject;
         cache.Clear();
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
-        using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
+        using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, null, new LocalMetrics()))
         {
             PbtNodePath rootPath = new([], 0);
             using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath, canonicalRoot.ValueHash256);
@@ -63,7 +63,7 @@ public class PbtWorldStateScopeTests
             scope.Commit(2);
             Assert.That(scope.RootHash, Is.Not.EqualTo(canonicalRoot));
         }
-        using IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(parent, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(parent, null, new LocalMetrics());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(canonical.RootHash, Is.EqualTo(canonicalRoot));
@@ -85,7 +85,7 @@ public class PbtWorldStateScopeTests
         PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         Hash256 genesisRoot;
-        using (IWorldStateScopeProvider.IScope genesisScope = manager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope genesisScope = manager.GlobalWorldState.BeginScope(null, null, new LocalMetrics()))
         {
             Write(genesisScope, 1);
             genesisScope.Commit(0);
@@ -98,14 +98,14 @@ public class PbtWorldStateScopeTests
 
         Hash256 computedRoot;
         using (IOverridableWorldScope overrides = manager.CreateOverridableWorldScope())
-        using (IWorldStateScopeProvider.IScope overrideScope = overrides.WorldState.BeginScope(genesis.Header, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope overrideScope = overrides.WorldState.BeginScope(genesis.Header, null, new LocalMetrics()))
         {
             Write(overrideScope, 2);
             overrideScope.UpdateRootHash();
             computedRoot = overrideScope.RootHash;
         }
 
-        using IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(genesis.Header, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(genesis.Header, null, new LocalMetrics());
         Write(scope, 2);
         scope.Commit(1);
         using PbtSnapshotBundle bundle = container.Resolve<IPbtDbManager>().GatherBundle(
@@ -126,7 +126,7 @@ public class PbtWorldStateScopeTests
     public async Task Storage_emptiness_is_unknown_and_slot_reads_work([Values] bool hasStorage)
     {
         await using PbtTestContext ctx = new();
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         if (hasStorage)
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
@@ -153,7 +153,7 @@ public class PbtWorldStateScopeTests
         logger.When(log => log.Debug(Arg.Any<string>())).Do(call => messages.Add(call.Arg<string>()));
         await using PbtTestContext ctx = new();
         IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(logManager: new OneLoggerLogManager(new ILogger(logger)))
-            .BeginScope(null, new LocalMetrics());
+            .BeginScope(null, null, new LocalMetrics());
         using (scope)
         {
             Write(scope, 1);
@@ -184,7 +184,7 @@ public class PbtWorldStateScopeTests
         await using PbtTestContext ctx = new();
         IWorldStateScopeProvider provider = ctx.WorldStateManager.CreateResettableWorldState();
 
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics());
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
             batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
@@ -210,7 +210,7 @@ public class PbtWorldStateScopeTests
         await using PbtTestContext ctx = new(childHeaders: childHeaders);
 
         // block 0 has no header to echo, so its own tree root becomes the genesis header's claim
-        using IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         Write(genesisScope, 1);
         genesisScope.Commit(0);
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithStateRoot(genesisScope.RootHash).TestObject;
@@ -218,7 +218,7 @@ public class PbtWorldStateScopeTests
         BlockHeader first = childHeaders.Add(genesis, TestItem.KeccakA);
         BlockHeader second = childHeaders.Add(first, TestItem.KeccakB);
 
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, null, new LocalMetrics());
         Write(scope, 2);
         scope.Commit(1);
         Assert.That(scope.RootHash, Is.EqualTo(TestItem.KeccakA), "the first block reports what its header claims");
@@ -241,7 +241,7 @@ public class PbtWorldStateScopeTests
     public async Task DeletedAccount_RemovesAccountAndStorage(uint slot)
     {
         await using PbtTestContext ctx = new();
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
@@ -268,7 +268,7 @@ public class PbtWorldStateScopeTests
         byte[] code = Bytes.FromHexString("6001");
         Hash256 codeHash = Keccak.Compute(code);
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         scope.Commit(0);
 
         using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
@@ -299,7 +299,7 @@ public class PbtWorldStateScopeTests
         Hash256 longHash = Keccak.Compute(longCode);
         Hash256 shortHash = Keccak.Compute(shortCode);
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
 
         using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
             codeWriter.Set(longHash.ValueHash256, longCode);
@@ -337,7 +337,7 @@ public class PbtWorldStateScopeTests
         Array.Fill(code, (byte)0x01);
         Hash256 codeHash = Keccak.Compute(code);
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         if (!codeAfterAccount) WriteCode();
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
@@ -410,7 +410,7 @@ public class PbtWorldStateScopeTests
     public async Task Storage_clear_recreates_only_later_writes_across_folds(bool deleteAccount)
     {
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
             batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
@@ -460,7 +460,7 @@ public class PbtWorldStateScopeTests
     public async Task Parallel_storage_clears_preserve_other_accounts_pending_writes(bool foldBeforeClear)
     {
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(16);
         for (int index = 0; index < 16; index++)
         {
@@ -506,7 +506,7 @@ public class PbtWorldStateScopeTests
     public async Task Parallel_storage_writes_and_abandoned_scope_do_not_contaminate_reused_builder(bool foldBeforeAbandon)
     {
         await using PbtTestContext ctx = new();
-        using (PbtWorldStateScope abandoned = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+        using (PbtWorldStateScope abandoned = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch batch = abandoned.StartWriteBatch(0);
             Parallel.For(0, 32, index =>
@@ -519,7 +519,7 @@ public class PbtWorldStateScopeTests
             for (uint index = 0; index < 32; index++)
                 Assert.That(abandoned.CreateStorageTree(TestItem.AddressA).Get(1000 + index), Is.EqualTo((UInt256)0xab));
         }
-        using PbtWorldStateScope reused = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope reused = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reused.Bundle.PendingMutationCount, Is.Zero);
@@ -533,7 +533,7 @@ public class PbtWorldStateScopeTests
     {
         RecordingTrieWarmer warmer = new(acceptSlot: false);
         await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         if (slot < 0) scope.HintGet(TestItem.AddressA, null);
         else if (singleProducer) scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)(uint)slot);
         else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
@@ -552,7 +552,7 @@ public class PbtWorldStateScopeTests
     {
         RecordingTrieWarmer warmer = new();
         await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(null, null, new LocalMetrics());
         using IWorldStateScopeProvider.ITrieWarmupSession session = scope.CreateTrieWarmupSession();
         session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), 7);
@@ -573,7 +573,7 @@ public class PbtWorldStateScopeTests
     {
         RecordingTrieWarmer warmer = new(acceptSlot: acceptJobs, acceptMpmc: acceptJobs, acceptAddress: acceptJobs);
         await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         using IWorldStateScopeProvider.ITrieWarmupSession firstBorrow = scope.CreateTrieWarmupSession();
         IWorldStateScopeProvider.ITrieWarmupSession secondBorrow = scope.CreateTrieWarmupSession();
         secondBorrow.Dispose();
@@ -597,7 +597,7 @@ public class PbtWorldStateScopeTests
     {
         RecordingTrieWarmer warmer = new();
         await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         for (byte block = 0; block < 4; block++)
         {
             using IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
@@ -617,7 +617,7 @@ public class PbtWorldStateScopeTests
     {
         RecordingTrieWarmer warmer = new();
         await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
         Write(scope, 1);
         scope.Commit(0);
         ValueHash256 committedRoot = scope.Bundle.TreeRoot;
@@ -811,7 +811,7 @@ public class PbtWorldStateScopeTests
             Hash256 committedRoot;
             await using (PbtTestContext context = new(database, config, trieWarmer: warmer))
             {
-                using (PbtWorldStateScope scope = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+                using (PbtWorldStateScope scope = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
                 {
                     Mutate(scope, 1);
                     scope.Commit(1);
@@ -819,14 +819,14 @@ public class PbtWorldStateScopeTests
                     committedRoot = scope.RootHash;
                 }
                 BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(committedRoot).TestObject;
-                using (PbtWorldStateScope fork = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(parent, new LocalMetrics()))
+                using (PbtWorldStateScope fork = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(parent, null, new LocalMetrics()))
                 {
                     Warm(fork);
                     Mutate(fork, 9);
                     fork.Commit(2);
                     roots.Add(fork.Bundle.TreeRoot);
                 }
-                using (PbtWorldStateScope scope = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(parent, new LocalMetrics()))
+                using (PbtWorldStateScope scope = (PbtWorldStateScope)context.CreateScopeProvider().BeginScope(parent, null, new LocalMetrics()))
                 {
                     for (uint generation = 2; generation <= 4; generation++)
                     {
@@ -854,7 +854,7 @@ public class PbtWorldStateScopeTests
             await using (PbtTestContext reopened = new(database, config))
             {
                 BlockHeader header = Build.A.BlockHeader.WithNumber(4).WithStateRoot(committedRoot).TestObject;
-                using PbtWorldStateScope scope = (PbtWorldStateScope)reopened.CreateScopeProvider().BeginScope(header, new LocalMetrics());
+                using PbtWorldStateScope scope = (PbtWorldStateScope)reopened.CreateScopeProvider().BeginScope(header, null, new LocalMetrics());
                 Assert.That(scope.Bundle.TreeRoot, Is.EqualTo(roots[^1]));
                 AssertState(scope, 4);
             }

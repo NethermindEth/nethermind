@@ -112,7 +112,7 @@ public class WorldStateBenchmarks
     public void ScopeAccountRead()
     {
         Random rand = new(1);
-        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, null, _scopeMetrics);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -124,7 +124,7 @@ public class WorldStateBenchmarks
     public void ScopeSlotRead()
     {
         Random rand = new(1);
-        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, null, _scopeMetrics);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -137,7 +137,7 @@ public class WorldStateBenchmarks
     public void ScopeSameContractRead()
     {
         Random rand = new(1);
-        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, null, _scopeMetrics);
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(_bigContract);
 
         for (int i = 0; i < _loopSize; i++)
@@ -152,7 +152,7 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void ScopeAccountFirstRead()
     {
-        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, null, _scopeMetrics);
 
         for (int i = 0; i < _accounts.Length; i++)
         {
@@ -163,7 +163,7 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void ScopeSlotFirstRead()
     {
-        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, null, _scopeMetrics);
 
         for (int i = 0; i < _slots.Length; i++)
         {
@@ -175,7 +175,7 @@ public class WorldStateBenchmarks
     [Benchmark]
     public void ScopeSameContractFirstRead()
     {
-        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, null, _scopeMetrics);
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(_bigContract);
 
         for (int i = 0; i < _bigContractSlots.Length; i++)

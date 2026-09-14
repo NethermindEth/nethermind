@@ -80,7 +80,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         stale?.Dispose();
     }
 
-    private void ClearReaderCache()
+    /// <summary>Drops the shared reader so the next reader observes writes made through the inner persistence.</summary>
+    internal void ClearReaderCache()
     {
         SharedReader? cached = null;
         using (_cacheLock.EnterScope())

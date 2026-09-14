@@ -59,6 +59,9 @@ public class PbtPersistenceCoordinator(
         return current.Value;
     }
 
+    /// <summary>Forgets the cached persisted pointer after the persistence was written to behind the coordinator's back.</summary>
+    public void ResetPersistedStateId() => Volatile.Write(ref _currentPersistedState, null);
+
     /// <summary>Evaluates the persistence triggers, persisting at most a few segments per call; re-invoked on every committed block.</summary>
     /// <returns>Whether anything was persisted, and so whether the persisted state id has advanced.</returns>
     /// <remarks>Does nothing when persistence is driven externally; see <see cref="PersistUpTo"/>.</remarks>
