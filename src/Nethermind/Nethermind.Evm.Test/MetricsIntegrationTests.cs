@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -87,7 +88,7 @@ public class MetricsIntegrationTests
         Address contract = TestItem.AddressC;
         _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
         _harness.DeployCode(contract, Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.PUSH0).Op(Instruction.SSTORE).Done);
-        _harness.WorldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
+        _harness.WorldState.Set(new StorageCell(contract, 0), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         long startDeleted = Metrics.MainThreadStorageDeleted;

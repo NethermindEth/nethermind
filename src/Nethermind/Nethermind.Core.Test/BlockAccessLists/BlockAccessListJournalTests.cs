@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -296,35 +295,48 @@ public class BlockAccessListJournalTests
             Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(1u));
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(codeBeforeSnapshot));
 
-            Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)11).ToBigEndianWord()));
+            Assert.That(accountChanges.StorageChanges.TryGetValue(slot, out StorageChange slotChange), Is.True);
+            Assert.That(slotChange.Value, Is.EqualTo((UInt256)11));
         }
     }
 
     [Test]
-    public void Restore_after_delete_account_restores_within_block_change_entries()
+    public void Restore_after_delete_account_restores_within_block_change_entries([Values(0, 1, 64)] int slotCount)
     {
-        UInt256 slot = 9;
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
         slice.AddNonceChange(TestItem.AddressA, 3);
         slice.AddCodeChange(TestItem.AddressA, before: [], after: new byte[] { 0x60, 0x01 });
-        slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 77);
+        slice.AddStorageRead(TestItem.AddressA, 999);
+        for (int i = 0; i < slotCount; i++)
+            slice.AddStorageChange(TestItem.AddressA, (UInt256)i, before: 0, after: (UInt256)(77 + i));
 
         int snapshot = slice.TakeSnapshot();
 
         slice.DeleteAccount(TestItem.AddressA, oldBalance: 50);
-        slice.Restore(snapshot);
-
         AccountChangesAtIndex accountChanges = slice.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges.StorageChangeCount, Is.Zero);
+            Assert.That(accountChanges.StorageReads, Has.Count.EqualTo(slotCount + 1));
+            for (int i = 0; i < slotCount; i++)
+                Assert.That(accountChanges.StorageReads, Does.Contain((UInt256)i));
+        }
+
+        slice.Restore(snapshot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountChanges.BalanceChange!.Value.Value, Is.EqualTo((UInt256)50));
             Assert.That(accountChanges.NonceChange!.Value.Value, Is.EqualTo(3u));
             Assert.That(accountChanges.CodeChange!.Value.Code, Is.EqualTo(new byte[] { 0x60, 0x01 }));
 
-            Assert.That(accountChanges.TryGetStorageChange(slot, out StorageChange? slotChange), Is.True);
-            Assert.That(slotChange!.Value.Value, Is.EqualTo(((UInt256)77).ToBigEndianWord()));
+            Assert.That(accountChanges.StorageChangeCount, Is.EqualTo(slotCount));
+            Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new UInt256[] { 999 }));
+            for (int i = 0; i < slotCount; i++)
+            {
+                Assert.That(accountChanges.StorageChanges.TryGetValue((UInt256)i, out StorageChange slotChange), Is.True);
+                Assert.That(slotChange.Value, Is.EqualTo((UInt256)(77 + i)));
+            }
         }
     }
 
@@ -349,7 +361,105 @@ public class BlockAccessListJournalTests
         {
             Assert.That(accountChanges!.BalanceChange, Is.Null);
             Assert.That(accountChanges.NonceChange, Is.Null);
-            Assert.That(accountChanges.TryGetStorageChange(slot, out _), Is.False);
+            Assert.That(accountChanges.StorageChanges.TryGetValue(slot, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Storage_overwrites_preserve_snapshot_and_read_membership([Values] bool returnToOriginal)
+    {
+        BlockAccessListAtIndex slice = new() { Index = 3 };
+        UInt256 key = UInt256.MaxValue;
+        slice.AddStorageRead(TestItem.AddressA, in key);
+        slice.AddStorageChange(TestItem.AddressA, in key, 7, 11);
+        slice.AddStorageRead(TestItem.AddressA, in key);
+        int snapshot = slice.TakeSnapshot();
+        slice.AddStorageChange(TestItem.AddressA, in key, 11, 13);
+        UInt256 last = returnToOriginal ? 7u : 17u;
+        slice.AddStorageChange(TestItem.AddressA, in key, 13, in last);
+
+        AccountChangesAtIndex account = slice.GetAccountChanges(TestItem.AddressA)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.HasStorageChange(in key), Is.EqualTo(!returnToOriginal));
+            Assert.That(account.StorageReads.Contains(key), Is.EqualTo(returnToOriginal));
+        }
+        if (!returnToOriginal) Assert.That(account.StorageChanges[key].Value, Is.EqualTo(last));
+
+        slice.AddStorageChange(TestItem.AddressA, in key, in last, 19);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)19));
+            Assert.That(account.StorageReads, Does.Not.Contain(key));
+        }
+
+        slice.Restore(snapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[key].Value, Is.EqualTo((UInt256)11));
+            Assert.That(account.StorageChanges[key].Index, Is.EqualTo(3u));
+            Assert.That(account.StorageReads, Does.Not.Contain(key));
+        }
+    }
+
+    [Test]
+    public void Storage_journal_coalesces_interleaved_writes_between_nested_snapshots([Values] bool separateAccounts)
+    {
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        StorageCell[] cells = [new(TestItem.AddressA, 0), new(TestItem.AddressA, UInt256.MaxValue),
+            new(separateAccounts ? TestItem.AddressB : TestItem.AddressA, 3)];
+        int empty = slice.TakeSnapshot();
+        WriteRepeated(7, 11);
+        int outer = slice.TakeSnapshot();
+        Assert.That(outer, Is.EqualTo(cells.Length));
+        WriteRepeated(11, 7);
+        int inner = slice.TakeSnapshot();
+        Assert.That(inner - outer, Is.EqualTo(cells.Length));
+        AssertValue(7);
+
+        WriteRepeated(7, 29);
+        slice.Restore(inner);
+        AssertValue(7);
+        WriteRepeated(7, 53);
+        slice.Restore(inner);
+        AssertValue(7);
+        slice.Restore(outer);
+        AssertValue(11);
+        slice.Restore(empty);
+        AssertValue(7);
+
+        slice.Clear();
+        WriteRepeated(7, 11);
+        Assert.That(slice.TakeSnapshot(), Is.EqualTo(cells.Length));
+        slice.Restore(0);
+        AssertValue(7);
+
+        void WriteRepeated(uint before, uint after)
+        {
+            UInt256 current = before;
+            for (uint repeat = 0; repeat < 64; repeat++)
+            {
+                UInt256 next = repeat == 63 ? after : repeat + 100;
+                foreach (StorageCell cell in cells) slice.AddStorageChange(in cell, in current, in next);
+                current = next;
+            }
+        }
+
+        void AssertValue(uint expected)
+        {
+            foreach (StorageCell cell in cells)
+            {
+                AccountChangesAtIndex account = slice.GetAccountChanges(cell.Address)!;
+                if (expected == 7)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(account.HasStorageChange(cell.Index), Is.False);
+                        Assert.That(account.StorageReads, Does.Contain(cell.Index));
+                    }
+                }
+                else Assert.That(account.StorageChanges[cell.Index].Value, Is.EqualTo((UInt256)expected));
+            }
         }
     }
 }

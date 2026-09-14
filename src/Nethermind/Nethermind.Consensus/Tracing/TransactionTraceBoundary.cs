@@ -34,7 +34,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
         options.ContainsFlag(ProcessingOptions.Trace)
-        && (options & (ProcessingOptions.StoreReceipts | ProcessingOptions.ForceSameBlock)) == 0
+        && !options.ContainsFlag(ProcessingOptions.StoreReceipts)
             ? tracer as TransactionTraceBoundary : null;
 
     public bool IsTracingRewards => _inner.IsTracingRewards;
