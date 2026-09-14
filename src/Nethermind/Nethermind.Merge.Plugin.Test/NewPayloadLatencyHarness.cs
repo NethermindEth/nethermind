@@ -91,12 +91,12 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
 
         using GcEventListener gcEvents = new(allocProfile);
         using LatencyModeSampler regionSampler = new();
+        // Production GC defaults are restored below: the merge test chain switches the no-GC region and forced GCs
+        // off, and its static sync mode never reports the synced state that the GC strategy requires.
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance,
             configurer: builder => builder
                 .WithGenesisPostProcessor((block, _) => block.Header.GasLimit = GasLimit)
                 .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Info))
-                // Production defaults: the merge test chain switches the no-GC region and forced GCs off, and its
-                // static sync mode never reports the synced state that the GC strategy requires.
                 .Intercept<IInitConfig>(initConfig => initConfig.DisableGcOnNewPayload = true)
                 .AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.WaitingForBlock)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -374,11 +374,29 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
         public double SuspendedMs;
         public string ReasonName => Reason switch
         {
-            0 => "AllocSmall", 1 => "Induced", 2 => "LowMemory", 3 => "Empty", 4 => "AllocLarge", 5 => "OutOfSpaceSOH",
-            6 => "OutOfSpaceLOH", 7 => "InducedNotForced", 8 => "Internal", 9 => "InducedLowMemory", 10 => "InducedCompacting",
-            11 => "LowMemoryHost", 12 => "PMFullGC", 13 => "LowMemoryHostBlocking", _ => Reason.ToString()
+            0 => "AllocSmall",
+            1 => "Induced",
+            2 => "LowMemory",
+            3 => "Empty",
+            4 => "AllocLarge",
+            5 => "OutOfSpaceSOH",
+            6 => "OutOfSpaceLOH",
+            7 => "InducedNotForced",
+            8 => "Internal",
+            9 => "InducedLowMemory",
+            10 => "InducedCompacting",
+            11 => "LowMemoryHost",
+            12 => "PMFullGC",
+            13 => "LowMemoryHostBlocking",
+            _ => Reason.ToString()
         };
-        public string TypeName => Type switch { 0 => "Blocking", 1 => "Background", 2 => "Foreground", _ => Type.ToString() };
+        public string TypeName => Type switch
+        {
+            0 => "Blocking",
+            1 => "Background",
+            2 => "Foreground",
+            _ => Type.ToString()
+        };
     }
 
     /// <summary>Polls the GC latency mode so the no-GC region a call opens can be placed on the call's timeline.</summary>
