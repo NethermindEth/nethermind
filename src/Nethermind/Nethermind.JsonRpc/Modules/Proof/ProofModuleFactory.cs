@@ -35,7 +35,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .AddModule(validationBlockProcessingModules)
                 .AddScoped<TransactionProcessorAdapterFactory>(CreateTraceAdapter)
                 .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
                 // Specific for proof rpc

@@ -24,7 +24,6 @@ public class DebugModuleFactory(
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
             .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
 
             // So the debug rpc change the adapter sometime.
             .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()

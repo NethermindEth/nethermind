@@ -30,8 +30,7 @@ public sealed class OneTimeChainProcessor(
     IBranchProcessor branchProcessor,
     IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
     IStateReader stateReader,
-    ILogManager logManager,
-    IEnumerable<IBlockTracer>? blockTracers = null
+    ILogManager logManager
 ) : IBlockchainProcessor
 {
     private readonly IBranchProcessor _branchProcessor = branchProcessor;
@@ -39,9 +38,6 @@ public sealed class OneTimeChainProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger<OneTimeChainProcessor>();
     private readonly ProcessingBranchBuilder _branchBuilder = new(blockTree, stateReader, preprocessorSteps, logManager.GetClassLogger<ProcessingBranchBuilder>());
     private readonly Lock _lock = new();
-    // Retained for DI parity with BlockchainProcessor; seeding into a composite tracer is only meaningful
-    // on the queued path, which this processor deliberately does not have.
-    private readonly IEnumerable<IBlockTracer>? _blockTracers = blockTracers;
 
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
@@ -112,9 +108,8 @@ public sealed class OneTimeChainProcessor(
         {
             if (_logger.IsWarn) _logger.Warn($"Issue processing block {ex.InvalidBlock} {ex}");
 
-            // Previously invalid blocks were deleted from the block tree except when processed with
-            // ReadOnlyChain, which is the case with _blocksConfig.BuildBlocksOnMainState; they are now
-            // always kept.
+            // Env-scope failures must not mutate the canonical tree: a block that is invalid under a
+            // producer/trace/debug scope may still be valid on the main processing path.
             processedBlocks = null;
         }
 
