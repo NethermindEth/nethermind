@@ -493,8 +493,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return null;
         }
 
-        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        if (!readonlyChain) _stats.CaptureStartStats();
+        _stats.CaptureStartStats();
 
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
@@ -519,15 +518,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
-        if (!readonlyChain)
-        {
-            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
-            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            int blockQueueCount = _blockQueue.Reader.Count;
-            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
-            Metrics.ProcessingQueueSize = blockQueueCount;
-            _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
-        }
+        long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
+        Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
+        int blockQueueCount = _blockQueue.Reader.Count;
+        Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
+        Metrics.ProcessingQueueSize = blockQueueCount;
+        _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)
@@ -545,10 +541,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
 
-        if (!readonlyChain)
-        {
-            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
-        }
+        Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
 
         return lastProcessed;
     }
@@ -649,7 +642,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         finally
         {
-            if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+            if (invalidBlockHash is not null)
             {
                 DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
             }
