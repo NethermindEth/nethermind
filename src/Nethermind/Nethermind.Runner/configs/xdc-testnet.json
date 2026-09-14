@@ -26,9 +26,9 @@
     "FastSync": true,
     "SnapSync": false,
     "NeedToWaitForHeader": true,
-    "PivotNumber": 86390000,
-    "PivotHash": "0x63fa2143cbae7c6ac1d786e2e4ed104af2cc676720d77b9a7bb1ba3882c9c1d7",
-    "PivotTotalDifficulty": "342727235",
+    "PivotNumber": 86680000,
+    "PivotHash": "0x7687bce28f042d8979ebe4188ce80659af89aa82f3f92f0d93d49bd9548abc05",
+    "PivotTotalDifficulty": "343017235",
     "AncientReceiptsBarrier": 56828700,
     "AncientBodiesBarrier": 56828700
   },

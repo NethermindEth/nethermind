@@ -9,6 +9,7 @@ using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -16,6 +17,22 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class KeccakTests
     {
+        [Test]
+        public void ToUInt256_preserves_big_endian_limb_order([Values] bool zero)
+        {
+            Hash256 hash = new(zero
+                ? "0x0000000000000000000000000000000000000000000000000000000000000000"
+                : "0x0102030405060708111213141516171821222324252627283132333435363738");
+            UInt256 expected = zero ? UInt256.Zero : new UInt256(
+                0x3132333435363738, 0x2122232425262728, 0x1112131415161718, 0x0102030405060708);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hash.ToUInt256(), Is.EqualTo(expected));
+                Assert.That(hash.ValueHash256.ToUInt256(), Is.EqualTo(expected));
+            }
+        }
+
         public const string KeccakOfAnEmptyString = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 

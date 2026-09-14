@@ -16,6 +16,8 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
+using Nethermind.State.Flat.History.Proofs;
+
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
@@ -58,11 +60,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly byte _formatVersion;
     private readonly ulong _captureFromBlock;
     private readonly PendingV3Writes? _pendingV3;
+    private readonly ForwardCommitmentCapture? _commitments;
     private bool _formatStamped;
 
-    public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
+    public HistoryWriter(
+        IColumnsDb<FlatDbColumns> db,
+        IColumnsDb<FlatHistoryColumns> history,
+        IFlatDbConfig config,
+        HistoryAvailability availability,
+        HistoryRowFormat rowFormat,
+        ILogManager logManager,
+        ForwardCommitmentCapture? commitments)
     {
         ArgumentNullException.ThrowIfNull(history);
+        _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
         _enabled = config.HistoryEnabled;
         _history = history;
@@ -190,10 +201,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             // Disposing writes, and a refusal disables capture, so nothing would rewrite a half-published walk.
             if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
+            if (!complete) _commitments?.Discard();
         }
 
         if (connected)
         {
+            _commitments?.Complete();
+
             // The rows are visible from the dispose above; readers must learn that before the caller supersedes the
             // live column, so this stays ahead of everything else here.
             _availability.MarkCapturePublished();
@@ -488,6 +502,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private void CaptureBlock(ulong block, in ValueHash256 stateRoot, Snapshot snapshot, PendingV3Writes? pending, in HistoryColumnBatches columns)
     {
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
+        _commitments?.Capture(block, snapshot);
 
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
         {
@@ -515,7 +530,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> change in snapshot.Storages)
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> change in snapshot.Storages)
         {
             (Address addr, UInt256 slot) = change.Key.Key;
             if (_isV3)
@@ -546,6 +561,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
+        _commitments?.Capture(block, scanner);
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
@@ -601,7 +617,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _accountHistory!.RecordChange(block, flatKey, value, columns.AccountHistory);
     }
 
-    private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
+    private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
@@ -609,7 +625,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         // A removed slot, or one stripped to empty (zero), is a tombstone — matching the flat column,
         // which removes / stores an empty value in the same cases.
-        int written = value is SlotValue slotValue
+        int written = value is UInt256 slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
         _storageHistory!.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory);
@@ -628,12 +644,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         pending.TrackAccount(addrHash, block, rlp, accountBatch, _accountHistoryV3!);
     }
 
-    private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
+    private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
 
-        int written = value is SlotValue slotValue
+        int written = value is UInt256 slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
         pending.TrackStorage(addrHash, slotHash, block, valueBuffer[..written], keyBuffer, storageBatch, _storageHistoryV3!);

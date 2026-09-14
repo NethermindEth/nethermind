@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText:2023 Demerzel Solutions Limited
 // SPDX-License-Identifier:LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,13 +17,12 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
-    private static readonly byte[] EmptyBytes = [0];
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
 
-        worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.ToUInt256());
         worldState.RecordBytecodeAccess(blockHashStoreCell.Address);
     }
 
@@ -55,7 +53,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
         UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
+        worldState.Get(blockHashStoreCell, out UInt256 data);
+        return data.IsZero ? null : new Hash256(data.ToBigEndian());
     }
 }
