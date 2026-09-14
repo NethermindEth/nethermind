@@ -299,6 +299,7 @@ cell_fail=0   # load-test cells that ran but failed (distinct from a client skip
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
 BASELINE_LABEL=""  # first successfully started client; all later clients diff against it
+BASELINE_CTYPE=""  # and its client type, which decides whether a trace divergence is gated
 
 case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
@@ -534,6 +535,14 @@ for entry in $CLIENTS; do
             --baseline-client "$BASELINE_LABEL" --candidate-client "$label" \
             $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json"); then
           PARITY_ROWS+=("${clabel}|${label}|$report")
+        elif [[ "$CORPUS_METHOD" != "eth_call" && "$ctype" != "$BASELINE_CTYPE" ]]; then
+          # Trace formatting legitimately differs between client implementations, so a divergence
+          # here says nothing about correctness. Gating on it would mark a perfectly good
+          # cross-client timing comparison as failed, and teach readers to ignore the gate. Counts
+          # are still reported; a SAME-client trace A/B keeps the gate, which is where it means
+          # something. Response bytes remain the gate for eth_call in every combination.
+          echo "::warning::parity: ${label} (${ctype}) diverges from ${BASELINE_LABEL} (${BASELINE_CTYPE}) on ${CORPUS_METHOD} — expected across client implementations, not gated"
+          [[ -f "$report" ]] && PARITY_ROWS+=("${clabel}|${label}|$report")
         else
           echo "::warning::parity defects for ${label} vs ${BASELINE_LABEL} on corpus ${clabel} (see report counts)"
           parity_fail=$((parity_fail + 1))
@@ -554,7 +563,9 @@ for entry in $CLIENTS; do
         fi
       fi
     done
-    [[ -z "$BASELINE_LABEL" ]] && BASELINE_LABEL="$label"
+    # The client TYPE of the baseline, not just its label: it decides whether a later divergence is
+    # a cross-implementation formatting difference or a real one.
+    [[ -z "$BASELINE_LABEL" ]] && { BASELINE_LABEL="$label"; BASELINE_CTYPE="$ctype"; }
   else
   for rps in $RPS_LIST; do
     # ISOLATED: each scenario alone
