@@ -4707,52 +4707,72 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Frame_transaction_rejected_after_the_cap_gate_does_not_hold_the_sponsor_slot()
+        public async Task Frame_transaction_parked_past_the_cap_gate_holds_the_sponsor_slot_until_it_is_refused()
         {
-            // The slot is a reservation over pending transactions, so it must not be taken by a submission
-            // that is still going to be rejected: at a cap of one, that would let unpooled traffic naming a
-            // sponsor deny the sponsor's real transaction for as long as the remaining filters run.
+            // Counting is the reservation, so the slot stays taken for the rest of the filter chain — that
+            // hold is what bounds the per-sponsor simulation work — and is handed back once the refusal lands.
             Address sponsor = TestItem.PrivateKeyD.Address;
-            using ManualResetEventSlim reachedFilter = new(false);
-            using ManualResetEventSlim releaseFilter = new(false);
+            using ManualResetEventSlim reachedSimulator = new(false);
+            using ManualResetEventSlim releaseSimulator = new(false);
 
             Transaction doomed = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
-            BlockingRejectFilter blocker = new(() => doomed.Hash, reachedFilter, releaseFilter);
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+                .Returns(call =>
+                {
+                    if (((Transaction)call[0]).Hash != doomed.Hash) return FrameTxSimulationResult.Accept(sponsor);
 
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), incomingTxFilter: blocker);
+                    reachedSimulator.Set();
+                    releaseSimulator.Wait(TimeSpan.FromSeconds(10));
+                    return FrameTxSimulationResult.Reject("declined");
+                });
+
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
             EnsureSenderBalance(sponsor, UInt256.MaxValue);
             _stateProvider.InsertCode([0x60, 0x00], sponsor);
 
             Task<AcceptTxResult> doomedResult = Task.Run(() => _txPool.SubmitTx(doomed, TxHandlingOptions.None));
-            Assert.That(reachedFilter.Wait(TimeSpan.FromSeconds(10)), Is.True, "the doomed submission never reached the injected filter");
+            bool reached;
+            AcceptTxResult whileHeld;
+            AcceptTxResult doomedOutcome = default;
+            Exception drainFailure = null;
+            try
+            {
+                reached = reachedSimulator.Wait(TimeSpan.FromSeconds(10));
 
-            // Submitted while the doomed one is parked past the cap gate and has not been rejected yet.
-            AcceptTxResult sponsored = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+                // Submitted while the doomed one is parked past the cap gate and has not been refused yet.
+                whileHeld = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            }
+            finally
+            {
+                // On every path, including a failure above: the events and the pool are disposed when this
+                // method returns, so the parked submission has to be let go and drained before that.
+                releaseSimulator.Set();
+                try
+                {
+                    doomedOutcome = await doomedResult;
+                }
+                catch (Exception e)
+                {
+                    // Stashed rather than thrown: out of a finally it would replace the failure being unwound.
+                    drainFailure = e;
+                }
+            }
 
-            releaseFilter.Set();
+            AcceptTxResult afterRelease = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(sponsored, Is.EqualTo(AcceptTxResult.Accepted), "a submission that never pools must not occupy the sponsor's slot");
-                Assert.That(await doomedResult, Is.EqualTo(AcceptTxResult.Invalid));
-            }
-        }
-
-        /// <summary>Parks one transaction inside the filter chain, then rejects it.</summary>
-        private sealed class BlockingRejectFilter(
-            Func<Hash256> target,
-            ManualResetEventSlim reached,
-            ManualResetEventSlim release) : IIncomingTxFilter
-        {
-            public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
-            {
-                if (tx.Hash != target()) return AcceptTxResult.Accepted;
-
-                reached.Set();
-                release.Wait(TimeSpan.FromSeconds(10));
-                return AcceptTxResult.Invalid;
+                Assert.That(reached, Is.True, "the doomed submission never reached the simulator");
+                Assert.That(drainFailure, Is.Null, "the parked submission faulted");
+                Assert.That(whileHeld, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached),
+                    "the slot must stay reserved while the filters that follow the cap gate run");
+                Assert.That(doomedOutcome, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
+                Assert.That(afterRelease, Is.EqualTo(AcceptTxResult.Accepted),
+                    "the refused submission must have handed the slot back");
             }
         }
 

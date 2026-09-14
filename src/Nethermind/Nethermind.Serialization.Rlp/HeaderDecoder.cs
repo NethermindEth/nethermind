@@ -20,25 +20,25 @@ namespace Nethermind.Serialization.Rlp
         protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-            ReadOnlySpan<byte> headerRlp = rlp.Slice(position, RlpHelpers.PeekNextRlpLength(rlp, position));
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int headerSequenceLength);
+            ReadOnlySpan<byte> headerRlp = rlp.Data.Slice(position, rlp.PeekNextRlpLength(position));
+            rlp.ReadSequenceLength(ref position, out int headerSequenceLength);
             int headerCheck = position + headerSequenceLength;
 
-            position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 parentHash);
-            position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 unclesHash);
-            position = RlpHelpers.DecodeAddress(rlp, position, out Address beneficiary);
-            position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 stateRoot);
-            position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 transactionsRoot);
-            position = RlpHelpers.DecodeKeccak(rlp, position, out Hash256 receiptsRoot);
-            position = RlpHelpers.DecodeBloom(rlp, position, out Bloom bloom);
-            position = RlpHelpers.DecodeUInt256(rlp, position, out UInt256 difficulty);
-            position = RlpHelpers.DecodeULong(rlp, position, out ulong number);
-            position = RlpHelpers.DecodeULong(rlp, position, out ulong gasLimit);
-            position = RlpHelpers.DecodeULong(rlp, position, out ulong gasUsed);
-            position = RlpHelpers.DecodeULong(rlp, position, out ulong timestamp);
-            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] extraData);
+            rlp.DecodeKeccak(ref position, out Hash256 parentHash);
+            rlp.DecodeKeccak(ref position, out Hash256 unclesHash);
+            rlp.DecodeAddress(ref position, out Address beneficiary);
+            rlp.DecodeKeccak(ref position, out Hash256 stateRoot);
+            rlp.DecodeKeccak(ref position, out Hash256 transactionsRoot);
+            rlp.DecodeKeccak(ref position, out Hash256 receiptsRoot);
+            rlp.DecodeBloom(ref position, out Bloom bloom);
+            rlp.DecodeUInt256(ref position, out UInt256 difficulty);
+            rlp.DecodeULong(ref position, out ulong number);
+            rlp.DecodeULong(ref position, out ulong gasLimit);
+            rlp.DecodeULong(ref position, out ulong gasUsed);
+            rlp.DecodeULong(ref position, out ulong timestamp);
+            rlp.DecodeByteArray(ref position, out byte[] extraData);
 
             // The seal is a virtual extension point, so the cursor goes back to the reader once here.
             decoderContext.Position = position;
@@ -53,15 +53,15 @@ namespace Nethermind.Serialization.Rlp
 
             position = decoderContext.Position;
 
-            // BaseFeePerGas is a field, so it takes the `out` form; the rest are properties and take the pair form.
-            if (position != headerCheck) position = RlpHelpers.DecodeUInt256(rlp, position, out blockHeader.BaseFeePerGas);
-            if (position != headerCheck) (position, blockHeader.WithdrawalsRoot) = RlpHelpers.DecodeKeccak(rlp, position);
-            if (position != headerCheck) (position, blockHeader.BlobGasUsed) = RlpHelpers.DecodeULong(rlp, position);
-            if (position != headerCheck) (position, blockHeader.ExcessBlobGas) = RlpHelpers.DecodeULong(rlp, position);
-            if (position != headerCheck) (position, blockHeader.ParentBeaconBlockRoot) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
-            if (position != headerCheck) (position, blockHeader.RequestsHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
-            if (position != headerCheck) (position, blockHeader.BlockAccessListHash) = RlpHelpers.DecodeKeccakOrNull(rlp, position);
-            if (position != headerCheck) (position, blockHeader.SlotNumber) = RlpHelpers.DecodeULong(rlp, position);
+            // BaseFeePerGas is a field, so it takes the `out` form; the rest are properties and take the return value.
+            if (position != headerCheck) rlp.DecodeUInt256(ref position, out blockHeader.BaseFeePerGas);
+            if (position != headerCheck) blockHeader.WithdrawalsRoot = rlp.DecodeKeccak(ref position);
+            if (position != headerCheck) blockHeader.BlobGasUsed = rlp.DecodeULong(ref position);
+            if (position != headerCheck) blockHeader.ExcessBlobGas = rlp.DecodeULong(ref position);
+            if (position != headerCheck) blockHeader.ParentBeaconBlockRoot = rlp.DecodeKeccakOrNull(ref position);
+            if (position != headerCheck) blockHeader.RequestsHash = rlp.DecodeKeccakOrNull(ref position);
+            if (position != headerCheck) blockHeader.BlockAccessListHash = rlp.DecodeKeccakOrNull(ref position);
+            if (position != headerCheck) blockHeader.SlotNumber = rlp.DecodeULong(ref position);
 
             decoderContext.Position = position;
 

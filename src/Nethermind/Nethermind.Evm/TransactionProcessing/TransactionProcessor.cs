@@ -79,6 +79,8 @@ namespace Nethermind.Evm.TransactionProcessing
         public bool SkipSenderCodeCheck { get; set; }
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
+        /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
+        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup) && ReferenceEquals(tracer, NullTxTracer.Instance);
 
@@ -346,7 +348,8 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
-                SuppressLogs = ShouldSuppressLogs(opts, tracer)
+                SuppressLogs = !tracer.IsCollectingLogs && !tracer.IsTracingLogs,
+                MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();

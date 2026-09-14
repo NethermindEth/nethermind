@@ -23,5 +23,6 @@ namespace Nethermind.Evm
         public readonly FrameTxContext? FrameTxContext = frameTxContext;
 
         internal bool SuppressLogs { get; init; }
+        internal bool MaterializeLogMemory { get; init; }
     }
 }

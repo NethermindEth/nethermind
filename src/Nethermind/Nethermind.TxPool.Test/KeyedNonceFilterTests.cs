@@ -4,24 +4,18 @@
 #nullable enable
 
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
-using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.TxPool.Test.FrameTxFilterTestPools;
 
 namespace Nethermind.TxPool.Test;
 
@@ -63,25 +57,6 @@ internal class KeyedNonceFilterTests
         KeyedNonceFilter filter = new(state, config ?? new TxPoolConfig(), standard, blob);
         TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
-    }
-
-    private static TxDistinctSortedPool Pool(bool blobs, params Transaction[] pending)
-    {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-
-        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
-        TxDistinctSortedPool pool = blobs
-            ? new BlobTxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance)
-            : new TxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance);
-        foreach (Transaction tx in pending)
-        {
-            pool.TryInsert(tx.Hash!, tx);
-        }
-
-        return pool;
     }
 
     /// <remarks>The sender's account nonce is <see cref="AccountNonce"/> throughout, so every accepted case here

@@ -245,6 +245,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
         bool shouldRestoreRipemdTouch = false;
+        IFrameTxReceiptTracer? frameReceiptTracer = tracer as IFrameTxReceiptTracer;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -283,7 +284,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                 caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
             {
-                SuppressLogs = ShouldSuppressLogs(opts, tracer)
+                SuppressLogs = ShouldSuppressLogs(opts, tracer),
+                MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
             });
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
@@ -294,6 +296,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             shouldRestoreRipemdTouch |= substate.ShouldRestoreRipemdTouch;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
+            frameReceiptTracer?.ReportFrameEnd(i, frameSucceeded ? null : substate.EvmExceptionType);
 
             totalFrameGasUsed += frameGasUsed;
             if (frameSucceeded)
@@ -550,10 +553,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (tracer.IsTracingReceipt)
         {
-            if (tracer is IFrameTxReceiptTracer frameReceiptTracer)
-            {
-                frameReceiptTracer.ReportFrameTxReceipt(payer, frameReceipts);
-            }
+            frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
             GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             if (postTxReverted)
@@ -621,7 +621,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                     caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
                 {
-                    SuppressLogs = ShouldSuppressLogs(opts, tracer)
+                    SuppressLogs = ShouldSuppressLogs(opts, tracer),
+                    MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
                 });
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
