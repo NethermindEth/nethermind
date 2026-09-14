@@ -673,7 +673,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ArrayPoolList<Block> blocksToProcess = processingBranch.BlocksToProcess;
         if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
         {
-            processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
             blocksToProcess.Add(suggestedBlock);
         }
         else
@@ -739,7 +738,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 ThrowMaxBranchSizeReached();
             }
 
-            if (!options.ContainsFlag(ProcessingOptions.Trace))
+            if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }
