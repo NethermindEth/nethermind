@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Collections.Pooled;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,7 +27,7 @@ namespace Nethermind.State.Flat;
 public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
     private readonly ILogger _logger;
-    private readonly IFinalizedStateProvider _finalizedStateProvider;
+    private readonly IParentHeaderProvider _finalizedStateProvider;
 
     // ---- Persisted tier: four buckets keyed by StateId.To. Each bucket is self-contained and
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
@@ -64,7 +65,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         BlobArenaManager blobArenaManager,
         ISnapshotCatalog catalog,
         IFlatDbConfig config,
-        IFinalizedStateProvider finalizedStateProvider,
+        IParentHeaderProvider finalizedStateProvider,
         ILogManager logManager)
     {
         _catalog = catalog;
@@ -863,7 +864,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private Hash256? GetFinalizedRootLocked(ulong height)
     {
         if (_finalizedRoots.TryGetValue(height, out Hash256? root)) return root;
-        root = _finalizedStateProvider.GetFinalizedStateRootAt(height);
+        root = _finalizedStateProvider.GetFinalizedHeader(height)?.StateRoot;
         if (root is not null) _finalizedRoots.Add(height, root);
         return root;
     }

@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Test.Pruning
             IKeyValueStoreWithBatching? kvStore = null,
             IPersistenceStrategy? persistenceStrategy = null,
             IPruningConfig? pruningConfig = null,
-            IFinalizedStateProvider? finalizedStateProvider = null
+            IParentHeaderProvider? finalizedStateProvider = null
         )
         {
             pruningStrategy ??= No.Pruning;

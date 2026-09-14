@@ -14,4 +14,10 @@ public sealed class UnavailableParentHeaderProvider : IParentHeaderProvider
 
     /// <inheritdoc />
     public BlockHeader? FindParentHeader(BlockHeader target) => null;
+
+    /// <inheritdoc />
+    public ulong FinalizedBlockNumber => 0;
+
+    /// <inheritdoc />
+    public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
 }

@@ -20,4 +20,8 @@ public sealed class TestParentHeaderProvider : IParentHeaderProvider
         LastTarget = target;
         return Parent;
     }
+
+    public ulong FinalizedBlockNumber => 0;
+
+    public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
 }

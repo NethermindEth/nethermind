@@ -106,7 +106,7 @@ public class MainPruningTrieStoreFactory
         IPruningConfig pruningConfig,
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
-        IFinalizedStateProvider finalizedStateProvider,
+        IParentHeaderProvider finalizedStateProvider,
         IBlockTree blockTree,
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
@@ -206,10 +206,10 @@ public class MainPruningTrieStoreFactory
     public IPruningTrieStore PruningTrieStore { get; }
 
     private class DelayedFinalizedStateProvider(
-        IFinalizedStateProvider finalizedStateProvider,
+        IParentHeaderProvider finalizedStateProvider,
         IBlockTree blockTree,
         ulong pruningConfigSimulateLongFinalizationDepth
-    ) : IFinalizedStateProvider
+    ) : IParentHeaderProvider
     {
         private ulong? _lastFinalizedBlockNumber = null;
 
@@ -231,6 +231,8 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) => finalizedStateProvider.GetFinalizedHeader(blockNumber);
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => finalizedStateProvider.FindParentHeader(target);
     }
 }

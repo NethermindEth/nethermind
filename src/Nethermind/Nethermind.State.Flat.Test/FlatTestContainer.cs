@@ -58,7 +58,7 @@ public sealed class FlatTestContainer : IDisposable
         string? baseDbPath = null,
         IDb? catalogDb = null,
         Action<ContainerBuilder>? configure = null,
-        IFinalizedStateProvider? finalizedStateProvider = null)
+        IParentHeaderProvider? finalizedStateProvider = null)
     {
         Config = config ?? new FlatDbConfig();
         Config.ArenaFileSizeBytes = arenaFileSizeBytes;
@@ -89,7 +89,7 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
             .AddSingleton<ISyncConfig>(new SyncConfig())
-            .AddSingleton<IFinalizedStateProvider>(finalizedStateProvider ?? Substitute.For<IFinalizedStateProvider>())
+            .AddSingleton<IParentHeaderProvider>(finalizedStateProvider ?? Substitute.For<IParentHeaderProvider>())
             .AddSingleton<IProcessExitSource>(processExitSource)
             .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
             .AddSingleton<IParentHeaderProvider>(UnavailableParentHeaderProvider.Instance)
