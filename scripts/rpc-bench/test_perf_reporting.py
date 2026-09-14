@@ -60,6 +60,19 @@ def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
     return conditions[0]
 
 
+def workflow_step_script(workflow: str, job_name: str, step_name: str) -> str:
+    """Extract a named multi-line Bash step with the workflow indentation removed."""
+    body = workflow_named_step_body(workflow, job_name, step_name)
+    marker = "        run: |\n"
+    start = body.index(marker) + len(marker)
+    lines = []
+    for line in body[start:].splitlines():
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        lines.append(line[10:])
+    return "\n".join(lines)
+
+
 RESOLVE_RUN_MARKER = "        run: |\n"
 
 
@@ -1176,6 +1189,217 @@ esac
         )
         self.assertIn('DOTNET_TRACE: "false"', workflow_named_step_body(rpc_workflow, "benchmark", "Start reference node"))
         self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
+
+    def test_benchmark_outputs_and_headroom_use_scratch_volume(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        job = workflow_job_body(rpc_workflow, "benchmark")
+        results_root = "${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}"
+
+        for variable, suffix in (
+            ("RESULTS_DIR", ""),
+            ("OUT_DIR", "/out"),
+            ("STATE_DIR", "/state"),
+            ("ARCHIVE_DIR", "/archives"),
+        ):
+            self.assertIn(f"{variable}: {results_root}{suffix}", job)
+        self.assertNotIn("${{ runner.temp }}/rpcbench-out", job)
+        self.assertNotIn("${{ runner.temp }}/rpcbench-state", job)
+        self.assertNotIn("${{ runner.temp }}/dottrace-rpcbench.zip", job)
+        self.assertNotIn("${{ runner.temp }}/perf-rpcbench.zip", job)
+        self.assertNotIn("${{ runner.temp }}/dotnet-trace-rpcbench.zip", job)
+        # The private corpus allowlist remains the only benchmark data staged on the small temporary volume.
+        self.assertIn('"${RUNNER_TEMP}/rpcbench-corpus-results"', job)
+        self.assertIn("find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete", job)
+        self.assertIn('if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi', job)
+
+        upload = job.index("- name: Upload benchmark results")
+        cleanup = job.index("- name: Defensive cleanup")
+        self.assertLess(upload, cleanup)
+        self.assertIn("${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/", job)
+
+        start_node = START_NODE.read_text(encoding="utf-8")
+        self.assertIn("/data/*/*-*", start_node)
+        self.assertIn("<none found under /mnt or /data>", start_node)
+
+        reclaim = workflow_step_script(rpc_workflow, "benchmark", "Reclaim root disk before pulling")
+        fake_bin = self.directory / "headroom-bin"
+        fake_bin.mkdir()
+        docker_root = self.directory / "docker-root"
+        containerd_root = self.directory / "containerd-root"
+        output_dir = self.directory / "scratch" / "results"
+        docker_root.mkdir()
+        containerd_root.mkdir()
+        output_dir.mkdir(parents=True)
+
+        self.write_executable(
+            "headroom-bin/docker",
+            r'''#!/bin/bash
+if [[ "$1" == "info" && "$2" == "-f" ]]; then
+  [[ "$3" == "{{.Driver}}" ]] && printf 'overlayfs\n' || printf '%s\n' "$FAKE_DOCKER_ROOT"
+fi
+exit 0
+''',
+        )
+        self.write_executable(
+            "headroom-bin/containerd",
+            r'''#!/bin/bash
+[[ "$1" == "config" ]] && printf 'root = "%s"\n' "$FAKE_CONTAINERD_ROOT"
+''',
+        )
+        self.write_executable(
+            "headroom-bin/df",
+            r'''#!/bin/bash
+path="${@: -1}"
+if [[ "$*" == *"--output=source"* ]]; then
+  if [[ "${DF_SAME_FS:-false}" == "true" || "$path" == "/" ]]; then printf 'Filesystem\nrootfs\n'; else printf 'Filesystem\ndatafs\n'; fi
+elif [[ "$*" == *"--output=avail"* ]]; then
+  if [[ "$path" == "$RESULTS_DIR"* ]]; then printf 'Avail\n%s\n' "$OUTPUT_FREE";
+  elif [[ "$path" == "$FAKE_CONTAINERD_ROOT"* || "$path" == "$FAKE_DOCKER_ROOT"* ]]; then printf 'Avail\n%s\n' "$IMAGE_FREE";
+  else printf 'Avail\n%s\n' "$ROOT_FREE"; fi
+else
+  printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n'
+fi
+''',
+        )
+        for command in ("apt-get", "journalctl", "rm", "find", "du"):
+            self.write_executable(f"headroom-bin/{command}", "#!/bin/bash\nexit 0\n")
+
+        environment = os.environ.copy()
+        environment.update(
+            RESULTS_DIR=output_dir.as_posix(),
+            FAKE_DOCKER_ROOT=docker_root.as_posix(),
+            FAKE_CONTAINERD_ROOT=containerd_root.as_posix(),
+            ROOT_FREE=str(2 * 1024**3),
+            OUTPUT_FREE=str(7 * 1024**3),
+            IMAGE_FREE=str(7 * 1024**3),
+        )
+        environment["FAKE_BIN"] = fake_bin.as_posix()
+
+        def run_reclaim() -> subprocess.CompletedProcess[str]:
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash -c "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", reclaim],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        enough = run_reclaim()
+        self.assertEqual(enough.returncode, 0, f"{enough.stdout}\n{enough.stderr}")
+
+        environment["OUTPUT_FREE"] = str(6 * 1024**3 - 1)
+        low_output = run_reclaim()
+        self.assertNotEqual(low_output.returncode, 0, f"{low_output.stdout}\n{low_output.stderr}")
+        self.assertIn("Not enough free space", low_output.stdout)
+
+        environment["OUTPUT_FREE"] = str(7 * 1024**3)
+        environment["ROOT_FREE"] = str(1024**3 - 1)
+        low_root = run_reclaim()
+        self.assertNotEqual(low_root.returncode, 0, f"{low_root.stdout}\n{low_root.stderr}")
+        self.assertIn("Not enough free space", low_root.stdout)
+
+        environment["ROOT_FREE"] = str(7 * 1024**3)
+        environment["DF_SAME_FS"] = "true"
+        enough_shared = run_reclaim()
+        self.assertEqual(enough_shared.returncode, 0, f"{enough_shared.stdout}\n{enough_shared.stderr}")
+
+        environment["ROOT_FREE"] = str(2 * 1024**3)
+        same_root = run_reclaim()
+        self.assertNotEqual(same_root.returncode, 0, f"{same_root.stdout}\n{same_root.stderr}")
+        self.assertIn("Not enough free space", same_root.stdout)
+
+    def test_prepare_paths_reject_symlinked_output_escape_before_mkdir(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        prepare = workflow_step_script(rpc_workflow, "benchmark", "Prepare scratch and output dirs")
+
+        def run_prepare(scratch: Path, db: Path, results: Path, state: Path, archives: Path) -> subprocess.CompletedProcess[str]:
+            environment = os.environ.copy()
+            environment.update(
+                DB_SOURCE=db.as_posix(),
+                REFERENCE_DB_SOURCE="",
+                SCRATCH_ROOT=scratch.as_posix(),
+                DIAG_DIR=(scratch / "diag").as_posix(),
+                RESULTS_DIR=results.as_posix(),
+                OUT_DIR=(results / "out").as_posix(),
+                STATE_DIR=state.as_posix(),
+                ARCHIVE_DIR=archives.as_posix(),
+            )
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'for name in DB_SOURCE SCRATCH_ROOT DIAG_DIR RESULTS_DIR OUT_DIR STATE_DIR ARCHIVE_DIR; do '
+                'value="$(to_posix "${!name}")"; printf -v "$name" "%s" "$value"; export "$name"; done; '
+                'exec bash -c "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", prepare],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        primary_db = self.directory / "primary-db"
+        primary_db.mkdir()
+
+        scratch_symlink = self.directory / "scratch-symlink"
+        scratch_symlink.mkdir()
+        try:
+            (scratch_symlink / "diag").symlink_to(primary_db, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        escaped = run_prepare(
+            scratch_symlink,
+            primary_db,
+            scratch_symlink / "diag" / "results",
+            scratch_symlink / "diag" / "results" / "state",
+            scratch_symlink / "diag" / "results" / "archives",
+        )
+        self.assertNotEqual(escaped.returncode, 0, f"{escaped.stdout}\n{escaped.stderr}")
+        self.assertIn("escapes SCRATCH_ROOT", escaped.stdout)
+        self.assertFalse((primary_db / "results").exists())
+
+        scratch = self.directory / "scratch"
+        diag = scratch / "diag"
+        outside = self.directory / "outside"
+        scratch.mkdir()
+        diag.mkdir()
+        outside.mkdir()
+        try:
+            (diag / "results").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        escaped_results = run_prepare(
+            scratch,
+            primary_db,
+            diag / "results",
+            diag / "results" / "state",
+            diag / "results" / "archives",
+        )
+        self.assertNotEqual(escaped_results.returncode, 0, f"{escaped_results.stdout}\n{escaped_results.stderr}")
+        self.assertIn("escapes SCRATCH_ROOT", escaped_results.stdout)
+        self.assertFalse((outside / "out").exists())
+        self.assertFalse((outside / "state").exists())
+        self.assertFalse((outside / "archives").exists())
+
+        good_scratch = self.directory / "good-scratch"
+        good_results = good_scratch / "diag" / "results"
+        good = run_prepare(
+            good_scratch,
+            primary_db,
+            good_results,
+            good_results / "state",
+            good_results / "archives",
+        )
+        self.assertEqual(good.returncode, 0, f"{good.stdout}\n{good.stderr}")
+        self.assertTrue((good_results / "out").is_dir())
+        self.assertTrue((good_results / "state").is_dir())
+        self.assertTrue((good_results / "archives").is_dir())
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
