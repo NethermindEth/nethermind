@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 """Run one sequential, auditable EXPB campaign from workflow environment variables."""
 from __future__ import annotations
 import datetime as dt
@@ -34,16 +37,36 @@ def parse_flags(value: str) -> list[str]:
             parts = item.split(None, 1)
             result.append(item if len(parts) == 1 or "=" in parts[0] else f"{parts[0]}={parts[1]}")
     return result
-parse_pairs = lambda value: dict(item.strip().split("=", 1) for item in re.split(r"[\r\n,]", value) if "=" in item)
+
+def parse_pairs(value: str) -> dict[str, str]:
+    result = {}
+    for raw_item in re.split(r"[\r\n,]", value):
+        item = raw_item.strip()
+        if not item:
+            continue
+        key, separator, item_value = item.partition("=")
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise ValueError(f"environment entry must use a valid KEY=VALUE pair: {item!r}")
+        result[key] = item_value
+    return result
+
+def parse_amount(value: str) -> int | None:
+    if not value:
+        return None
+    if not re.fullmatch(r"[1-9][0-9]*", value):
+        raise ValueError(f"AMOUNT must be a positive integer, got {value!r}")
+    return int(value)
+
 def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     config = json.loads(json.dumps(base))
+    amount = parse_amount(get("AMOUNT"))
     for old, new in (("<<DELAY>>", get("DELAY_SECONDS", "0")), ("<<AMOUNT>>", get("AMOUNT")), ("/mnt/sda/expb-data", get("EXPB_DATA_DIR")), ("/mnt/sda/nethermind-flat-snapshot", get("FLAT_SNAPSHOT_DIR")), ("/mnt/sda/nethermind-flat-25490000", get("FLAT_SNAPSHOT_BLOCK_DIR"))):
         config = json.loads(json.dumps(config).replace(old, new))
     scenarios = config.get("scenarios")
     if not isinstance(scenarios, dict) or not isinstance(scenarios.get("nethermind"), dict): raise ValueError("config has no scenarios.nethermind mapping")
     name = f"nethermind-{image['id']}-run{run}"
     config["scenarios"] = {name: (scenario := scenarios.pop("nethermind"))}
-    scenario.update({"image": image["image"], **({"amount": int(get("AMOUNT"))} if get("AMOUNT") else {})})
+    scenario.update({"image": image["image"], **({"amount": amount} if amount is not None else {})})
     extra = parse_flags(get("ADDITIONAL_EXTRA_FLAGS"))
     if get("MEASUREMENT_MODE", "standard") == "compute-warm":
         if any("JsonRpc.GasCap" in item for item in extra): raise ValueError("compute-warm conflicts with GasCap override")
@@ -56,7 +79,8 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
 def verify_clean(config: dict) -> None:
     root = Path(get("EXPB_DATA_DIR")).resolve()
     docker = get("DOCKER_BIN", "docker")
-    for label, args in (("containers", ["ps", "-aq"]), ("networks", ["network", "ls", "-q"])):
+    subprocess.check_output([docker, "container", "prune", "--force", "--filter", "label=expb"], text=True)
+    for label, args in (("containers", ["container", "ps", "-q"]), ("networks", ["network", "ls", "-q"])):
         result = subprocess.check_output([docker, *args, "--filter", "label=expb"], text=True).strip()
         if result: raise RuntimeError(f"benchmark {label} remain: {result}")
     for line in Path("/proc/self/mounts").read_text(errors="replace").splitlines():
@@ -76,13 +100,20 @@ def verify_clean(config: dict) -> None:
         if path.exists() and (not path.is_dir() or next(path.iterdir(), None) is not None): raise RuntimeError(f"scratch is not empty: {path}")
 def bounded(line: str) -> str: return line.rstrip("\r\n") if len(line.rstrip("\r\n")) <= LIMIT else line[:LIMIT] + " ... [truncated in console; full line retained in combined log]"
 def force(process) -> None:
-    if process is current: os.killpg(process.pid, signal.SIGKILL)
+    if process is current:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 def stop(_signum: int, _frame: object) -> None:
     global cancelled, watchdog
     cancelled = True
     process = current
     if process is None or process.poll() is not None: return
-    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
     watchdog = threading.Timer(int(get("CLEANUP_GRACE_SECONDS", "90")), force, (process,))
     watchdog.daemon = True
     watchdog.start()
@@ -154,7 +185,9 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     try:
         config, scenario = render(base, image, run)
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-        configured = get("AMOUNT") or config["scenarios"][scenario].get("amount", 0)
+        configured = parse_amount(get("AMOUNT"))
+        if configured is None:
+            configured = config["scenarios"][scenario].get("amount", 0)
         result["expected_amount"] = int(configured)
         command = [get("EXPB_BIN", "expb"), "execute-scenarios", "--config-file", str(config_path), "--per-payload-metrics", "--per-payload-metrics-logs", "--print-logs"]
         if get("DOTTRACE", "false") == "true": command += ["--dottrace", "--dottrace-mode", get("DOTTRACE_MODE", "sampling"), "--dotnet-trace"]
@@ -203,10 +236,46 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
 def save_campaign(root: Path, started: str, images: list[dict], run_count: int, samples: list[dict]) -> None:
     (root / "campaign.json").write_text(json.dumps({"started_at": started, "finished_at": now(), "images": images, "run_count": run_count, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "samples": samples}, indent=2) + "\n", encoding="utf-8")
 def image_stats(items: list[dict]) -> tuple[float | None, float | None]:
-    signatures = {(x["metrics"]["source"], x["metrics"]["count"], x["metrics"]["delivered"], tuple(x.get("sse_block_ids") or x["metrics"]["ids"])) for x in items}
+    signatures = {sample_signature(x) for x in items}
     if len(signatures) != 1: return None, None
     mean = sum(x["metrics"]["avg"] for x in items) / len(items)
     return mean, math.sqrt(sum((x["metrics"]["avg"] - mean) ** 2 for x in items) / (len(items) - 1)) / mean * 100 if len(items) > 1 and mean else None
+
+def sample_signature(sample: dict) -> tuple:
+    metrics = sample["metrics"]
+    return (metrics["source"], metrics["count"], metrics["delivered"], tuple(sample.get("sse_block_ids") or metrics["ids"]))
+
+def comparison_delta(baseline: list[dict], candidate: list[dict], run_count: int) -> float | None:
+    if len(baseline) != run_count or len(candidate) != run_count:
+        return None
+    baseline_signatures = {sample_signature(sample) for sample in baseline}
+    candidate_signatures = {sample_signature(sample) for sample in candidate}
+    if len(baseline_signatures) != 1 or baseline_signatures != candidate_signatures:
+        return None
+    baseline_mean = image_stats(baseline)[0]
+    candidate_mean = image_stats(candidate)[0]
+    if baseline_mean is None or candidate_mean is None or baseline_mean == 0:
+        return None
+    return (candidate_mean - baseline_mean) / baseline_mean * 100
+
+def write_summary(root: Path, images: list[dict], run_count: int, samples: list[dict]) -> None:
+    successful = {image["id"]: [sample for sample in samples if sample["status"] == "success" and sample["image_id"] == image["id"]] for image in images}
+    baseline_id = images[0]["id"]
+    stats = {image["id"]: image_stats(successful[image["id"]]) for image in images}
+    lines = ["## EXPB Campaign", "", f"Runner: {socket.gethostname()} ({platform.machine()})", f"Samples: {len(samples)}", "", "| Sample | Status | Source | Count | AVG ms |", "|---|---|---:|---:|---:|"]
+    lines += [f"| {x['sample_id']} | {x['status']} | {x['metrics'].get('source', 'n/a')} | {x['metrics'].get('count', 0)} | {x['metrics'].get('avg', 'n/a')} |" for x in samples]
+    lines.append("")
+    for image in images:
+        image_id = image["id"]
+        mean, cv = stats[image_id]
+        delta = "n/a"
+        if image_id != baseline_id:
+            delta_value = comparison_delta(successful[baseline_id], successful[image_id], run_count)
+            if delta_value is not None:
+                delta = f"{delta_value:+.2f}%"
+        lines.append(f"Image {image_id}: mean AVG={mean if mean is not None else 'n/a'} ms; CV={f'{cv:.2f}%' if cv is not None else 'unavailable'}; delta vs {baseline_id}={delta}")
+    (root / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
 def main() -> int:
     global cancelled
     root = Path(get("EXPB_CAMPAIGN_DIR"))
@@ -235,11 +304,7 @@ def main() -> int:
             save_campaign(root, started, images, run_count, samples)
             if item["status"] != "success": cancelled = True
         if cancelled: break
-    stats = {image_id: image_stats([x for x in samples if x["status"] == "success" and x["image_id"] == image_id]) for image_id in {x["image_id"] for x in samples}}
-    lines = ["## EXPB Campaign", "", f"Runner: {socket.gethostname()} ({platform.machine()})", f"Samples: {len(samples)}", "", "| Sample | Status | Source | Count | AVG ms |", "|---|---|---:|---:|---:|"]
-    lines += [f"| {x['sample_id']} | {x['status']} | {x['metrics'].get('source', 'n/a')} | {x['metrics'].get('count', 0)} | {x['metrics'].get('avg', 'n/a')} |" for x in samples]
-    lines += ["", *[f"Image {image_id}: mean AVG={mean if mean is not None else 'n/a'} ms; CV={f'{cv:.2f}%' if cv is not None else 'unavailable'}" for image_id, (mean, cv) in stats.items()]]
-    (root / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_summary(root, images, run_count, samples)
     save_campaign(root, started, images, run_count, samples)
     return 0 if not cancelled and len(samples) == len(images) * run_count and all(x["status"] == "success" for x in samples) else 1
 if __name__ == "__main__":

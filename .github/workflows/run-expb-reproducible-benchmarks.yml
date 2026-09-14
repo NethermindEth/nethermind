@@ -425,6 +425,11 @@ jobs:
             exit 1
           fi
 
+          if [[ -n "${amount}" ]] && ! [[ "${amount}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "amount must be a positive integer when provided, got '${amount}'."
+            exit 1
+          fi
+
           if [[ "${rebuild_docker}" != "true" && "${rebuild_docker}" != "false" ]]; then
             echo "rebuild_docker must be true or false, got '${rebuild_docker}'."
             exit 1
@@ -703,8 +708,13 @@ jobs:
           echo "Resolved ${IMAGE_LABEL} to ${image}."
 
           docker pull "${image}"
-          version_output="$(docker run --rm --network none --platform linux/amd64 --entrypoint /nethermind/nethermind "${image}" --version 2>&1)"
+          version_status=0
+          version_output="$(docker run --rm --network none --platform linux/amd64 --entrypoint /nethermind/nethermind "${image}" --version 2>&1)" || version_status=$?
           printf '%s\n' "${version_output}"
+          if [[ "${version_status}" -ne 0 ]]; then
+            echo "::error::Pinned image version probe failed with exit code ${version_status}."
+            exit "${version_status}"
+          fi
           revision="$(printf '%s\n' "${version_output}" | sed -nE 's/^Commit:[[:space:]]*([0-9a-fA-F]{40})[[:space:]]*$/\1/p' | head -n 1)"
           if ! [[ "${revision}" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "::error::Pinned image ${image} did not report a valid 40-character Commit revision."
@@ -2502,6 +2512,7 @@ jobs:
           touch "${RUNNER_TEMP}/.expb-run-marker"
           python3 "${GITHUB_WORKSPACE}/scripts/expb/sequential_driver.py"
       - name: Upload campaign artifact
+        id: upload-campaign
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -2509,6 +2520,56 @@ jobs:
           path: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           retention-days: 30
           if-no-files-found: warn
+      - name: Remove uploaded campaign directory
+        if: always() && steps.upload-campaign.outcome == 'success'
+        shell: bash
+        env:
+          EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+          CAMPAIGN_RUN_ID: ${{ github.run_id }}
+          CAMPAIGN_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # A failed upload intentionally leaves the campaign directory available for diagnosis.
+          if ! [[ "${CAMPAIGN_RUN_ID}" =~ ^[0-9]+$ && "${CAMPAIGN_RUN_ATTEMPT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Campaign identifiers must be numeric before cleanup."
+            exit 1
+          fi
+          campaigns_root_input="${EXPB_DATA_DIR}/campaigns"
+          [[ ! -L "${campaigns_root_input}" ]] || { echo "::error::Refusing symlinked campaigns root: ${campaigns_root_input}"; exit 1; }
+          if [[ ! -e "${campaigns_root_input}" ]]; then
+            echo "Campaigns root already absent: ${campaigns_root_input}"
+            exit 0
+          fi
+          campaigns_root="$(realpath -e -- "${campaigns_root_input}")"
+          [[ -d "${campaigns_root}" ]] || { echo "::error::Campaigns root is not a directory: ${campaigns_root}"; exit 1; }
+          target_input="${campaigns_root}/${CAMPAIGN_RUN_ID}/${CAMPAIGN_RUN_ATTEMPT}"
+          if [[ -L "${target_input}" ]]; then
+            echo "::error::Refusing symlinked campaign directory: ${target_input}"
+            exit 1
+          fi
+          run_dir_input="${campaigns_root}/${CAMPAIGN_RUN_ID}"
+          [[ ! -L "${run_dir_input}" ]] || { echo "::error::Refusing symlinked campaign run directory: ${run_dir_input}"; exit 1; }
+          if [[ ! -e "${target_input}" ]]; then
+            echo "Campaign directory already absent: ${target_input}"
+            exit 0
+          fi
+          [[ -d "${target_input}" ]] || { echo "::error::Campaign path is not a directory: ${target_input}"; exit 1; }
+          target="$(realpath -e -- "${target_input}")"
+          [[ "${target}" == "${campaigns_root}"/* ]] || { echo "::error::Campaign directory escaped campaigns root: ${target}"; exit 1; }
+          nested_symlink="$(find -P "${target}" -type l -print -quit 2>/dev/null)"
+          [[ -z "${nested_symlink}" ]] || { echo "::error::Refusing campaign cleanup with nested symlink: ${nested_symlink}"; exit 1; }
+          command -v findmnt >/dev/null 2>&1 || { echo "::error::findmnt is required for safe campaign cleanup."; exit 1; }
+          mounted_targets="$(findmnt --raw --submounts --noheadings --output TARGET --target "${target}")"
+          while IFS= read -r mount_target; do
+            [[ -n "${mount_target}" ]] || continue
+            mount_target="$(realpath -m -- "${mount_target}")"
+            if [[ "${mount_target}" == "${target}" || "${mount_target}" == "${target}"/* ]]; then
+              echo "::error::Refusing to remove campaign directory containing mount: ${mount_target}"
+              exit 1
+            fi
+          done <<< "${mounted_targets}"
+          rm -rf -- "${target}"
+          echo "Removed uploaded campaign directory: ${target}"
       - name: Collect and upload profiling artifacts
         id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')

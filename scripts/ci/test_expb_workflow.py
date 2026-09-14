@@ -6,6 +6,7 @@
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -75,10 +76,12 @@ class ExpbWorkflowImageTests(unittest.TestCase):
         cls.bash = find_bash()
         if cls.bash is None:  # pragma: no cover - environment guard
             raise unittest.SkipTest("a POSIX bash is required to execute workflow steps")
+        cls.resolve_configuration = extract_step(WORKFLOW, "Resolve branch and configuration")
         cls.resolve_image = extract_step(WORKFLOW, "Resolve immutable image and revision")
         cls.render_config = extract_step(WORKFLOW, "Render benchmark config")
+        cls.cleanup_campaign = extract_step(WORKFLOW, "Remove uploaded campaign directory")
 
-    def run_resolver(self, expected_revision="", actual_revision=REVISION):
+    def run_resolver(self, expected_revision="", actual_revision=REVISION, version_status=0):
         with tempfile.TemporaryDirectory(prefix="expb-image-test-") as directory:
             root = Path(directory)
             output = root / "github-output"
@@ -97,6 +100,7 @@ class ExpbWorkflowImageTests(unittest.TestCase):
                 "  printf 'pulled %s\\n' \"$2\"\n"
                 "elif [[ \"$1\" == run ]]; then\n"
                 f"  printf 'Nethermind\\nCommit: {actual_revision}\\n'\n"
+                f"  exit {version_status}\n"
                 "else\n"
                 "  exit 2\n"
                 "fi\n",
@@ -135,6 +139,154 @@ class ExpbWorkflowImageTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("reports commit", log)
         self.assertEqual({}, output)
+
+    def test_version_probe_failure_prints_diagnostics_before_failing(self):
+        result, output, log, _ = self.run_resolver(version_status=17, actual_revision="version probe failed")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("version probe failed", log)
+        self.assertIn("version probe failed with exit code 17", log)
+        self.assertEqual({}, output)
+
+    def run_configuration(self, amount):
+        with tempfile.TemporaryDirectory(prefix="expb-resolve-test-") as directory:
+            root = Path(directory)
+            output = root / "github-output"
+            output.touch()
+            script = root / "resolve.sh"
+            script.write_text(self.resolve_configuration, encoding="utf-8")
+            env = dict(
+                os.environ,
+                EVENT_NAME="workflow_dispatch",
+                PUSH_BRANCH="feature/test",
+                DISPATCH_STATE_LAYOUT="flat",
+                DISPATCH_PAYLOAD_SET="superblocks",
+                DISPATCH_EXPB_REPO="NethermindEth/execution-payloads-benchmarks",
+                DISPATCH_EXPB_BRANCH="",
+                DISPATCH_ARCH="amd64",
+                DISPATCH_DELAY_SECONDS="0",
+                DISPATCH_AMOUNT=amount,
+                DISPATCH_ADDITIONAL_EXTRA_FLAGS="",
+                DISPATCH_FLAT_WRITE_BUFFER_FLOOR="off",
+                DISPATCH_EXPB_ENV="",
+                DISPATCH_REBUILD_DOCKER="false",
+                DISPATCH_RUN_COUNT="1",
+                DISPATCH_DOCKER_IMAGES="",
+                DISPATCH_ENABLE_RETROSPECTIVE="false",
+                DISPATCH_RETROSPECTIVE_LAST="100",
+                DISPATCH_RETROSPECTIVE_STEP="10",
+                DISPATCH_DOTTRACE="false",
+                DISPATCH_PERF="false",
+                DISPATCH_TRACE_BLOCKS="",
+                DISPATCH_CLIENT_ENV="",
+                DISPATCH_MEASUREMENT_MODE="standard",
+                GITHUB_OUTPUT=to_bash(output),
+            )
+            result = subprocess.run(
+                [self.bash, "--noprofile", "--norc", "-eo", "pipefail", to_bash(script)],
+                cwd=REPO,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            return result, parse_output(output)
+
+    def test_amount_must_be_positive_when_overridden_but_blank_uses_default(self):
+        result, output = self.run_configuration("")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual("100", output["amount"])
+        for amount in ("0", "-1", "1.5"):
+            with self.subTest(amount=amount):
+                result, _ = self.run_configuration(amount)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("amount must be a positive integer", result.stdout + result.stderr)
+
+    def run_campaign_cleanup(self, root, run_id="123", attempt="4", mount_output="/"):
+        bin_dir = root / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        findmnt = bin_dir / "findmnt"
+        findmnt.write_text(
+            f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" > \"$FINDMNT_ARGS\"\nprintf '%s\\n' {shlex.quote(mount_output)}\n",
+            encoding="utf-8",
+        )
+        findmnt.chmod(0o755)
+        script = root / "cleanup.sh"
+        script.write_text(self.cleanup_campaign, encoding="utf-8")
+        env = dict(
+            os.environ,
+            EXPB_DATA_DIR=to_bash(root),
+            CAMPAIGN_RUN_ID=run_id,
+            CAMPAIGN_RUN_ATTEMPT=attempt,
+            FINDMNT_ARGS=to_bash(root / "findmnt.args"),
+            PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
+        )
+        return subprocess.run(
+            [self.bash, "--noprofile", "--norc", "-eo", "pipefail", to_bash(script)],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+    def test_successful_campaign_upload_cleanup_is_bounded_to_numeric_attempt(self):
+        with tempfile.TemporaryDirectory(prefix="expb-cleanup-test-") as directory:
+            root = Path(directory)
+            target = root / "campaigns" / "123" / "4"
+            target.mkdir(parents=True)
+            (target / "summary.md").write_text("campaign", encoding="utf-8")
+            result = self.run_campaign_cleanup(root)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertFalse(target.exists())
+            self.assertTrue((root / "campaigns" / "123").exists())
+            self.assertEqual(
+                "--raw --submounts --noheadings --output TARGET --target " + to_bash(target),
+                (root / "findmnt.args").read_text(encoding="utf-8").strip(),
+            )
+
+    def test_campaign_cleanup_rejects_non_numeric_identifiers(self):
+        with tempfile.TemporaryDirectory(prefix="expb-cleanup-test-") as directory:
+            root = Path(directory)
+            target = root / "campaigns" / "123" / "4"
+            target.mkdir(parents=True)
+            result = self.run_campaign_cleanup(root, run_id="../outside")
+            self.assertNotEqual(0, result.returncode)
+            self.assertTrue(target.exists())
+
+    def test_campaign_cleanup_treats_missing_campaigns_root_as_already_clean(self):
+        with tempfile.TemporaryDirectory(prefix="expb-cleanup-test-") as directory:
+            root = Path(directory)
+            (root / "campaigns").parent.mkdir(exist_ok=True)
+            result = self.run_campaign_cleanup(root)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_campaign_cleanup_rejects_symlinked_run_directory(self):
+        with tempfile.TemporaryDirectory(prefix="expb-cleanup-test-") as directory:
+            root = Path(directory)
+            campaigns = root / "campaigns"
+            campaigns.mkdir()
+            outside = root / "outside"
+            outside.mkdir()
+            try:
+                (campaigns / "123").symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("directory symlinks are unavailable")
+            result = self.run_campaign_cleanup(root)
+            self.assertNotEqual(0, result.returncode)
+            self.assertTrue(outside.exists())
+
+    def test_campaign_cleanup_rejects_nested_mount(self):
+        with tempfile.TemporaryDirectory(prefix="expb-cleanup-test-") as directory:
+            root = Path(directory)
+            target = root / "campaigns" / "123" / "4"
+            target.mkdir(parents=True)
+            result = self.run_campaign_cleanup(root, mount_output=to_bash(target / "mounted-child"))
+            self.assertNotEqual(0, result.returncode)
+            self.assertTrue(target.exists())
+
+    def test_campaign_artifacts_are_retained_when_upload_fails(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("id: upload-campaign", workflow)
+        self.assertIn("steps.upload-campaign.outcome == 'success'", workflow)
+        self.assertIn("failed upload intentionally leaves the campaign directory", workflow)
 
     def test_single_image_render_uses_prepare_output_instead_of_mutable_tag(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")

@@ -7,6 +7,7 @@
 import contextlib
 import io
 import os
+import signal
 import sys
 import tempfile
 import unittest
@@ -89,6 +90,99 @@ class SequentialDriverParserTests(unittest.TestCase):
         rendered, scenario = sequential_driver.render(base, {"id": "image-a", "image": image}, 1)
 
         self.assertEqual(image, rendered["scenarios"][scenario]["image"])
+
+    def test_parse_pairs_validates_keys_and_preserves_equals_in_values(self):
+        self.assertEqual({"ALPHA_1": "first=second", "_BETA": "value"}, sequential_driver.parse_pairs("ALPHA_1=first=second, _BETA=value"))
+        for invalid in ("bad-key=value", "1BAD=value", "missing-separator"):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, "valid KEY=VALUE"):
+                sequential_driver.parse_pairs(invalid)
+
+    def test_render_rejects_non_positive_amount(self):
+        base = {"scenarios": {"nethermind": {"amount": 1}}}
+        image = {"id": "image-a", "image": "repo/image:tag@sha256:" + "a" * 64}
+        for amount in ("0", "-1", "1.5"):
+            with self.subTest(amount=amount), patch.dict(os.environ, {"AMOUNT": amount}, clear=False), self.assertRaisesRegex(ValueError, "positive integer"):
+                sequential_driver.render(base, image, 1)
+
+    def test_verify_clean_prunes_exited_expb_containers_but_rejects_running_ones(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = {"paths": {"work": "work"}}
+            commands = []
+
+            def docker_output(command, **_kwargs):
+                commands.append(command)
+                if command[1:3] == ["container", "prune"]:
+                    return "deleted-container\n"
+                return ""
+
+            with patch.dict(os.environ, {"EXPB_DATA_DIR": str(root), "DOCKER_BIN": "docker"}, clear=False), patch.object(
+                sequential_driver.subprocess, "check_output", side_effect=docker_output
+            ), patch.object(Path, "read_text", return_value=""):
+                sequential_driver.verify_clean(config)
+
+            self.assertEqual(["docker", "container", "prune", "--force", "--filter", "label=expb"], commands[0])
+            self.assertIn(["docker", "container", "ps", "-q", "--filter", "label=expb"], commands)
+
+            def running_output(command, **_kwargs):
+                if command[1:3] == ["container", "prune"]:
+                    return ""
+                if command[1:3] == ["container", "ps"]:
+                    return "running-id\n"
+                return ""
+
+            with patch.dict(os.environ, {"EXPB_DATA_DIR": str(root), "DOCKER_BIN": "docker"}, clear=False), patch.object(
+                sequential_driver.subprocess, "check_output", side_effect=running_output
+            ), patch.object(Path, "read_text", return_value=""), self.assertRaisesRegex(RuntimeError, "benchmark containers remain"):
+                sequential_driver.verify_clean(config)
+
+    def test_signal_cleanup_ignores_process_exit_races(self):
+        process = _RunningProcess()
+        sequential_driver.current = process
+        sequential_driver.watchdog = None
+        with patch.object(sequential_driver.signal, "SIGKILL", 9, create=True), patch.object(
+            sequential_driver.os, "killpg", side_effect=ProcessLookupError, create=True
+        ):
+            sequential_driver.force(process)
+            sequential_driver.stop(signal.SIGTERM, None)
+        self.assertIsNone(sequential_driver.watchdog)
+
+    def test_summary_preserves_image_order_and_only_compares_compatible_complete_images(self):
+        images = [
+            {"id": "image-z", "image": "repo/z"},
+            {"id": "image-a", "image": "repo/a"},
+            {"id": "image-m", "image": "repo/m"},
+            {"id": "image-f", "image": "repo/f"},
+        ]
+        samples = [
+            self.sample("image-z", 100.0, run=1),
+            self.sample("image-z", 100.0, run=2),
+            self.sample("image-a", 110.0, run=1),
+            self.sample("image-a", 110.0, run=2),
+            self.sample("image-m", 120.0, run=1, ids=(200, 201)),
+            self.sample("image-m", 121.0, run=2, ids=(100, 101)),
+            self.sample("image-f", 130.0, run=1),
+            self.sample("image-f", None, run=2, status="failed"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            sequential_driver.write_summary(Path(directory), images, 2, samples)
+            summary = (Path(directory) / "summary.md").read_text(encoding="utf-8")
+
+        image_lines = [line for line in summary.splitlines() if line.startswith("Image ")]
+        self.assertEqual(["image-z", "image-a", "image-m", "image-f"], [line.split()[1].rstrip(":") for line in image_lines])
+        self.assertIn("Image image-a: mean AVG=110.0 ms; CV=0.00%; delta vs image-z=+10.00%", summary)
+        self.assertIn("Image image-m: mean AVG=n/a ms; CV=unavailable; delta vs image-z=n/a", summary)
+        self.assertIn("Image image-f: mean AVG=130.0 ms; CV=unavailable; delta vs image-z=n/a", summary)
+
+    @staticmethod
+    def sample(image_id, average, run, ids=(100, 101), status="success"):
+        return {
+            "sample_id": f"{image_id}-run{run}",
+            "image_id": image_id,
+            "status": status,
+            "metrics": {"source": "SSE", "count": 2, "delivered": 2, "ids": list(ids), "avg": average},
+            "sse_block_ids": list(ids),
+        }
 
     def test_run_sample_compute_warm_requires_every_payload_to_warm_successfully(self):
         base = {"scenarios": {"nethermind": {"amount": 2}}}
@@ -174,6 +268,11 @@ class _CompletedProcess:
 
     def wait(self):
         return 0
+
+
+class _RunningProcess(_CompletedProcess):
+    def poll(self):
+        return None
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
