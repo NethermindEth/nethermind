@@ -107,7 +107,8 @@ public class FrameTxMempoolDosMeasurement
 
     private const long Bn254FourPairPrice = 181_000;
 
-    private const long PairingPriceTolerance = 3_000;
+    /// <summary>STATICCALL cost of a fully paid four-pair ecPairing: its price plus the warm access to the pre-warmed precompile.</summary>
+    private const long PaidPairingCallGas = Bn254FourPairPrice + (long)GasCostOf.WarmStateRead;
 
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly UInt256 SenderBalance = 1_000.Ether;
@@ -125,9 +126,9 @@ public class FrameTxMempoolDosMeasurement
 
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
-        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190, Groth16Failure.RevertsProofInvalid),
-        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 299_256, Groth16Failure.RevertsProofInvalid),
-        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 494_586, Groth16Failure.RevertsProofInvalid),
+        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 227_659, Groth16Failure.RevertsProofInvalid),
+        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 292_843, Groth16Failure.RevertsProofInvalid),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 488_241, Groth16Failure.RevertsProofInvalid),
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
@@ -618,10 +619,11 @@ public class FrameTxMempoolDosMeasurement
             if (cost > _lastPairingCallGas) _lastPairingCallGas = cost;
         }
 
-        Assert.That(_lastPairingCallGas, Is.EqualTo(Bn254FourPairPrice).Within(PairingPriceTolerance),
-            $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against a priced "
-            + $"{Bn254FourPairPrice}. Above the band means ecPairing errored and burned the gas forwarded to "
-            + "it, which charges full price for no curve work; below means it is not a 4-pair check.");
+        Assert.That(_lastPairingCallGas, Is.EqualTo(PaidPairingCallGas),
+            $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against the {PaidPairingCallGas} of a paid "
+            + $"4-pair check. Below it, 63/64 of the frame's gas left ecPairing short of its {Bn254FourPairPrice} "
+            + "price, so it failed out of gas before any curve work and ProofInvalid() describes that early exit; "
+            + "above it, ecPairing errored and burned the gas forwarded to it, or it is not a 4-pair check.");
 
         long slack = (long)(sweep.ExpectedFrameGas * Groth16GasTolerance);
         Assert.That((long)readout.Burned, Is.EqualTo((long)sweep.ExpectedFrameGas).Within(slack),
