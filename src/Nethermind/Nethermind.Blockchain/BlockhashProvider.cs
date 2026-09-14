@@ -92,13 +92,18 @@ namespace Nethermind.Blockchain
         /// a stored slot is served only to the exact header instance it was resolved against, which keeps the
         /// prewarmer's suggested-header run and a sequential-retry re-run from reading each other's entries.
         /// <para>
-        /// Why the values cannot be stale: the ring buffer is written once per block by the system call
-        /// before any transaction runs, and <see cref="RingBufferWritten"/> holds the memo shut until that
-        /// write is observed — so the EIP-4788 beacon-root call, which is EVM and runs before it, cannot
-        /// memoize the slot's previous occupant. After it, the canonical EIP-2935 contract only stores for
-        /// SYSTEM_ADDRESS, so no transaction can write to it — a chain pointing Eip2935ContractAddress at
-        /// writable code would invalidate this. Cached values come from state rather than from the block
-        /// tree, which matters at the fork boundary where the buffer is still filling and the two disagree.</para>
+        /// Why the values cannot be stale: <see cref="RingBufferWritten"/> holds the memo shut until the
+        /// block's own ring-buffer write has been observed in state, and once it has landed the canonical
+        /// EIP-2935 contract only stores for SYSTEM_ADDRESS, so nothing overwrites it for the rest of the
+        /// block — a chain pointing Eip2935ContractAddress at writable code would invalidate this.
+        /// Observing the write rather than assuming it precedes the transactions is what makes that hold:
+        /// it does precede them on the sequential paths, but not under parallel BAL, where the write is
+        /// routed to a world state that discards storage writes and reaches the shared state only from
+        /// ApplyStateChanges — iteration zero of the same parallel loop as the transactions.
+        /// Storage-backed BLOCKHASH is not wired for that path regardless, since this provider reads the
+        /// shared world state that loop is concurrently writing. Cached values come from state rather than
+        /// from the block tree, which matters at the fork boundary where the buffer is still filling and
+        /// the two disagree.</para>
         /// </remarks>
         private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
@@ -143,8 +148,10 @@ namespace Nethermind.Blockchain
         /// execute BLOCKHASH for the parent under EIP-7709, the memo would capture that slot's previous
         /// occupant (the block a ring size earlier, which is still servable) and every transaction in the
         /// block would then read that instead of the parent. Observing the write rather than assuming no EVM
-        /// precedes it removes the dependency; it costs one state read per block, of the slot the parent
-        /// lookup reads anyway.
+        /// precedes it removes the dependency; it costs one read of the slot the parent lookup reads anyway
+        /// — once per block on a chain whose system call lands, since the latch closes on the first lookup
+        /// after the write, but once per lookup on one where it never lands (EIP-2935 off, or the contract
+        /// not deployed).
         /// </remarks>
         private bool RingBufferWritten(BlockHeader currentBlock, IReleaseSpec spec)
         {
