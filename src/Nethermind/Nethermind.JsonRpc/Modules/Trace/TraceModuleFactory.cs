@@ -52,7 +52,7 @@ public class TraceModuleFactory(
                 stateReader,
                 rpcProcessingScope.Resolve<BlockchainProcessorFacade>(),
                 validationProcessingScope.Resolve<BlockchainProcessorFacade>(),
-                traceOptions: ProcessingOptions.Trace)));
+                traceOptions: Tracer.ReadOnlyReplay)));
 
         // Split out only the env to prevent accidental leak
         IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();

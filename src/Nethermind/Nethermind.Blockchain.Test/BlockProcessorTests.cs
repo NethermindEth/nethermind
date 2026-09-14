@@ -106,7 +106,7 @@ public class BlockProcessorTests
             IBlockTracer executionTracer = stopAtTarget ? TransactionTraceBoundary.Wrap(recording, target) : recording;
             ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>()
                 .ForceConstructGeneratedBlockAccessList = forceFullBal;
-            chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
+            chain.BlockProcessor.ProcessOne(block, Tracer.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
                 executionTracer, spec, CancellationToken.None);
             count = recording.Started;
             Assert.That(recording.Ended, Is.EqualTo(count), "each executed transaction must finish its tracer lifecycle");
@@ -119,9 +119,9 @@ public class BlockProcessorTests
     [TestCase(ProcessingOptions.None, false, TestName = "None")]
     [TestCase(ProcessingOptions.NoValidation, false, TestName = "NoValidation")]
     [TestCase(ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.LoadNonceFromState, false, TestName = "ReplayWithoutReadOnlyChain")]
-    [TestCase(ProcessingOptions.Trace | ProcessingOptions.StoreReceipts, false, TestName = "TraceWithStoreReceipts")]
+    [TestCase(Tracer.ReadOnlyReplay | ProcessingOptions.StoreReceipts, false, TestName = "ReadOnlyReplayWithStoreReceipts")]
     [TestCase(ProcessingOptions.ReadOnlyChain, true, TestName = "ReadOnlyChain")]
-    [TestCase(ProcessingOptions.Trace, true, TestName = "Trace")]
+    [TestCase(Tracer.ReadOnlyReplay, true, TestName = "ReadOnlyReplay")]
     public void TransactionTraceBoundary_Get_ReturnsBoundaryOnlyForReadOnlyReplayWithoutReceiptPersistence(ProcessingOptions options, bool expectBoundary)
     {
         IBlockTracer tracer = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, TestItem.KeccakA);
