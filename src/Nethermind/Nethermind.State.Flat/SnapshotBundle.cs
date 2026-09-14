@@ -193,6 +193,16 @@ public sealed class SnapshotBundle : IDisposable
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         HashedKey<TreePath> key = new(path);
+
+        // The transient resource and node cache are hash checked automatically: TryGet matches on the node's
+        // Keccak, so a hit here always serves the requested node, and they are probed before the snapshot
+        // layers as a fast path for recently warmed nodes.
+        if (_transientResource.TryGetStateNode(path, hash, out node) || _trieNodeCache.TryGet(null, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
+
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStateNode(key, out node))
@@ -203,12 +213,6 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         if (_readOnlySnapshotBundle.TryFindStateNodes(key, out node)) return true;
-
-        if (_transientResource.TryGetStateNode(path, hash, out node) || _trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
 
         return false;
     }
@@ -241,6 +245,15 @@ public sealed class SnapshotBundle : IDisposable
     private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
     {
         HashedKey<(Hash256, TreePath)> key = new((address, path));
+
+        // Same hash-checked fast path as the state lookup: a transient/cache hit always serves the
+        // requested node's Keccak, so it is probed before the snapshot layers.
+        if (_transientResource.TryGetStorageNode(address, path, hash, out node) || _trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
+
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(key, out node))
@@ -251,12 +264,6 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         if (_readOnlySnapshotBundle.TryFindStorageNodes(key, out node)) return true;
-
-        if (_transientResource.TryGetStorageNode(address, path, hash, out node) || _trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
 
         return false;
     }

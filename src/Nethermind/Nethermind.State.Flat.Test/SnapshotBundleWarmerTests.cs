@@ -104,7 +104,15 @@ public class SnapshotBundleWarmerTests
         });
         context.Bundle._snapshots.Add(snapshot);
 
-        Assert.That(context.FindLiveNode(hash), Is.SameAs(committed));
+        // With the hash-checked transient/cache fast path, the cached placeholder wins the probe; it stays
+        // unresolved rather than shadowing the snapshot node, which main processing reaches through its
+        // own lookup order.
+        TrieNode live = context.FindLiveNode(hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(live.FullRlp.IsNull, Is.True);
+        }
     }
 
     [Test]
