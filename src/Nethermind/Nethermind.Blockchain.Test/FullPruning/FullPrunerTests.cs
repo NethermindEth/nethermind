@@ -146,6 +146,38 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         }
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(false, PruningStatus.Starting, 0, TestName = "AvailableSpaceCheckEnabled_false_skips_disk_space_probe_and_starts_pruning_despite_low_space")]
+    [TestCase(true, PruningStatus.NotEnoughDiskSpace, 1, TestName = "AvailableSpaceCheckEnabled_true_probes_disk_space_and_blocks_pruning_on_low_space")]
+    public void available_space_check_enabled_controls_whether_disk_space_is_probed(bool availableSpaceCheckEnabled, PruningStatus expectedStatus, int expectedWarnings)
+    {
+        IChainEstimations chainEstimations = Substitute.For<IChainEstimations>();
+        chainEstimations.PruningSize.Returns(1000L);
+        TestLogger logger = new();
+
+        TestContext test = new(
+            true,
+            false,
+            FullPruningCompletionBehavior.None,
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism,
+            availableSpaceCheckEnabled: availableSpaceCheckEnabled,
+            chainEstimations: chainEstimations,
+            logManager: new OneLoggerLogManager(new(logger)));
+        test.DriveInfo.AvailableFreeSpace.Returns(500L); // below the 1300-byte requirement (1000 * 130 / 100)
+
+        PruningTriggerEventArgs? capturedArgs = null;
+        test.PruningTrigger.Prune += (_, e) => capturedArgs = e;
+
+        test.TriggerPruningViaEvent();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedArgs!.Status, Is.EqualTo(expectedStatus));
+            Assert.That(logger.LogList, Has.Exactly(expectedWarnings).Contains("Not enough disk space to run full pruning"), "disk space warning");
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task can_not_start_pruning_when_other_is_in_progress()
     {
@@ -238,7 +270,10 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             int fullScanMemoryBudgetMb = 0,
             int degreeOfParallelism = 0,
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
-            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
+            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current,
+            bool availableSpaceCheckEnabled = true,
+            IChainEstimations? chainEstimations = null,
+            ILogManager? logManager = null)
         {
             BlockTree.OnUpdateMainChain += (_, e) => _head = e.Headers[^1].Number;
             _clearPrunedDb = clearPrunedDb;
@@ -267,17 +302,18 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                    FullPruningCompletionBehavior = completionBehavior
+                    FullPruningCompletionBehavior = completionBehavior,
+                    AvailableSpaceCheckEnabled = availableSpaceCheckEnabled
                 },
                 BlockTree,
                 Substitute.For<IStateBoundaryWriter>(),
                 StateBoundary,
                 StateReader,
                 ProcessExitSource,
-                _chainEstimations,
+                chainEstimations ?? _chainEstimations,
                 DriveInfo,
                 trieStore,
-                LimboLogs.Instance);
+                logManager ?? LimboLogs.Instance);
         }
 
         public async Task RunFullPruning()
