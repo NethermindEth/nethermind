@@ -4466,6 +4466,74 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the deferred revalidation must be retried");
         }
 
+        // Each carried deferral costs a simulation under the head write lock, so an unbounded carry lets a
+        // backlog the per-head budget cannot clear hold that lock for the whole budget on every later head.
+        [TestCase(0, 1)]
+        [TestCase(1, 2)]
+        [TestCase(2, 3)]
+        public async Task Revalidation_is_deferred_across_at_most_the_configured_number_of_heads(int budget, int expectedSimulations)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxRevalidationDeferralBudget = budget },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            simulator.ClearReceivedCalls();
+
+            // The first head collects everything; the rest touch nothing this transaction depends on, so only
+            // a carried deferral can bring it back to the simulator.
+            Block head = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            for (int number = 2; number <= 5; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            simulator.Received(expectedSimulations).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "an exhausted deferral budget leaves the transaction pending and unjudged, it does not evict");
+        }
+
+        // The budget counts consecutive heads: a head that revalidates without re-deferring clears the count, so
+        // a block naming the transaction's dependencies re-arms it rather than leaving it permanently unjudged.
+        [Test]
+        public async Task Deferral_budget_is_rearmed_by_a_revalidation_the_carry_did_not_queue()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxRevalidationDeferralBudget = 1 },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            simulator.ClearReceivedCalls();
+
+            // A head with no change list revalidates everything, so it stands in for a block naming the
+            // transaction's dependencies; the rest touch nothing it depends on.
+            Block head = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            for (int number = 2; number <= 6; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                // Head 4 re-collects the transaction; heads 2, 3, 5 and 6 can only reach it through the carry.
+                if (number != 4) head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            // Heads 1 and 2, then the budget is spent; heads 4 and 5 again once head 4 re-armed it. A budget
+            // counted over the transaction's whole residency instead would have stopped at three.
+            simulator.Received(4).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+        }
+
         [Test]
         public async Task Frame_transaction_survives_a_simulation_that_failed_on_a_resource_bound()
         {
