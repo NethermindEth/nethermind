@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
@@ -351,34 +349,30 @@ public static partial class EvmInstructions
     /// is not a jump marker.
     /// </summary>
     /// <remarks>
-    /// Only the last four bytes of the big-endian word can name a marker; every byte above them just has
-    /// to be zero. Testing the slot in place skips the full 256-bit endianness conversion that decoding
-    /// it as a <see cref="UInt256"/> would run first. The destination is returned rather than written
+    /// Only the low four bytes of the word can name a marker; every limb above them just has to be
+    /// zero. Testing the slot in place skips the frame round trip that decoding it as a
+    /// <see cref="UInt256"/> would take. The destination is returned rather than written
     /// through a reference so the caller's counter stays in a register: taking its address pins it to a
     /// stack slot for the whole of the calling instruction.
     /// </remarks>
-    /// <param name="slot">The stack slot holding the destination, big-endian.</param>
+    /// <param name="slot">The stack slot holding the destination, in limb layout.</param>
     /// <param name="stack">The current EVM stack, which carries the code length and jump-destination bitmap.</param>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(ref byte slot, ref EvmStack stack)
     {
+        // Limb layout: the destination is limb 0, and anything above a uint is out of range.
         ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
-        ulong low = Unsafe.Add(ref parts, 3);
-        // The low limb's leading four bytes carry the value's high half, so they belong to the zero test.
-        if ((parts | Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | (uint)low) != 0)
+        ulong low = parts;
+        if ((Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3) | (low >> 32)) != 0)
             return -1;
-
-        // A value above int.MaxValue needs no test of its own: the bound below compares unsigned, so the
-        // sign-flipped index is far past any code length.
-        return JumpDestination((int)BinaryPrimitives.ReverseEndianness((uint)(low >> 32)), ref stack);
+        return JumpDestination((int)(uint)low, ref stack);
     }
 
     /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
-        (uint)jumpDestination < (uint)stack.CodeLength
-            && JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination)
+        stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
 

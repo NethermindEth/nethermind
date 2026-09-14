@@ -1158,7 +1158,7 @@ namespace Nethermind.Trie.Test.Pruning
                     new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance), LimboLogs.Instance);
                 using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
-                worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
+                worldState.Set(new StorageCell(address, slot), new UInt256(TestItem.KeccakB.BytesToArray(), isBigEndian: true));
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
                 worldState.CommitTree(1);
 

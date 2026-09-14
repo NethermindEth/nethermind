@@ -68,12 +68,12 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         }
     }
 
-    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+    public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
     {
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
+            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache)) return false;
             outValue = value;
             return true;
         }
@@ -111,7 +111,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw Unsupported();
 
-    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => throw Unsupported();
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => throw Unsupported();
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw Unsupported();
 
