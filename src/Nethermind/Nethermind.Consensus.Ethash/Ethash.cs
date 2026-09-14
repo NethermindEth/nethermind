@@ -195,22 +195,16 @@ namespace Nethermind.Consensus.Ethash
 
         public void HintRange(Guid guid, ulong start, ulong end) => _hintBasedCache.Hint(guid, start, end);
 
-        private readonly Guid _hintBasedCacheUser = Guid.Empty;
-
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
-                dataSet = _hintBasedCache.Get(epoch);
-                if (dataSet is null)
-                {
-                    if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
-                    return false;
-                }
+                // Callers must hint the validation range before validating. Building the cache on demand here
+                // would let a peer-selected header number drive unbounded Ethash cache construction (F-15).
+                if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
+                return false;
             }
 
             ulong fullSize = GetDataSize(epoch);
