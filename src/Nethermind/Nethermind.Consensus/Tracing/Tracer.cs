@@ -14,14 +14,10 @@ namespace Nethermind.Consensus.Tracing
         IStateReader stateReader,
         BlockchainProcessorFacade traceProcessor,
         BlockchainProcessorFacade executeProcessor,
-        ProcessingOptions executeOptions = Tracer.ReadOnlyReplay,
-        ProcessingOptions traceOptions = Tracer.ReadOnlyReplay)
+        ProcessingOptions executeOptions = TraceProcessingOptions.ReadOnlyReplay,
+        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay)
         : ITracer
     {
-        /// <summary>Replays an already processed block without persisting or validating the result.</summary>
-        public const ProcessingOptions ReadOnlyReplay =
-            ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain | ProcessingOptions.LoadNonceFromState | ProcessingOptions.NoValidation;
-
         private void Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.

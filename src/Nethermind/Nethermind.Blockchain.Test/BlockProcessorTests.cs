@@ -106,7 +106,7 @@ public class BlockProcessorTests
             IBlockTracer executionTracer = stopAtTarget ? TransactionTraceBoundary.Wrap(recording, target) : recording;
             ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>()
                 .ForceConstructGeneratedBlockAccessList = forceFullBal;
-            chain.BlockProcessor.ProcessOne(block, Tracer.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
+            chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
                 executionTracer, spec, CancellationToken.None);
             count = recording.Started;
             Assert.That(recording.Ended, Is.EqualTo(count), "each executed transaction must finish its tracer lifecycle");
@@ -120,10 +120,10 @@ public class BlockProcessorTests
     [TestCase(ProcessingOptions.NoValidation, false, TestName = "NoValidation")]
     [TestCase(ProcessingOptions.ReadOnlyChain, false, TestName = "ReadOnlyChain")]
     [TestCase(ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.LoadNonceFromState, false, TestName = "ReplayWithoutReadOnlyChain")]
-    [TestCase(Tracer.ReadOnlyReplay | ProcessingOptions.StoreReceipts, false, TestName = "ReadOnlyReplayWithStoreReceipts")]
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.StoreReceipts, false, TestName = "ReadOnlyReplayWithStoreReceipts")]
     [TestCase(ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, true, TestName = "ReadOnlyChainWithoutValidation")]
     [TestCase(ProcessingOptions.ProducingBlock, true, TestName = "ProducingBlock")]
-    [TestCase(Tracer.ReadOnlyReplay, true, TestName = "ReadOnlyReplay")]
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay, true, TestName = "ReadOnlyReplay")]
     public void TransactionTraceBoundary_Get_ReturnsBoundaryOnlyForUnvalidatedReadOnlyReplayWithoutReceiptPersistence(ProcessingOptions options, bool expectBoundary)
     {
         IBlockTracer tracer = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, TestItem.KeccakA);
@@ -131,9 +131,9 @@ public class BlockProcessorTests
             "an unfinalized prefix is only acceptable when the chain is read-only, the block is not validated and receipts are not persisted");
     }
 
-    [TestCase(ProcessingOptions.None, TestName = "None")]
-    [TestCase(ProcessingOptions.NoValidation, TestName = "NoValidation")]
-    [TestCase(Tracer.ReadOnlyReplay, TestName = "ReadOnlyReplay")]
+    [TestCase(ProcessingOptions.None, TestName = "Process_None")]
+    [TestCase(ProcessingOptions.NoValidation, TestName = "Process_NoValidation")]
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay, TestName = "Process_ReadOnlyReplay")]
     public async Task TransactionTraceBlockProcessor_NeverCopiesArtifactsOntoSuggestedBlock(ProcessingOptions options)
     {
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
