@@ -69,7 +69,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         // Execution reads go through the layout-native state; the trieStore serves only the post-execution witness walk.
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
-        IWorldState baseWorldState = new WorldState(worldStateManager.CreateResettableWorldState(), logManager);
+        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
+        IWorldState baseWorldState = new WorldState(scopeProvider, logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessCapturingHeaderFinder capturingHeaderFinder = new(headerStore, headerRecorder);
@@ -94,7 +95,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, trieStore, headerRecorder, witnessWorldState, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, scopeProvider, trieStore, headerRecorder, witnessWorldState, blockhashCache, env);
     }
 
     private void Return(PooledEntry entry)
@@ -143,6 +144,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private sealed class PooledEntry(
         ILifetimeScope scope,
+        IWorldStateScopeProvider scopeProvider,
         IReadOnlyTrieStore trieStore,
         WitnessHeaderRecorder headerRecorder,
         WitnessGeneratingWorldState worldState,
@@ -152,10 +154,11 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         public ILifetimeScope Scope { get; } = scope;
         public IWitnessGeneratingBlockProcessingEnv Env { get; } = env;
 
-        /// <summary>Tears down the Autofac scope first, then the manually-created read-only trie store it borrowed.</summary>
+        /// <summary>Tears down the Autofac scope first, then the manually-created state backends it borrowed.</summary>
         public void Dispose()
         {
             Scope.Dispose();
+            (scopeProvider as IDisposable)?.Dispose();
             trieStore.Dispose();
         }
 
