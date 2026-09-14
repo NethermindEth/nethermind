@@ -58,14 +58,9 @@ internal static class PrefixStateSeeder
         Dictionary<StorageCell, MidBlockOverlay.StorageWrite>.Enumerator writes = overlay.Writes;
         while (writes.MoveNext())
         {
-            (StorageCell cell, MidBlockOverlay.StorageWrite write) = writes.Current;
-            if (overlay.TryGetAccount(cell.Address, out MidBlockOverlay.AccountOverlay? account))
-            {
-                if (account.Emptied && !account.Exists) continue;
-                if (write.Transaction < account.StorageClearedAt) continue;
-            }
-
-            state.Set(cell, write.Value);
+            StorageCell cell = writes.Current.Key;
+            if (overlay.TryGetAccount(cell.Address, out MidBlockOverlay.AccountOverlay? account) && account.Emptied && !account.Exists) continue;
+            if (overlay.TryGetStorage(cell, out UInt256 value)) state.Set(cell, value);
         }
     }
 

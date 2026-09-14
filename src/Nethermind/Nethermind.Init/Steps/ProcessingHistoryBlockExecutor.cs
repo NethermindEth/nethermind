@@ -67,7 +67,7 @@ public sealed class ProcessingHistoryBlockExecutor(
 }
 
 /// <summary>Builds each executor its own processing scope, shaped like the one the debug RPC module traces in.</summary>
-public class ProcessingHistoryBlockExecutorFactory(
+public sealed class ProcessingHistoryBlockExecutorFactory(
     IBlockTree blockTree,
     IOverridableEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,

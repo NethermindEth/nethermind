@@ -61,7 +61,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Once the transaction index has caught up with the tip, also index backwards down to this block, so an archive that already exists gains coverage without a resync. 0 indexes forward from the moment the index is turned on and nothing older; 1 covers the whole chain, since genesis carries no transactions. Never goes below the flat-history floor.", DefaultValue = "0")]
     ulong HistoryTransactionIndexRetrofitFromBlock { get; set; }
 
-    [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread.", DefaultValue = "1")]
+    [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
     int HistoryTransactionIndexWorkers { get; set; }
 
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]

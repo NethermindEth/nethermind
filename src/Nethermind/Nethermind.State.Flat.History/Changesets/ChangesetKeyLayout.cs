@@ -26,9 +26,6 @@ internal static class ChangesetKeyLayout
         return RowKeyLength;
     }
 
-    public static int WriteBlockBound(Span<byte> destination, ulong block, ushort transactionIndex) =>
-        WriteRowKey(destination, block, transactionIndex);
-
     public static ushort TransactionIndexOf(scoped ReadOnlySpan<byte> rowKey) =>
         BinaryPrimitives.ReadUInt16BigEndian(rowKey[(1 + sizeof(ulong))..]);
 

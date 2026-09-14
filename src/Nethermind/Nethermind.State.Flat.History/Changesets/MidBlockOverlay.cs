@@ -20,8 +20,6 @@ internal sealed class MidBlockOverlay
     /// <summary>The first transaction this overlay does not yet include.</summary>
     public ushort Folded { get; private set; }
 
-    public int AccountCount => _accounts.Count;
-
     internal int Pins { get; set; }
 
     internal bool Extending { get; set; }

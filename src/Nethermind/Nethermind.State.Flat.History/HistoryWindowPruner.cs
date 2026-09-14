@@ -8,7 +8,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-
 using Nethermind.State.Flat.History.Changesets;
 
 namespace Nethermind.State.Flat.History;
@@ -26,7 +25,7 @@ public sealed class HistoryWindowPruner(
     HistoryAvailability availability,
     HistoryRowFormat rowFormat,
     ILogManager logManager,
-    TransactionChangesetIndex? changesets = null) : IDisposable
+    TransactionChangesetIndex changesets) : IDisposable
 {
     private const int BlockBytes = sizeof(ulong);
     private const int FlushEveryNDeletes = 1000;
@@ -286,7 +285,7 @@ public sealed class HistoryWindowPruner(
         // Whatever the floor is now, including one an earlier pass published: a resumed sweep deletes against the
         // current floor, and anything it passed over is taken by the next sweep.
         if (!availability.TryGetGlobalFloor(out ulong floor)) return true;
-        changesets?.PruneBelow(floor);
+        changesets.PruneBelow(floor);
         bool hasScopes = availability.GetScopesArray().Length > 0;
         ulong liveMarkersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
 

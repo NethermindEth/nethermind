@@ -11,7 +11,7 @@ namespace Nethermind.Init.Steps;
 /// <summary>Starts the per-transaction changeset builder; a no-op when <c>FlatDb.HistoryTransactionIndexEnabled</c>
 /// is off.</summary>
 [RunnerStepDependencies(dependencies: [typeof(InitializeNetwork)])]
-public class StartTransactionChangesetBuilder(TransactionChangesetBuilder builder) : IStep
+public sealed class StartTransactionChangesetBuilder(TransactionChangesetBuilder builder) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {

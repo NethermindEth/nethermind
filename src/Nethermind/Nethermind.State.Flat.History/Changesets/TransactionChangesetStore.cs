@@ -13,6 +13,10 @@ internal sealed class TransactionChangesetStore
     private readonly IDb _column;
     private readonly ISortedKeyValueStore _sorted;
     private readonly Lock _coverageLock = new();
+    private bool _coverageLoaded;
+    private bool _hasCoverage;
+    private ulong _coverageFrom;
+    private ulong _coverageTo;
 
     public TransactionChangesetStore(IDb column)
     {
@@ -62,26 +66,20 @@ internal sealed class TransactionChangesetStore
     {
         Span<byte> lower = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
         Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
-        ChangesetKeyLayout.WriteBlockBound(lower, block, fromTransaction);
-        ChangesetKeyLayout.WriteBlockBound(upper, block, beforeTransaction);
+        ChangesetKeyLayout.WriteRowKey(lower, block, fromTransaction);
+        ChangesetKeyLayout.WriteRowKey(upper, block, beforeTransaction);
         return _sorted.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
     }
 
     public bool TryGetCoverage(out ulong fromInclusive, out ulong toInclusive)
     {
-        Span<byte> key = stackalloc byte[2];
-        ChangesetKeyLayout.WriteCoverageKey(key);
-        byte[]? value = _column.Get(key);
-        if (value is not { Length: 2 * sizeof(ulong) })
+        lock (_coverageLock)
         {
-            fromInclusive = 0;
-            toInclusive = 0;
-            return false;
+            LoadCoverage();
+            fromInclusive = _coverageFrom;
+            toInclusive = _coverageTo;
+            return _hasCoverage;
         }
-
-        fromInclusive = BinaryPrimitives.ReadUInt64BigEndian(value);
-        toInclusive = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
-        return fromInclusive <= toInclusive;
     }
 
     public bool Covers(ulong block) => TryGetCoverage(out ulong from, out ulong to) && block >= from && block <= to;
@@ -94,14 +92,14 @@ internal sealed class TransactionChangesetStore
         {
             if (TryGetCoverage(out ulong from, out ulong to) && from < floor)
             {
-                if (to < floor) _column.Remove(CoverageKey());
+                if (to < floor) ClearCoverage();
                 else WriteCoverage(floor, to);
             }
 
             Span<byte> lower = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
             Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
-            ChangesetKeyLayout.WriteBlockBound(lower, 0, 0);
-            ChangesetKeyLayout.WriteBlockBound(upper, floor, 0);
+            ChangesetKeyLayout.WriteRowKey(lower, 0, 0);
+            ChangesetKeyLayout.WriteRowKey(upper, floor, 0);
             RemoveRange(lower, upper);
 
             Span<byte> lowerBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
@@ -143,12 +141,36 @@ internal sealed class TransactionChangesetStore
         }
     }
 
+    private void LoadCoverage()
+    {
+        if (_coverageLoaded) return;
+
+        byte[]? value = _column.Get(CoverageKey());
+        _hasCoverage = value is { Length: 2 * sizeof(ulong) };
+        if (_hasCoverage)
+        {
+            _coverageFrom = BinaryPrimitives.ReadUInt64BigEndian(value);
+            _coverageTo = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
+        }
+
+        _coverageLoaded = true;
+    }
+
     private void WriteCoverage(ulong fromInclusive, ulong toInclusive)
     {
         Span<byte> value = stackalloc byte[2 * sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(value, fromInclusive);
         BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], toInclusive);
         _column.PutSpan(CoverageKey(), value);
+        _hasCoverage = true;
+        _coverageFrom = fromInclusive;
+        _coverageTo = toInclusive;
+    }
+
+    private void ClearCoverage()
+    {
+        _column.Remove(CoverageKey());
+        _hasCoverage = false;
     }
 
     private static readonly byte[] CoverageKeyBytes = BuildCoverageKey();

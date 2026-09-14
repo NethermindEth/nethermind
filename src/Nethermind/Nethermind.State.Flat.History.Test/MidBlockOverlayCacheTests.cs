@@ -96,7 +96,7 @@ public class MidBlockOverlayCacheTests
         _cache.TryRent(Block, 0, out MidBlockOverlayCache.Lease lease);
         using (lease)
         {
-            Assert.That(lease.Overlay.AccountCount, Is.Zero);
+            Assert.That(lease.Overlay.TryGetAccount(TestItem.AddressA, out _), Is.False);
         }
     }
 
