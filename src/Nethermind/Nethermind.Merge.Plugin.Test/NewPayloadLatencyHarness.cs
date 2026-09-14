@@ -283,7 +283,8 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
             using JsonDocument document = JsonDocument.Parse($"[{payloadJson},[],\"{Keccak.Zero}\",[]]");
             sample.ParseMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             JsonRpcRequest request = new() { JsonRpc = "2.0", Method = "engine_newPayloadV5", Params = document.RootElement, Id = 1 };
-            using JsonRpcContext context = new(RpcEndpoint.Http);
+            // An authenticated context, as on the engine port: the service then reports the call to the GC scheduler.
+            using JsonRpcContext context = new(RpcEndpoint.IPC);
             using JsonRpcResponse response = await service.SendRequestAsync(request, context);
             if (response is JsonRpcErrorResponse error) Assert.Fail($"newPayload failed: {error.Error?.Message}");
             PayloadStatusV1 status = ((ResultWrapper<PayloadStatusV1>)response).Data;
@@ -452,6 +453,9 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
         private readonly ConcurrentDictionary<uint, GcRecord> _inFlight = new();
         private GcRecord? _last;
         private DateTime _suspendStart;
+        // The collection that started or ended inside the current suspension owns it; a background GC only owns its
+        // own initial and final suspensions, a foreground GC inside it owns the ones it triggers.
+        private GcRecord? _suspensionOwner;
 
         protected override void OnEventSourceCreated(EventSource eventSource)
         {
@@ -475,7 +479,7 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                     break;
                 case "GCStart_V2":
                     uint count = Convert.ToUInt32(e.Payload![0]);
-                    _inFlight[count] = new GcRecord
+                    GcRecord started = new()
                     {
                         Start = e.TimeStamp,
                         Count = count,
@@ -483,24 +487,21 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                         Reason = Convert.ToUInt32(e.Payload[2]),
                         Type = Convert.ToUInt32(e.Payload[3]),
                     };
+                    _inFlight[count] = started;
+                    if (_suspendStart != default) _suspensionOwner = started;
                     break;
                 case "GCSuspendEEBegin_V1":
                     _suspendStart = e.TimeStamp;
+                    _suspensionOwner = null;
                     break;
                 case "GCRestartEEEnd_V1":
-                    // The most recently started collection owns the suspension: a foreground GC inside a background
-                    // one suspends for itself, the background GC only at its own start and end.
-                    GcRecord? target = null;
-                    foreach (KeyValuePair<uint, GcRecord> inFlight in _inFlight)
-                    {
-                        if (target is null || inFlight.Key > target.Count) target = inFlight.Value;
-                    }
-                    target ??= _last;
+                    GcRecord? target = _suspensionOwner ?? _last;
                     if (target is not null && _suspendStart != default)
                     {
                         target.SuspendedMs += (e.TimeStamp - _suspendStart).TotalMilliseconds;
-                        _suspendStart = default;
                     }
+                    _suspendStart = default;
+                    _suspensionOwner = null;
                     break;
                 case "GCEnd_V1":
                     if (_inFlight.TryRemove(Convert.ToUInt32(e.Payload![0]), out GcRecord? ended))
@@ -508,6 +509,7 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                         ended.End = e.TimeStamp;
                         Records.Enqueue(ended);
                         _last = ended;
+                        if (_suspendStart != default) _suspensionOwner ??= ended;
                     }
                     break;
             }
