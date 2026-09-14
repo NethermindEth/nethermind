@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -83,6 +84,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         GethLikeTxTrace result = base.BuildResult();
 
         CollapseFrameRoots();
+
+        // CollapseFrameRoots folds a frame transaction's per-frame roots into one synthetic root.
+        Debug.Assert(!_isFrameTx || _callStack.Count <= 1, $"Expected one collapsed root, found {_callStack.Count} frames.");
 
         if (_callStack.Count is not 0)
         {
