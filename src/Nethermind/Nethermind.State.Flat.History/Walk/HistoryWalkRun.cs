@@ -1,0 +1,485 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Concurrent;
+using System.Buffers.Binary;
+using System.Runtime.ExceptionServices;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State.Flat.History.Proofs;
+using Nethermind.Trie;
+
+namespace Nethermind.State.Flat.History.Walk;
+
+internal sealed class HistoryWalkRun
+{
+    private const int AccountPartitionDepth = 2;
+    public const int AccountPartitions = 1 << (4 * AccountPartitionDepth);
+    private const int StorageRanges = 256;
+    public const int WorkItems = AccountPartitions + StorageRanges;
+    public const long DefaultMinRowsToBorrowASlot = 1 << 12;
+
+    private readonly IColumnsDb<FlatHistoryColumns> _history;
+    private readonly ISortedKeyValueStore _accountHistory;
+    private readonly ISortedKeyValueStore _storageHistory;
+    private readonly IDb _availableBlocks;
+    private readonly IHistoryHeaderSource _headers;
+    private readonly ICommitmentEmitterSource? _emitterSource;
+    private readonly long _maxRowsPerPartition;
+    private readonly ulong _from;
+    private readonly ulong _to;
+    private readonly ulong _checkpointBlocks;
+    private readonly int _checkpointGroups;
+    private readonly long _minRowsToBorrow;
+    private readonly Action<int, ulong>? _onCheckpoint;
+    private readonly Action<int>? _onItemDone;
+    private readonly CancellationToken _token;
+    private readonly ILogger _logger;
+    public const int DefaultCheckpointGroups = 1024;
+
+    private readonly MismatchSink _sink = new();
+    private readonly CommitmentMetadata _metadata;
+    private readonly WalkProgress _progress;
+    private readonly HistoryRowScanner _scanner;
+    private readonly AccountSubtreeReplayer _accounts;
+    private readonly StorageSubtreeReplayer _storages;
+    private readonly SubtreeCombiner _combiner;
+    private WalkSlots _slots = null!;
+
+    public HistoryWalkRun(
+        IColumnsDb<FlatHistoryColumns> history,
+        IHistoryHeaderSource headers,
+        HistoryRowFormat rowFormat,
+        bool rlpWrapSlots,
+        ILogManager logManager,
+        long maxRowsPerPartition,
+        ICommitmentEmitterSource? emitterSource,
+        CommitmentMetadata metadata,
+        ulong from,
+        ulong to,
+        ulong checkpointBlocks,
+        int checkpointGroups,
+        Action<int, ulong>? onCheckpoint,
+        Action<int>? onItemDone,
+        CancellationToken token,
+        long minRowsToBorrow = DefaultMinRowsToBorrowASlot)
+    {
+        _history = history;
+        _checkpointBlocks = checkpointBlocks;
+        _checkpointGroups = checkpointGroups;
+        _minRowsToBorrow = minRowsToBorrow;
+        _onCheckpoint = onCheckpoint;
+        _onItemDone = onItemDone;
+        _accountHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        _storageHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageHistory);
+        ISortedKeyValueStore storageClears = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.StorageClears);
+        _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        _headers = headers;
+        _emitterSource = emitterSource;
+        _maxRowsPerPartition = maxRowsPerPartition;
+        _from = from;
+        _to = to;
+        _token = token;
+        _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
+        CommitmentDepthPolicy policy = emitterSource?.Policy ?? CommitmentDepthPolicy.Default;
+        _metadata = metadata;
+        _progress = new WalkProgress(_logger, WorkItems, from, to);
+        _scanner = new HistoryRowScanner(_accountHistory, _storageHistory, storageClears, rowFormat);
+        _accounts = new AccountSubtreeReplayer(_accountHistory, rowFormat, logManager);
+        _storages = new StorageSubtreeReplayer(_accountHistory, _storageHistory, rowFormat, rlpWrapSlots, logManager);
+        _combiner = new SubtreeCombiner(new SeriesReader(history, policy), maxRowsPerPartition);
+    }
+
+    public HistoryWalkVerdict Execute(int workers)
+    {
+        bool resuming = _metadata.TryGetWalkInProgress(out ulong from, out ulong to) && from == _from && to == _to;
+        using (SeriesWriter scratch = new(_history))
+        {
+            if (!resuming)
+            {
+                scratch.DeleteAllScratch();
+                _metadata.BeginWalk(_from, _to, WorkItems, _token);
+            }
+            else
+            {
+                SeriesReader reader = new(_history, _emitterSource?.Policy ?? CommitmentDepthPolicy.Default);
+                for (int item = 0; item < WorkItems; item++)
+                {
+                    if (_metadata.IsWalkItemDone(item))
+                    {
+                        if (item >= AccountPartitions || reader.HasRowAtOrBelow(AccountSeriesKey(AccountPartitionPrefix(item)), _from))
+                        {
+                            _sink.Decode(_metadata.WalkItemMismatches(item));
+                            continue;
+                        }
+
+                        _metadata.ResetWalkItem(item);
+                        if (_logger.IsWarn) _logger.Warn($"History walk resuming: subtree {item} was marked finished but its series is gone, so it is replayed rather than folded as empty.");
+                    }
+
+                    if (item < AccountPartitions)
+                    {
+                        if (!_metadata.TryGetWalkItemProgress(item, out _)) scratch.DeleteAccountScratchUnder((byte)item);
+                    }
+                    else
+                    {
+                        scratch.DeleteStorageScratchUnder((byte)(item - AccountPartitions));
+                    }
+                }
+            }
+        }
+
+        List<Action> partitions = [];
+        int previouslyCompleted = 0;
+        for (int range = 0; range < StorageRanges; range++)
+        {
+            int storageItem = AccountPartitions + range;
+            if (_metadata.IsWalkItemDone(storageItem))
+            {
+                previouslyCompleted++;
+                _progress.PreviouslyCompleted(storageItem);
+                continue;
+            }
+
+            byte firstByte = (byte)range;
+            partitions.Add(() => WithSlot(() =>
+            {
+                MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
+                ProcessStorageRange(firstByte, storageItem, found);
+                CompleteItem(storageItem, found);
+            }));
+        }
+
+        for (int accountItem = 0; accountItem < AccountPartitions; accountItem++)
+        {
+            if (_metadata.IsWalkItemDone(accountItem))
+            {
+                previouslyCompleted++;
+                _progress.PreviouslyCompleted(accountItem);
+                continue;
+            }
+
+            TreePath prefix = AccountPartitionPrefix(accountItem);
+            int item = accountItem;
+            partitions.Add(() => WithSlot(() =>
+            {
+                MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
+                ProcessAccountPartition(prefix, item, found);
+                CompleteItem(item, found);
+            }));
+        }
+
+        if (resuming && _logger.IsInfo) _logger.Info($"History walk resuming: {previouslyCompleted} of {WorkItems} subtrees were finished before the restart, {partitions.Count} remain.");
+        using (_progress)
+        using (_slots = new WalkSlots(Math.Max(1, workers)))
+        {
+            _progress.Start();
+            RunParallel(partitions, workers);
+
+            if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed; folding the root and comparing every block in [{_from}, {_to}] to its header.");
+            using RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger, _token);
+            using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+            using (SeriesWriter series = new(_history))
+            {
+                _combiner.CombineRoot((nibble, child) => AccountSeriesKey(TreePath.FromNibble([(byte)nibble, (byte)child])), _from, _to, emitter, series, root, _progress, _token);
+                emitter?.FlushOpenWindows();
+                _metadata.ClearWalk(WorkItems);
+                series.DeleteAllScratch();
+            }
+
+            List<HistoryWalkMismatch> mismatches = _sink.Drain();
+            return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
+        }
+    }
+
+    private static TreePath AccountPartitionPrefix(int item)
+    {
+        byte[] nibbles = new byte[AccountPartitionDepth];
+        for (int depth = 0; depth < AccountPartitionDepth; depth++)
+        {
+            nibbles[depth] = (byte)((item >> (4 * (AccountPartitionDepth - 1 - depth))) & 0x0F);
+        }
+
+        return TreePath.FromNibble(nibbles);
+    }
+
+    private void WithSlot(Action item)
+    {
+        _slots.Take(_token);
+        try
+        {
+            item();
+        }
+        finally
+        {
+            _slots.Return();
+        }
+    }
+
+    private void CompleteItem(int item, MismatchSink found)
+    {
+        _metadata.MarkWalkItemDone(item, found.Encode());
+        _sink.AddRange(found);
+        _progress.Completed(item);
+        _onItemDone?.Invoke(item);
+    }
+
+    private void RunParallel(List<Action> items, int workers)
+    {
+        ConcurrentQueue<Action> queue = new(items);
+        bool failed = false;
+        Task[] runners = new Task[Math.Max(1, workers)];
+        for (int i = 0; i < runners.Length; i++)
+        {
+            runners[i] = Task.Factory.StartNew(() =>
+            {
+                while (!Volatile.Read(ref failed) && queue.TryDequeue(out Action? item))
+                {
+                    _token.ThrowIfCancellationRequested();
+                    try
+                    {
+                        item();
+                    }
+                    catch
+                    {
+                        Volatile.Write(ref failed, true);
+                        throw;
+                    }
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+
+        try
+        {
+            Task.WaitAll(runners);
+        }
+        catch (AggregateException e)
+        {
+            Exception first = e.InnerExceptions[0];
+            foreach (Exception inner in e.InnerExceptions)
+            {
+                if (inner is OperationCanceledException) continue;
+
+                first = inner;
+                break;
+            }
+
+            ExceptionDispatchInfo.Capture(first).Throw();
+        }
+    }
+
+    private void ProcessAccountPartition(in TreePath prefix, int item, MismatchSink found)
+    {
+        using AccountPartitionRows rows = new();
+        StoragePresenceProbe probe = new(_storageHistory);
+        while (true)
+        {
+            MismatchSink scanned = new(MismatchSink.MaxRecordedPerItem);
+            ScanOutcome outcome = _scanner.ScanAccounts(prefix, _from, _to, _maxRowsPerPartition, rows, new StorageRootMoveCheck(probe, scanned), _token);
+            if (outcome == ScanOutcome.SinglePathOverflow) continue;
+
+            if (outcome == ScanOutcome.Split)
+            {
+                rows.Reset();
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+                {
+                    _progress.EnterChild(item, nibble, BranchRlp.ChildCount);
+                    ProcessAccountPartition(prefix.Append(nibble), item, found);
+                    _progress.ExitChild(item);
+                }
+
+                CombineAccount(prefix);
+                return;
+            }
+
+            ulong? resumeFrom = null;
+            if (prefix.Length == AccountPartitionDepth && _metadata.TryGetWalkItemProgress(item, out ulong reached, out ReadOnlySpan<byte> persisted))
+            {
+                resumeFrom = reached;
+                found.Decode(persisted);
+            }
+
+            MismatchSink replayed = new(MismatchSink.MaxRecordedPerItem);
+            Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block, found, replayed) : null;
+            using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+            using (SeriesWriter series = new(_history))
+            {
+                _accounts.Replay(prefix, rows, Context(emitter, series, item), AccountSeriesKey(prefix), new StorageRootMoveCheck(probe, replayed), resumeFrom, _checkpointBlocks, checkpoint);
+                emitter?.FlushOpenWindows();
+            }
+
+            found.AddRange(replayed);
+            found.AddRange(scanned);
+            return;
+        }
+    }
+
+    private void CombineAccount(in TreePath parent)
+    {
+        TreePath path = parent;
+        using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
+        using SeriesWriter series = new(_history);
+        _combiner.Combine(SeriesScope.Accounts, parent, nibble => AccountSeriesKey(path.Append(nibble)), AccountSeriesKey(parent), _from, _to, emitter, series, observer: null, _token);
+        emitter?.FlushOpenWindows();
+    }
+
+    private SeriesKey AccountSeriesKey(in TreePath path)
+    {
+        bool real = _emitterSource is not null && _emitterSource.Policy.IsExactAccountDepth(path.Length);
+        return SeriesScope.Accounts.Key(path, scratch: !real);
+    }
+
+    private void ProcessStorageRange(byte firstByte, int item, MismatchSink found)
+    {
+        uint? afterPrefix = null;
+        if (_metadata.TryGetWalkItemProgress(item, out ulong done, out ReadOnlySpan<byte> persisted))
+        {
+            afterPrefix = (uint)done;
+            found.Decode(persisted);
+        }
+
+        StorageGroupFrontier frontier = new(found, _checkpointGroups, prefix => Checkpoint(item, prefix, found, pending: null));
+        MismatchBudget budget = new(Math.Max(0, MismatchSink.MaxRecordedPerItem - found.Count));
+        BorrowedWork borrowed = new(_slots);
+        Exception? failure = null;
+        try
+        {
+            _scanner.ScanStorageGroups(firstByte, _from, _to, _maxRowsPerPartition, afterPrefix, group =>
+            {
+                bool owned = false;
+                try
+                {
+                    _token.ThrowIfCancellationRequested();
+                    borrowed.ThrowIfFailed();
+                    MismatchSink groupFound = new(MismatchSink.MaxRecordedPerItem, budget);
+                    long sequence = frontier.Issue(BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), groupFound);
+                    Action replay = () =>
+                    {
+                        ReplayGroup(group, item, groupFound);
+                        frontier.Complete(sequence);
+                    };
+                    owned = (group.Overflow || group.Rows.Count >= _minRowsToBorrow) && borrowed.TryStart(replay);
+                    if (owned) return;
+
+                    owned = true;
+                    replay();
+                }
+                finally
+                {
+                    if (!owned) group.Rows.Dispose();
+                }
+            }, position => _progress.ScanningKeySpace(item, position, HistoryRowScanner.StorageScanSpan), _token);
+        }
+        catch (Exception e)
+        {
+            failure = e;
+        }
+
+        borrowed.Finish(failure);
+        _token.ThrowIfCancellationRequested();
+    }
+
+    private void ReplayGroup(StorageGroup group, int item, MismatchSink found)
+    {
+        using StoragePartitionRows rows = group.Rows;
+        if (group.Overflow)
+        {
+            rows.Reset();
+            ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);
+        }
+        else
+        {
+            ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item, found);
+        }
+    }
+
+    private WalkReplayContext Context(CommitmentEmitter? emitter, SeriesWriter series, int item) => new(_from, _to, emitter, series, _progress, item, _token);
+
+    private void Checkpoint(int item, ulong progress, MismatchSink found, MismatchSink? pending)
+    {
+        _metadata.MarkWalkItemProgress(item, progress, found.Encode(pending));
+        _onCheckpoint?.Invoke(item, progress);
+    }
+
+    private void ProcessStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities, int item, MismatchSink found)
+    {
+        using StoragePartitionRows rows = new();
+        while (true)
+        {
+            ScanOutcome outcome = _scanner.ScanStorage(storagePrefix, slotPrefix, _from, _to, _maxRowsPerPartition, rows, clears, _token);
+            if (outcome == ScanOutcome.SinglePathOverflow) continue;
+
+            if (outcome == ScanOutcome.Fits)
+            {
+                identities?.UnionWith(rows.Identities);
+                ReplayStorageGroup(slotPrefix, rows, clears, item, found);
+                return;
+            }
+
+            break;
+        }
+
+        rows.Reset();
+        HashSet<ValueHash256>[] seenPerChild = new HashSet<ValueHash256>[BranchRlp.ChildCount];
+        MismatchSink[] foundPerChild = new MismatchSink[BranchRlp.ChildCount];
+        BorrowedWork borrowed = new(_slots);
+        Exception? failure = null;
+        try
+        {
+            for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+            {
+                _token.ThrowIfCancellationRequested();
+                borrowed.ThrowIfFailed();
+                HashSet<ValueHash256> seen = seenPerChild[nibble] = [];
+                MismatchSink childFound = foundPerChild[nibble] = new MismatchSink(MismatchSink.MaxRecordedPerItem, found.Budget);
+                TreePath child = slotPrefix.Append(nibble);
+                Action replay = () => ProcessStoragePartition(storagePrefix, child, clears, seen, item, childFound);
+                if (!borrowed.TryStart(replay)) replay();
+            }
+        }
+        catch (Exception e)
+        {
+            failure = e;
+        }
+
+        borrowed.Finish(failure);
+
+        HashSet<ValueHash256> all = [];
+        foreach (HashSet<ValueHash256> seen in seenPerChild) all.UnionWith(seen);
+        foreach (MismatchSink childFound in foundPerChild) found.AddRange(childFound);
+        identities?.UnionWith(all);
+        foreach (ValueHash256 identity in all)
+        {
+            CombineStorage(identity, slotPrefix, found);
+        }
+    }
+
+    private void ReplayStorageGroup(in TreePath slotPrefix, StoragePartitionRows rows, List<ClearRecord> clears, int item, MismatchSink found)
+    {
+        using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
+        using SeriesWriter series = new(_history);
+        _storages.Replay(slotPrefix, rows, clears, Context(emitter, series, item), slotPrefix.Length > 0, found);
+        emitter?.FlushOpenWindows();
+    }
+
+    private void CombineStorage(in ValueHash256 identity, in TreePath slotPrefix, MismatchSink found)
+    {
+        SeriesScope scope = SeriesScope.Storage(identity);
+        TreePath parent = slotPrefix;
+        ContractRootCheck? check = null;
+        if (slotPrefix.Length == 0)
+        {
+            check = new ContractRootCheck(_accountHistory, _scanner.RowFormat, found);
+            check.Begin(identity, _from, _to, _token);
+        }
+
+        using ContractRootCheck? release = check;
+        using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
+        using SeriesWriter series = new(_history);
+        _combiner.Combine(scope, slotPrefix, nibble => scope.Key(parent.Append(nibble), scratch: true), slotPrefix.Length == 0 ? null : scope.Key(slotPrefix, scratch: true), _from, _to, emitter, series, check, _token);
+        emitter?.FlushOpenWindows();
+        check?.End();
+    }
+}

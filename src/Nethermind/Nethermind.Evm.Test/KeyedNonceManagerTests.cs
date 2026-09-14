@@ -93,7 +93,7 @@ public class KeyedNonceManagerTests
     public void CurrentNonceSeq_clamps_slot_value_above_ulong_max(UInt256 storedValue)
     {
         StorageCell slot = KeyedNonceManager.StorageSlot(TestItem.AddressA, (UInt256)5);
-        _state.Set(slot, storedValue.ToBigEndian().WithoutLeadingZeros().ToArray());
+        _state.Set(slot, storedValue);
 
         Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue));
     }
