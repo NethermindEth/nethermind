@@ -76,13 +76,20 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
         _ctsRegistration.Dispose();
+        _cts.Dispose();
         ReleaseEngine();
 
         return result;
     }
 
-    // The script result is converted to JSON while its engine is alive, so the engine can go right after
-    // and the trace keeps nothing in the V8 heap.
+    /// <summary>
+    /// Converts the script result to JSON while its engine is alive, so the engine can go right after and the
+    /// trace keeps nothing in the V8 heap.
+    /// </summary>
+    /// <remarks>
+    /// Uses the static <see cref="EthereumJsonSerializer.JsonOptions"/>: the request's serializer instance is not
+    /// reachable from the tracer, so its configured depth limit does not apply to script results.
+    /// </remarks>
     private static JsonElement MaterializeResult(object? scriptResult)
     {
         NumberConversion previousConversion = ForcedNumberConversion.Value;
@@ -97,7 +104,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         }
     }
 
-    // The tracer proxy roots its script object in the V8 heap until it is disposed, whatever happens to the engine.
+    /// <summary>
+    /// Disposes the tracer proxy, which roots its script object in the V8 heap until then whatever happens to
+    /// the engine, and then the engine itself.
+    /// </summary>
     private void ReleaseEngine()
     {
         if (_engineReleased)

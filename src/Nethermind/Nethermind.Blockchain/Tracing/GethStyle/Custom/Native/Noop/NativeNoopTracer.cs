@@ -5,8 +5,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 
-// noopTracer runs the transaction with every tracing hook switched off and reports an empty object,
-// which makes it the baseline for the cost of traversing a block through the debug API.
+/// <summary>
+/// Runs the transaction with every tracing hook switched off and reports an empty object.
+/// </summary>
+/// <remarks>
+/// The baseline for the cost of traversing a block through the debug API.
+/// </remarks>
 public sealed class NativeNoopTracer : GethLikeNativeTxTracer
 {
     public const string NoopTracer = "noopTracer";

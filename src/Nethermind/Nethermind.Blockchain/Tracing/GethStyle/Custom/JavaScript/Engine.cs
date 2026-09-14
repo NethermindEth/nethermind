@@ -34,7 +34,7 @@ public class Engine : IDisposable
 
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
-    private volatile bool _disposed;
+    private int _disposed;
 
     [ThreadStatic] private static Engine? _currentEngine;
 
@@ -56,8 +56,12 @@ public class Engine : IDisposable
         // compile default scripts in background thread
         Task.Run(CompileStandardScripts);
 
-    // Shared by every engine in the process. The soft limit interrupts a script that outgrows it, and the
-    // expansion multiplier absorbs the allocation burst between two heap samples.
+    /// <summary>
+    /// Creates the runtime shared by every engine in the process. The monitored soft limit is the effective bound
+    /// on the script heap: it interrupts a script that outgrows it. The old-space size sits above it and the
+    /// expansion multiplier absorbs the allocation burst between two heap samples, so together they are the
+    /// backstop that keeps the sampler ahead of the runtime's own hard limit.
+    /// </summary>
     private static V8Runtime CreateRuntime()
     {
         V8Runtime runtime = new(new V8RuntimeConstraints
@@ -173,10 +177,13 @@ public class Engine : IDisposable
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
 
-    // Called from a timer thread: the engine may be disposed between the check and the call.
+    /// <summary>
+    /// Stops the running script. Called from a timer thread, so the engine may be disposed between the check
+    /// and the call.
+    /// </summary>
     public void Interrupt()
     {
-        if (_disposed)
+        if (Volatile.Read(ref _disposed) != 0)
         {
             return;
         }
@@ -192,12 +199,11 @@ public class Engine : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
 
-        _disposed = true;
         Interlocked.CompareExchange(ref _currentEngine, null, this);
         V8Engine.Dispose();
         RearmHeapSoftLimit();

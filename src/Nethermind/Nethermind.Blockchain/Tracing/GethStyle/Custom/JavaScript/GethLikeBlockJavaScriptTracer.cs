@@ -3,7 +3,7 @@
 
 
 using System;
-using System.Threading;
+using Microsoft.ClearScript;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,8 +30,10 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         base.StartNewBlockTrace(block);
     }
 
-    // Every transaction gets its own engine, released as soon as its result is built: script globals never
-    // outlive a transaction and only one engine per block trace is alive at a time.
+    /// <summary>
+    /// Starts a transaction trace in its own engine. The engine is released as soon as the transaction's result
+    /// is built, so script globals never outlive a transaction and one engine per block trace is alive at a time.
+    /// </summary>
     protected override GethLikeJavaScriptTxTracer OnStart(Transaction? tx)
     {
         SetTransactionCtx(tx);
@@ -50,6 +52,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private void SetTransactionCtx(Transaction? tx)
     {
         _ctx.BlockHash = _blockHash;
+        _ctx.error = Undefined.Value;
         _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
@@ -76,5 +79,9 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         return trace;
     }
 
-    public void Dispose() => Interlocked.Exchange(ref _currentTxTracer, null)?.Dispose();
+    public void Dispose()
+    {
+        _currentTxTracer?.Dispose();
+        _currentTxTracer = null;
+    }
 }

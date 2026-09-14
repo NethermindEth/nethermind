@@ -650,12 +650,31 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(GetEthereumJsonSerializer().Serialize(trace.CustomTracerResult), Is.EqualTo("""{"steps":7}"""));
     }
 
-    private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer)
+    [Test]
+    public void Block_trace_does_not_carry_a_failed_transaction_error_into_the_next()
     {
-        (Block block, Transaction first) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, MStore());
+        const string errorTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return ctx.error === undefined ? 'none' : 'error'; }
+                }";
+        byte[] failingCode = Prepare.EvmCode.Op(Instruction.REVERT).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(errorTracer), failingCode, MStore());
+
+        string[] results = tracer.BuildResult().Select(static trace => ((JsonElement)trace.CustomTracerResult!.Value).GetString()!).ToArray();
+
+        Assert.That(results, Is.EqualTo(new[] { "error", "none" }));
+    }
+
+    private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer) =>
+        ExecuteTwoTransactionBlock(tracer, MStore(), MStore());
+
+    private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer, byte[] firstCode, byte[] secondCode)
+    {
+        (Block block, Transaction first) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, firstCode);
         tracer.StartNewBlockTrace(block);
         ExecuteTraced(tracer, block, first);
-        (_, Transaction second) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, MStore());
+        (_, Transaction second) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, secondCode);
         ExecuteTraced(tracer, block, second);
         tracer.EndBlockTrace();
         return tracer;
