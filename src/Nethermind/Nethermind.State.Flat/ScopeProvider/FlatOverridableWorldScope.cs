@@ -26,6 +26,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
+    private readonly KnownHeadersScopeProvider _worldState;
     private readonly ITrieNodeCache _trieNodeCache;
     private bool _isDisposed = false;
 
@@ -43,7 +44,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
-        WorldState = new LastScopeHeaderScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
+        _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
             new NoopTrieWarmer(),
@@ -52,12 +53,13 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             logManager));
     }
 
-    public IWorldStateScopeProvider WorldState { get; }
+    public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
+        _worldState.Clear();
         foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
             kvp.Value.Dispose();
