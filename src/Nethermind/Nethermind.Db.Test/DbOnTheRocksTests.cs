@@ -19,6 +19,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -166,19 +167,23 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void FlatAccountColumn_UsesAutoIndexAndRoundTripsAfterReopen([Values] bool writeLegacyBinarySst)
+        public void FlatAccountColumn_UsesAutoIndexAndRoundTripsAfterReopen(
+            [Values(FlatLayout.Flat, FlatLayout.FlatInTrie)] FlatLayout layout,
+            [Values] bool writeLegacyBinarySst)
         {
             DbConfig config = new();
-            using IContainer configContainer = CreateRocksDbContainer(config);
+            FlatDbConfig flatConfig = new() { Layout = layout, BlockCacheSizeBudget = 64UL.MiB };
+            using IContainer configContainer = CreateRocksDbContainer(config, flatConfig);
             IRocksDbConfigFactory configFactory = configContainer.Resolve<IRocksDbConfigFactory>();
             IDictionary<string, string> resolvedOptions = DbOnTheRocks.ExtractOptions(
-                configFactory.GetForDatabase(DbNames.Flat, nameof(FlatDbColumns.Account)).RocksDbOptions);
+                configFactory.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account)).RocksDbOptions);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(resolvedOptions["block_based_table_factory.index_type"], Is.EqualTo("kBinarySearch"));
+                string expectedIndexType = layout == FlatLayout.Flat ? "kBinarySearch" : "kTwoLevelIndexSearch";
+                Assert.That(resolvedOptions["block_based_table_factory.index_type"], Is.EqualTo(expectedIndexType));
                 Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kAuto"));
-                Assert.That(resolvedOptions["block_based_table_factory.uniform_cv_threshold"], Is.EqualTo("0.5"));
+                Assert.That(resolvedOptions["block_based_table_factory.uniform_cv_threshold"], Is.EqualTo("0.2"));
             }
 
             byte[][] keys = CreateAccountKeys();
@@ -195,7 +200,7 @@ namespace Nethermind.Db.Test
                 };
             }
 
-            using (IContainer writerContainer = CreateRocksDbContainer(writerConfig))
+            using (IContainer writerContainer = CreateRocksDbContainer(writerConfig, flatConfig))
             {
                 IDbFactory dbFactory = writerContainer.Resolve<IDbFactory>();
                 using IColumnsDb<FlatDbColumns> db = dbFactory.CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
@@ -209,7 +214,7 @@ namespace Nethermind.Db.Test
                 db.Flush();
             }
 
-            using IContainer reopenedContainer = CreateRocksDbContainer(config);
+            using IContainer reopenedContainer = CreateRocksDbContainer(config, flatConfig);
             using IColumnsDb<FlatDbColumns> reopened = reopenedContainer.Resolve<IDbFactory>()
                 .CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
             IDb reopenedAccount = reopened.GetColumnDb(FlatDbColumns.Account);
@@ -265,16 +270,20 @@ namespace Nethermind.Db.Test
 
         private static byte[] CreateMissingAccountKey() => ValueKeccak.Compute("missing-flat-account").Bytes[..20].ToArray();
 
-        private IContainer CreateRocksDbContainer(DbConfig config)
+        private IContainer CreateRocksDbContainer(DbConfig config, FlatDbConfig? flatConfig = null)
         {
             InitConfig initConfig = new() { BaseDbPath = DbPath };
+            flatConfig ??= new FlatDbConfig();
             return new ContainerBuilder()
                 .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+                .AddModule(new FlatWorldStateModule(flatConfig))
                 .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IFlatDbConfig>(flatConfig)
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Add<IDisposableStack, AutofacDisposableStack>()
                 .Build();
         }
 
