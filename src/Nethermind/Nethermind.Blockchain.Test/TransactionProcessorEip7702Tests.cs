@@ -185,7 +185,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue1);
+        ReadOnlySpan<byte> cell = storageValue1.ToMinimalBigEndian();
 
         Assert.That(new Address(cell), Is.EqualTo(sender.Address));
     }
@@ -266,7 +267,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue2);
+        ReadOnlySpan<byte> cellValue = storageValue2.ToMinimalBigEndian();
 
         Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes.ToArray()));
     }
@@ -574,7 +576,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(new[] { expectedStoredValue }));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue3);
+        Assert.That(storageValue3.ToMinimalBigEndian(), Is.EqualTo(new[] { expectedStoredValue }));
     }
 
     [TestCase]
@@ -624,7 +627,8 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(new[] { 1 }));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue4);
+        Assert.That(storageValue4.ToMinimalBigEndian(), Is.EqualTo(new[] { 1 }));
     }
 
     public static IEnumerable<TestCaseData> OpcodesWithEXTCODE()
@@ -771,7 +775,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
+        _stateProvider.Get(new StorageCell(codeSource, 0), out UInt256 storageValue5);
+        ReadOnlySpan<byte> actual = storageValue5.ToMinimalBigEndian();
         Assert.That(actual.ToArray(), Is.EqualTo(expected));
     }
     public static IEnumerable<TestCaseData> AccountAccessGasCases()

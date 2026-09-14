@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
@@ -70,6 +71,30 @@ namespace Nethermind.Hive.Test
             ITxPoolConfig txPoolConfig = container.Resolve<ITxPoolConfig>();
 
             Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Configures_flat_db_for_expected_deep_reorgs()
+        {
+            const string variable = "HIVE_EXPECT_DEEP_REORGS";
+            string previous = Environment.GetEnvironmentVariable(variable);
+            try
+            {
+                Environment.SetEnvironmentVariable(variable, "1");
+                FlatDbConfig config = new();
+
+                using IContainer container = new ContainerBuilder()
+                    .AddModule(new TestNethermindModule(config))
+                    .AddModule(new HiveModule())
+                    .Build();
+
+                Assert.That(container.Resolve<IFlatDbConfig>().MinReorgDepth, Is.EqualTo(544UL));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(variable, previous);
+            }
         }
 
         [Test]

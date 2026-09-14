@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -43,10 +42,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
 
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
-        {
-            RootHash = storageRoot
-        };
+        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager);
 
         _config = config;
     }
@@ -55,36 +51,31 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
 
     internal bool IsDisposed => _scope.IsDisposed;
 
-    public byte[] Get(in UInt256 index)
+    public void Get(in UInt256 index, out UInt256 value)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
-        {
-            value = StorageTree.ZeroBytes;
-        }
+        _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx, out UInt256? slotValue);
+        value = slotValue.GetValueOrDefault();
 
         // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
         // access, and a historical value verified against the current trie would be wrong anyway.
         if (_config.VerifyWithTrie && !_scope.Trieless)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
+            _tree.Get(in index, out UInt256 treeValue);
+            if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
-
-        return value!;
     }
 
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintSet(in UInt256 index, byte[]? value) =>
+    public void HintSet(in UInt256 index) =>
         _scope.HintWarmSlot(new ValueAddress(_address.Bytes), in index, singleProducer: true);
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
 
     internal void ClearStorage()
     {
@@ -110,7 +101,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
             trieBatch.Set(in index, value);
             storageTree.Set(index, value);
@@ -128,7 +119,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
     private sealed class FlatOverlayStorageWriteBatch(FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value) => storageTree.Set(index, value);
+        public void Set(in UInt256 index, in UInt256 value) => storageTree.Set(index, value);
 
         public void Clear() => storageTree.ClearStorage();
 

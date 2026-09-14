@@ -75,6 +75,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
     public virtual void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
+    public virtual void ReportActionRemainingGas(ulong gas) { }
     public virtual void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
     public virtual void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportBlockHash(Hash256 blockHash) { }

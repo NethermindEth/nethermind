@@ -30,6 +30,16 @@ namespace Nethermind.Trie.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
+        [Test]
+        public void Oversized_storage_leaf_is_rejected()
+        {
+            StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
+            byte[] oversized = new byte[33];
+            Array.Fill(oversized, (byte)1);
+            tree.Set(UInt256.One, oversized);
+            Assert.Throws<TrieException>(() => tree.Get(UInt256.One, out _));
+        }
+
         private ILogger _logger;
         private ILogManager _logManager;
         private Random _random = new();
@@ -1160,7 +1170,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1168,7 +1178,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                     }
                 }
@@ -1198,14 +1208,14 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable scope = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j), out _);
                             }
                         }
                     }

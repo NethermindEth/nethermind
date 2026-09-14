@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -27,6 +28,25 @@ public class EvmWordExtensionsTests
         {
             Assert.That(swapped, Is.EqualTo(expected));
             Assert.That(swapped.ByteSwap(), Is.EqualTo(word));
+        }
+    }
+    [Test]
+    public void Minimal_big_endian_preserves_each_byte_boundary([Range(0, 32)] int length, [Values(1, 128, 255)] byte leadingByte)
+    {
+        byte[] expected = new byte[Math.Max(1, length)];
+        for (int i = 0; i < length; i++) expected[i] = (byte)(i + 1);
+        if (length != 0) expected[0] = leadingByte;
+        UInt256 value = new(expected, isBigEndian: true);
+        byte[] encoded = value.ToMinimalBigEndian();
+        EvmWord buffer = UInt256.MaxValue.ToBigEndianWord();
+        byte[] buffered = value.ToMinimalBigEndian(ref buffer).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value.MinimalByteLength(), Is.EqualTo(value.ToBigEndian().AsSpan().WithoutLeadingZeros().Length));
+            Assert.That(value.ToBigEndian().AsSpan(32 - value.MinimalByteLength()).ToArray(), Is.EqualTo(expected));
+            Assert.That(encoded, Is.EqualTo(expected));
+            Assert.That(buffered, Is.EqualTo(expected));
+            Assert.That(new UInt256(encoded, isBigEndian: true), Is.EqualTo(value));
         }
     }
 }
