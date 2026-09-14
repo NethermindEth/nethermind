@@ -186,17 +186,12 @@ public sealed class RetrospectiveExecutionTracer
     {
         long[] blockOpcodes = new long[256];
 
-        // Get parent header for state context
-        BlockHeader? parentHeader = block.IsGenesis
-            ? null
-            : _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-
         // Create independent processing environment for this block (thread-safe for parallel processing)
         IReadOnlyTxProcessorSource txProcessorSource = _txProcessingEnvFactory.Create();
         try
         {
             // Create isolated processing scope based on parent state
-            using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(parentHeader);
+            using IReadOnlyTxProcessingScope scope = txProcessorSource.BuildAtTarget(block.Header);
 
             // Clone the header to avoid mutating the shared cached instance from BlockTree
             BlockHeader tracingHeader = block.Header.Clone();

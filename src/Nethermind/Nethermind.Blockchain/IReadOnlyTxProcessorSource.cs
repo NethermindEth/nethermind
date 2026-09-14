@@ -14,4 +14,8 @@ namespace Nethermind.Blockchain;
 public interface IReadOnlyTxProcessorSource : IDisposable
 {
     IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock);
+
+    /// <summary>Opens the state required to execute <paramref name="targetBlock"/>, i.e. its parent state.</summary>
+    /// <exception cref="InvalidOperationException">The parent header or its state is unavailable.</exception>
+    IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock);
 }
