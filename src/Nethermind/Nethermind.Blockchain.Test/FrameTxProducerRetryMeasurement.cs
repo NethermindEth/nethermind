@@ -214,8 +214,8 @@ public class FrameTxProducerRetryMeasurement
                 UInt256 beneficiaryDelta, _) =
             await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead: 1);
 
-        Emit($"case=k_retry_sweep k_retry={kRetry} k_basis=modelled budget={verifyGas} "
-             + $"blocks_offered={blocksOffered} execution_attempts={attempts} "
+        Emit($"case=k_retry_sweep k_retry={kRetry} k_basis=modelled m_per_head=1 m_effective=1 budget={verifyGas} "
+             + $"blocks_offered={blocksOffered} execution_attempts={attempts} eviction_calls={evictionCalls} "
              + $"burn_first_attempt={firstBurn} burn_total={burned} "
              + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} amplification_basis=closed_form "
              + $"beneficiary_delta={beneficiaryDelta}");
@@ -262,7 +262,7 @@ public class FrameTxProducerRetryMeasurement
 
         Emit($"case=k_retry_two_axis k_retry={kRetry} k_basis=modelled m_per_head={mPerHead} m_basis=modelled "
              + $"m_effective={mEffective} budget={verifyGas} "
-             + $"blocks_offered={blocksOffered} execution_attempts={attempts} "
+             + $"blocks_offered={blocksOffered} execution_attempts={attempts} eviction_calls={evictionCalls} "
              + $"burn_first_attempt={firstBurn} burn_total={burned} "
              + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} amplification_basis=closed_form "
              + $"beneficiary_delta={beneficiaryDelta}");
