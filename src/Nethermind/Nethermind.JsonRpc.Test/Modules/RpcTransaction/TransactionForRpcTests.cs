@@ -72,11 +72,8 @@ public class TransactionForRpcTests
     [Test]
     public void GasPrice_does_not_drop_the_access_list()
     {
-        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
-            """{"gasPrice":"0x7","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1"]}]}""")
-            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
-
-        Transaction tx = rpcTx.ToTransaction().Data!;
+        Transaction tx = ToTransaction(
+            """{"gasPrice":"0x7","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1"]}]}""");
 
         Assert.That(tx.Type, Is.EqualTo(TxType.AccessList));
         Assert.That(tx.AccessList?.Count, Is.EqualTo((1, 1)));
@@ -86,11 +83,8 @@ public class TransactionForRpcTests
     [Test]
     public void GasPrice_does_not_drop_the_authorization_list_and_prices_the_dynamic_fee_transaction()
     {
-        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
-            """{"gasPrice":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""")
-            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
-
-        Transaction tx = rpcTx.ToTransaction().Data!;
+        Transaction tx = ToTransaction(
+            """{"gasPrice":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""");
 
         Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
         Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
@@ -101,11 +95,8 @@ public class TransactionForRpcTests
     [Test]
     public void GasPrice_does_not_drop_the_blob_versioned_hashes()
     {
-        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
-            """{"gasPrice":"0x7","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"]}""")
-            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
-
-        Transaction tx = rpcTx.ToTransaction().Data!;
+        Transaction tx = ToTransaction(
+            """{"gasPrice":"0x7","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"]}""");
 
         Assert.That(tx.Type, Is.EqualTo(TxType.Blob));
         Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
@@ -115,9 +106,8 @@ public class TransactionForRpcTests
     [Test]
     public void Explicit_dynamic_fees_take_precedence_over_gasPrice()
     {
-        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
-            """{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""")
-            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
+        TransactionForRpc rpcTx = DeserializeTransactionForRpc(
+            """{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""");
 
         Transaction tx = rpcTx.ToTransaction().Data!;
 
@@ -126,6 +116,16 @@ public class TransactionForRpcTests
         Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
         Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
     }
+
+    private Transaction ToTransaction(string json)
+    {
+        TransactionForRpc rpcTx = DeserializeTransactionForRpc(json);
+        return rpcTx.ToTransaction().Data!;
+    }
+
+    private TransactionForRpc DeserializeTransactionForRpc(string json) =>
+        _serializer.Deserialize<TransactionForRpc>(json)
+            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
 
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_schema(Transaction transaction)
