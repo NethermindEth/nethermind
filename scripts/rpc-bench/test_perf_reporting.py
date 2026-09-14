@@ -1347,6 +1347,20 @@ fi
         primary_db = self.directory / "primary-db"
         primary_db.mkdir()
 
+        missing_db = self.directory / "missing-db"
+        missing_scratch = self.directory / "missing-scratch"
+        missing = run_prepare(
+            missing_scratch,
+            missing_db,
+            missing_scratch / "diag" / "results",
+            missing_scratch / "diag" / "results" / "state",
+            missing_scratch / "diag" / "results" / "archives",
+        )
+        self.assertNotEqual(missing.returncode, 0, f"{missing.stdout}\n{missing.stderr}")
+        self.assertIn("missing or unresolvable", missing.stdout)
+        self.assertIn("set node_config.db_source to an existing snapshot path", missing.stdout)
+        self.assertFalse(missing_scratch.exists())
+
         scratch_symlink = self.directory / "scratch-symlink"
         scratch_symlink.mkdir()
         try:

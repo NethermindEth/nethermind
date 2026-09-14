@@ -274,9 +274,10 @@ jobs:
               ;;
           esac
 
-          # The ARM box runs one node at a time from the per-client snapshot sets it stocks; a client with
-          # no set there fails at start-node with the candidates listed. Its narrower capabilities are
-          # checked against the selected runner instead of being removed from the inputs for everyone.
+          # The ARM box runs one node at a time from the per-client snapshot sets it stocks. Snapshot
+          # availability is checked during path preparation before any output directories are created;
+          # its narrower capabilities are checked against the selected runner instead of being removed
+          # from the inputs for everyone.
           if [[ "${arch}" == "arm64" && "${reference_client}" != "none" ]]; then
             echo "::error::The reproducible-benchmarks-arm runner only supports a single client - dispatch with arch=amd64 for a reference client."
             exit 1
@@ -733,12 +734,12 @@ jobs:
             is_under "$path" "$root" || is_under "$root" "$path"
           }
 
-          db_canonical="$(canonical_existing "${DB_SOURCE}")" || fail_path "cannot canonicalize DB_SOURCE '${DB_SOURCE}'"
+          db_canonical="$(canonical_existing "${DB_SOURCE}")" || fail_path "DB_SOURCE '${DB_SOURCE}' is missing or unresolvable; set node_config.db_source to an existing snapshot path."
           scratch_canonical="$(canonical_planned "${SCRATCH_ROOT}")" || fail_path "cannot canonicalize SCRATCH_ROOT '${SCRATCH_ROOT}'"
           [[ -d "${db_canonical}" ]] || fail_path "DB_SOURCE '${DB_SOURCE}' is not a directory"
           path_overlaps "${scratch_canonical}" "${db_canonical}" && fail_path "SCRATCH_ROOT must be disjoint from DB_SOURCE"
           if [[ -n "${REFERENCE_DB_SOURCE}" ]]; then
-            ref_db_canonical="$(canonical_existing "${REFERENCE_DB_SOURCE}")" || fail_path "cannot canonicalize reference DB source '${REFERENCE_DB_SOURCE}'"
+            ref_db_canonical="$(canonical_existing "${REFERENCE_DB_SOURCE}")" || fail_path "Reference DB source '${REFERENCE_DB_SOURCE}' is missing or unresolvable; set node_config.reference_db_source to an existing snapshot path."
           else
             ref_db_canonical=""
           fi
