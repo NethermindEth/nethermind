@@ -30,7 +30,7 @@ public sealed class ProcessingHistoryBlockExecutor(
         if (parent is null) return false;
 
         using Scope<Components> processing = processingEnv.BuildAndOverride(parent, null);
-        processing.Component.BlockchainProcessor.Process(toExecute, ProcessingOptions.Trace, tracer, cancellationToken);
+        processing.Component.BlockchainProcessor.Process(toExecute, TraceProcessingOptions.ReadOnlyReplay, tracer, cancellationToken);
         return true;
     }
 

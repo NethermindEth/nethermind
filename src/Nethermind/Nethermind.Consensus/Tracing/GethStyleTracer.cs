@@ -12,7 +12,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -103,7 +102,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider);
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken), cancellationToken);
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, blockTracer.WithCancellation(cancellationToken), cancellationToken);
             return blockTracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -141,7 +140,7 @@ public class GethStyleTracer(
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
-        scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
         return tracer.BuildResult();
     }
 
@@ -156,7 +155,7 @@ public class GethStyleTracer(
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
-        scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
     }
@@ -174,7 +173,7 @@ public class GethStyleTracer(
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
-        scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
     }
@@ -211,7 +210,7 @@ public class GethStyleTracer(
             bool unaltered = options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
                 tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
-            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, executionTracer, cancellationToken);
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -243,7 +242,7 @@ public class GethStyleTracer(
 
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+            scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
             // On the streaming path traces are written straight to the writer; the returned collection
             // is discarded by the caller, so avoid wrapping an empty BuildResult in a fresh collection.
             return writer is null

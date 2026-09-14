@@ -49,7 +49,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     }
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
-        options.ContainsFlag(ProcessingOptions.Trace)
+        options.ContainsFlag(ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation)
         && !options.ContainsFlag(ProcessingOptions.StoreReceipts)
             ? tracer as TransactionTraceBoundary : null;
 
