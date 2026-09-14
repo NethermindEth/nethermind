@@ -130,6 +130,8 @@ public class NLogManager : ILogManager, IDisposable
     /// A wrapper is unwrapped only to look for a group behind it; its contents are never yielded, since the
     /// targets inside the seq wrapper chain are unnamed and would slip past the name check.
     /// <paramref name="visited"/> bounds the walk the way <see cref="WritesToSeq(Target, HashSet{Target})"/> does.
+    /// It records what has been yielded or accounted for, so the unwrap below keeps its own set: a target
+    /// merely passed through on the way to a group can still be a group member in its own right.
     /// </remarks>
     private static IEnumerable<Target> NonSeqTargets(Target target, HashSet<Target> visited)
     {
@@ -145,7 +147,8 @@ public class NLogManager : ILogManager, IDisposable
         }
 
         Target inner = target;
-        while (inner is WrapperTargetBase wrapper && wrapper.WrappedTarget is not null && visited.Add(wrapper.WrappedTarget))
+        HashSet<Target> chain = [];
+        while (inner is WrapperTargetBase wrapper && wrapper.WrappedTarget is not null && chain.Add(wrapper.WrappedTarget))
         {
             inner = wrapper.WrappedTarget;
         }

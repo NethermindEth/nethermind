@@ -151,17 +151,35 @@ namespace Nethermind.Logging.NLog.Test
             }
         }
 
-        [Test]
-        public void Group_target_containing_seq_is_excluded_when_walked()
+        /// <remarks>
+        /// The two shapes a target can reach seq through, built per test rather than shared, since NLog
+        /// closes a target graph when the configuration holding it is replaced.
+        /// </remarks>
+        private static IEnumerable<TestCaseData> SeqReachingTargets()
+        {
+            yield return new TestCaseData((Func<Target, Target, Target>)((seq, file) =>
+            {
+                SplitGroupTarget all = new() { Name = "all" };
+                all.Targets.Add(seq);
+                all.Targets.Add(file);
+                return all;
+            }), "all")
+            { TestName = "Group containing seq" };
+
+            yield return new TestCaseData(
+                (Func<Target, Target, Target>)((seq, _) => new BufferingTargetWrapper("seq-buffer", seq)),
+                "seq-buffer")
+            { TestName = "Wrapper around seq" };
+        }
+
+        [TestCaseSource(nameof(SeqReachingTargets))]
+        public void Seq_reaching_target_is_excluded_when_walked(Func<Target, Target, Target> buildSeqReaching, string excludedName)
         {
             MemoryTarget seq = new() { Name = "seq" };
             MemoryTarget file = new() { Name = "file" };
-            SplitGroupTarget all = new() { Name = "all" };
-            all.Targets.Add(seq);
-            all.Targets.Add(file);
-            LoggingRule ruleAll = new("*", Level.Trace, Level.Fatal, all);
-            LoggingRule ruleFile = new("*", Level.Trace, Level.Fatal, file);
-            LogManager.Configuration = ConfigurationWith(ruleAll, ruleFile);
+            LogManager.Configuration = ConfigurationWith(
+                new LoggingRule("*", Level.Trace, Level.Fatal, buildSeqReaching(seq, file)),
+                new LoggingRule("*", Level.Trace, Level.Fatal, file));
 
             using (new NLogManager("test", null, "Synchronization.*:Trace"))
             {
@@ -170,10 +188,31 @@ namespace Nethermind.Logging.NLog.Test
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(targetNames, Does.Not.Contain("all"));
+                    Assert.That(targetNames, Does.Not.Contain(excludedName));
                     Assert.That(targetNames, Does.Not.Contain("seq"));
                     Assert.That(targetNames, Does.Contain("file"));
                 }
+            }
+        }
+
+        // Contrived - it takes a target literally named "seq" wrapping a sink that is also a sibling
+        // member - but it is what keeps the unwrap walk from claiming a target on the yielding walk's
+        // behalf, which would drop the only sink Init.LogRules could still reach.
+        [Test]
+        public void Group_member_reachable_through_the_seq_target_is_still_written_to()
+        {
+            MemoryTarget file = new() { Name = "file" };
+            SplitGroupTarget all = new() { Name = "all" };
+            all.Targets.Add(new BufferingTargetWrapper("seq", file));
+            all.Targets.Add(file);
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Trace, Level.Fatal, all));
+
+            using (new NLogManager("test", null, "Synchronization.*:Trace"))
+            {
+                LoggingRule synthesised = LogManager.Configuration.LoggingRules.SingleOrDefault(r => r.LoggerNamePattern == "Synchronization.*");
+
+                Assert.That(synthesised, Is.Not.Null);
+                Assert.That(synthesised.Targets.Select(t => t.Name), Does.Contain("file"));
             }
         }
 
@@ -239,30 +278,6 @@ namespace Nethermind.Logging.NLog.Test
         }
 
         [Test]
-        public void Wrapper_target_around_seq_is_excluded_from_Init_LogRules()
-        {
-            MemoryTarget seq = new() { Name = "seq" };
-            MemoryTarget file = new() { Name = "file" };
-            BufferingTargetWrapper buffered = new("seq-buffer", seq);
-            LogManager.Configuration = ConfigurationWith(
-                new LoggingRule("*", Level.Trace, Level.Fatal, buffered),
-                new LoggingRule("*", Level.Trace, Level.Fatal, file));
-
-            using (new NLogManager("test", null, "Synchronization.*:Trace"))
-            {
-                LoggingRule synthesised = LogManager.Configuration.LoggingRules.Single(r => r.LoggerNamePattern == "Synchronization.*");
-                string[] targetNames = synthesised.Targets.Select(t => t.Name).ToArray();
-
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(targetNames, Does.Not.Contain("seq-buffer"));
-                    Assert.That(targetNames, Does.Not.Contain("seq"));
-                    Assert.That(targetNames, Does.Contain("file"));
-                }
-            }
-        }
-
-        [Test]
         public void Target_graph_with_a_cycle_is_walked_once()
         {
             MemoryTarget file = new() { Name = "file" };
@@ -296,15 +311,19 @@ namespace Nethermind.Logging.NLog.Test
             }
         }
 
-        [Test]
-        public void Init_LogRules_reach_the_non_seq_members_of_a_group_target()
+        // Without final="true" the group rule's own Info-and-above delivery and the synthesised rule's
+        // both reach `file`, so the Info level they share is written twice; `seq` gets it once either
+        // way, since the synthesised rule excludes seq entirely.
+        [TestCase(true, new[] { "Trace|raised", "Info|baseline" }, TestName = "Final group rule")]
+        [TestCase(false, new[] { "Trace|raised", "Info|baseline", "Info|baseline" }, TestName = "Non-final group rule duplicates the shared level")]
+        public void Init_LogRules_reach_the_non_seq_members_of_a_group_target(bool final, string[] expectedFileLogs)
         {
             MemoryTarget seq = new() { Name = "seq", Layout = "${level}|${message}" };
             MemoryTarget file = new() { Name = "file", Layout = "${level}|${message}" };
             SplitGroupTarget all = new() { Name = "all" };
             all.Targets.Add(seq);
             all.Targets.Add(file);
-            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Info, Level.Fatal, all) { Final = true });
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Info, Level.Fatal, all) { Final = final });
 
             using (new NLogManager("test", null, "Synchronization.*:Trace"))
             {
@@ -315,36 +334,7 @@ namespace Nethermind.Logging.NLog.Test
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(file.Logs, Is.EqualTo(new[] { "Trace|raised", "Info|baseline" }));
-                    Assert.That(seq.Logs, Is.EqualTo(new[] { "Info|baseline" }));
-                }
-            }
-        }
-
-        [Test]
-        public void Non_final_group_rule_writes_shared_levels_twice()
-        {
-            MemoryTarget seq = new() { Name = "seq", Layout = "${level}|${message}" };
-            MemoryTarget file = new() { Name = "file", Layout = "${level}|${message}" };
-            SplitGroupTarget all = new() { Name = "all" };
-            all.Targets.Add(seq);
-            all.Targets.Add(file);
-            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Info, Level.Fatal, all));
-
-            using (new NLogManager("test", null, "Synchronization.*:Trace"))
-            {
-                Logger logger = LogManager.GetLogger("Synchronization.Foo");
-                logger.Trace("raised");
-                logger.Info("baseline");
-                LogManager.Flush();
-
-                // Without final="true" on the group rule (contrast Init_LogRules_reach_the_non_seq_members_of_a_group_target
-                // above), its own Info-and-above delivery and the synthesised rule's both reach `file`, so the
-                // Info level they share is written twice; `seq` still gets it once, since the synthesised rule
-                // excludes seq entirely.
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(file.Logs, Is.EqualTo(new[] { "Trace|raised", "Info|baseline", "Info|baseline" }));
+                    Assert.That(file.Logs, Is.EqualTo(expectedFileLogs));
                     Assert.That(seq.Logs, Is.EqualTo(new[] { "Info|baseline" }));
                 }
             }
