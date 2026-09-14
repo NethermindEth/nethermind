@@ -96,6 +96,9 @@ namespace Nethermind.TxPool
         /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
         /// eviction, and a call for a transaction the pool does not hold changes nothing.
         /// Runs without the pool's head lock, so it may land at any point of a concurrent head update.
+        /// Required rather than defaulted to <c>RemoveTransaction(tx.Hash)</c>, unlike its defaulted neighbours
+        /// here: that forward leaves the hash known, turning the drop into the blacklist this contract forbids,
+        /// and it also ignores the retry budget and raises no <see cref="EvictedPending"/>.
         /// </remarks>
         /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
         /// pooled one rather than a re-decoded copy sharing its hash.</param>
