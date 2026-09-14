@@ -37,27 +37,13 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    /// <remarks>
-    /// Bounds the declared-gas check only. An opaque prefix that has to be simulated, and per-signature
-    /// recovery, stay capped frame by frame at the fixed <c>Eip8141Constants.MaxVerifyGas</c>, which neither
-    /// raising this value nor lifting it with <c>0</c> moves.
-    /// </remarks>
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` to lift the limit. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` to lift the limit, though a simulated prefix and per-signature recovery stay capped frame by frame at the fixed `Eip8141Constants.MaxVerifyGas` either way. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
-    /// <remarks>
-    /// EIP-8250 leaves this cap unchanged while charging a first use of each keyed nonce key 97,920 state gas
-    /// from the approving prefix frame, so at the default value a first-use set of more than five keys does not
-    /// propagate and reaches a chain only through direct submission to a builder.
-    /// </remarks>
-    [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. `0` to lift the limit. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyStateGas { get; set; }
 
-    /// <remarks>
-    /// A gossiped transaction never waits for a busy simulator; a locally submitted one waits up to this long
-    /// as well, so for it the wait and the run are additive.
-    /// </remarks>
-    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. `0` to lift the limit.")]
+    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A local submission may also wait this long for a busy simulator, so its ceiling is twice this value. `0` to lift the limit.")]
     int FrameTxSimulationTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = "1000", Description = "The total time, in milliseconds, spent simulating EIP-8141 validation prefixes per chain head. Once spent, opaque frame transactions are rejected until the next head. `0` to lift the limit.")]
