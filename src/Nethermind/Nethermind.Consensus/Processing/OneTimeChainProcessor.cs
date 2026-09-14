@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -21,7 +20,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -37,71 +35,51 @@ namespace Nethermind.Consensus.Processing;
 /// touches the main processing queue.
 /// </summary>
 /// <remarks>
-/// Logic is forked from <see cref="BlockchainProcessor.Process"/>, minus everything specific to the
-/// main processing loop (queueing, recovery, pause control). The exclusive lock serializes calls
-/// because the wrapped scope's world state and branch processor are single-use.
+/// The exclusive lock serializes calls because the wrapped scope's world state and branch processor
+/// are single-use. The head is never updated: all consumers pass <see cref="ProcessingOptions.DoNotUpdateHead"/>,
+/// so the processed branch is left for the caller to commit (e.g. by suggesting the sealed block back
+/// into the main pipeline).
 /// </remarks>
-public sealed class OneTimeChainProcessor : IBlockchainProcessor
+public sealed class OneTimeChainProcessor(
+    IWorldState worldState,
+    IBlockTree blockTree,
+    IBranchProcessor branchProcessor,
+    ISpecProvider specProvider,
+    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
+    IStateReader stateReader,
+    ILogManager logManager,
+    BlockchainProcessor.Options options,
+    IProcessingStats processingStats,
+    IEnumerable<IBlockTracer>? blockTracers = null
+) : IBlockchainProcessor
 {
     private const int MaxBranchSize = 8192;
 
-    private readonly IWorldState _worldState;
-    private readonly IBranchProcessor _branchProcessor;
-    private readonly ISpecProvider _specProvider;
-    private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps;
-    private readonly IStateReader _stateReader;
-    private readonly BlockchainProcessor.Options _options;
-    private readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
-    private readonly IProcessingStats _stats;
+    private readonly IWorldState _worldState = worldState;
+    private readonly IBranchProcessor _branchProcessor = branchProcessor;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps = preprocessorSteps;
+    private readonly IStateReader _stateReader = stateReader;
+    private readonly BlockchainProcessor.Options _options = options;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ILogger _logger = logManager.GetClassLogger<OneTimeChainProcessor>();
+    private readonly IProcessingStats _stats = processingStats;
     private readonly Stopwatch _stopwatch = new();
     private readonly Lock _lock = new();
     // Retained for DI parity with BlockchainProcessor; seeding into a composite tracer is only meaningful
     // on the queued path, which this processor deliberately does not have.
-    private readonly IEnumerable<IBlockTracer>? _blockTracers;
+    private readonly IEnumerable<IBlockTracer>? _blockTracers = blockTracers;
 
-    public OneTimeChainProcessor(
-        IWorldState worldState,
-        IBlockTree blockTree,
-        IBranchProcessor branchProcessor,
-        ISpecProvider specProvider,
-        IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
-        IStateReader stateReader,
-        ILogManager logManager,
-        BlockchainProcessor.Options options,
-        IProcessingStats processingStats,
-        IEnumerable<IBlockTracer>? blockTracers = null)
-    {
-        _worldState = worldState;
-        _branchProcessor = branchProcessor;
-        _specProvider = specProvider;
-        _preprocessorSteps = preprocessorSteps;
-        _stateReader = stateReader;
-        _options = options;
-        _blockTree = blockTree;
-        _logger = logManager.GetClassLogger<OneTimeChainProcessor>();
-        _stats = processingStats;
-        _blockTracers = blockTracers;
-        _stats.NewProcessingStatistics += OnNewProcessingStatistics;
-    }
-
-    public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;
-    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
-        Process(suggestedBlock, options, tracer, token, out string? _);
-
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
         lock (_lock)
         {
-            return ProcessCore(suggestedBlock, options, tracer, token, out error);
+            return ProcessCore(suggestedBlock, options, tracer, token);
         }
     }
 
-    private Block? ProcessCore(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    private Block? ProcessCore(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
-        error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
             return null;
@@ -128,7 +106,7 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token);
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
@@ -152,22 +130,6 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
             long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
-        }
-
-        bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
-        if (updateHead)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-            // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
-            // (any deeper blocks that already had state) on its own, loading them one at a time.
-            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()) && _logger.IsWarn)
-                _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
-        }
-
-        if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
-            _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
 
         if (!readonlyChain)
@@ -202,7 +164,7 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -226,14 +188,20 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
                 options,
                 tracer,
                 token);
-            error = null;
         }
         catch (InvalidBlockException ex)
         {
             if (_logger.IsWarn) _logger.Warn($"Issue processing block {ex.InvalidBlock} {ex}");
             invalidBlockHash = ex.InvalidBlock.Hash;
-            error = ex.Message;
-            Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
+            Block? invalidBlock = null;
+            for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
+            {
+                if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
+                {
+                    invalidBlock = processingBranch.BlocksToProcess[i];
+                    break;
+                }
+            }
             if (invalidBlock is not null)
             {
                 Metrics.BadBlocks++;
@@ -241,7 +209,6 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
-                InvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,
@@ -549,12 +516,5 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
         }
     }
 
-    public ValueTask DisposeAsync()
-    {
-        _stats.NewProcessingStatistics -= OnNewProcessingStatistics;
-        return ValueTask.CompletedTask;
-    }
-
-    private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
-        => NewProcessingStatistics?.Invoke(sender, stats);
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
