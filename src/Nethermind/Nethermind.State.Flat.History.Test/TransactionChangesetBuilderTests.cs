@@ -285,6 +285,28 @@ public class TransactionChangesetBuilderTests
         }
     }
 
+    [TestCase(true, TestName = "ABuiltStep_RestsOutItsDutyCycle")]
+    [TestCase(false, TestName = "AFailedStep_RestsOutItsDutyCycleAndThenIdles")]
+    public void WorkDone_IsRestedOffWhetherOrNotItBuilt(bool built)
+    {
+        _config.HistoryTransactionIndexDutyCyclePercent = 25;
+        using TransactionChangesetBuilder builder = Builder();
+
+        TimeSpan rest = builder.RestFor(TimeSpan.FromSeconds(10), built);
+
+        Assert.That(rest, Is.EqualTo(TimeSpan.FromSeconds(30) + (built ? TimeSpan.Zero : TransactionChangesetBuilder.IdleDelay)),
+            "a chunk that fails after most of its work must still rest off that work, or the duty cycle is silently 100%");
+    }
+
+    [Test]
+    public void AStepThatCostNothingAndBuiltNothing_StillIdles()
+    {
+        _config.HistoryTransactionIndexDutyCyclePercent = 100;
+        using TransactionChangesetBuilder builder = Builder();
+
+        Assert.That(builder.RestFor(TimeSpan.Zero, built: false), Is.EqualTo(TransactionChangesetBuilder.IdleDelay));
+    }
+
     [Test]
     public void AChunkThatKeepsFailing_IsNeverDropped()
     {

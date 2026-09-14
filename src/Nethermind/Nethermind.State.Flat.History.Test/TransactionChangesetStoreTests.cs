@@ -102,6 +102,22 @@ public class TransactionChangesetStoreTests
     }
 
     [Test]
+    public void AClaimStraddlingThePruneFloor_IsTrimmedToIt()
+    {
+        for (ulong block = 10; block <= 20; block++) WriteTransaction(block, 0, TestItem.AddressA);
+        _store.TryExtendCoverage(21, 21);
+        _store.PruneBelow(15);
+
+        bool claimed = _store.TryExtendCoverage(10, 20);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(claimed, Is.True);
+            Assert.That(_store.TryGetCoverage(out ulong from, out ulong to) && from == 15 && to == 21, Is.True, "the part of a built chunk above the floor is still good and must not be thrown away with the part below it");
+        }
+    }
+
+    [Test]
     public void PruningPastTheWholeCoverage_ReportsNoBounds()
     {
         WriteTransaction(10, 0, TestItem.AddressA);

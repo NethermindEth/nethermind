@@ -126,12 +126,15 @@ internal sealed class TransactionChangesetStore
         while (view.MoveNext()) batch.Remove(view.CurrentKey);
     }
 
-    /// <summary>Extends the covered range when the new one touches it, so a gap can never be claimed as covered.</summary>
+    /// <summary>Extends the covered range when the new one touches it, so a gap can never be claimed as covered. Rows
+    /// below the last prune floor are gone, so a claim is trimmed to the floor rather than refused for them.</summary>
     public bool TryExtendCoverage(ulong fromInclusive, ulong toInclusive)
     {
         lock (_coverageLock)
         {
-            if (fromInclusive < _prunedBelow) return false;
+            if (toInclusive < _prunedBelow) return false;
+
+            fromInclusive = Math.Max(fromInclusive, _prunedBelow);
 
             if (TryGetCoverage(out ulong from, out ulong to))
             {

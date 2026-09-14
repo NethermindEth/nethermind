@@ -22,7 +22,7 @@ public sealed class TransactionChangesetBuilder(
 {
     internal const ulong ChunkBlocks = 128;
     internal const int WarnAfterAttempts = 8;
-    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
@@ -148,7 +148,7 @@ public sealed class TransactionChangesetBuilder(
     private void Requeue(in Chunk chunk)
     {
         Chunk again = chunk with { Attempts = chunk.Attempts + 1 };
-        if (again.Attempts == WarnAfterAttempts && _logger.IsWarn) _logger.Warn(
+        if (again.Attempts % WarnAfterAttempts == 0 && _logger.IsWarn) _logger.Warn(
             $"Transaction changeset chunk {again.Bottom}-{again.Top} has failed {again.Attempts} times; coverage cannot advance below it until it builds.");
 
         lock (_chunks)
@@ -184,8 +184,7 @@ public sealed class TransactionChangesetBuilder(
             if (token.IsCancellationRequested) return;
 
             ReportProgress();
-            if (built) Throttle(startedAt, token);
-            else token.WaitHandle.WaitOne(IdleDelay);
+            Rest(RestFor(Stopwatch.GetElapsedTime(startedAt), built), token);
         }
     }
 
@@ -199,9 +198,22 @@ public sealed class TransactionChangesetBuilder(
             bool built = Guarded(() => TryBuildNextChunk(executor), token);
             if (token.IsCancellationRequested) return;
 
-            if (built) Throttle(startedAt, token);
-            else token.WaitHandle.WaitOne(IdleDelay);
+            Rest(RestFor(Stopwatch.GetElapsedTime(startedAt), built), token);
         }
+    }
+
+    /// <summary>Work done is rested off at the duty cycle whether or not it ended in a built block, so a chunk that
+    /// fails after most of its work cannot turn the builder into a full-speed loop; a step that built nothing also
+    /// waits out the idle delay, so a failure that costs nothing cannot spin.</summary>
+    internal TimeSpan RestFor(TimeSpan worked, bool built)
+    {
+        TimeSpan rest = _dutyCyclePercent >= 100 ? TimeSpan.Zero : worked * (100 - _dutyCyclePercent) / _dutyCyclePercent;
+        return built ? rest : rest + IdleDelay;
+    }
+
+    private static void Rest(TimeSpan duration, CancellationToken token)
+    {
+        if (duration > TimeSpan.Zero) token.WaitHandle.WaitOne(duration);
     }
 
     private bool Guarded(Func<bool> step, CancellationToken token)
@@ -252,15 +264,6 @@ public sealed class TransactionChangesetBuilder(
             : "";
         _logger.Info($"Transaction changeset index covers {coverage}, {blocksPerSecond:F1} blocks/s{remaining}");
         _progressReportedAt = now;
-    }
-
-    private void Throttle(long startedAt, CancellationToken token)
-    {
-        if (_dutyCyclePercent >= 100) return;
-
-        TimeSpan worked = Stopwatch.GetElapsedTime(startedAt);
-        TimeSpan rest = worked * (100 - _dutyCyclePercent) / _dutyCyclePercent;
-        if (rest > TimeSpan.Zero) token.WaitHandle.WaitOne(rest);
     }
 
     /// <summary>The tip comes first: a block that just became durable is what a trace is most likely to ask for.
