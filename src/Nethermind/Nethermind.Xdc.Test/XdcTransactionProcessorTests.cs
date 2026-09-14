@@ -18,6 +18,7 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Test;
 
@@ -216,6 +217,10 @@ internal class XdcTransactionProcessorTests
             BlockSignerContract = TestItem.AddressB,
             RandomizeSMCBinary = randomizeContract,
             BlackListedAddresses = [],
+            V2Configs =
+            [
+                new()
+            ],
         };
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
@@ -224,6 +229,7 @@ internal class XdcTransactionProcessorTests
             .WithTo(toRandomizeContract ? randomizeContract : TestItem.AddressD)
             .WithGasPrice((UInt256)gasPrice)
             .WithGasLimit(gasLimit)
+            .WithValue(0)
             .WithType(TxType.Legacy)
             .TestObject;
 
@@ -235,8 +241,9 @@ internal class XdcTransactionProcessorTests
         _transactionProcessor!.SetBlockExecutionContext(header);
 
         UInt256 balanceBefore = _stateProvider!.GetBalance(TestItem.AddressA);
+        tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out UInt256 effectiveGasPrice);
 
-        TransactionResult result = _transactionProcessor.TestBuyGas(tx, spec, out UInt256 effectiveGasPrice);
+        TransactionResult result = _transactionProcessor.Execute(tx, NullTxTracer.Instance);
 
         UInt256 charged = balanceBefore - _stateProvider.GetBalance(TestItem.AddressA);
 
