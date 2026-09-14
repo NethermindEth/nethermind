@@ -65,6 +65,12 @@ internal class MasternodeVotingContractTests
         Address[] candidates = masterVoting.GetCandidates(genesis);
         Assert.That(candidates, Is.Not.Empty);
 
+        Dictionary<Address, Address> owners = [];
+        foreach (Address candidate in candidates)
+        {
+            owners.Add(candidate, masterVoting.GetCandidateOwner(genesis, candidate));
+        }
+
         using IReadOnlyTxProcessorSource source = envFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(genesis);
         IWorldState worldState = scope.WorldState;
@@ -75,6 +81,7 @@ internal class MasternodeVotingContractTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(voters, Is.EquivalentTo(new[] { GenesisVoter }), $"voters of {candidate}");
+                Assert.That(masterVoting.GetCandidateOwner(worldState, candidate), Is.EqualTo(owners[candidate]));
                 Assert.That(masterVoting.GetVoterStake(worldState, candidate, GenesisVoter),
                     Is.EqualTo(10_000_000.Ether), $"stake of {GenesisVoter} on {candidate}");
             }
@@ -93,8 +100,25 @@ internal class MasternodeVotingContractTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(masterVoting.GetVoters(scope.WorldState, TestItem.AddressD), Is.Empty);
+            Assert.That(masterVoting.GetCandidateOwner(scope.WorldState, TestItem.AddressD), Is.EqualTo(Address.Zero));
             Assert.That(masterVoting.GetVoterStake(scope.WorldState, TestItem.AddressD, GenesisVoter), Is.EqualTo(UInt256.Zero));
         }
+    }
+
+    [Test]
+    public void GetCandidateOwner_preserves_leading_zero_bytes()
+    {
+        (MasternodeVotingContract contract, IReadOnlyTxProcessingEnvFactory factory, BlockHeader genesis) = DeployVotingContract();
+        using IReadOnlyTxProcessorSource source = factory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(genesis);
+        Address candidate = new("0x25c65b4b379ac37cf78357c4915f73677022eaff");
+        Address expected = new("0x00112233445566778899aabbccddeeff00112233");
+        byte[] mappingKey = new byte[64];
+        candidate.Bytes.CopyTo(mappingKey.AsSpan(12));
+        mappingKey[^1] = 1;
+        UInt256 ownerSlot = new(Keccak.Compute(mappingKey).Bytes, isBigEndian: true);
+        scope.WorldState.Set(new StorageCell(TestItem.AddressC, ownerSlot), new UInt256(expected.Bytes, isBigEndian: true));
+        Assert.That(contract.GetCandidateOwner(scope.WorldState, candidate), Is.EqualTo(expected));
     }
 
     private static (MasternodeVotingContract Contract, IReadOnlyTxProcessingEnvFactory EnvFactory, BlockHeader Genesis) DeployVotingContract()
@@ -117,7 +141,7 @@ internal class MasternodeVotingContractTests
             foreach (KeyValuePair<string, string> kvp in GenesisAllocation)
             {
                 StorageCell cell = new(codeSource, UInt256.Parse(kvp.Key));
-                stateProvider.Set(cell, Bytes.FromHexString(kvp.Value));
+                stateProvider.Set(cell, new Nethermind.Int256.UInt256(Bytes.FromHexString(kvp.Value), isBigEndian: true));
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

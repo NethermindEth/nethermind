@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
@@ -8,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
@@ -116,6 +118,64 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
         Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
+    }
+
+    private static readonly UInt256[] TransientValues =
+        [UInt256.Zero, UInt256.One, (UInt256)255, new UInt256(1_000_000_000_000_000_000UL), UInt256.MaxValue,
+         new UInt256(0x0123456789abcdef, 0xfedcba9876543210, 0x1020304050607080, 0x8070605040302010)];
+
+    [Test]
+    public void storage_load_reuses_key_slot(
+        [Values(Instruction.SLOAD, Instruction.TLOAD)] Instruction instruction,
+        [Values(0, 1, 1024)] int depth)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++) code.PushData(UInt256.MaxValue);
+        code.Op(instruction);
+        TestAllTracerWithOutput result = Execute(code.Done);
+        Assert.That(result.StatusCode, Is.EqualTo(depth == 0 ? StatusCode.Failure : StatusCode.Success));
+    }
+
+    [Test]
+    public void repeated_tstore_preserves_value_and_gas([ValueSource(nameof(TransientValues))] UInt256 value)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(value).PushData(0).Op(Instruction.TSTORE)
+            .PushData(value).PushData(0).Op(Instruction.TSTORE)
+            .LoadDataFromTransientStorage(0)
+            .DataOnStackToMemory(0)
+            .Return(32, 0)
+            .Done;
+
+        TransientStoreTracer result = Execute(new TransientStoreTracer(), code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue.ToUInt256(), Is.EqualTo(value));
+            Assert.That(result.GasSpent, Is.EqualTo(GasCostOf.Transaction + 2 * GasCostOf.TStore + GasCostOf.TLoad + 10 * GasCostOf.VeryLow));
+            Assert.That(result.LoadedBytes, Is.EqualTo(value.IsZero ? new byte[] { 0 } : value.ToBigEndian()));
+            Assert.That(result.Writes, Is.EqualTo(2));
+            Assert.That(result.NewValue, Is.EqualTo((UInt256)value));
+            Assert.That(result.CurrentValue, Is.EqualTo((UInt256)value));
+        }
+    }
+
+    private sealed class TransientStoreTracer : TestAllTracerWithOutput
+    {
+        public byte[]? LoadedBytes { get; private set; }
+        public int Writes { get; private set; }
+
+        public override void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+            => LoadedBytes = value.ToArray();
+        public UInt256 NewValue { get; private set; }
+        public UInt256 CurrentValue { get; private set; }
+
+        public override void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        {
+            Writes++;
+            NewValue = new UInt256(newValue, isBigEndian: true);
+            CurrentValue = new UInt256(currentValue, isBigEndian: true);
+        }
     }
 
     /// <summary>
