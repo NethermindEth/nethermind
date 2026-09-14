@@ -33,11 +33,14 @@ internal sealed class TransactionChangesetStore
     }
 
     /// <summary>The changesets of transactions below <paramref name="beforeTransaction"/>, in execution order.</summary>
-    public ISortedView OpenBefore(ulong block, ushort beforeTransaction)
+    public ISortedView OpenBefore(ulong block, ushort beforeTransaction) => OpenBetween(block, 0, beforeTransaction);
+
+    /// <summary>The changesets of transactions in <c>[fromTransaction, beforeTransaction)</c>, in execution order.</summary>
+    public ISortedView OpenBetween(ulong block, ushort fromTransaction, ushort beforeTransaction)
     {
         Span<byte> lower = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
         Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
-        ChangesetKeyLayout.WriteBlockBound(lower, block, 0);
+        ChangesetKeyLayout.WriteBlockBound(lower, block, fromTransaction);
         ChangesetKeyLayout.WriteBlockBound(upper, block, beforeTransaction);
         return _sorted.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
     }

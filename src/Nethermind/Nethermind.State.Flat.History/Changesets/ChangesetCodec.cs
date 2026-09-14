@@ -6,46 +6,72 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Changesets;
 
-/// <summary>One transaction's writes, packed. Entries carry only significant bytes, so a zeroed slot index or a
-/// cleared value costs one length byte.</summary>
+/// <summary>One transaction's writes, packed. An account entry carries only the fields the transaction changed, so
+/// the overlay merges them onto the account as of the previous block rather than restating it. Numbers carry only
+/// their significant bytes, so a zeroed slot index or a cleared value costs one length byte.</summary>
 internal static class ChangesetCodec
 {
     public const byte AccountKind = 0;
     public const byte StorageKind = 1;
 
-    public const int MaxAccountValueLength = 128;
-    public const int MaxAccountEntryLength = 1 + Address.Size + 1 + MaxAccountValueLength;
+    public const byte BalanceField = 0x01;
+    public const byte NonceField = 0x02;
+    public const byte CodeField = 0x04;
+    public const byte DeletedField = 0x08;
+    public const byte StorageClearedField = 0x10;
+
+    public const int MaxAccountEntryLength = 1 + Address.Size + 1 + (1 + Hash256.Size) * 2 + Hash256.Size;
     public const int MaxStorageEntryLength = 1 + Address.Size + 1 + Hash256.Size + 1 + Hash256.Size;
 
-    public static int WriteAccount(Span<byte> destination, Address address, scoped ReadOnlySpan<byte> value)
+    public static int WriteAccount(
+        Span<byte> destination,
+        Address address,
+        scoped ReadOnlySpan<byte> balance,
+        scoped ReadOnlySpan<byte> nonce,
+        scoped ReadOnlySpan<byte> codeHash,
+        bool deleted,
+        bool storageCleared)
     {
-        if (value.Length > MaxAccountValueLength) ThrowValueTooLong(value.Length, MaxAccountValueLength);
+        byte fields = 0;
+        if (!balance.IsEmpty) fields |= BalanceField;
+        if (!nonce.IsEmpty) fields |= NonceField;
+        if (!codeHash.IsEmpty) fields |= CodeField;
+        if (deleted) fields |= DeletedField;
+        if (storageCleared) fields |= StorageClearedField;
 
         destination[0] = AccountKind;
         address.Bytes.CopyTo(destination[1..]);
         int position = 1 + Address.Size;
-        destination[position++] = (byte)value.Length;
-        value.CopyTo(destination[position..]);
-        return position + value.Length;
+        destination[position++] = fields;
+        if (!balance.IsEmpty) position = WriteLengthPrefixed(destination, position, balance, Hash256.Size);
+        if (!nonce.IsEmpty) position = WriteLengthPrefixed(destination, position, nonce, Hash256.Size);
+        if (codeHash.IsEmpty) return position;
+
+        if (codeHash.Length != Hash256.Size) ThrowValueTooLong(codeHash.Length, Hash256.Size);
+
+        codeHash.CopyTo(destination[position..]);
+        return position + Hash256.Size;
     }
 
     public static int WriteStorage(Span<byte> destination, Address address, scoped ReadOnlySpan<byte> index, scoped ReadOnlySpan<byte> value)
     {
-        if (index.Length > Hash256.Size) ThrowValueTooLong(index.Length, Hash256.Size);
-        if (value.Length > Hash256.Size) ThrowValueTooLong(value.Length, Hash256.Size);
-
         destination[0] = StorageKind;
         address.Bytes.CopyTo(destination[1..]);
         int position = 1 + Address.Size;
-        destination[position++] = (byte)index.Length;
-        index.CopyTo(destination[position..]);
-        position += index.Length;
+        position = WriteLengthPrefixed(destination, position, index, Hash256.Size);
+        return WriteLengthPrefixed(destination, position, value, Hash256.Size);
+    }
+
+    public static Enumerator Read(ReadOnlySpan<byte> changeset) => new(changeset);
+
+    private static int WriteLengthPrefixed(Span<byte> destination, int position, scoped ReadOnlySpan<byte> value, int limit)
+    {
+        if (value.Length > limit) ThrowValueTooLong(value.Length, limit);
+
         destination[position++] = (byte)value.Length;
         value.CopyTo(destination[position..]);
         return position + value.Length;
     }
-
-    public static Enumerator Read(ReadOnlySpan<byte> changeset) => new(changeset);
 
     private static void ThrowValueTooLong(int length, int limit) =>
         throw new ArgumentOutOfRangeException(nameof(length), length, $"A changeset entry carries at most {limit} bytes.");
@@ -62,9 +88,14 @@ internal static class ChangesetCodec
             Address = default;
             Index = default;
             Value = default;
+            Balance = default;
+            Nonce = default;
+            CodeHash = default;
         }
 
         public byte Kind { get; private set; }
+
+        public byte Fields { get; private set; }
 
         public ReadOnlySpan<byte> Address { get; private set; }
 
@@ -72,25 +103,56 @@ internal static class ChangesetCodec
 
         public ReadOnlySpan<byte> Value { get; private set; }
 
+        public ReadOnlySpan<byte> Balance { get; private set; }
+
+        public ReadOnlySpan<byte> Nonce { get; private set; }
+
+        public ReadOnlySpan<byte> CodeHash { get; private set; }
+
+        public bool Deleted => (Fields & DeletedField) != 0;
+
+        /// <summary>The transaction wiped every slot of the account, whether or not the account itself survived.</summary>
+        public bool StorageCleared => (Fields & (StorageClearedField | DeletedField)) != 0;
+
         public bool MoveNext()
         {
             if (_position >= _changeset.Length) return false;
 
             Kind = _changeset[_position++];
-            if (Kind is not (AccountKind or StorageKind)) ThrowMalformed();
-
             Address = Take(Nethermind.Core.Address.Size);
-            Index = Kind == StorageKind ? TakeLengthPrefixed() : default;
-            Value = TakeLengthPrefixed();
-            return true;
+            Fields = 0;
+            Index = default;
+            Value = default;
+            Balance = default;
+            Nonce = default;
+            CodeHash = default;
+
+            switch (Kind)
+            {
+                case AccountKind:
+                    Fields = TakeByte();
+                    if ((Fields & BalanceField) != 0) Balance = TakeLengthPrefixed();
+                    if ((Fields & NonceField) != 0) Nonce = TakeLengthPrefixed();
+                    if ((Fields & CodeField) != 0) CodeHash = Take(Hash256.Size);
+                    return true;
+                case StorageKind:
+                    Index = TakeLengthPrefixed();
+                    Value = TakeLengthPrefixed();
+                    return true;
+                default:
+                    ThrowMalformed();
+                    return false;
+            }
         }
 
-        private ReadOnlySpan<byte> TakeLengthPrefixed()
+        private byte TakeByte()
         {
             if (_position >= _changeset.Length) ThrowMalformed();
 
-            return Take(_changeset[_position++]);
+            return _changeset[_position++];
         }
+
+        private ReadOnlySpan<byte> TakeLengthPrefixed() => Take(TakeByte());
 
         private ReadOnlySpan<byte> Take(int length)
         {
