@@ -109,6 +109,11 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.LogManager, jsonRpcLocalStats, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
+        // Pushed ahead of the two runners so the disposer, which unwinds in reverse, closes the EVM execution gate
+        // only once the HTTP host and the IPC listener have both stopped serving; closing it earlier would answer
+        // requests they are still handling with "too many requests". Nothing else disposes this instance: the
+        // Kestrel container is handed it pre-built, which it does not own.
+        api.DisposeStack.Push(jsonRpcService);
         api.DisposeStack.Push(jsonRpcRunner);
         api.DisposeStack.Push(jsonIpcRunner);
     }
