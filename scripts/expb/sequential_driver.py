@@ -68,6 +68,8 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     name = f"nethermind-{image['id']}-run{run}"
     config["scenarios"] = {name: (scenario := scenarios.pop("nethermind"))}
     scenario.update({"image": image["image"], **({"amount": amount} if amount is not None else {})})
+    # The compatible benchmark image rejects this legacy flag; retain every other caller-provided option.
+    scenario["extra_flags"] = [flag for flag in scenario.setdefault("extra_flags", []) if flag != "--Pruning.Mode=None"]
     extra = parse_flags(get("ADDITIONAL_EXTRA_FLAGS"))
     if get("MEASUREMENT_MODE", "standard") == "compute-warm":
         if any("JsonRpc.GasCap" in item for item in extra): raise ValueError("compute-warm conflicts with GasCap override")

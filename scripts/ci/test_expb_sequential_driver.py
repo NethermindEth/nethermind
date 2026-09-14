@@ -86,11 +86,23 @@ class SequentialDriverParserTests(unittest.TestCase):
 
     def test_render_preserves_the_immutable_image_reference(self):
         image = "repo/image:tag@sha256:" + "a" * 64
-        base = {"scenarios": {"nethermind": {"image": "mutable", "amount": 1}}}
+        base = {"scenarios": {"nethermind": {"image": "mutable", "amount": 1, "extra_flags": [
+            "--FlatDb.Enabled=true", "--Pruning.Mode=None", "--Pruning.Mode=None=preserve",
+            "--FlatDb.HistoryEnabled=false",
+        ]}}}
 
-        rendered, scenario = sequential_driver.render(base, {"id": "image-a", "image": image}, 1)
+        with patch.dict(os.environ, {"ADDITIONAL_EXTRA_FLAGS": ""}, clear=False):
+            for image_id in ("baseline", "candidate"):
+                with self.subTest(image_id=image_id):
+                    rendered, scenario = sequential_driver.render(
+                        base, {"id": image_id, "image": image}, 1
+                    )
 
-        self.assertEqual(image, rendered["scenarios"][scenario]["image"])
+                    self.assertEqual(image, rendered["scenarios"][scenario]["image"])
+                    self.assertEqual(
+                        ["--FlatDb.Enabled=true", "--Pruning.Mode=None=preserve", "--FlatDb.HistoryEnabled=false"],
+                        rendered["scenarios"][scenario]["extra_flags"],
+                    )
 
     def test_parse_pairs_validates_keys_and_preserves_equals_in_values(self):
         self.assertEqual({"ALPHA_1": "first=second", "_BETA": "value"}, sequential_driver.parse_pairs("ALPHA_1=first=second, _BETA=value"))
