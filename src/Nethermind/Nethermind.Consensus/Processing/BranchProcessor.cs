@@ -46,6 +46,11 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
+    private IDisposable BeginTargetScope(Block targetBlock) =>
+        stateProvider.TryBeginScope(targetBlock.Header, out IDisposable? worldStateCloser)
+            ? worldStateCloser
+            : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(Block.Format.FullHashAndNumber)}.");
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
@@ -67,9 +72,9 @@ public class BranchProcessor(
                 throw new InvalidOperationException($"State must not be handled from outside of {nameof(IBranchProcessor)} except for genesis block.");
             }
         }
-        else if (!stateProvider.TryBeginScope(suggestedBlock.Header, out worldStateCloser))
+        else
         {
-            throw new InvalidOperationException($"Parent state is unavailable for target block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
+            worldStateCloser = BeginTargetScope(suggestedBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
@@ -147,7 +152,7 @@ public class BranchProcessor(
                     WaitForCacheClear();
 
                     worldStateCloser.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);
+                    worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
                 }
@@ -185,10 +190,9 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
+                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
