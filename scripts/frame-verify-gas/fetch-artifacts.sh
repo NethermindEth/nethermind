@@ -87,8 +87,12 @@ for label in "${LABELS[@]}"; do
   fi
   # tar escapes control characters in listings, so each line is exactly one member.
   bad=$(grep -vE "^(\./|(\./)?${sweep}(/[A-Za-z0-9._-]+)*/?)\$" <<< "${names}"; grep -E '(^|/)\.\.(/|$)' <<< "${names}")
-  if [[ -n "${bad}" || "$(wc -l <<< "${names}")" != "$(wc -l <<< "${listing}")" ]]; then
+  if [[ -n "${bad}" ]]; then
     echo "::error::${sweep}.tar.gz has a member with an unexpected path or prefix ('${bad%%$'\n'*}'); only ${sweep}/ or ./${sweep}/ without '..' is allowed."
+    exit 1
+  fi
+  if [[ "$(wc -l <<< "${names}")" != "$(wc -l <<< "${listing}")" ]]; then
+    echo "::error::${sweep}.tar.gz has a member name that tar lists differently with -t and -tv, so it cannot be checked; refusing to extract it."
     exit 1
   fi
   if grep -qv '^[-d]' <<< "${listing}"; then
