@@ -555,8 +555,8 @@ public class ScopeProviderTests(bool useFlat)
                     $"Initial detector {i} did not engage.");
             }
 
-            // These detectors were created before the four reader slots filled. They must become inert
-            // at engagement and must not consume the scope's total engagement budget.
+            // These detectors were created before the four reader slots filled. They must defer while
+            // the reader cap is full and must not consume the scope's total engagement budget.
             for (int i = activeDetectorCount; i < detectorCount - 1; i++)
             {
                 ReadStride(storages[i]);
@@ -592,8 +592,9 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [Test]
-    public void Test_StridePrefetcher_CanCreateDetectorWhileReadersHoldSlots()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Test_StridePrefetcher_CanCreateDetectorWhileReadersHoldSlots(bool attemptBeforeSlotFree)
     {
         ControlledStorageTrees controlledTrees = new();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
@@ -620,7 +621,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 Address address = new(Keccak.Compute($"stride-held-{i}"));
                 initialTrees[i] = scope.CreateStorageTree(address);
-                ReadStride(initialTrees[i]);
+                ReadStride(initialTrees[i], startIndex: 1, count: 12);
             }
 
             Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length), Is.True,
@@ -629,8 +630,11 @@ public class ScopeProviderTests(bool useFlat)
             Address lateAddress = new(Keccak.Compute("stride-late"));
             IWorldStateScopeProvider.IStorageTree lateTree = scope.CreateStorageTree(lateAddress);
 
+            if (attemptBeforeSlotFree)
+                ReadStride(lateTree, startIndex: 1, count: 8);
+
             BreakStride(initialTrees[0]);
-            ReadStride(lateTree);
+            ReadStride(lateTree, startIndex: attemptBeforeSlotFree ? 9 : 1, count: 12);
 
             Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length + 1), Is.True,
                 "The detector created while all slots were occupied did not engage after a slot was freed.");
@@ -640,10 +644,10 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(SpinWait.SpinUntil(() => caches.StorageCache.TryGetValue(in lateFarCell, out _), 5000), Is.True,
                 "The late detector did not warm a slot after the earlier detector released its slot.");
 
-            static void ReadStride(IWorldStateScopeProvider.IStorageTree storage)
+            static void ReadStride(IWorldStateScopeProvider.IStorageTree storage, int startIndex, int count)
             {
-                UInt256 index = 1;
-                for (int i = 0; i < 12; i++, index++)
+                UInt256 index = (UInt256)(uint)startIndex;
+                for (int i = 0; i < count; i++, index++)
                     storage.Get(in index);
             }
 

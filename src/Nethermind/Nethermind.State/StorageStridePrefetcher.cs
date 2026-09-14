@@ -43,8 +43,15 @@ internal sealed class StorageStridePrefetcher(
     Address address,
     CancellationToken token,
     int readerConcurrency,
-    Func<bool> tryReserveEngagement) : IDisposable
+    Func<StorageStridePrefetcher.EngagementResult> tryReserveEngagement) : IDisposable
 {
+    internal enum EngagementResult
+    {
+        Granted,
+        RetryLater,
+        Exhausted,
+    }
+
     /// <summary>On-pattern reads required before readers start.</summary>
     private const int EngageRunLength = 8;
 
@@ -65,7 +72,7 @@ internal sealed class StorageStridePrefetcher(
     private readonly Address _address = address;
     private readonly CancellationToken _token = token;
     private readonly int _readerConcurrency = readerConcurrency;
-    private readonly Func<bool> _tryReserveEngagement = tryReserveEngagement;
+    private readonly Func<EngagementResult> _tryReserveEngagement = tryReserveEngagement;
 
     private IWorldStateScopeProvider.IStorageTree? _tree;
 
@@ -132,10 +139,22 @@ internal sealed class StorageStridePrefetcher(
     {
         // The owner's engagement budget is the only bound on how much work one block can trigger here:
         // every engagement creates reader threads and issues up to MaxLookahead speculative reads.
-        if (_token.IsCancellationRequested || !_tryReserveEngagement())
+        if (_token.IsCancellationRequested)
         {
             _broken = true;
             return;
+        }
+
+        switch (_tryReserveEngagement())
+        {
+            case EngagementResult.Exhausted:
+                _broken = true;
+                return;
+            case EngagementResult.RetryLater:
+                // A full reader cap is transient. Require another complete matching run before polling
+                // again so a hot contract does not rescan the reservation on every read.
+                _runLength = 1;
+                return;
         }
 
         _engaged = true;

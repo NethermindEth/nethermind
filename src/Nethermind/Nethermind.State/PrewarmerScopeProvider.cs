@@ -175,17 +175,23 @@ public class PrewarmerScopeProvider(
                     TryReserveStridePrefetcherEngagement));
         }
 
-        private bool TryReserveStridePrefetcherEngagement()
+        private StorageStridePrefetcher.EngagementResult TryReserveStridePrefetcherEngagement()
         {
             // Engagement is requested by the block-processing thread, so the holder count and total
             // engagement budget are checked without another lock. A detector may be created eagerly,
             // but it cannot claim a reader slot until it actually engages.
-            if (CountReaderSlotHolders() >= MaxStridePrefetchers)
+            if (Volatile.Read(ref _stridePrefetcherEngagements) >= MaxStridePrefetcherEngagements)
             {
-                return false;
+                return StorageStridePrefetcher.EngagementResult.Exhausted;
             }
 
-            return Interlocked.Increment(ref _stridePrefetcherEngagements) <= MaxStridePrefetcherEngagements;
+            if (CountReaderSlotHolders() >= MaxStridePrefetchers)
+            {
+                return StorageStridePrefetcher.EngagementResult.RetryLater;
+            }
+
+            Interlocked.Increment(ref _stridePrefetcherEngagements);
+            return StorageStridePrefetcher.EngagementResult.Granted;
         }
 
         private int CountReaderSlotHolders()

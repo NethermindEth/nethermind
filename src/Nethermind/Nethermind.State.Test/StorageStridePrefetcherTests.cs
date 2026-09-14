@@ -25,7 +25,7 @@ public class StorageStridePrefetcherTests
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 4,
-            tryReserveEngagement: static () => true);
+            tryReserveEngagement: static () => StorageStridePrefetcher.EngagementResult.Granted);
 
         Read(3);
         Read(2);
@@ -60,7 +60,7 @@ public class StorageStridePrefetcherTests
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 4,
-            tryReserveEngagement: static () => true);
+            tryReserveEngagement: static () => StorageStridePrefetcher.EngagementResult.Granted);
 
         UInt256 index = 1;
         UInt256 stride = 1;
@@ -90,7 +90,7 @@ public class StorageStridePrefetcherTests
             tryReserveEngagement: () =>
             {
                 engagements++;
-                return true;
+                return StorageStridePrefetcher.EngagementResult.Granted;
             });
 
         try
@@ -108,6 +108,62 @@ public class StorageStridePrefetcherTests
         }
     }
 
+    [TestCase(false, 1)]
+    [TestCase(true, 2)]
+    public void OnRead_HandlesTerminalAndTransientEngagementRefusals(bool retryLater, int expectedAttempts)
+    {
+        using CancellationTokenSource cts = new();
+        int engageAttempts = 0;
+        int treeCreations = 0;
+        StorageStridePrefetcher.EngagementResult firstResult = retryLater
+            ? StorageStridePrefetcher.EngagementResult.RetryLater
+            : StorageStridePrefetcher.EngagementResult.Exhausted;
+        using StorageStridePrefetcher prefetcher = new(
+            () =>
+            {
+                Interlocked.Increment(ref treeCreations);
+                return EmptyStorageTree.Instance;
+            },
+            new SeqlockCache<StorageCell, byte[]>(),
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 1,
+            tryReserveEngagement: () =>
+            {
+                int attempt = Interlocked.Increment(ref engageAttempts);
+                return attempt == 1 ? firstResult : StorageStridePrefetcher.EngagementResult.Granted;
+            });
+
+        try
+        {
+            UInt256 index = 1;
+            for (int i = 0; i < 8; i++, index++)
+                prefetcher.OnRead(in index);
+
+            Assert.That(engageAttempts, Is.EqualTo(1));
+            for (int i = 0; i < 6; i++, index++)
+                prefetcher.OnRead(in index);
+
+            Assert.That(engageAttempts, Is.EqualTo(1));
+            prefetcher.OnRead(in index);
+            Assert.That(engageAttempts, Is.EqualTo(expectedAttempts));
+            if (retryLater)
+            {
+                Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref treeCreations) != 0, 5000), Is.True,
+                    "a transient refusal should be retried after another matching run");
+            }
+            else
+            {
+                Assert.That(prefetcher.IsBroken, Is.True);
+                Assert.That(Volatile.Read(ref treeCreations), Is.Zero);
+            }
+        }
+        finally
+        {
+            cts.Cancel();
+        }
+    }
+
     [Test]
     public void Dispose_DoesNotThrowWhenLookaheadOverflowsUInt256()
     {
@@ -118,7 +174,7 @@ public class StorageStridePrefetcherTests
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 4,
-            tryReserveEngagement: static () => true);
+            tryReserveEngagement: static () => StorageStridePrefetcher.EngagementResult.Granted);
 
         UInt256 stride = 10;
         UInt256 start = UInt256.MaxValue - (stride * 7);
@@ -145,7 +201,7 @@ public class StorageStridePrefetcherTests
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 1,
-            tryReserveEngagement: () => { engagements++; return true; });
+            tryReserveEngagement: () => { engagements++; return StorageStridePrefetcher.EngagementResult.Granted; });
 
         // Off-pattern reads: an ordinary contract that touches storage without striding. It never engages,
         // so it never breaks either - and it must still not count against the owner's concurrency cap,
@@ -177,7 +233,7 @@ public class StorageStridePrefetcherTests
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 1,
-            tryReserveEngagement: static () => true);
+            tryReserveEngagement: static () => StorageStridePrefetcher.EngagementResult.Granted);
 
         // Stand in for a reader that has passed the seal check and is about to write to the cache.
         // Teardown must not return until that write has landed: the owner clears the cache for the
@@ -215,7 +271,7 @@ public class StorageStridePrefetcherTests
             tryReserveEngagement: () =>
             {
                 engageAttempts++;
-                return false;
+                return StorageStridePrefetcher.EngagementResult.Exhausted;
             });
 
         UInt256 index = 1;
