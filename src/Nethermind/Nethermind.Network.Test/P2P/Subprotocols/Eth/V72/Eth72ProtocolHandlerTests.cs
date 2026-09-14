@@ -286,26 +286,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_blob_tx_with_the_size_it_will_serve()
-    {
-        Transaction tx = BuildBlobTransaction(fullProvider: true);
-        Transaction elidedTx = BuildElidedBlobTransaction(tx);
-        int elidedWireSize = elidedTx.GetLength();
-        int consensusSize = tx.GetLength(shouldCountBlobs: false);
-
-        _handler.SendNewTransaction(tx);
-
-        // The announced size must be the bytes a peer receives back in PooledTransactions, not the bare
-        // consensus encoding: geth disconnects on a mismatch larger than 8 bytes.
-        Assert.That(elidedWireSize - consensusSize, Is.GreaterThan(8));
-        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
-            m.Hashes[0] == tx.Hash &&
-            m.Sizes[0] == elidedWireSize));
-    }
-
-    [Test]
-    public void announced_size_matches_the_bytes_actually_served_for_a_blob_tx()
+    public void announced_size_matches_the_elided_typed_transaction_encoding()
     {
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         Transaction elidedTx = BuildElidedBlobTransaction(tx);
@@ -316,7 +297,8 @@ public class Eth72ProtocolHandlerTests
 
         _handler.SendNewTransaction(tx);
 
-        // Serialize the elided transaction exactly as PooledTransactions would, and compare byte counts.
+        // Peers compare the announced size with the decoded typed transaction envelope, excluding the enclosing
+        // PooledTransactions list element's RLP string prefix.
         byte[] servedTxBytes = TxDecoder.Instance
             .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
 

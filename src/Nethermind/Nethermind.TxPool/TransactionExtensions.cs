@@ -19,15 +19,13 @@ namespace Nethermind.TxPool
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
         /// <summary>
-        /// Length of the blob-elided network encoding of <paramref name="tx"/>, i.e. exactly the byte count a
-        /// peer receives for it in an eth/72 <c>PooledTransactions</c> response:
-        /// <c>0x03 || rlp([tx_payload_body, wrapper_version, [], commitments, cell_proofs])</c>.
-        /// This is the value that must be published in <c>NewPooledTransactionHashes</c>, because that is what
-        /// receivers size-check the delivered transaction against.
+        /// Length of the blob-elided typed transaction encoding of <paramref name="tx"/>, as announced in
+        /// <c>NewPooledTransactionHashes</c> for eth/72 and measured by peers after decoding a
+        /// <c>PooledTransactions</c> response.
         /// </summary>
         /// <remarks>
-        /// Delegates to the same <see cref="BlobTransactionPayload.Elide"/> the serve path uses, so the announced
-        /// size cannot drift from the served bytes.
+        /// The current devp2p text calls for the consensus encoding size, but established clients size-check the
+        /// delivered encoding instead. See <see href="https://github.com/ethereum/devp2p/pull/281"/>.
         /// </remarks>
         public static int GetElidedNetworkLength(this Transaction tx)
         {
@@ -37,8 +35,8 @@ namespace Nethermind.TxPool
             }
 
             // A blob transaction without its network wrapper has no network encoding to announce.
-            return tx.NetworkWrapper is ShardBlobNetworkWrapper
-                ? BlobTransactionPayload.Elide(tx).GetLength()
+            return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+                ? BlobTransactionPayload.Elide(tx, wrapper).GetLength()
                 : 0;
         }
 

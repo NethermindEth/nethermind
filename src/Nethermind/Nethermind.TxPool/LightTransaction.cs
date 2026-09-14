@@ -15,7 +15,7 @@ namespace Nethermind.TxPool;
 /// </summary>
 public class LightTransaction : Transaction
 {
-    private readonly int _elidedNetworkSize;
+    private int _elidedNetworkSize;
     private StrongBox<BlobCellMask>? _blobCellMask;
 
     public LightTransaction(Transaction fullTx)
@@ -123,11 +123,19 @@ public class LightTransaction : Transaction
         private set => Volatile.Write(ref _blobCellMask, new StrongBox<BlobCellMask>(value));
     }
 
-    internal void UpdateBlobPoolMetadata(BlobCellMask blobCellMask, int networkSize)
+    internal void UpdateBlobPoolMetadata(Transaction blobTx)
     {
-        _size = networkSize;
-        BlobCellMask = blobCellMask;
+        _size = blobTx.GetLength();
+        if (Volatile.Read(ref _elidedNetworkSize) == 0)
+        {
+            Volatile.Write(ref _elidedNetworkSize, blobTx.GetElidedNetworkLength());
+        }
+
+        BlobCellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
     }
+
+    internal void UpdateElidedNetworkSize(int elidedNetworkSize) =>
+        Volatile.Write(ref _elidedNetworkSize, elidedNetworkSize);
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 
@@ -135,5 +143,5 @@ public class LightTransaction : Transaction
     /// Length of the blob-elided eth/72 network encoding of this transaction, or <c>0</c> when the
     /// persisted record predates the field. See <see cref="TransactionExtensions.GetElidedNetworkLength"/>.
     /// </summary>
-    public int GetElidedNetworkSize() => _elidedNetworkSize;
+    public int GetElidedNetworkSize() => Volatile.Read(ref _elidedNetworkSize);
 }

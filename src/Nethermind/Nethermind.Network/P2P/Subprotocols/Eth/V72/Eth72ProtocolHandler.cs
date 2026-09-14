@@ -311,9 +311,8 @@ public class Eth72ProtocolHandler(
             return base.ShouldNotifyTransactionCore(tx);
         }
 
-        // Light entries persisted before the elided-network-size field was added cannot produce a
-        // spec-compliant eth/72 size announcement.
-        // Such transactions keep propagating via eth/68-71 sessions until they churn out.
+        // A light entry whose elided payload was missing during restoration cannot produce a safe eth/72
+        // size announcement. BlobTxStorage reports these entries when it restores the pool.
         if (tx is LightTransaction lightTx && lightTx.GetElidedNetworkSize() == 0)
         {
             return false;
@@ -1840,11 +1839,9 @@ public class Eth72ProtocolHandler(
             return tx.GetLength();
         }
 
-        // The announced size must be the blob-elided network encoding, i.e. the exact byte count this peer
-        // will receive back in PooledTransactions (EIP-8070:
-        // 0x03 || rlp([tx_payload_body, wrapper_version, [], commitments, cell_proofs])).
-        // Announcing the bare consensus size instead understates it by the whole wrapper (6,330 bytes for a
-        // single-blob v1 tx), which peers treat as a protocol violation and disconnect over.
+        // eth/72 peers size-check the blob-elided bytes served in PooledTransactions and geth disconnects for
+        // larger mismatches. The current devp2p text still says consensus encoding; its correction is tracked at
+        // https://github.com/ethereum/devp2p/pull/281
         int elidedNetworkSize = tx is LightTransaction lightTx
             ? lightTx.GetElidedNetworkSize()
             : tx.GetElidedNetworkLength();
@@ -1853,7 +1850,7 @@ public class Eth72ProtocolHandler(
             return 0;
         }
 
-        return tx.NetworkWrapper is ShardBlobNetworkWrapper
+        return tx is not LightTransaction
             || tx is LightTransaction { ProofVersion: not null, BlobVersionedHashes.Length: > 0 }
             ? elidedNetworkSize
             : 0;
@@ -1861,7 +1858,7 @@ public class Eth72ProtocolHandler(
 
     // Stay lenient on receive: peers still announcing the bare consensus size (or the geth wrapper estimate)
     // are accepted rather than disconnected, so a mixed-version network keeps propagating blob txs.
-    // Note this leniency also means nethermind cannot observe this class of bug in its own logs.
+    // https://github.com/healthykim/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/eth/protocols/eth/broadcast.go#L140-L143
     protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
         => MatchesAnnouncedSize(tx, announcedSize)
         || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) == announcedSize;

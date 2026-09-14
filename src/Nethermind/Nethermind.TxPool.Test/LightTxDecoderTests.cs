@@ -32,10 +32,13 @@ public class LightTxDecoderTests
 
         LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
 
-        Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
-        Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
-        Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(tx.GetElidedNetworkLength()));
-        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
+            Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(tx.GetElidedNetworkLength()));
+            Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        }
     }
 
     [Test]
@@ -78,7 +81,7 @@ public class LightTxDecoderTests
     }
 
     [Test]
-    public void should_not_treat_legacy_unversioned_size_as_elided_network_size()
+    public void should_not_treat_legacy_size_as_elided_network_size([Values] bool hasConsensusSizeMarker)
     {
         Transaction tx = BuildBlobTx();
         BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
@@ -87,30 +90,8 @@ public class LightTxDecoderTests
             tx,
             includeProofVersion: true,
             cellMask,
-            persistedSize: 12345));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
-            Assert.That(decoded.GetElidedNetworkSize(), Is.Zero);
-        }
-    }
-
-    [Test]
-    public void should_not_treat_persisted_consensus_size_as_elided_network_size()
-    {
-        // Format version 1 records hold the *consensus* encoding size, which is not a valid eth/72
-        // announcement size. They must be read back as unknown so the transaction is not announced
-        // with an understated size until it churns through the pool again.
-        Transaction tx = BuildBlobTx();
-        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
-
-        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(
-            tx,
-            includeProofVersion: true,
-            cellMask,
-            persistedSize: tx.GetLength(shouldCountBlobs: false),
-            sizeFormatVersion: 1));
+            persistedSize: hasConsensusSizeMarker ? tx.GetLength(shouldCountBlobs: false) : 12345,
+            sizeFormatVersion: hasConsensusSizeMarker ? (byte)1 : null));
 
         using (Assert.EnterMultipleScope())
         {
@@ -125,11 +106,7 @@ public class LightTxDecoderTests
         Transaction tx = BuildBlobTx();
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         LightTransaction lightTx = new(tx);
-
-        Transaction elided = new();
-        tx.CopyTo(elided, copyHash: true);
-        elided.NetworkWrapper = wrapper with { Blobs = [], CellMask = default, Cells = null };
-        elided.ClearLengthCache();
+        Assert.That(wrapper.Version, Is.EqualTo(ProofVersion.V1));
 
         int consensusSize = tx.GetLength(shouldCountBlobs: false);
         int wrapperOverhead =
@@ -140,12 +117,29 @@ public class LightTxDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lightTx.GetElidedNetworkSize(), Is.EqualTo(elided.GetLength()));
             Assert.That(
                 lightTx.GetElidedNetworkSize(),
                 Is.EqualTo(1 + Rlp.LengthOfSequence(consensusSize - 1 + wrapperOverhead)));
             Assert.That(lightTx.GetElidedNetworkSize(), Is.LessThan(tx.GetLength()));
             Assert.That(lightTx.GetElidedNetworkSize() - consensusSize, Is.GreaterThan(8));
+        }
+    }
+
+    [Test]
+    public void should_snapshot_an_already_elided_transaction_for_size_calculation()
+    {
+        Transaction tx = BuildBlobTx();
+        Transaction elided = BlobTransactionPayload.Elide(tx);
+        ShardBlobNetworkWrapper capturedWrapper = (ShardBlobNetworkWrapper)elided.NetworkWrapper!;
+
+        Transaction snapshot = BlobTransactionPayload.Elide(elided, capturedWrapper);
+        elided.NetworkWrapper = tx.NetworkWrapper;
+        elided.ClearLengthCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Is.Not.SameAs(elided));
+            Assert.That(snapshot.GetLength(), Is.LessThan(elided.GetLength()));
         }
     }
 
@@ -157,10 +151,24 @@ public class LightTxDecoderTests
         LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion));
 
         // Entries persisted before the mask field was added always hold full blobs.
-        Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
-        Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
-        Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(0));
-        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
+            Assert.That(decoded.GetElidedNetworkSize(), Is.Zero);
+            Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        }
+    }
+
+    [Test]
+    public void should_refresh_unknown_elided_network_size_with_blob_pool_metadata()
+    {
+        Transaction tx = BuildBlobTx();
+        LightTransaction lightTx = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion: true));
+
+        lightTx.UpdateBlobPoolMetadata(tx);
+
+        Assert.That(lightTx.GetElidedNetworkSize(), Is.EqualTo(tx.GetElidedNetworkLength()));
     }
 
     [Test]
