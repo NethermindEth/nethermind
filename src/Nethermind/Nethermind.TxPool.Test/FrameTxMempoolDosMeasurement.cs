@@ -77,7 +77,7 @@ public class FrameTxMempoolDosMeasurement
     /// number directly instead.</summary>
     private const ulong SoispokeDeclaredBudget = 322_800;
 
-    /// <summary>The plain ceiling sweep shared by the budget-burning, signature-stuffed, and reachability cases.</summary>
+    /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
     private static readonly ulong[] SweptCeilings = [Ceiling100k, Ceiling236k, Ceiling300k, SoispokeDeclaredBudget, Ceiling500k];
 
     /// <summary>Small frame budget reserved by the signature-stuffing shape.</summary>
