@@ -671,6 +671,149 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(storageValue17, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
     }
 
+    /// <summary>A write of zero stores nothing, and that removal must still be revertible.</summary>
+    /// <remarks>The shortcut is the set-then-clear shape a reentrancy guard produces. Deleting its journal
+    /// entry leaves the cell reading zero after the revert — the guard would stay disarmed.</remarks>
+    [Test]
+    public void Transient_zero_write_is_revertible()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, (UInt256)1);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(cell, UInt256.Zero);
+        provider.GetTransientState(cell, out UInt256 zeroed);
+        Assert.That(zeroed, Is.EqualTo(UInt256.Zero), "precondition: the zero write took effect");
+
+        provider.Restore(snapshot);
+
+        provider.GetTransientState(cell, out UInt256 restored);
+        Assert.That(restored, Is.EqualTo((UInt256)1));
+    }
+
+    /// <summary>A rewrite of the value already there journals nothing, and must not cost a later revert.</summary>
+    /// <remarks>The snapshot below is taken after the deduped write, so it names the same journal position as
+    /// the one before it — an off-by-one in the shortcut would restore to the wrong side of the first write.</remarks>
+    [Test]
+    public void Transient_unchanged_write_does_not_break_a_later_revert()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, (UInt256)1);
+        provider.SetTransientState(cell, (UInt256)1);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(cell, (UInt256)2);
+
+        provider.Restore(snapshot);
+
+        provider.GetTransientState(cell, out UInt256 value);
+        Assert.That(value, Is.EqualTo((UInt256)1));
+    }
+
+    /// <summary>Zeroing an address's transient cells must be revertible, like any other write.</summary>
+    [Test]
+    public void Transient_clear_storage_is_revertible()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell second = new(ctx.Address1, 2);
+        StorageCell untouched = new(ctx.Address2, 1);
+
+        provider.SetTransientState(first, (UInt256)1);
+        provider.SetTransientState(second, (UInt256)2);
+        provider.SetTransientState(untouched, (UInt256)3);
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.ClearStorage(ctx.Address1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            provider.GetTransientState(first, out UInt256 clearedFirst);
+            Assert.That(clearedFirst, Is.EqualTo(UInt256.Zero));
+            provider.GetTransientState(second, out UInt256 clearedSecond);
+            Assert.That(clearedSecond, Is.EqualTo(UInt256.Zero));
+            provider.GetTransientState(untouched, out UInt256 otherAddress);
+            Assert.That(otherAddress, Is.EqualTo((UInt256)3), "another address is untouched");
+        }
+
+        provider.Restore(snapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            provider.GetTransientState(first, out UInt256 restoredFirst);
+            Assert.That(restoredFirst, Is.EqualTo((UInt256)1));
+            provider.GetTransientState(second, out UInt256 restoredSecond);
+            Assert.That(restoredSecond, Is.EqualTo((UInt256)2));
+        }
+    }
+
+    /// <summary>Nested reverts over the two shortcuts must unwind in order, innermost first.</summary>
+    /// <remarks>The inner frame rewrites the value it was handed and then zeroes it; the outer one writes
+    /// a fresh value. Restoring each in turn walks the journal across both shortcuts in one sequence.</remarks>
+    [Test]
+    public void Transient_nested_restores_unwind_in_order()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.SetTransientState(cell, (UInt256)1);
+        Snapshot outer = provider.TakeSnapshot();
+
+        provider.SetTransientState(cell, (UInt256)2);
+        Snapshot inner = provider.TakeSnapshot();
+
+        provider.SetTransientState(cell, (UInt256)2);
+        provider.SetTransientState(cell, UInt256.Zero);
+        provider.GetTransientState(cell, out UInt256 zeroed);
+        Assert.That(zeroed, Is.EqualTo(UInt256.Zero));
+
+        provider.Restore(inner);
+        provider.GetTransientState(cell, out UInt256 innerValue);
+        Assert.That(innerValue, Is.EqualTo((UInt256)2), "the inner frame reverted");
+
+        provider.Restore(outer);
+        provider.GetTransientState(cell, out UInt256 outerValue);
+        Assert.That(outerValue, Is.EqualTo((UInt256)1), "the outer frame reverted");
+    }
+
+    /// <summary>A transient write must not allocate: TSTORE is priced per call and can fill a block.</summary>
+    /// <remarks>The warm-up runs first so the journal's amortized growth is out of the measurement and
+    /// what is left is the write itself.</remarks>
+    [Test]
+    public void Transient_write_does_not_allocate()
+    {
+        const int Iterations = 1000;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 2);
+
+        // Alternate two words so no write takes the unchanged-value shortcut: every one journals, which
+        // is what grows the journal past what the measured loop needs. The reset then leaves it empty
+        // with that capacity retained.
+        for (int i = 0; i < Iterations * 4; i++)
+        {
+            provider.SetTransientState(in cell, (UInt256)7);
+            provider.SetTransientState(in cell, (UInt256)9);
+        }
+
+        provider.Reset();
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < Iterations; i++)
+        {
+            provider.SetTransientState(in cell, (i & 1) == 0 ? (UInt256)7 : (UInt256)9);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+
+        Assert.That(allocated, Is.Zero);
+    }
+
     /// <summary>
     /// Commit will reset transient state
     /// </summary>

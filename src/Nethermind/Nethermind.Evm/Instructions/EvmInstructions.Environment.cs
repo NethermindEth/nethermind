@@ -757,21 +757,29 @@ public static partial class EvmInstructions
         // Pop the block number from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
 
-        // Retrieve the block hash for the given block number.
+        // Current block, future block, or unrepresentable block number all resolve to no hash.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
-            ? null // Current block, future block, or unrepresentable block number
-            : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+        bool outOfRange = !a.IsUint64 || a.u0 >= header.Number;
 
-        // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
-        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
-
-        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash && blockHash is not null)
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash)
         {
-            vm.TxTracer.ReportBlockHash(blockHash);
+            Hash256? blockHash = outOfRange ? null : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+            EvmExceptionType tracedPush = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
+            if (blockHash is not null)
+            {
+                vm.TxTracer.ReportBlockHash(blockHash);
+            }
+
+            return tracedPush;
         }
 
-        return pushResult;
+        // Push the bytes the provider already holds: for storage-backed BLOCKHASH (EIP-7709) the hash comes
+        // from state, and materialising a Hash256 for it allocates once per call for a value the next
+        // instruction discards.
+        ReadOnlySpan<byte> blockHashBytes = default;
+        bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, out blockHashBytes);
+
+        return stack.PushBytes<TTracingInst>(found ? blockHashBytes : BytesZero32);
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
