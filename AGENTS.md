@@ -142,10 +142,9 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
   with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
-  `/data`. ARM supports Nethermind's flat layout and the Reth Fusaka snapshot at
-  `/data/reth/reth-25490000`; it rejects Geth and non-flat layouts. AMD64 uses
-  `/mnt/sda/reth-25490000` and `/mnt/sda/geth-25490000` for the reference clients. **Never compare
-  timings across the two boxes.**
+  `/data`. The ARM box carries a single snapshot set — Nethermind in the **flat** layout — so it
+  refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
+  them. **Never compare timings across the two boxes.**
 
 ### What the workflow does
 
@@ -155,16 +154,12 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Renders a temporary config (does not modify source files) by:
   - replacing `<<DOCKER_TAG>>`
   - replacing `<<DELAY>>`
-  - selecting the requested client adapter and renaming scenario key `nethermind:` to a detailed scenario name
-  - selecting overlay snapshot storage; Geth mounts its snapshot root at `/execution-data/geth`, exposing `/execution-data/geth/chaindata`
+  - renaming scenario key `nethermind:` to a detailed scenario name
   - appending user-provided extra flags under `extra_flags:`
 - Installs `expb` via `uv tool install --force --from ... expb`.
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
-- Manual dispatch supports `nethermind` (default), `reth`, and `geth`. Reference clients are bounded to
-  Fusaka, require explicit `docker_images`, and use `measurement_source=engine-api` so their K6 TTFB
-  table is comparable; Nethermind's default `measurement_source=auto` retains SSE client metrics with
-  a K6 fallback. Manual dispatch defaults to reviewed EXPB ref `fbe0bc94cb9fa2bd176416d8e2aed2c1c172817d`.
+- Metrics source: prefers SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) over K6 TTFB. Falls back to the per-payload pipe table when SSE data is unavailable.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.

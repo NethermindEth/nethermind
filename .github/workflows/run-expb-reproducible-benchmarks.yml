@@ -39,7 +39,7 @@ on:
       expb_branch:
         description: execution-payloads-benchmarks branch or tag
         required: false
-        default: fbe0bc94cb9fa2bd176416d8e2aed2c1c172817d
+        default: main
       state_layout:
         description: State layout mode
         required: true
@@ -762,8 +762,6 @@ jobs:
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
       CLIENT: ${{ needs.resolve.outputs.client }}
       MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
-      CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
-      SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
     steps:
       - name: Resolve benchmark config for payload set
         id: resolve-config
@@ -809,7 +807,6 @@ jobs:
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Client: ${CLIENT}"
           echo "Measurement source: ${MEASUREMENT_SOURCE}"
-          if [[ -n "${CLIENT_SNAPSHOT_DIR}" ]]; then echo "Client snapshot: ${CLIENT_SNAPSHOT_DIR}"; fi
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
@@ -864,10 +861,6 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
-          CLIENT: ${{ needs.resolve.outputs.client }}
-          CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
-          SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
-          DOCKER_IMAGE: ${{ env.NETHERMIND_IMAGE }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -943,27 +936,7 @@ jobs:
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
-          # Select the adapter and snapshot after preserving the source config's comments and
-          # placeholders. Reference clients use the overlay backend and never inherit Nethermind flags.
           scenario_key="${SCENARIO_NAME}"
-          if [[ "${CLIENT}" != "nethermind" ]]; then
-            SK="${scenario_key}" C="${CLIENT}" S="${CLIENT_SNAPSHOT_DIR}" M="${SNAPSHOT_MOUNT_PATH}" DI="${DOCKER_IMAGE}" \
-              "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
-                .scenarios.[strenv(SK)].image = strenv(DI) |
-                .scenarios.[strenv(SK)].snapshot_source = strenv(S) |
-                .scenarios.[strenv(SK)].snapshot_backend = "overlay" |
-                .scenarios.[strenv(SK)].extra_flags = [] |
-                .scenarios.[strenv(SK)].extra_env = {} |
-                .scenarios.[strenv(SK)].extra_commands = [] |
-                .scenarios.[strenv(SK)].extra_volumes = {} |
-                .scenarios.[strenv(SK)].snapshot_mount_path = strenv(M) |
-                .scenarios.[strenv(SK)].startup_wait = 600' "${RENDERED_CONFIG_FILE}"
-            echo "Rendered ${CLIENT} scenario against snapshot ${CLIENT_SNAPSHOT_DIR} (overlay, mount ${SNAPSHOT_MOUNT_PATH})."
-          else
-            SK="${scenario_key}" C="${CLIENT}" DI="${DOCKER_IMAGE}" \
-              "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
-                .scenarios.[strenv(SK)].image = strenv(DI)' "${RENDERED_CONFIG_FILE}"
-          fi
 
           # Append extra flags using yq (proper YAML handling)
           while IFS= read -r flag; do
@@ -998,38 +971,13 @@ jobs:
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
-      - name: Verify client snapshot and provenance
-        if: needs.resolve.outputs.client != 'nethermind'
-        shell: bash
-        env:
-          CLIENT: ${{ needs.resolve.outputs.client }}
-          SNAPSHOT_SOURCE: ${{ needs.resolve.outputs.client_snapshot_dir }}
-          SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
-        run: |
-          set -euo pipefail
-          [[ -n "${SNAPSHOT_SOURCE}" && -d "${SNAPSHOT_SOURCE}" ]] || {
-            echo "::error::Snapshot source '${SNAPSHOT_SOURCE}' for client=${CLIENT} does not exist on this runner."
-            exit 1
-          }
-          if [[ "${CLIENT}" == "geth" && ! -d "${SNAPSHOT_SOURCE}/chaindata" ]]; then
-            echo "::error::Geth snapshot '${SNAPSHOT_SOURCE}' does not contain chaindata contents."
-            exit 1
-          fi
-          echo "Snapshot provenance: client=${CLIENT} source=${SNAPSHOT_SOURCE} mount=${SNAPSHOT_MOUNT_PATH} backend=overlay"
-          stat --printf='Snapshot stat: device=%D inode=%i mtime=%y\n' "${SNAPSHOT_SOURCE}"
-          for sidecar in _snapshot_metadata.json _snapshot_web3_clientVersion.json; do
-            if [[ -f "${SNAPSHOT_SOURCE}/${sidecar}" ]]; then
-              echo "Snapshot ${sidecar}: $(tr -d '\n' < "${SNAPSHOT_SOURCE}/${sidecar}" | cut -c1-300)"
-            fi
-          done
-          find "${SNAPSHOT_SOURCE}" -mindepth 1 -maxdepth 1 -printf 'Snapshot entry: %f\n' | sort
-
       - name: Install or upgrade expb
         shell: bash
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
           PERF: ${{ needs.resolve.outputs.perf }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
 
@@ -1038,12 +986,7 @@ jobs:
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
-          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
-          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
-          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
-            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
-            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
-          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -1054,15 +997,20 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           expb_bin="$(uv tool dir --bin)/expb"
-          if [[ "${PERF}" == "true" ]]; then
+          requested_flags=()
+          if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
+          if [[ "${#requested_flags[@]}" -gt 0 ]]; then
             expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
-              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
+              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for requested capability verification."
               exit 1
             }
-            if [[ "${expb_help}" != *"--perf"* ]]; then
-              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
-              exit 1
-            fi
+            for requested_flag in "${requested_flags[@]}"; do
+              if [[ "${expb_help}" != *"${requested_flag}"* ]]; then
+                echo "::error::Installed expb from ${expb_source} does not support requested flag ${requested_flag}."
+                exit 1
+              fi
+            done
           fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
@@ -1503,7 +1451,7 @@ jobs:
         with:
           name: expb-single-log-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ runner.temp }}/expb-run.log
-          retention-days: 30
+          retention-days: 7
 
       - name: Prepare master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
@@ -2124,6 +2072,14 @@ jobs:
                 all_dates+=("n/a")
               fi
             done
+            duplicate_tag_count="$(printf '%s\n' "${all_tags[@]}" | sort | uniq -d | wc -l)"
+            if [[ "${duplicate_tag_count}" -gt 0 ]]; then
+              original_tags=("${all_tags[@]}")
+              for i in "${!original_tags[@]}"; do
+                all_tags["${i}"]="${original_tags[${i}]}-${i}"
+              done
+              echo "Duplicate explicit image tags detected; suffixed every matrix tag with its array index."
+            fi
             echo "Parsed ${#all_images[@]} explicit docker images."
           else
             # Retrospective mode: scan Docker Hub for master-* images
@@ -2384,6 +2340,7 @@ jobs:
           # placeholders. Reference clients use the overlay backend and never inherit Nethermind flags.
           scenario_key="${SCENARIO_NAME}"
           if [[ "${CLIENT}" != "nethermind" ]]; then
+            # Opening large reference snapshots can take several minutes on the benchmark runners.
             SK="${scenario_key}" C="${CLIENT}" S="${CLIENT_SNAPSHOT_DIR}" M="${SNAPSHOT_MOUNT_PATH}" DI="${DOCKER_IMAGE}" \
               "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
                 .scenarios.[strenv(SK)].image = strenv(DI) |
@@ -2452,6 +2409,10 @@ jobs:
             echo "::error::Geth snapshot '${SNAPSHOT_SOURCE}' does not contain chaindata contents."
             exit 1
           fi
+          if [[ "${CLIENT}" == "reth" && ! -d "${SNAPSHOT_SOURCE}/db" ]]; then
+            echo "::error::Reth snapshot '${SNAPSHOT_SOURCE}' does not contain the db directory."
+            exit 1
+          fi
           echo "Snapshot provenance: client=${CLIENT} source=${SNAPSHOT_SOURCE} mount=${SNAPSHOT_MOUNT_PATH} backend=overlay"
           stat --printf='Snapshot stat: device=%D inode=%i mtime=%y\n' "${SNAPSHOT_SOURCE}"
           for sidecar in _snapshot_metadata.json _snapshot_web3_clientVersion.json; do
@@ -2467,18 +2428,14 @@ jobs:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
           PERF: ${{ needs.resolve.outputs.perf }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
             curl -LsSf https://astral.sh/uv/install.sh | sh
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
-          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
-          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
-          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
-            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
-            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
-          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -2488,15 +2445,20 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           expb_bin="$(uv tool dir --bin)/expb"
-          if [[ "${PERF}" == "true" ]]; then
+          requested_flags=()
+          if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
+          if [[ "${#requested_flags[@]}" -gt 0 ]]; then
             expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
-              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
+              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for requested capability verification."
               exit 1
             }
-            if [[ "${expb_help}" != *"--perf"* ]]; then
-              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
-              exit 1
-            fi
+            for requested_flag in "${requested_flags[@]}"; do
+              if [[ "${expb_help}" != *"${requested_flag}"* ]]; then
+                echo "::error::Installed expb from ${expb_source} does not support requested flag ${requested_flag}."
+                exit 1
+              fi
+            done
           fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
@@ -2949,7 +2911,7 @@ jobs:
         with:
           name: expb-log-${{ matrix.tag }}-run${{ matrix.run }}
           path: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
-          retention-days: 30
+          retention-days: 7
 
       - name: Enforce run quality gates
         if: always()
