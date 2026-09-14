@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.State;
