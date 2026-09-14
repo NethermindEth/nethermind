@@ -97,19 +97,19 @@ internal sealed class TransactionChangesetStore
                 if (to < floor) _column.Remove(CoverageKey());
                 else WriteCoverage(floor, to);
             }
+
+            Span<byte> lower = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+            Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+            ChangesetKeyLayout.WriteBlockBound(lower, 0, 0);
+            ChangesetKeyLayout.WriteBlockBound(upper, floor, 0);
+            RemoveRange(lower, upper);
+
+            Span<byte> lowerBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
+            Span<byte> upperBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
+            ChangesetKeyLayout.WriteBlockKey(lowerBlock, 0);
+            ChangesetKeyLayout.WriteBlockKey(upperBlock, floor);
+            RemoveRange(lowerBlock, upperBlock);
         }
-
-        Span<byte> lower = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
-        Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
-        ChangesetKeyLayout.WriteBlockBound(lower, 0, 0);
-        ChangesetKeyLayout.WriteBlockBound(upper, floor, 0);
-        RemoveRange(lower, upper);
-
-        Span<byte> lowerBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
-        Span<byte> upperBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
-        ChangesetKeyLayout.WriteBlockKey(lowerBlock, 0);
-        ChangesetKeyLayout.WriteBlockKey(upperBlock, floor);
-        RemoveRange(lowerBlock, upperBlock);
     }
 
     private void RemoveRange(ReadOnlySpan<byte> lower, ReadOnlySpan<byte> upper)

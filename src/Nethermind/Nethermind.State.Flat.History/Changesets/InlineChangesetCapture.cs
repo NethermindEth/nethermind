@@ -16,6 +16,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 public sealed class InlineChangesetCapture(TransactionChangesetIndex index, Func<Block, bool> shouldCapture, ILogManager logManager) : IParallelSafeBlockTracer
 {
     private readonly ILogger _logger = logManager.GetClassLogger<InlineChangesetCapture>();
+    private readonly Dictionary<Transaction, int> _positions = new(ReferenceEqualityComparer.Instance);
     private ChangesetCollector?[] _collectors = [];
     private Block? _block;
     private bool _active;
@@ -34,14 +35,19 @@ public sealed class InlineChangesetCapture(TransactionChangesetIndex index, Func
 
         if (_collectors.Length < block.Transactions.Length) _collectors = new ChangesetCollector?[block.Transactions.Length];
         Array.Clear(_collectors);
+        _positions.Clear();
+        Transaction[] transactions = block.Transactions;
+        for (int i = 0; i < transactions.Length; i++) _positions[transactions[i]] = i;
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        if (!_active || tx is null) return NullTxTracer.Instance;
-
-        int position = Array.IndexOf(_block!.Transactions, tx);
-        if (position < 0) return NullTxTracer.Instance;
+        if (!_active) return NullTxTracer.Instance;
+        if (tx is null || !_positions.TryGetValue(tx, out int position))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Inline changeset capture of block {_block!.Number} saw a transaction not in the block; the block will be left to the builder.");
+            return NullTxTracer.Instance;
+        }
 
         ChangesetCollector collector = new();
         _collectors[position] = collector;

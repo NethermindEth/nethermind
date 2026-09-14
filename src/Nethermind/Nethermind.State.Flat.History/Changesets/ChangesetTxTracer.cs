@@ -30,7 +30,10 @@ internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
     /// <summary>Code appearing where an account already existed means the account was destroyed and re-created in
     /// this transaction, or created over an account that could only have held storage the create wipes. Either way
     /// its slots read as zero from here on, which no write record can say. Setting or revoking a delegation leaves
-    /// storage alone.</summary>
+    /// storage alone, and a revocation is told apart from a destroy-and-recreate that deploys empty code by what was
+    /// there before: a delegation designator, or real code. One wipe stays invisible: a create over an account that
+    /// held storage but no code and no nonce is not reported at all; only a pre-Spurious-Dragon leftover can be such
+    /// an account.</summary>
     public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (after is null)
@@ -39,7 +42,7 @@ internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
             return;
         }
 
-        if (before is not null && after.Length != 0 && !Eip7702Constants.IsDelegatedCode(after)) collector.StorageCleared(address);
+        if (before is not null && !Eip7702Constants.IsDelegatedCode(before) && !Eip7702Constants.IsDelegatedCode(after)) collector.StorageCleared(address);
         collector.Code(address, after);
     }
 

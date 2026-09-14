@@ -16,11 +16,14 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
     private ulong _block;
     private int _transactionIndex = -1;
     private int _expectedTransactions;
+    private bool _everyTransactionObserved;
 
     public bool IsTracingRewards => false;
 
-    /// <summary>Every transaction of the block was seen, so the rows describe the whole prefix of any of them.</summary>
-    public bool Complete => _transactionIndex + 1 == _expectedTransactions;
+    /// <summary>Every transaction of the block was seen and reported something. Every transaction changes at least
+    /// its sender's nonce, so an empty changeset means the execution was not observed, as under parallel execution
+    /// where the per-worker world states report nothing, and the rows must not be claimed.</summary>
+    public bool Complete => _transactionIndex + 1 == _expectedTransactions && _everyTransactionObserved;
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
 
@@ -29,6 +32,7 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
         _block = (ulong)block.Number;
         _transactionIndex = -1;
         _expectedTransactions = block.Transactions.Length;
+        _everyTransactionObserved = true;
         store.WriteBlockHash(_block, block.Hash ?? ThrowUnsealed(block), batch);
     }
 
@@ -43,6 +47,7 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
     {
         if (_transactionIndex > ChangesetKeyLayout.MaxTransactionIndex) ThrowTooManyTransactions();
 
+        if (_collector.IsEmpty) _everyTransactionObserved = false;
         store.Write(_block, (ushort)_transactionIndex, _collector.IsEmpty ? [] : _collector.Pack(), batch);
     }
 

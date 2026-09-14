@@ -282,6 +282,23 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void AChunkWhoseBuildThrew_IsRequeuedRatherThanLost()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+        _executor.Throw = true;
+
+        Assert.That(() => builder.TryBuildNextChunk(_executor), Throws.InvalidOperationException);
+        _executor.Throw = false;
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk retried);
+
+        Assert.That((retried.Bottom, retried.Top), Is.EqualTo((172UL, 299UL)), "a chunk that failed with an exception must come back, or coverage never crosses it");
+    }
+
+    [Test]
     public void TheBuilder_DoesNothingWhenTheIndexIsOff()
     {
         Capture(upTo: 20);
@@ -324,6 +341,8 @@ public class TransactionChangesetBuilderTests
 
         public bool Fail { get; set; }
 
+        public bool Throw { get; set; }
+
         public Action<IBlockTracer>? Writes { get; set; }
 
         public IHistoryBlockExecutor Create() => this;
@@ -332,6 +351,7 @@ public class TransactionChangesetBuilderTests
 
         public bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken)
         {
+            if (Throw) throw new InvalidOperationException("replay failed");
             if (Fail) return false;
 
             lock (Executed)

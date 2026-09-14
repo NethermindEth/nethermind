@@ -63,14 +63,26 @@ public class TransactionChangesetIndexTests
         }
     }
 
-    private bool Capture(int transactions)
+    [Test]
+    public void ACaptureWhereATransactionReportedNothing_ClaimsNothing()
+    {
+        bool committed = Capture(transactions: 3, silent: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committed, Is.False);
+            Assert.That(_index.Covers(7), Is.False, "every transaction changes its sender's nonce, so silence means the execution was not observed");
+        }
+    }
+
+    private bool Capture(int transactions, int silent = -1)
     {
         using TransactionChangesetIndex.BlockCapture capture = _index.StartBlock(7);
         capture.Tracer.StartNewBlockTrace(_block);
         for (int i = 0; i < transactions; i++)
         {
             ITxTracer tracer = capture.Tracer.StartNewTxTrace(_block.Transactions[i]);
-            tracer.ReportBalanceChange(TestItem.AddressA, (ulong)i, (ulong)(i + 1));
+            if (i != silent) tracer.ReportBalanceChange(TestItem.AddressA, (ulong)i, (ulong)(i + 1));
             capture.Tracer.EndTxTrace();
         }
 

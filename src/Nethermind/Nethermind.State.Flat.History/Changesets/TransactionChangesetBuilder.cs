@@ -37,7 +37,7 @@ public sealed class TransactionChangesetBuilder(
     private ulong? _nextChunkTop;
     private long _progressReportedAt;
     private long _builtSinceReport;
-    private bool _disposed;
+    private int _disposed;
 
     private bool RetrofitOnWorkers => _retrofitFromBlock != 0 && _workers > 1;
 
@@ -73,8 +73,17 @@ public sealed class TransactionChangesetBuilder(
     {
         if (!TryClaimChunk(out Chunk chunk)) return false;
 
-        if (BuildChunk(chunk, executor)) Complete(chunk);
-        else Requeue(chunk);
+        bool built = false;
+        try
+        {
+            built = BuildChunk(chunk, executor);
+        }
+        finally
+        {
+            if (built) Complete(chunk);
+            else Requeue(chunk);
+        }
+
         return true;
     }
 
@@ -142,13 +151,12 @@ public sealed class TransactionChangesetBuilder(
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        _disposed = true;
         _cancellation.Cancel();
-        foreach (Thread thread in _threads) thread.Join(TimeSpan.FromSeconds(5));
-        _tipExecutor?.Dispose();
-        _cancellation.Dispose();
+        bool joined = true;
+        foreach (Thread thread in _threads) joined &= thread.Join(TimeSpan.FromSeconds(5));
+        if (joined) _tipExecutor?.Dispose();
     }
 
     private Thread StartThread(Action body, string name)

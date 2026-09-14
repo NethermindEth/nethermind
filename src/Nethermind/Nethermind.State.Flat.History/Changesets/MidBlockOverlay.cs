@@ -24,6 +24,8 @@ internal sealed class MidBlockOverlay
 
     internal int Pins { get; set; }
 
+    internal bool Extending { get; set; }
+
     internal Dictionary<AddressAsKey, AccountOverlay>.Enumerator Accounts => _accounts.GetEnumerator();
 
     internal Dictionary<StorageCell, StorageWrite>.Enumerator Writes => _storage.GetEnumerator();

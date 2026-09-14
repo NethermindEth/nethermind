@@ -61,7 +61,10 @@ public sealed class TransactionChangesetIndex
 
     /// <summary>Follows the history floor: a block whose history is gone cannot be traced, so its changesets have
     /// nothing left to serve.</summary>
-    public void PruneBelow(ulong floor) => _store.PruneBelow(floor);
+    public void PruneBelow(ulong floor)
+    {
+        if (Enabled) _store.PruneBelow(floor);
+    }
 
     /// <summary>Only for the very block the rows were built from, and only when the rows hold every transaction
     /// before the one asked for; anything else is answered by the replay the node did before the index existed.</summary>

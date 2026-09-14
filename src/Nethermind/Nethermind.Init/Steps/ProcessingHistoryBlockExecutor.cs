@@ -51,7 +51,7 @@ public sealed class ProcessingHistoryBlockExecutor(
             Block? block = _next;
             if (block is null) return false;
 
-            executor._processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, cancellationToken);
+            executor._processor.Process(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, tracer, cancellationToken);
             _next = executor.FindCanonical((ulong)block.Number + 1);
             return true;
         }

@@ -20,28 +20,44 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
     {
     }
 
+    /// <summary>The cache lock covers only the slot bookkeeping; the fold, which reads the column, runs outside it
+    /// on an overlay nobody else can see mid-fold, so a cold block being folded never holds up a trace of another.</summary>
     public bool TryRent(ulong block, ushort beforeTransaction, out Lease lease)
     {
+        MidBlockOverlay overlay;
         lock (_lock)
         {
-            MidBlockOverlay? overlay = _overlays.Get(block);
-            if (overlay is null || overlay.Folded > beforeTransaction || (overlay.Folded < beforeTransaction && overlay.Pins > 0))
+            MidBlockOverlay? cached = _overlays.Get(block);
+            bool shareable = cached is not null && !cached.Extending && cached.Folded <= beforeTransaction && (cached.Folded == beforeTransaction || cached.Pins == 0);
+            if (shareable)
+            {
+                overlay = cached!;
+            }
+            else
             {
                 overlay = new MidBlockOverlay();
                 overlay.Reset(block);
                 _overlays.Set(block, overlay);
             }
 
-            Extend(overlay, beforeTransaction);
-            if (overlay.Folded != beforeTransaction)
+            overlay.Pins++;
+            overlay.Extending = overlay.Folded < beforeTransaction;
+        }
+
+        if (overlay.Extending) Extend(overlay, beforeTransaction);
+
+        lock (_lock)
+        {
+            overlay.Extending = false;
+            if (overlay.Folded == beforeTransaction)
             {
-                lease = default;
-                return false;
+                lease = new Lease(this, overlay);
+                return true;
             }
 
-            overlay.Pins++;
-            lease = new Lease(this, overlay);
-            return true;
+            overlay.Pins--;
+            lease = default;
+            return false;
         }
     }
 

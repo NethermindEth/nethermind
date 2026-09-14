@@ -23,6 +23,10 @@ public class ChangesetTxTracerTests
         Assert.That(ReportsWipe([], Contract), Is.True, "a create over an existing account wipes whatever storage it held");
 
     [Test]
+    public void EmptyCodeReplacingContractCode_IsAWipe() =>
+        Assert.That(ReportsWipe(Contract, []), Is.True, "a destroy and re-create whose init code returns nothing still wiped the storage");
+
+    [Test]
     public void ContractCodeOnAFreshAccount_IsNotAWipe() =>
         Assert.That(ReportsWipe(null, Contract), Is.False);
 

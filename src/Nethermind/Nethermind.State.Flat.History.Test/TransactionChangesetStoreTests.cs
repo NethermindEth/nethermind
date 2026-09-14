@@ -90,6 +90,17 @@ public class TransactionChangesetStoreTests
     }
 
     [Test]
+    public void PruningAnIndexThatIsOff_TouchesNothing()
+    {
+        WriteTransaction(10, 0, TestItem.AddressA);
+        TransactionChangesetIndex off = new(_columns, new FlatDbConfig { HistoryTransactionIndexEnabled = false });
+
+        off.PruneBelow(20);
+
+        Assert.That(Rows(10), Is.EqualTo(1), "a node that leaves the index off must not pay for range deletes against it on every pruning pass");
+    }
+
+    [Test]
     public void CoverageIsAbsent_OnAFreshColumn() =>
         Assert.That(_store.TryGetCoverage(out _, out _), Is.False);
 
