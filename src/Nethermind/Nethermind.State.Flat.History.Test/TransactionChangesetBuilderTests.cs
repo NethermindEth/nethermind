@@ -273,12 +273,16 @@ public class TransactionChangesetBuilderTests
         using TransactionChangesetBuilder builder = Builder();
         builder.TryBuildNext();
         _executor.Fail = true;
-        builder.TryBuildNextChunk(_executor);
+        bool built = builder.TryBuildNextChunk(_executor);
         _executor.Fail = false;
 
         builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk retried);
 
-        Assert.That((retried.Bottom, retried.Top), Is.EqualTo((172UL, 299UL)), "coverage cannot cross a chunk that never completed, so it goes first");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.False, "a chunk that could not be built is not a step forward, so the worker must back off rather than spin");
+            Assert.That((retried.Bottom, retried.Top), Is.EqualTo((172UL, 299UL)), "coverage cannot cross a chunk that never completed, so it goes first");
+        }
     }
 
     [Test]

@@ -68,7 +68,8 @@ public sealed class TransactionChangesetBuilder(
         return true;
     }
 
-    /// <summary>One step of a retrofit worker: takes the next chunk below the coverage edge and builds it whole.</summary>
+    /// <summary>One step of a retrofit worker: takes the next chunk below the coverage edge and builds it whole. False
+    /// when there was nothing to take or the chunk could not be built, so the caller backs off instead of spinning.</summary>
     public bool TryBuildNextChunk(IHistoryBlockExecutor executor)
     {
         if (!TryClaimChunk(out Chunk chunk)) return false;
@@ -84,7 +85,7 @@ public sealed class TransactionChangesetBuilder(
             else Requeue(chunk);
         }
 
-        return true;
+        return built;
     }
 
     internal bool TryClaimChunk(out Chunk chunk)
