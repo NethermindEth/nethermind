@@ -2644,6 +2644,12 @@ jobs:
           echo "========================================="
           echo ""
 
+          # Populate GITHUB_OUTPUT for downstream quality gate
+          {
+            echo "exception_found=${exception_found}"
+            echo "invalid_block_found=${invalid_block_found}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Upload metrics artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -2658,14 +2664,17 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
-            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
-            echo "Continuing multi-image run (fail-fast is disabled)."
+            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
+            echo "Sibling matrix jobs still run to completion (fail-fast is disabled)."
+            exit 1
           fi
           if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
-            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
+            exit 1
           fi
           if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
-            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
+            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}. Failing workflow."
+            exit 1
           fi
 
       - name: Collect and upload profiling artifacts
