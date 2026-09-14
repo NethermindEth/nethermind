@@ -13,7 +13,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -21,7 +20,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -143,10 +141,7 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
 
         ListTxSource txSource = new();
         IBlockProducerEnv env = chain.Container.Resolve<IBlockProducerEnvFactory>().CreatePersistent();
-        BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
-        PostMergeBlockProducer producer = new(txSource, env.ChainProcessor, chain.BlockTree, env.ReadOnlyStateProvider,
-            new TargetAdjustedGasLimitCalculator(chain.SpecProvider, blocksConfig), chain.SealEngine, chain.Timestamper,
-            chain.SpecProvider, chain.LogManager, blocksConfig);
+        PostMergeBlockProducer producer = chain.Container.Resolve<PostMergeBlockProducerFactory>().Create(env, txSource);
 
         await using IContainer rpcContainer = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig { EnabledModules = [typeof(IEngineRpcModule).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType] }))
@@ -424,7 +419,8 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                     lock (_transitions) _transitions.Add((DateTime.UtcNow, mode));
                     last = mode;
                 }
-                System.Threading.Thread.Yield();
+                // Millisecond resolution places a region on a call's timeline without competing for a core.
+                System.Threading.Thread.Sleep(1);
             }
         }
 
@@ -453,7 +449,8 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
         public readonly ConcurrentQueue<GcRecord> Records = new();
         public readonly ConcurrentDictionary<string, long> AllocatedByType = new();
         public volatile bool InsideTimedCall;
-        private GcRecord? _current;
+        // Keyed by collection index: a foreground gen0/gen1 runs while a background gen2 is in progress.
+        private readonly ConcurrentDictionary<uint, GcRecord> _inFlight = new();
         private GcRecord? _last;
         private DateTime _suspendStart;
 
@@ -478,10 +475,11 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                     }
                     break;
                 case "GCStart_V2":
-                    _current = new GcRecord
+                    uint count = Convert.ToUInt32(e.Payload![0]);
+                    _inFlight[count] = new GcRecord
                     {
                         Start = e.TimeStamp,
-                        Count = Convert.ToUInt32(e.Payload![0]),
+                        Count = count,
                         Depth = Convert.ToUInt32(e.Payload[1]),
                         Reason = Convert.ToUInt32(e.Payload[2]),
                         Type = Convert.ToUInt32(e.Payload[3]),
@@ -491,7 +489,14 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                     _suspendStart = e.TimeStamp;
                     break;
                 case "GCRestartEEEnd_V1":
-                    GcRecord? target = _current ?? _last;
+                    // The most recently started collection owns the suspension: a foreground GC inside a background
+                    // one suspends for itself, the background GC only at its own start and end.
+                    GcRecord? target = null;
+                    foreach (KeyValuePair<uint, GcRecord> inFlight in _inFlight)
+                    {
+                        if (target is null || inFlight.Key > target.Count) target = inFlight.Value;
+                    }
+                    target ??= _last;
                     if (target is not null && _suspendStart != default)
                     {
                         target.SuspendedMs += (e.TimeStamp - _suspendStart).TotalMilliseconds;
@@ -499,12 +504,11 @@ public class NewPayloadLatencyHarness : BaseEngineModuleTests
                     }
                     break;
                 case "GCEnd_V1":
-                    if (_current is not null)
+                    if (_inFlight.TryRemove(Convert.ToUInt32(e.Payload![0]), out GcRecord? ended))
                     {
-                        _current.End = e.TimeStamp;
-                        Records.Enqueue(_current);
-                        _last = _current;
-                        _current = null;
+                        ended.End = e.TimeStamp;
+                        Records.Enqueue(ended);
+                        _last = ended;
                     }
                     break;
             }
