@@ -145,18 +145,6 @@ public sealed class OneTimeChainProcessor(
 
     private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
-        void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
-        {
-            for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
-            {
-                if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
-                {
-                    _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                    if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
-                }
-            }
-        }
-
         Hash256? invalidBlockHash = null;
         Block[]? processedBlocks;
         try
@@ -206,14 +194,10 @@ public sealed class OneTimeChainProcessor(
                     DumpOptions.Geth);
             }
 
+            // Previously invalid blocks were deleted from the block tree except when processed with
+            // ReadOnlyChain, which is the case with _blocksConfig.BuildBlocksOnMainState; they are now
+            // always kept.
             processedBlocks = null;
-        }
-        finally
-        {
-            if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
-            {
-                DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
-            }
         }
 
         return processedBlocks;
