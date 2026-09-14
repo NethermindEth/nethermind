@@ -63,8 +63,43 @@ public class TransactionChangesetStoreTests
     }
 
     [Test]
+    public void PruningBelowAFloor_DropsTheRowsAndTrimsTheCoverage()
+    {
+        for (ulong block = 10; block <= 20; block++) WriteTransaction(block, 0, TestItem.AddressA);
+        _store.TryExtendCoverage(10, 20);
+
+        _store.PruneBelow(15);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetCoverage(out ulong from, out ulong to) && from == 15 && to == 20, Is.True);
+            Assert.That(Rows(12), Is.Zero, "a block below the floor has nothing left to serve");
+            Assert.That(Rows(15), Is.EqualTo(1), "the floor itself is kept");
+        }
+    }
+
+    [Test]
+    public void PruningPastTheWholeCoverage_LeavesNoCoverage()
+    {
+        WriteTransaction(10, 0, TestItem.AddressA);
+        _store.TryExtendCoverage(10, 10);
+
+        _store.PruneBelow(11);
+
+        Assert.That(_store.TryGetCoverage(out _, out _), Is.False, "a range that is entirely gone must not be claimed");
+    }
+
+    [Test]
     public void CoverageIsAbsent_OnAFreshColumn() =>
         Assert.That(_store.TryGetCoverage(out _, out _), Is.False);
+
+    private int Rows(ulong block)
+    {
+        int rows = 0;
+        using ISortedView view = _store.OpenBefore(block, ushort.MaxValue);
+        while (view.MoveNext()) rows++;
+        return rows;
+    }
 
     private void WriteTransaction(ulong block, ushort transactionIndex, Address address)
     {

@@ -130,6 +130,50 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void OnceCaughtUp_TheBuilderWalksBackwardsToTheConfiguredBlock()
+    {
+        Capture(upTo: 20);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 18;
+        using TransactionChangesetBuilder builder = Builder();
+
+        while (builder.TryBuildNext())
+        {
+        }
+
+        Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 20, 19, 18 }).AsCollection,
+            "the tip first, then older blocks down to the configured one and no further");
+    }
+
+    [Test]
+    public void TheBackwardsWalk_StopsAtTheHistoryFloor()
+    {
+        Capture(upTo: 20);
+        _availability.PublishGlobalFloor(19);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        using TransactionChangesetBuilder builder = Builder();
+
+        while (builder.TryBuildNext())
+        {
+        }
+
+        Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 20, 19 }).AsCollection,
+            "a block whose history is pruned cannot be re-executed against its parent");
+    }
+
+    [Test]
+    public void WithoutARetrofitBlock_TheBuilderNeverWalksBackwards()
+    {
+        Capture(upTo: 20);
+        using TransactionChangesetBuilder builder = Builder();
+
+        while (builder.TryBuildNext())
+        {
+        }
+
+        Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 20 }).AsCollection);
+    }
+
+    [Test]
     public void TheBuilder_DoesNothingWhenTheIndexIsOff()
     {
         Capture(upTo: 20);

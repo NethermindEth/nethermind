@@ -65,6 +65,34 @@ internal sealed class TransactionChangesetStore
     public bool Covers(ulong block) => TryGetCoverage(out ulong from, out ulong to) && block >= from && block <= to;
 
     /// <summary>Extends the covered range when the new one touches it, so a gap can never be claimed as covered.</summary>
+    /// <summary>Drops every row below <paramref name="floor"/>. Coverage is trimmed first, so a crash between the two
+    /// leaves rows nothing claims rather than a claim nothing backs.</summary>
+    public void PruneBelow(ulong floor)
+    {
+        lock (_coverageLock)
+        {
+            if (TryGetCoverage(out ulong from, out ulong to) && from < floor)
+            {
+                if (to < floor) _column.Remove(CoverageKey());
+                else WriteCoverage(floor, to);
+            }
+        }
+
+        Span<byte> lower = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+        Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+        ChangesetKeyLayout.WriteBlockBound(lower, 0, 0);
+        ChangesetKeyLayout.WriteBlockBound(upper, floor, 0);
+        if (_column is IRangeRemovableKeyValueStore ranged)
+        {
+            ranged.RemoveRange(lower, upper);
+            return;
+        }
+
+        using IWriteBatch batch = _column.StartWriteBatch();
+        using ISortedView view = _sorted.GetViewBetween(lower, upper);
+        while (view.MoveNext()) batch.Remove(view.CurrentKey);
+    }
+
     public bool TryExtendCoverage(ulong fromInclusive, ulong toInclusive)
     {
         lock (_coverageLock)
@@ -77,13 +105,23 @@ internal sealed class TransactionChangesetStore
                 toInclusive = Math.Max(to, toInclusive);
             }
 
-            Span<byte> key = stackalloc byte[2];
-            ChangesetKeyLayout.WriteCoverageKey(key);
-            Span<byte> value = stackalloc byte[2 * sizeof(ulong)];
-            BinaryPrimitives.WriteUInt64BigEndian(value, fromInclusive);
-            BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], toInclusive);
-            _column.PutSpan(key, value);
+            WriteCoverage(fromInclusive, toInclusive);
             return true;
         }
+    }
+
+    private void WriteCoverage(ulong fromInclusive, ulong toInclusive)
+    {
+        Span<byte> value = stackalloc byte[2 * sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(value, fromInclusive);
+        BinaryPrimitives.WriteUInt64BigEndian(value[sizeof(ulong)..], toInclusive);
+        _column.PutSpan(CoverageKey(), value);
+    }
+
+    private static byte[] CoverageKey()
+    {
+        byte[] key = new byte[2];
+        ChangesetKeyLayout.WriteCoverageKey(key);
+        return key;
     }
 }

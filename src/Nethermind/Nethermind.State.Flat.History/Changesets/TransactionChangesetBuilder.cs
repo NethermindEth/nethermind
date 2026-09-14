@@ -20,6 +20,7 @@ public sealed class TransactionChangesetBuilder(
     private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
+    private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
     private readonly ILogger _logger = logManager.GetClassLogger<TransactionChangesetBuilder>();
     private readonly CancellationTokenSource _cancellation = new();
     private Thread? _thread;
@@ -93,12 +94,29 @@ public sealed class TransactionChangesetBuilder(
         if (rest > TimeSpan.Zero) token.WaitHandle.WaitOne(rest);
     }
 
+    /// <summary>The tip comes first: a block that just became durable is what a trace is most likely to ask for.
+    /// Only once coverage has caught up does the builder walk backwards, down to the configured block and never
+    /// below the history floor.</summary>
     private bool TryNextBlock(out ulong block)
     {
         block = 0;
         if (!index.Enabled || !availability.TryGetWatermark(out ulong watermark)) return false;
 
-        block = index.TryGetCoverage(out _, out ulong covered) ? covered + 1 : watermark;
-        return block <= watermark && availability.IsCovered(block);
+        if (!index.TryGetCoverage(out ulong from, out ulong to))
+        {
+            block = watermark;
+            return availability.IsCovered(block);
+        }
+
+        if (to < watermark)
+        {
+            block = to + 1;
+            return availability.IsCovered(block);
+        }
+
+        if (_retrofitFromBlock == 0 || from <= _retrofitFromBlock) return false;
+
+        block = from - 1;
+        return !availability.IsBelowGlobalFloor(block) && availability.IsCovered(block);
     }
 }

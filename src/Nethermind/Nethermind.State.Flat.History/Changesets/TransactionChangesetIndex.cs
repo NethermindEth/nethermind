@@ -34,6 +34,10 @@ public sealed class TransactionChangesetIndex
 
     public BlockCapture StartBlock(ulong block) => new(this, block);
 
+    /// <summary>Follows the history floor: a block whose history is gone cannot be traced, so its changesets have
+    /// nothing left to serve.</summary>
+    public void PruneBelow(ulong floor) => _store.PruneBelow(floor);
+
     internal bool TryRentOverlay(ulong block, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
     {
         if (!Covers(block))
