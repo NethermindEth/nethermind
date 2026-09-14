@@ -65,10 +65,18 @@ public class FrameTxMempoolDosMeasurement
     private const ulong VerifyGas = Eip8141Constants.MaxVerifyGas;
 
     private const ulong Ceiling100k = 100_000;
+    private const ulong Ceiling236k = 236_285;
     private const ulong Ceiling300k = 300_000;
     private const ulong Ceiling500k = 500_000;
 
+    /// <summary>soispoke's declared privacy-pool budget (see docs/eip8141-max-verify-gas-benchmark-spec.md §4b).
+    /// <c>groth16-soispoke</c> below stays clamped to 300,000 because a declared ceiling above the stock
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/> can't be admitted for that shape; the signature-stuffed
+    /// shape is exempt from that cap, so it measures the true 322,800 number directly instead.</summary>
     private const ulong Ceiling322800 = 322_800;
+
+    /// <summary>The plain ceiling sweep shared by the signature-stuffed rejection and reachability cases.</summary>
+    private static readonly ulong[] SweptCeilings = [Ceiling100k, Ceiling236k, Ceiling300k, Ceiling322800, Ceiling500k];
 
     /// <summary>Small frame budget reserved by the signature-stuffing shape.</summary>
     private const ulong MinimalFrameGas = 400;
@@ -134,7 +142,7 @@ public class FrameTxMempoolDosMeasurement
             }
         }
 
-        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling300k, Ceiling322800, Ceiling500k })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData("keccak-wide", ceiling);
         }
@@ -150,7 +158,7 @@ public class FrameTxMempoolDosMeasurement
 
     private static IEnumerable<TestCaseData> CeilingCases()
     {
-        foreach (ulong ceiling in new ulong[] { Ceiling100k, Ceiling300k, Ceiling322800, Ceiling500k })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling);
         }

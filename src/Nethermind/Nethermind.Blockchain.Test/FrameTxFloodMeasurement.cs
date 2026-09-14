@@ -108,8 +108,9 @@ public class FrameTxFloodMeasurement
         }
     }
 
-    /// <summary>322,800 is soispoke's real declared budget (320,000 + 2,800 signature).</summary>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 300_000ul, 322_800ul, 500_000ul];
+    // 322,800 is a dedicated point at soispoke's restated floor (see docs/eip8141-max-verify-gas-benchmark-spec.md
+    // §4b); 236,285 stays as a curve-shape interior point below the stock MAX_VERIFY_GAS cap, same as before.
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
 
     private static IEnumerable<TestCaseData> ProductionDelayCases()
     {
@@ -234,6 +235,9 @@ public class FrameTxFloodMeasurement
                       + "`taskset -c 0`, or set FRAME_FLOOD_ALLOW_MULTICORE=1 to measure the uncontended case "
                       + "deliberately.");
     }
+
+    /// <summary>Target core count for the analytic core-normalized projection (see §4a of the spec).</summary>
+    private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
 
     /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
@@ -535,11 +539,13 @@ public class FrameTxFloodMeasurement
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
         double shedPct = ShedPct(flooded);
 
-        // signature-stuffed scales with cores, unlike execution shapes, so only its single-core rows get
-        // an explicit-target core projection.
+        // signature-stuffed is refused before the prefix simulator's lock, so unlike execution shapes it
+        // scales with cores rather than serializing on contention — only its single-core rows get an
+        // explicit-target core projection.
         string coreNormalizedField = "";
         if (shape == "signature-stuffed" && IsSingleCore()
-            && int.TryParse(Environment.GetEnvironmentVariable("FRAME_FLOOD_PROJECT_CORES"), out int targetCores)
+            && int.TryParse(Environment.GetEnvironmentVariable(ProjectCoresVariable), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out int targetCores)
             && targetCores > 0)
         {
             coreNormalizedField = $"delta_p50_us_core_normalized={(w - w0) * targetCores:F1} "
