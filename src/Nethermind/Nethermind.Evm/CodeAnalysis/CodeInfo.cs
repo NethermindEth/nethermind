@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -92,7 +93,11 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         => _analyzer?.ValidateJump(destination) ?? false;
 
     /// <summary>The jump-destination bitmap of this code, built on first use.</summary>
-    internal long[] JumpDestinationBitmap => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+    internal long[] JumpDestinationBitmap
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+    }
 
     void IThreadPoolWorkItem.Execute()
         => _analyzer?.Execute();

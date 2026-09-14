@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -55,6 +56,26 @@ public class GuestJumpDestinationTests
 
     [TestCaseSource(nameof(Shapes))]
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
+
+    [Test]
+    public void Full_analysis_reuses_the_completed_bitmap([Values] bool executeFirst)
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, JUMPDEST, JUMPDEST });
+        if (executeFirst) ((IThreadPoolWorkItem)codeInfo).Execute();
+
+        long[] bitmap = codeInfo.JumpDestinationBitmap;
+        ((IThreadPoolWorkItem)codeInfo).Execute();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.JumpDestinationBitmap, Is.SameAs(bitmap));
+            Assert.That(codeInfo.ValidateJump(-1), Is.False);
+            Assert.That(codeInfo.ValidateJump(0), Is.False);
+            Assert.That(codeInfo.ValidateJump(1), Is.False);
+            Assert.That(codeInfo.ValidateJump(2), Is.True);
+            Assert.That(codeInfo.ValidateJump(3), Is.False);
+        }
+    }
 
     [Test]
     public void Stack_without_code_info_has_no_jump_destinations()
