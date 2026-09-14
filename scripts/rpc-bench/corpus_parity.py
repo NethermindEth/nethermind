@@ -385,8 +385,8 @@ def probe(corpus: str, rpc_url: str) -> None:
     """Verify that the configured trace method is available before measured replay.
 
     A normal JSON-RPC error (for example a reverted call) is a supported method response. The
-    method-not-found code is the one capability failure that must stop a run; transport and
-    malformed responses are failures too. Request and response contents stay private.
+    disabled/invalid-request and method-not-found codes are capability failures that must stop a
+    run; transport and malformed responses are failures too. Request and response contents stay private.
     """
     params_list = load_corpus(corpus)
     method = corpus_method()
@@ -399,7 +399,7 @@ def probe(corpus: str, rpc_url: str) -> None:
             code = int(category.partition(":")[2])
         except ValueError:
             code = None
-        if code is not None and code != -32601:
+        if code is not None and code not in (-32600, -32601):
             print(f"corpus method probe accepted RPC error: {method}", flush=True)
             return
     raise CorpusParityError(f"corpus method probe failed: {category}")
@@ -832,6 +832,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.command == "probe":
             probe(arguments.corpus, arguments.rpc_url)
             return 0
+        if arguments.command in ("baseline", "compare", "timings") and corpus_method() != "eth_call":
+            # Keep direct CLI replays safe as well as the run-jsonbench wrapper: a disabled trace
+            # namespace must fail before baseline state, comparison reports, or timing matrices are written.
+            probe(arguments.corpus, arguments.rpc_url)
         if arguments.command == "timings":
             timings(arguments.corpus, arguments.rpc_url, arguments.out,
                     arguments.passes, arguments.rps, arguments.concurrency,

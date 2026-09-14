@@ -556,16 +556,19 @@ class TraceCallModeTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()) as output:
                     corpus_parity.probe(str(corpus), server.url)
                 self.assertIn("probe OK", output.getvalue())
-            with RpcServer(lambda i: ("error", -32000)) as server:
-                with contextlib.redirect_stdout(io.StringIO()) as output:
-                    corpus_parity.probe(str(corpus), server.url)
-                self.assertIn("accepted RPC error", output.getvalue())
-            for response in (("error", -32601), ("http_json_error", 404, -32601)):
-                with self.subTest(response=response), RpcServer(lambda i, response=response: response) as server:
-                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
-                        corpus_parity.probe(str(corpus), server.url)
-                    self.assertIn("rpc_error:-32601", str(raised.exception))
-                    self.assertNotIn(SENTINEL, str(raised.exception))
+            for code in (-32000, -32003):
+                for response in (("error", code), ("http_json_error", 404, code)):
+                    with self.subTest(response=response), RpcServer(lambda i, response=response: response) as server:
+                        with contextlib.redirect_stdout(io.StringIO()) as output:
+                            corpus_parity.probe(str(corpus), server.url)
+                        self.assertIn("accepted RPC error", output.getvalue())
+            for code in (-32600, -32601):
+                for response in (("error", code), ("http_json_error", 404, code)):
+                    with self.subTest(response=response), RpcServer(lambda i, response=response: response) as server:
+                        with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                            corpus_parity.probe(str(corpus), server.url)
+                        self.assertIn(f"rpc_error:{code}", str(raised.exception))
+                        self.assertNotIn(SENTINEL, str(raised.exception))
             malformed = json.dumps({"jsonrpc": "2.0", "id": 1,
                                     "error": {"message": SENTINEL}}).encode()
             with RpcServer(lambda i: malformed) as server:
@@ -577,6 +580,44 @@ class TraceCallModeTests(unittest.TestCase):
                 with self.assertRaises(corpus_parity.CorpusParityError) as raised:
                     corpus_parity.probe(str(corpus), server.url)
                 self.assertIn("transport_failure", str(raised.exception))
+
+    def test_trace_cli_replays_probe_before_writing_outputs(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        baseline_state = self.dir / "cli-baseline.json.gz"
+        compare_state = self.dir / "cli-compare-state.json.gz"
+        compare_report = self.dir / "cli-compare-report.json"
+        timings_output = self.dir / "cli-timings.csv"
+        cases = (
+            ("baseline", ("--state", str(baseline_state)), (baseline_state,)),
+            ("compare", ("--state", str(compare_state), "--report", str(compare_report),
+                         "--baseline-client", "base", "--candidate-client", "candidate"),
+             (compare_state, compare_report)),
+            ("timings", ("--out", str(timings_output), "--passes", "1"),
+             (timings_output, timings_output.with_name("timings.meta.json"))),
+        )
+        for command, options, outputs in cases:
+            with self.subTest(command=command), self.trace_mode(), \
+                    RpcServer(lambda i: ("error", -32600)) as server, \
+                    contextlib.redirect_stderr(io.StringIO()) as error:
+                status = corpus_parity.main([
+                    command, "--corpus", str(corpus), "--rpc-url", server.url, *options,
+                ])
+            self.assertEqual(status, 2)
+            self.assertIn("rpc_error:-32600", error.getvalue())
+            for output in outputs:
+                self.assertFalse(output.exists(), f"{command} wrote {output}")
+
+        eth_state = self.dir / "eth-call-state.json.gz"
+        calls = []
+        with unittest.mock.patch.dict(os.environ, {"RPC_BENCH_CORPUS_METHOD": "eth_call"}), \
+                RpcServer(lambda i: calls.append(i) or "0xab") as server, \
+                contextlib.redirect_stdout(io.StringIO()):
+            status = corpus_parity.main([
+                "baseline", "--corpus", str(corpus), "--rpc-url", server.url, "--state", str(eth_state),
+            ])
+        self.assertEqual(status, 0)
+        self.assertTrue(eth_state.exists())
+        self.assertEqual(calls, [1])
 
     def test_clients_agreeing_on_a_trace_match_and_disagreeing_is_a_content_mismatch(self):
         corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
