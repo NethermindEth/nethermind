@@ -623,6 +623,46 @@ class TraceCallModeTests(unittest.TestCase):
                 self.assertEqual(calls, [1])
                 self.assertIn("transport_failure", str(raised.exception))
 
+    def test_probe_rejects_oversize_trace_responses_with_limit_guidance(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        oversized_bodies = (
+            b"{not json" + b"x" * 32,
+            json.dumps({"jsonrpc": "2.0", "id": 1, "error": {"code": -32000}}).encode() + b"x" * 32,
+        )
+        modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
+        for mode, mode_context in modes:
+            with self.subTest(mode=mode), mode_context():
+                for body in oversized_bodies:
+                    with self.subTest(body=body[:12]), unittest.mock.patch.object(
+                        corpus_parity, "MAX_RESPONSE_BYTES", 8
+                    ), RpcServer(lambda i, body=body: body) as server:
+                        with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                            corpus_parity.probe(str(corpus), server.url)
+                    message = str(raised.exception)
+                    self.assertIn("response_too_large", message)
+                    self.assertIn("MAX_RESPONSE_BYTES=8", message)
+                    self.assertIn("increase tool_config.max_response_bytes / RPC_BENCH_MAX_RESPONSE_BYTES", message)
+                    self.assertNotIn(SENTINEL, message)
+
+                valid = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"type": "CALL"}}).encode()
+                with unittest.mock.patch.object(
+                    corpus_parity, "MAX_RESPONSE_BYTES", len(valid) + 1
+                ), RpcServer(lambda i: {"type": "CALL"}) as server:
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertIn("probe OK", output.getvalue())
+
+    def test_oversize_replay_is_counted_as_invalid_response(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        self.run_baseline(corpus, lambda i: "0xabab")
+        oversized = b"not json" + b"x" * 32
+        with unittest.mock.patch.object(corpus_parity, "MAX_RESPONSE_BYTES", 8):
+            clean, report = self.run_compare(corpus, lambda i: oversized)
+        self.assertFalse(clean)
+        self.assertEqual(report["candidate_invalid_responses"], 1)
+        self.assertEqual(report["candidate_transport_failures"], 0)
+        self.assertNotIn(SENTINEL, json.dumps(report))
+
     def test_trace_requires_successful_results_but_allows_mixed_errors(self):
         modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
         cases = (

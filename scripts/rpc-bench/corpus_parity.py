@@ -55,7 +55,7 @@ def _env_int(name: str, default: int) -> int:
 MAX_CORPUS_RECORDS = _env_int("RPC_BENCH_MAX_CORPUS_RECORDS", 10000)
 # A trace response is orders of magnitude larger than the eth_call return it is derived from, so
 # this ceiling is reached in trace mode long before it is on the calls themselves. Override with
-# RPC_BENCH_MAX_RESPONSE_BYTES; a response above it is recorded as a transport failure.
+# RPC_BENCH_MAX_RESPONSE_BYTES; a response above it is recorded as an invalid response.
 MAX_RESPONSE_BYTES = _env_int("RPC_BENCH_MAX_RESPONSE_BYTES", 16 * 1024 * 1024)
 REQUEST_TIMEOUT_SECONDS = 120
 
@@ -342,7 +342,7 @@ def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, 
         return "transport_failure", ""
     status, raw = fetched
     if len(raw) > MAX_RESPONSE_BYTES:
-        return "transport_failure", ""
+        return "invalid_response:response_too_large", ""
     if status >= 400:
         # Some clients/proxies answer JSON-RPC errors with a non-200 status — that is a
         # response, not a transport failure. The body is parsed but never stored.
@@ -405,6 +405,11 @@ def probe(corpus: str, rpc_url: str) -> None:
         if category is None:
             print(f"corpus method probe OK: {method}", flush=True)
             return
+        if category == "invalid_response:response_too_large":
+            raise CorpusParityError(
+                f"corpus method probe failed: response_too_large (MAX_RESPONSE_BYTES={MAX_RESPONSE_BYTES}); "
+                "increase tool_config.max_response_bytes / RPC_BENCH_MAX_RESPONSE_BYTES"
+            )
         if category.startswith("rpc_error:"):
             try:
                 code = int(category.partition(":")[2])
@@ -423,6 +428,11 @@ def probe(corpus: str, rpc_url: str) -> None:
             if category is None:
                 print(f"corpus method probe OK: {method}", flush=True)
                 return
+            if category == "invalid_response:response_too_large":
+                raise CorpusParityError(
+                    f"corpus method probe failed: response_too_large (MAX_RESPONSE_BYTES={MAX_RESPONSE_BYTES}); "
+                    "increase tool_config.max_response_bytes / RPC_BENCH_MAX_RESPONSE_BYTES"
+                )
             if category.startswith("rpc_error:"):
                 try:
                     code = int(category.partition(":")[2])

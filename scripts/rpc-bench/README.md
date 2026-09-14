@@ -402,8 +402,9 @@ selects the Parity types — `trace` (default), `vmTrace`, `stateDiff`, `rewards
 space- or comma-separated. Prefer the cheap selections: struct logs and `vmTrace` on a corpus of
 heavy simulation records run to enormous responses, at which point the cell measures response
 serialization rather than execution. `tool_config.max_response_bytes` sets the positive per-response
-ceiling for corpus parity and paired replay (the default is 16 MiB); the workflow exports it as
-`RPC_BENCH_MAX_RESPONSE_BYTES`.
+ceiling for corpus parity, paired replay, and the premeasurement probe (the default is 16 MiB), even
+when k6 discards the response body. Set a larger value for struct logs or `vmTrace` when those
+responses are expected; the workflow exports the setting as `RPC_BENCH_MAX_RESPONSE_BYTES`.
 
 Parity still runs, and the `jsonbench-sweep` compares its Nethermind image arms exactly — an
 outcome becomes a SHA-256 digest of the canonicalized trace instead of the returned bytes, which
