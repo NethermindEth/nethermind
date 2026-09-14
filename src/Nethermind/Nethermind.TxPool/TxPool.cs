@@ -2361,7 +2361,11 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Hash256? hash) => RemoveTransaction(hash, out _);
 
-        /// <param name="removed">The record the pool held, which is what <see cref="RemovedPending"/> carried.</param>
+        /// <summary>Removes <paramref name="hash"/> from whichever of the pending and blob pools holds it, and raises
+        /// <see cref="RemovedPending"/>.</summary>
+        /// <param name="hash">Hash of the transaction to remove.</param>
+        /// <param name="removed">The record the pool held — the instance the events carry, not a re-decoded copy.</param>
+        /// <returns>Whether either pool held the transaction.</returns>
         private bool RemoveTransaction(Hash256? hash, [NotNullWhen(true)] out Transaction? removed)
         {
             removed = null;
