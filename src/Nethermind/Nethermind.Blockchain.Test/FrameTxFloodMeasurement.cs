@@ -108,13 +108,6 @@ public class FrameTxFloodMeasurement
         }
     }
 
-    // 322,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
-    // verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
-    // the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds Eip8141Constants.MaxVerifyGas (300,000),
-    // so of the methods this array feeds, only the signature-stuffed ones (exempt from that cap) produce a
-    // row at that point — every keccak-wide/production/ramp arm Assert.Ignores it.
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
-
     private static IEnumerable<TestCaseData> ProductionDelayCases()
     {
         foreach (ulong ceiling in SweptCeilings)
@@ -242,6 +235,15 @@ public class FrameTxFloodMeasurement
     /// <summary>Environment variable naming the target core count for the analytic core-normalized
     /// projection. Unset (the default) means the projected field is omitted entirely, not zero.</summary>
     private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
+
+    /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
+    /// <remarks>322,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
+    /// verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
+    /// the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
+    /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
+    /// ever reach that cap — produce a row at that point; every keccak-wide/production/ramp arm is gated by
+    /// it and Assert.Ignores instead.</remarks>
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
 
     /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
@@ -562,7 +564,7 @@ public class FrameTxFloodMeasurement
         {
             coreNormalizedField = $"achieved_rate_core_normalized={flooded.AchievedRate * targetCores:F1} "
                                   + $"achieved_rate_core_normalized_cores={targetCores} "
-                                  + "achieved_rate_core_normalized_basis=analytic_projection ";
+                                  + "achieved_rate_core_normalized_basis=analytic_projection_lower_bound ";
         }
 
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
