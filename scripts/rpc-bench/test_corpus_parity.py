@@ -437,5 +437,178 @@ class EnvironmentCapTests(unittest.TestCase):
             self.assertEqual(corpus_parity._env_int("CAP", 10), 10)
 
 
+class TraceCallModeTests(unittest.TestCase):
+    """The corpus stays an eth_call capture on disk; trace mode rewrites it as it is loaded."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.state = self.dir / "state.json.gz"
+        self.report = self.dir / "parity.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @staticmethod
+    def trace_mode(tracer="callTracer"):
+        return unittest.mock.patch.dict(
+            os.environ,
+            {"RPC_BENCH_CORPUS_METHOD": "debug_traceCall", "RPC_BENCH_CORPUS_TRACER": tracer},
+        )
+
+    @staticmethod
+    def parity_mode(trace_types="trace"):
+        return unittest.mock.patch.dict(
+            os.environ,
+            {"RPC_BENCH_CORPUS_METHOD": "trace_call", "RPC_BENCH_CORPUS_TRACE_TYPES": trace_types},
+        )
+
+    def write_corpus(self, records):
+        path = self.dir / "corpus.jsonl.gz"
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            f.write("\n".join(json.dumps(r) for r in records) + "\n")
+        return path
+
+    def run_baseline(self, corpus, responder):
+        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+            corpus_parity.baseline(str(corpus), server.url, str(self.state))
+
+    def run_compare(self, corpus, responder):
+        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+            clean = corpus_parity.compare(str(corpus), server.url, str(self.state),
+                                          str(self.report), "base_client", "cand_client")
+        return clean, json.loads(self.report.read_text(encoding="utf-8"))
+
+    def test_overrides_move_from_positional_params_into_the_options_object(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [
+            {"to": "0x1", "data": SENTINEL}, "0x1853a90",
+            {"0xc": {"balance": "0x1"}}, {"number": "0x2"},
+        ]}])
+        with self.trace_mode():
+            self.assertEqual(corpus_parity.load_corpus(corpus), [[
+                {"to": "0x1", "data": SENTINEL},
+                "0x1853a90",
+                {"tracer": "callTracer",
+                 "stateOverrides": {"0xc": {"balance": "0x1"}},
+                 "blockOverrides": {"number": "0x2"}},
+            ]])
+
+    def test_a_missing_block_defaults_to_latest_and_absent_overrides_are_not_forwarded(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]},
+                                    {"method": "eth_call", "params": [{"to": "0x2"}, None, None]}])
+        with self.trace_mode("prestateTracer"):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [
+                [{"to": "0x1"}, "latest", {"tracer": "prestateTracer"}],
+                [{"to": "0x2"}, "latest", {"tracer": "prestateTracer"}],
+            ])
+
+    def test_the_struct_logger_is_selected_by_an_empty_tracer(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.trace_mode(""):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [[{"to": "0x1"}, "latest", {}]])
+
+    def test_mode_off_leaves_every_record_untouched(self):
+        params = [{"to": "0x1"}, "latest", {"0xc": {"balance": "0x1"}}]
+        corpus = self.write_corpus([{"method": "eth_call", "params": params}])
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [params])
+            self.assertEqual(corpus_parity.corpus_method(), "eth_call")
+
+    def test_an_unknown_tracer_is_rejected_before_any_request(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]}])
+        with self.trace_mode("callTracer2"):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("unknown tracer", str(caught.exception))
+
+    def test_a_record_without_params_names_its_line_rather_than_becoming_a_different_call(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]},
+                                    {"method": "eth_call", "params": []}])
+        with self.trace_mode():
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("line 2", str(caught.exception))
+
+    def test_the_request_carries_the_trace_method_and_the_rewritten_params(self):
+        sent = []
+
+        def fake_fetch(url, body):
+            sent.append(json.loads(body))
+            return 200, json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"type": "CALL"}}).encode()
+
+        with self.trace_mode(), unittest.mock.patch.object(corpus_parity, "_fetch", fake_fetch):
+            method = corpus_parity.corpus_method()
+            category, outcome = corpus_parity._post(
+                "http://x", 1, [{"to": "0x1"}, "latest", {"tracer": "callTracer"}], method)
+        self.assertEqual(method, "debug_traceCall")
+        self.assertEqual(sent[0]["method"], "debug_traceCall")
+        self.assertEqual(sent[0]["params"][2], {"tracer": "callTracer"})
+        self.assertIsNone(category)
+        # A trace is compared by digest, never stored: fixed width and no response content.
+        self.assertRegex(outcome, r"^0x[0-9a-f]{64}$")
+
+    def test_clients_agreeing_on_a_trace_match_and_disagreeing_is_a_content_mismatch(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        trace = {"type": "CALL", "gasUsed": "0x1", "calls": [{"type": "STATICCALL"}]}
+        with self.trace_mode():
+            self.run_baseline(corpus, lambda i: trace)
+            # Key order must not read as a divergence — the digest is taken over canonical JSON.
+            reordered = {"calls": trace["calls"], "gasUsed": trace["gasUsed"], "type": trace["type"]}
+            clean, _ = self.run_compare(corpus, lambda i: reordered)
+            self.assertTrue(clean)
+            clean, report = self.run_compare(corpus, lambda i: {"type": "CALL", "gasUsed": "0x2"})
+        self.assertFalse(clean)
+        self.assertEqual(report["content_mismatches"], 1)
+
+    def test_parity_trace_call_puts_the_types_second_and_the_override_fourth(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [
+            {"to": "0x1"}, "0x1853a90", {"0xc": {"balance": "0x1"}},
+        ]}])
+        with self.parity_mode("trace,stateDiff"):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [[
+                {"to": "0x1"}, ["trace", "stateDiff"], "0x1853a90", {"0xc": {"balance": "0x1"}},
+            ]])
+            self.assertEqual(corpus_parity.corpus_method(), "trace_call")
+
+    def test_parity_trace_call_omits_an_absent_state_override(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.parity_mode():
+            self.assertEqual(corpus_parity.load_corpus(corpus),
+                             [[{"to": "0x1"}, ["trace"], "latest"]])
+
+    def test_parity_trace_call_refuses_a_record_carrying_block_overrides(self):
+        """trace_call has no block-override parameter; dropping one would replay a different call."""
+        corpus = self.write_corpus([
+            {"method": "eth_call", "params": [{"to": "0x1"}, "latest"]},
+            {"method": "eth_call", "params": [{"to": "0x2"}, "latest", None, {"number": "0x2"}]},
+        ])
+        with self.parity_mode():
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("line 2", str(caught.exception))
+        self.assertIn("blockOverrides", str(caught.exception))
+
+    def test_an_unknown_trace_type_is_rejected_before_any_request(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]}])
+        with self.parity_mode("trace,bogus"):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("unknown trace type", str(caught.exception))
+
+    def test_an_unknown_corpus_method_is_rejected(self):
+        with unittest.mock.patch.dict(os.environ, {"RPC_BENCH_CORPUS_METHOD": "trace_callMany"}):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.corpus_method()
+        self.assertIn("unknown corpus method", str(caught.exception))
+
+    def test_word_level_diffs_are_refused_because_outcomes_are_digests(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.trace_mode():
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.compare(str(corpus), "http://x", str(self.state), str(self.report),
+                                      "base_client", "cand_client", diffs_path=str(self.dir / "d.json"))
+        self.assertIn("--diffs", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

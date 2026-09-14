@@ -48,6 +48,24 @@ JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 # Follows the selected runner: the workflow exports this, and CORPUS_DIR covers direct invocation.
 JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-${CORPUS_DIR:-/data/expb-data/rpc-bench}/eth-call-corpus.jsonl.gz}"
+# Replay the same captured calls as a tracing method instead of eth_call (corpus mode only):
+# debug_traceCall (geth-style, Debug module) or trace_call (Parity-style, Trace module). The
+# rewrite happens while the k6 fixture is built, before the node sees any load, so a trace cell
+# costs exactly what an eth_call cell costs to prepare — only the method and the response differ.
+CORPUS_METHOD="${CORPUS_METHOD:-eth_call}"
+# '-' not ':-': an explicitly empty tracer selects the struct logger, and ':-' would silently
+# turn that into callTracer. Only a wholly unset variable takes the default.
+CORPUS_TRACER="${CORPUS_TRACER-callTracer}"
+CORPUS_TRACE_TYPES="${CORPUS_TRACE_TYPES-trace}"
+# Human-readable form, for the fixture log and the k6 scenario name.
+case "$CORPUS_METHOD" in
+  debug_traceCall) CORPUS_METHOD_LABEL="debug_traceCall (tracer=${CORPUS_TRACER:-structLog})" ;;
+  trace_call)      CORPUS_METHOD_LABEL="trace_call (types=${CORPUS_TRACE_TYPES})" ;;
+  *)               CORPUS_METHOD_LABEL="eth_call" ;;
+esac
+# The scenario name reaches the published per-category rows; an eth_call run keeps the name its
+# historical results carry.
+CORPUS_CALL_NAME="${CORPUS_METHOD} corpus"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
@@ -76,6 +94,19 @@ case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) die "JB_ETH_CALL_CORPUS must be true or false" ;;
 esac
+case "$CORPUS_METHOD" in
+  eth_call|debug_traceCall|trace_call) ;;
+  *) die "CORPUS_METHOD must be eth_call, debug_traceCall or trace_call" ;;
+esac
+# The corpus is the only source of calls this knob can rewrite, so a run without it that sets the
+# knob would silently benchmark eth_call and report itself as a trace run.
+[[ "$CORPUS_METHOD" == "eth_call" || "$JB_ETH_CALL_CORPUS" == "true" ]] \
+  || die "CORPUS_METHOD=$CORPUS_METHOD requires the eth_call corpus (JB_ETH_CALL_CORPUS=true)"
+# Always exported, never merely inherited: the resolved values are what corpus_parity.py and the
+# fixture converter must agree on, and both are separate processes.
+export RPC_BENCH_CORPUS_METHOD="$CORPUS_METHOD"
+export RPC_BENCH_CORPUS_TRACER="$CORPUS_TRACER"
+export RPC_BENCH_CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES"
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
   [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
@@ -110,6 +141,9 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   # Size and mtime rather than a digest: corpora are swapped, not edited in place, and hashing one
   # costs about as much as converting it.
   prepared_id+=" corpus=$(realpath -e -- "$JB_ETH_CALL_CORPUS_FILE") $(stat -c '%s %Y' -- "$JB_ETH_CALL_CORPUS_FILE")"
+  # The fixture holds the rewritten bodies, so a warm-up prepared as eth_call must not be reused
+  # for a measured trace cell (nor the reverse): same file, different requests.
+  prepared_id+=" method=${CORPUS_METHOD}/${CORPUS_TRACER}/${CORPUS_TRACE_TYPES}"
 fi
 reuse_prepared=false
 if [[ "$JB_REUSE_PREPARED" == "true" && -f "$prepared_marker" && "$(cat "$prepared_marker")" == "$prepared_id" ]] \
@@ -290,18 +324,18 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     log "Reusing the eth_call corpus fixture prepared by the previous invocation"
   else
     mkdir -p "$work/src/rpc-calls"
-    log "Preparing eth_call corpus fixture from $(basename "$JB_ETH_CALL_CORPUS_FILE") (contents stay on this machine)..."
+    log "Preparing ${CORPUS_METHOD_LABEL} corpus fixture from $(basename "$JB_ETH_CALL_CORPUS_FILE") (contents stay on this machine)..."
     python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_fixture" \
       || die "failed to convert the eth_call corpus (see converter error above — it names line numbers, not contents)"
   fi
-  python3 - "$work/io/benchmark.yaml" <<'PY'
+  python3 - "$work/io/benchmark.yaml" "$CORPUS_CALL_NAME" <<'PY'
 import sys, yaml
 
 path = sys.argv[1]
 with open(path) as f:
     cfg = yaml.safe_load(f) or {}
 cfg["calls"] = [{
-    "name": "eth_call corpus",
+    "name": sys.argv[2],
     "file": "./rpc-calls/runner-eth-call-corpus.json",
     "file_type": "json",
     "weight": 1,
