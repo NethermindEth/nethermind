@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
@@ -34,6 +35,25 @@ public sealed class TransactionChangesetIndex
     public bool TryGetCoverage(out ulong fromBlock, out ulong toBlock) => _store.TryGetCoverage(out fromBlock, out toBlock);
 
     public BlockCapture StartBlock(ulong block) => new(this, block);
+
+    /// <summary>Writes a whole block's changesets, already collected, and claims it when it touches coverage.</summary>
+    internal bool WriteBlock(Block block, ReadOnlySpan<ChangesetCollector?> collectors)
+    {
+        ulong number = (ulong)block.Number;
+        if (collectors.Length > ChangesetKeyLayout.MaxTransactionIndex + 1) return false;
+
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch())
+        {
+            IWriteBatch rows = batch.GetColumnBatch(FlatHistoryColumns.TransactionChangesets);
+            _store.WriteBlockHash(number, block.Hash!, rows);
+            for (int i = 0; i < collectors.Length; i++)
+            {
+                _store.Write(number, (ushort)i, collectors[i]!.Pack(), rows);
+            }
+        }
+
+        return _store.TryExtendCoverage(number, number);
+    }
 
     /// <summary>Claims a range of durable, complete blocks as covered; only a range touching the existing coverage
     /// is accepted, so coverage stays one contiguous range.</summary>
