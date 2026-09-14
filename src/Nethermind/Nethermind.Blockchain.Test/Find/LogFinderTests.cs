@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
@@ -341,20 +340,21 @@ public class LogFinderTests
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [NonParallelizable]
-    public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
+    public void Throw_log_finder_operation_canceled_when_token_is_canceled([Values] bool cancel)
     {
-        TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
-        using CancellationTokenSource cancellationTokenSource = new(timeout);
-        CancellationToken cancellationToken = cancellationTokenSource.Token;
+        using CancellationTokenSource cancellationTokenSource = new();
         _logFinder = CreateLogFinder();
         LogFilter logFilter = AllBlockFilter().Build();
-        IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
+        IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationTokenSource.Token);
 
-        await Task.Delay(timeout * waitTime);
+        if (cancel)
+        {
+            cancellationTokenSource.Cancel();
+        }
 
         Action action = () => _ = logs.ToArray();
 
-        if (waitTime > 1)
+        if (cancel)
         {
             Assert.That(action, Throws
                 .Exception.InstanceOf<OperationCanceledException>()
