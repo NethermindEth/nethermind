@@ -182,7 +182,7 @@ public class FrameTxProducerRetryMeasurement
 
     private static IEnumerable<TestCaseData> RetryCases()
     {
-        foreach (ulong verifyGas in new ulong[] { 100_000ul, 300_000ul, 322_800ul, 500_000ul })
+        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul })
         {
             foreach (int kRetry in new int[] { 1, 2, 4, 8 })
             {
@@ -198,8 +198,8 @@ public class FrameTxProducerRetryMeasurement
     [TestCaseSource(nameof(RetryCases))]
     public async Task ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
-        (int blocksOffered, int attempts, _, ulong firstBurn, ulong burned, UInt256 beneficiaryDelta) =
-            await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead: 1, attemptCap: kRetry);
+        (int blocksOffered, int attempts, int headsFailed, ulong firstBurn, ulong burned, UInt256 beneficiaryDelta, _) =
+            await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead: 1);
 
         Emit($"case=k_retry_sweep k_retry={kRetry} budget={verifyGas} "
              + $"blocks_offered={blocksOffered} execution_attempts={attempts} "
@@ -209,6 +209,8 @@ public class FrameTxProducerRetryMeasurement
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(headsFailed, Is.EqualTo(kRetry),
+                "the pool must evict the transaction after exactly K_retry failed heads, or the loop bound alone is proving nothing");
             Assert.That(attempts, Is.EqualTo(kRetry),
                 "the producer must re-execute the prefix exactly K_retry times before the pool evicts it");
             Assert.That(firstBurn, Is.GreaterThan((ulong)(verifyGas * BudgetBurnFloor)),
@@ -237,12 +239,10 @@ public class FrameTxProducerRetryMeasurement
         [Values(1, 8, 32, 128)] int mPerHead)
     {
         const ulong verifyGas = 300_000ul;
-        // (kRetry - 1) full heads of mPerHead free attempts each, plus one attempt on the head that
-        // brings the failed-heads tally to kRetry and evicts.
-        int attemptCap = (kRetry - 1) * mPerHead + 1;
 
-        (int blocksOffered, int attempts, int headsFailed, ulong firstBurn, ulong burned, UInt256 beneficiaryDelta) =
-            await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead, attemptCap);
+        (int blocksOffered, int attempts, int headsFailed, ulong firstBurn, ulong burned, UInt256 beneficiaryDelta,
+                int attemptCap) =
+            await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead);
 
         Emit($"case=k_retry_two_axis k_retry={kRetry} m_per_head={mPerHead} m_basis=modelled budget={verifyGas} "
              + $"blocks_offered={blocksOffered} execution_attempts={attempts} "
@@ -272,9 +272,13 @@ public class FrameTxProducerRetryMeasurement
     /// per-head eviction budget, until the pool evicts it. Shared by both sweeps above; the single-axis
     /// sweep is the case <paramref name="mPerHead"/> == 1.
     /// </summary>
-    private async Task<(int BlocksOffered, int Attempts, int HeadsFailed, ulong FirstBurn, ulong Burned, UInt256 BeneficiaryDelta)>
-        RunNeverApprovingSweep(ulong verifyGas, int kRetry, int mPerHead, int attemptCap)
+    private async Task<(int BlocksOffered, int Attempts, int HeadsFailed, ulong FirstBurn, ulong Burned, UInt256 BeneficiaryDelta, int AttemptCap)>
+        RunNeverApprovingSweep(ulong verifyGas, int kRetry, int mPerHead)
     {
+        // (kRetry - 1) full heads of mPerHead free attempts each, plus one attempt on the head that
+        // brings the failed-heads tally to kRetry and evicts.
+        int attemptCap = (kRetry - 1) * mPerHead + 1;
+
         await BuildChain(NeverApproves());
 
         CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
@@ -309,6 +313,8 @@ public class FrameTxProducerRetryMeasurement
         int blocksOffered = 0;
         while (blocksOffered < attemptCap && headsFailed < kRetry)
         {
+            // Block number advances every attempt; headGeneration below is the modelled quantity that
+            // stays fixed across the mPerHead attempts spent against one head.
             Block block = Build.A.Block
                 .WithNumber(1 + blocksOffered)
                 .WithBaseFeePerGas(UInt256.Zero)
@@ -343,7 +349,7 @@ public class FrameTxProducerRetryMeasurement
         ulong firstBurn = adapter.BurnedPerAttempt.Count > 0 ? adapter.BurnedPerAttempt[0] : 0;
 
         return (blocksOffered, adapter.Attempts, headsFailed, firstBurn, burned,
-            _stateProvider.GetBalance(Beneficiary) - beneficiaryBefore);
+            _stateProvider.GetBalance(Beneficiary) - beneficiaryBefore, attemptCap);
     }
 
     private static Transaction FrameTx(ulong verifyGas)
