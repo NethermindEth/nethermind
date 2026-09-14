@@ -23,12 +23,6 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class FrameTxBlockGasTests
 {
-    private UInt256 StorageAt(in StorageCell cell)
-    {
-        _state.Get(in cell, out UInt256 value);
-        return value;
-    }
-
     private ISpecProvider _specProvider;
     private ITransactionProcessor _processor;
     private IWorldState _state;
@@ -400,6 +394,12 @@ public class FrameTxBlockGasTests
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    private UInt256 StorageAt(in StorageCell cell)
+    {
+        _state.Get(in cell, out UInt256 value);
+        return value;
+    }
 
     private void Deploy(Address address, byte[] code, UInt256 balance = default)
     {

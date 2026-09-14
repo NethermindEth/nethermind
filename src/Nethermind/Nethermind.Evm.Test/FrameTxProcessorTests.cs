@@ -46,12 +46,6 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class FrameTxProcessorTests
 {
-    private UInt256 StorageAt(in StorageCell cell)
-    {
-        _stateProvider.Get(in cell, out UInt256 value);
-        return value;
-    }
-
     private ISpecProvider _specProvider;
     private OverridableReleaseSpec _spec;
     private ITransactionProcessor _transactionProcessor;
@@ -2711,6 +2705,12 @@ public class FrameTxProcessorTests
         _stateProvider.InsertCode(address, code, Spec);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
+    }
+
+    private UInt256 StorageAt(in StorageCell cell)
+    {
+        _stateProvider.Get(in cell, out UInt256 value);
+        return value;
     }
 
     private void AssertStorage(Address address, int slot, UInt256 expected, string? message = null)
