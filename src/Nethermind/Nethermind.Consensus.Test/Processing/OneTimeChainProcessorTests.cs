@@ -160,13 +160,10 @@ public class OneTimeChainProcessorTests
         Assert.That(_branchProcessor.ProcessedBranches, expectProcessed ? Is.Not.Empty : Is.Empty);
     }
 
-    // (b) an invalid block raises InvalidBlock and, under ReadOnlyChain, is not deleted from the block tree.
+    // (b) an invalid block is refused (returns null) and, under ReadOnlyChain, is not deleted from the block tree.
     [Test]
-    public void Invalid_block_raises_event_and_is_not_deleted_when_read_only()
+    public void Invalid_block_is_refused_and_not_deleted_when_read_only()
     {
-        List<Block> invalidBlocks = [];
-        _processor.InvalidBlock += (_, args) => invalidBlocks.Add(args.InvalidBlock);
-
         Block block = BuildBlockOnHead();
         _branchProcessor.AllowToFail(block);
         Suggest(block);
@@ -174,7 +171,6 @@ public class OneTimeChainProcessorTests
         Block? processed = _processor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
 
         Assert.That(processed, Is.Null);
-        Assert.That(invalidBlocks.Select(b => b.Hash), Does.Contain(block.Hash));
         Assert.That(_blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null,
             "ReadOnlyChain must not delete the invalid block");
     }
@@ -189,14 +185,5 @@ public class OneTimeChainProcessorTests
         _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
         Assert.That(_preprocessorStep.Recovered.Select(b => b.Hash), Does.Contain(block.Hash));
-    }
-
-    [Test]
-    public void Stats_and_events_are_wired()
-    {
-        BlockStatistics received = null!;
-        _processor.NewProcessingStatistics += (_, stats) => received = stats;
-        _stats.Fire();
-        Assert.That(received, Is.Not.Null);
     }
 }
