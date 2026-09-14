@@ -6,9 +6,14 @@ using Nethermind.Evm.Tracing;
 namespace Nethermind.State.Flat.History.Changesets;
 
 /// <summary>Re-executes a canonical block against the state of its parent. The state layer knows what it wants
-/// traced; how a block is found and processed belongs above it.</summary>
-public interface IHistoryBlockExecutor
+/// traced; how a block is found and processed belongs above it. One executor serves one thread at a time.</summary>
+public interface IHistoryBlockExecutor : IDisposable
 {
     /// <summary>False when the block is not available to execute, which is a reason to wait rather than to fail.</summary>
     bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken);
+}
+
+public interface IHistoryBlockExecutorFactory
+{
+    IHistoryBlockExecutor Create();
 }

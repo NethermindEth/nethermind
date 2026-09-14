@@ -33,7 +33,11 @@ public class TransactionChangesetBuilderTests
     }
 
     [TearDown]
-    public void TearDown() => _columns.Dispose();
+    public void TearDown()
+    {
+        _executor.Dispose();
+        _columns.Dispose();
+    }
 
     [Test]
     public void TheFirstBlockBuilt_IsTheWatermark()
@@ -175,6 +179,88 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void WithWorkers_TheTipThreadLeavesTheRetrofitToThem()
+    {
+        Capture(upTo: 20);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+
+        while (builder.TryBuildNext())
+        {
+        }
+
+        Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 20 }).AsCollection, "with workers the tip thread only ever follows the tip");
+    }
+
+    [Test]
+    public void Chunks_AreHandedOutDownwardsFromTheCoverageEdge()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk first);
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk second);
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk third);
+        bool fourth = builder.TryClaimChunk(out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((first.Bottom, first.Top), Is.EqualTo((172UL, 299UL)));
+            Assert.That((second.Bottom, second.Top), Is.EqualTo((44UL, 171UL)));
+            Assert.That((third.Bottom, third.Top), Is.EqualTo((1UL, 43UL)), "the last chunk stops at the retrofit block");
+            Assert.That(fourth, Is.False);
+        }
+    }
+
+    [Test]
+    public void AChunkFinishedOutOfOrder_JoinsCoverageOnlyWhenTheChunksAboveItHave()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        TransactionChangesetIndex index = Index();
+        using TransactionChangesetBuilder builder = Builder(index);
+        builder.TryBuildNext();
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk upper);
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk lower);
+
+        builder.BuildChunk(lower, _executor);
+        builder.Complete(lower);
+        index.TryGetCoverage(out ulong fromAfterLower, out _);
+        builder.BuildChunk(upper, _executor);
+        builder.Complete(upper);
+        index.TryGetCoverage(out ulong fromAfterBoth, out ulong to);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromAfterLower, Is.EqualTo(300), "a chunk with a gap above it must not be claimed, or the gap would read as indexed");
+            Assert.That(fromAfterBoth, Is.EqualTo(44), "once the gap closes both chunks join at once");
+            Assert.That(to, Is.EqualTo(300));
+        }
+    }
+
+    [Test]
+    public void AChunkThatFailed_IsRetriedBeforeANewOneIsHandedOut()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+        _executor.Fail = true;
+        builder.TryBuildNextChunk(_executor);
+        _executor.Fail = false;
+
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk retried);
+
+        Assert.That((retried.Bottom, retried.Top), Is.EqualTo((172UL, 299UL)), "coverage cannot cross a chunk that never completed, so it goes first");
+    }
+
+    [Test]
     public void TheBuilder_DoesNothingWhenTheIndexIsOff()
     {
         Capture(upTo: 20);
@@ -211,7 +297,7 @@ public class TransactionChangesetBuilderTests
         _availability.PublishWatermark(upTo, HistoryAvailability.FormatVersion);
     }
 
-    private sealed class RecordingExecutor : IHistoryBlockExecutor
+    private sealed class RecordingExecutor : IHistoryBlockExecutor, IHistoryBlockExecutorFactory
     {
         public List<ulong> Executed { get; } = [];
 
@@ -219,13 +305,29 @@ public class TransactionChangesetBuilderTests
 
         public Action<IBlockTracer>? Writes { get; set; }
 
+        public IHistoryBlockExecutor Create() => this;
+
         public bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken)
         {
             if (Fail) return false;
 
-            Executed.Add(block);
-            Writes?.Invoke(tracer);
+            lock (Executed)
+            {
+                Executed.Add(block);
+            }
+
+            if (Writes is { } writes) writes(tracer);
+            else
+            {
+                tracer.StartNewBlockTrace(Build.A.Block.WithNumber(block).TestObject);
+                tracer.EndBlockTrace();
+            }
+
             return true;
+        }
+
+        public void Dispose()
+        {
         }
     }
 }

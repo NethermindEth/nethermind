@@ -75,6 +75,6 @@ public class TransactionChangesetIndexTests
         }
 
         capture.Tracer.EndBlockTrace();
-        return capture.Commit();
+        return capture.Commit() && _index.TryClaim(7, 7);
     }
 }

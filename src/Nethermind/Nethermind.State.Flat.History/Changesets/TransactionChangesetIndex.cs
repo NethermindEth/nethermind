@@ -35,6 +35,10 @@ public sealed class TransactionChangesetIndex
 
     public BlockCapture StartBlock(ulong block) => new(this, block);
 
+    /// <summary>Claims a range of durable, complete blocks as covered; only a range touching the existing coverage
+    /// is accepted, so coverage stays one contiguous range.</summary>
+    public bool TryClaim(ulong fromBlock, ulong toBlock) => _store.TryExtendCoverage(fromBlock, toBlock);
+
     /// <summary>Follows the history floor: a block whose history is gone cannot be traced, so its changesets have
     /// nothing left to serve.</summary>
     public void PruneBelow(ulong floor) => _store.PruneBelow(floor);
@@ -50,8 +54,9 @@ public sealed class TransactionChangesetIndex
             && _overlays.TryRent(block, beforeTransaction, out lease);
     }
 
-    /// <summary>One block's rows, written into a batch of their own. Coverage moves only once that batch is
-    /// durable, so a builder killed mid-block leaves rows nothing claims rather than a claim nothing backs.</summary>
+    /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once
+    /// <see cref="Commit"/> reports the batch durable and whole, so a builder killed mid-block leaves rows nothing
+    /// claims rather than a claim nothing backs.</summary>
     public sealed class BlockCapture : IDisposable
     {
         private readonly TransactionChangesetIndex _index;
@@ -70,15 +75,15 @@ public sealed class TransactionChangesetIndex
 
         public IBlockTracer Tracer => _tracer;
 
-        /// <summary>False when the tracer did not see the whole block: the rows are written but never claimed, and
-        /// the next pass builds the block again.</summary>
+        /// <summary>False when the tracer did not see the whole block: the rows are written but must not be claimed,
+        /// and the next pass builds the block again.</summary>
         public bool Commit()
         {
             if (_written) throw new InvalidOperationException($"The changeset capture of block {_block} was already committed.");
 
             _written = true;
             _batch.Dispose();
-            return _tracer.Complete && _index._store.TryExtendCoverage(_block, _block);
+            return _tracer.Complete;
         }
 
         public void Dispose()

@@ -180,7 +180,7 @@ public class BlockProcessorTests
             using IDisposable scope = chain.MainWorldState.BeginScope(parent);
             chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
                 capture.Tracer, spec, CancellationToken.None);
-            Assert.That(capture.Commit(), Is.True, "precondition: the block must be indexed");
+            Assert.That(capture.Commit() && index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True, "precondition: the block must be indexed");
         }
 
         string actual = Replay(new ChangesetPrefixStateSeedSource(index), out int seeded);
