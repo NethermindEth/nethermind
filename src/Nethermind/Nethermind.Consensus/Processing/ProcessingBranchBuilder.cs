@@ -118,11 +118,6 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
                 break;
             }
 
-            if (options.ContainsFlag(ProcessingOptions.IgnoreParentNotOnMainChain))
-            {
-                break;
-            }
-
             if (isTrace) TraceParentSearch(toBeProcessed);
 
             toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
