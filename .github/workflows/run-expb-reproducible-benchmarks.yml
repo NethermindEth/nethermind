@@ -1592,6 +1592,7 @@ jobs:
           CLEAN_RUN_LOG: ${{ runner.temp }}/expb-run.clean.log
           METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
           RENDERED_CONFIG_FILE: ${{ steps.render-config.outputs.rendered_config_file }}
+          YQ_BIN: ${{ runner.temp }}/yq
           LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
         run: |
           set -euo pipefail
@@ -1599,7 +1600,14 @@ jobs:
           [[ -f "${RAW_RUN_LOG}" ]] && cp "${RAW_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.log" || true
           [[ -f "${CLEAN_RUN_LOG}" ]] && cp "${CLEAN_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.clean.log" || true
           [[ -n "${METRICS_FILE}" && -f "${METRICS_FILE}" ]] && cp "${METRICS_FILE}" "${LOG_ARTIFACT_DIR}/metrics.env" || true
-          [[ -n "${RENDERED_CONFIG_FILE}" && -f "${RENDERED_CONFIG_FILE}" ]] && cp "${RENDERED_CONFIG_FILE}" "${LOG_ARTIFACT_DIR}/rendered-config.yaml" || true
+          if [[ -n "${RENDERED_CONFIG_FILE}" && -f "${RENDERED_CONFIG_FILE}" ]]; then
+            [[ -x "${YQ_BIN}" ]] || { echo "::error::yq is required to sanitize the rendered config before artifact staging."; exit 1; }
+            sanitized_config="$(mktemp "${LOG_ARTIFACT_DIR}/.rendered-config.XXXXXX")"
+            trap 'rm -f "${sanitized_config}"' EXIT
+            "${YQ_BIN}" 'del(.export)' "${RENDERED_CONFIG_FILE}" > "${sanitized_config}"
+            mv "${sanitized_config}" "${LOG_ARTIFACT_DIR}/rendered-config.yaml"
+            trap - EXIT
+          fi
           {
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "event=${{ github.event_name }}"

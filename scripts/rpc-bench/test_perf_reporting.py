@@ -53,6 +53,15 @@ def workflow_named_step_body(workflow: str, job_name: str, step_name: str) -> st
     return steps[0]["body"]
 
 
+def workflow_named_step_script(workflow: str, job_name: str, step_name: str) -> str:
+    body = workflow_named_step_body(workflow, job_name, step_name)
+    marker = "        run: |\n"
+    if marker not in body:
+        raise AssertionError(f"could not extract the run body for {job_name}/{step_name}")
+    script = body.split(marker, 1)[1]
+    return "\n".join(line[10:] for line in script.splitlines())
+
+
 def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
     conditions = WORKFLOW_STEP_IF_PATTERN.findall(workflow_named_step_body(workflow, job_name, step_name))
     if len(conditions) != 1:
@@ -1299,6 +1308,87 @@ esac
                 f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
             )
             self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
+
+    def test_expb_single_log_staging_sanitizes_rendered_config(self) -> None:
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        script = workflow_named_step_script(expb_workflow, "benchmark", "Stage benchmark logs")
+        script = script.replace('${{ github.event_name }}', "workflow_dispatch")
+        script = script.replace('${{ matrix.payload_set }}', "realblocks")
+        script = script.replace('${{ matrix.run }}', "1")
+        script = script.replace('${{ needs.resolve.outputs.run_count }}', "1")
+        script = script.replace('${{ needs.resolve.outputs.measurement_mode }}', "standard")
+        self.assertNotIn("${{", script)
+
+        raw_config = (
+            "export:\n"
+            "  prometheus_remote_write:\n"
+            "    basic_auth:\n"
+            "      password: credential-sentinel\n"
+            "scenarios:\n"
+            "  nethermind:\n"
+            "    amount: 1\n"
+        )
+        sanitized_config = "scenarios:\n  nethermind:\n    amount: 1\n"
+
+        def run_staging(
+            case_name: str, yq: Path | None, expected_returncode: int | None
+        ) -> tuple[Path, subprocess.CompletedProcess[str]]:
+            case_directory = self.directory / case_name
+            case_directory.mkdir()
+            raw_log = case_directory / "raw.log"
+            clean_log = case_directory / "clean.log"
+            metrics = case_directory / "metrics.env"
+            rendered_config = case_directory / "rendered-config.yaml"
+            artifact_directory = case_directory / "artifact"
+            raw_log.write_text("raw log\n", encoding="utf-8")
+            clean_log.write_text("clean log\n", encoding="utf-8")
+            metrics.write_text("metric=value\n", encoding="utf-8")
+            rendered_config.write_text(raw_config, encoding="utf-8")
+            environment = os.environ.copy()
+            environment.update(
+                RAW_RUN_LOG=raw_log.as_posix(),
+                CLEAN_RUN_LOG=clean_log.as_posix(),
+                METRICS_FILE=metrics.as_posix(),
+                RENDERED_CONFIG_FILE=rendered_config.as_posix(),
+                YQ_BIN=(yq.as_posix() if yq else (case_directory / "missing-yq").as_posix()),
+                LOG_ARTIFACT_DIR=artifact_directory.as_posix(),
+                EXPB_SOURCE="test-source",
+            )
+            stage_script = case_directory / "stage.sh"
+            stage_script.write_text(script, encoding="utf-8", newline="\n")
+            result = subprocess.run(
+                [BASH, str(stage_script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+            )
+            if expected_returncode is None:
+                self.assertNotEqual(0, result.returncode, f"{result.stdout}\n{result.stderr}")
+            else:
+                self.assertEqual(expected_returncode, result.returncode, f"{result.stdout}\n{result.stderr}")
+            self.assertEqual(raw_config, rendered_config.read_text(encoding="utf-8"))
+            self.assertEqual("raw log\n", (artifact_directory / "combined.log").read_text(encoding="utf-8"))
+            self.assertEqual("clean log\n", (artifact_directory / "combined.clean.log").read_text(encoding="utf-8"))
+            self.assertEqual("metric=value\n", (artifact_directory / "metrics.env").read_text(encoding="utf-8"))
+            return artifact_directory, result
+
+        yq = self.write_executable(
+            "fake-yq",
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            "[[ \"$#\" -eq 2 && \"$1\" == 'del(.export)' ]] || exit 41\n"
+            "grep -q 'password: credential-sentinel' \"$2\" || exit 42\n"
+            f"cat {self.write_folded('sanitized.yaml', sanitized_config).as_posix()!r}\n",
+        )
+        artifact_directory, _ = run_staging("success", yq, 0)
+        self.assertEqual(sanitized_config, (artifact_directory / "rendered-config.yaml").read_text(encoding="utf-8"))
+        self.assertNotIn("credential-sentinel", (artifact_directory / "rendered-config.yaml").read_text(encoding="utf-8"))
+
+        failing_yq = self.write_executable("failing-yq-bin", "#!/bin/bash\nexit 7\n")
+        failed_directory, _ = run_staging("failing-yq", failing_yq, None)
+        self.assertFalse((failed_directory / "rendered-config.yaml").exists())
+        self.assertEqual([], list(failed_directory.glob(".rendered-config.*")))
+
+        missing_directory, _ = run_staging("missing-yq", None, 1)
+        self.assertFalse((missing_directory / "rendered-config.yaml").exists())
+        self.assertEqual([], list(missing_directory.glob(".rendered-config.*")))
 
 
 if __name__ == "__main__":

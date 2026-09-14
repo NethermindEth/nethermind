@@ -283,6 +283,8 @@ class SequentialDriverParserTests(unittest.TestCase):
                 root.mkdir()
                 data_dir = Path(directory) / "data"
                 data_dir.mkdir()
+                runner_temp = Path(directory) / "runner-temp"
+                runner_temp.mkdir()
                 observed = {}
                 runtime_paths = []
 
@@ -305,6 +307,7 @@ class SequentialDriverParserTests(unittest.TestCase):
 
                 environment = {
                     "EXPB_DATA_DIR": str(data_dir),
+                    "RUNNER_TEMP": str(runner_temp),
                     "MEASUREMENT_MODE": "standard",
                     "AMOUNT": "1",
                     "DELAY_SECONDS": "0",
@@ -332,6 +335,7 @@ class SequentialDriverParserTests(unittest.TestCase):
                     observed["config"]["export"]["prometheus_remote_write"]["basic_auth"]["password"],
                 )
                 self.assertEqual(1, len(runtime_paths))
+                self.assertIn(runner_temp, runtime_paths[0].parents)
                 self.assertNotIn(root, runtime_paths[0].parents)
                 self.assertFalse(runtime_paths[0].exists())
                 artifact_config = json.loads((root / "image-a-run1" / "config.json").read_text(encoding="utf-8"))

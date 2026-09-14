@@ -189,7 +189,8 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
         artifact_config = dict(config)
         artifact_config.pop("export", None)
         config_path.write_text(json.dumps(artifact_config, indent=2) + "\n", encoding="utf-8")
-        with tempfile.TemporaryDirectory(prefix=".expb-runtime-", dir=root.parent) as runtime_directory:
+        runtime_root = get("RUNNER_TEMP") or None
+        with tempfile.TemporaryDirectory(prefix=".expb-runtime-", dir=runtime_root) as runtime_directory:
             runtime_config_path = Path(runtime_directory) / "config.json"
             runtime_config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
             configured = parse_amount(get("AMOUNT"))
