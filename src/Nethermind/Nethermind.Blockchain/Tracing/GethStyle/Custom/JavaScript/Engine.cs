@@ -69,7 +69,8 @@ public class Engine : IDisposable
         return runtime;
     }
 
-    // A soft-limit violation blocks every script in the runtime until the limit is set again.
+    // A soft-limit violation blocks every script in the runtime until the limit is set again, so every
+    // engine re-arms it when it starts and when it goes away.
     private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
@@ -98,6 +99,7 @@ public class Engine : IDisposable
     {
         _spec = spec;
 
+        RearmHeapSoftLimit();
         V8Engine = _runtime.CreateScriptEngine(IsDebugging
             ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
             : V8ScriptEngineFlags.None);
@@ -171,11 +173,20 @@ public class Engine : IDisposable
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
 
+    // Called from a timer thread: the engine may be disposed between the check and the call.
     public void Interrupt()
     {
-        if (!_disposed)
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
         {
             V8Engine.Interrupt();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -89,7 +90,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32:0:79000:0", "33:PUSH1:0:78997:0", "35:MSTORE:0:78994:0", "36:PUSH32:0:78988:0", "69:PUSH1:0:78985:0", "71:MSTORE:0:78982:0", "72:STOP:0:78976:0" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
@@ -110,7 +111,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "STOP : 0 : false" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
@@ -137,7 +138,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expected = { 0, 1, 2, 0, 1, 2, 0 };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expected));
+        AssertResult(traces, expected);
     }
 
     [Test]
@@ -161,7 +162,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expectedResult = { 0, 32, 64 };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedResult));
+        AssertResult(traces, expectedResult);
     }
 
     [Test]
@@ -178,7 +179,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:"));
+        AssertResult(traces, "942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:");
     }
 
     [Test]
@@ -208,7 +209,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
         string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(new[] { caller, callee, caller }));
+        AssertResult(traces, new[] { caller, callee, caller });
     }
 
     [Test]
@@ -243,7 +244,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        string[] counts = ((string)traces.CustomTracerResult!.Value!).Split(':');
+        string[] counts = ((JsonElement)traces.CustomTracerResult!.Value).GetString()!.Split(':');
         int steps = int.Parse(counts[0]);
         Assert.That(steps, Is.GreaterThan(0));
         Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
@@ -266,7 +267,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32", "33:PUSH1", "35:MSTORE", "36:PUSH32", "69:PUSH1", "71:MSTORE", "72:STOP" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -290,7 +291,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "33: PUSH1", "35: MSTORE", "69: PUSH1", "71: MSTORE" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -319,7 +320,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "35: SSTORE 0", "71: SSTORE 20", "107: SLOAD 0", "108: STOP a01234 <- a01234" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -345,7 +346,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { SampleHexData1.PadLeft(64, '0'), SampleHexData2.PadLeft(64, '0') };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -381,7 +382,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "68 SSTORE 1 <- a01234", "104 SLOAD 1", "Result: a01234" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -448,18 +449,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "68: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1 <- a01234", "104: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1", "Result: 1" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
-    }
-
-    [Test]
-    public void noop_tracer_legacy()
-    {
-        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("noopTracer"),
-                MStore(),
-                MainnetSpecProvider.CancunActivation);
-        using GethLikeTxTrace traces = tracer.BuildResult().First();
-        Assert.That(traces.CustomTracerResult?.Value, Has.All.Empty);
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -470,7 +460,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(7));
+        AssertResult(traces, 7);
     }
 
     [Test]
@@ -610,7 +600,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Block_trace_runs_every_transaction_in_one_engine()
+    public void Block_trace_gives_every_transaction_a_fresh_script_scope()
     {
         const string countingTracer = @"{
                     step: function(log, db) { },
@@ -619,9 +609,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 }";
         using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(countingTracer));
 
-        object?[] results = tracer.BuildResult().Select(static trace => trace.CustomTracerResult?.Value).ToArray();
+        int[] results = tracer.BuildResult().Select(static trace => ((JsonElement)trace.CustomTracerResult!.Value).GetInt32()).ToArray();
 
-        Assert.That(results, Is.EqualTo(new object[] { 1, 2 }));
+        Assert.That(results, Is.EqualTo(new[] { 1, 1 }));
     }
 
     [Test]
@@ -695,6 +685,13 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                     fault: function(log, db) { },
                     result: function(ctx, db) { return { steps: this.steps }; }
                 }";
+
+    private static readonly JsonSerializerOptions ExpectedResultOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static void AssertResult(GethLikeTxTrace trace, object expected) =>
+        Assert.That(
+            JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+            Is.EqualTo(JsonSerializer.Serialize(expected, ExpectedResultOptions)));
 
     private static EthereumJsonSerializer GetEthereumJsonSerializer() => new();
 

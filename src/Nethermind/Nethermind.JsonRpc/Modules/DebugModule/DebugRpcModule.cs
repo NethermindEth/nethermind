@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -226,25 +225,25 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        ulong blockNo = (ulong)header!.Number;
+        Hash256 blockHash = header!.Hash!;
         if (CanStreamStructLogs(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(blockNo, index, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(blockHash, index, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockNo, index, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, cancellationToken, options);
         if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockParameter}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 

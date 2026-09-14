@@ -93,6 +93,25 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(byTag), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
     }
 
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_with_block_hash_parameter_matches_numeric_request()
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+
+        Block head = context.Blockchain.BlockTree.Head!;
+        string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, "0x0");
+        string byHash = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", new { blockHash = head.Hash }, "0x0");
+
+        Assert.That(byNumber, Does.Contain("\"result\""));
+        Assert.That(JToken.Parse(byHash), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
+    }
+
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
     [TestCaseSource(nameof(TraceTransactionContractSource))]
     public async Task Debug_traceTransactionByBlockhashAndIndex(Func<TestRpcBlockchain, Transaction> factory, GethTraceOptions options, string expected)

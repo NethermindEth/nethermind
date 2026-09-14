@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
@@ -12,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
@@ -22,16 +24,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     private readonly dynamic _tracer;
     private readonly Log _log = new();
-    private readonly IDisposable _blockTracer;
-    private readonly SharedEngine _engine;
+    private readonly Engine _engine;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource _cts;
     private readonly IDisposable _ctsRegistration;
-    private TraceResources? _resources;
     private bool _resultConstructed;
-    private bool _tracerReleased;
+    private bool _engineReleased;
     private bool _disposed;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -42,8 +42,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly TracerFunctions _functions;
 
     public GethLikeJavaScriptTxTracer(
-        IDisposable blockTracer,
-        SharedEngine engine,
+        Engine engine,
         Db db,
         Context ctx,
         GethTraceOptions options) : base(options)
@@ -53,12 +52,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         IsTracingMemory = true;
         IsTracingStack = true;
 
-        _blockTracer = blockTracer;
         _engine = engine;
         _db = db;
         _ctx = ctx;
 
-        _tracer = engine.Engine.CreateTracer(options.Tracer);
+        _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
@@ -69,13 +67,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
             throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
         _cts = new CancellationTokenSource(timeout);
-        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine.Engine);
-    }
-
-    protected override GethLikeTxTrace CreateTrace()
-    {
-        _resources = new TraceResources(_engine.Lease());
-        return new GethLikeTxTrace(_resources);
+        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -83,26 +75,41 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
-        dynamic tracerResult = _tracer.result(_ctx, _db);
-        _resources!.Result = tracerResult;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = tracerResult };
-        ReleaseTracerObject();
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
         _ctsRegistration.Dispose();
         _resultConstructed = true;
+        ReleaseEngine();
 
         return result;
     }
 
-    // The proxy roots the tracer object in the V8 heap until it is disposed, whatever happens to the engine.
-    private void ReleaseTracerObject()
+    // The script result is converted to JSON while its engine is alive, so the engine can go right after
+    // and the trace keeps nothing in the V8 heap.
+    private static JsonElement MaterializeResult(object? scriptResult)
     {
-        if (_tracerReleased)
+        NumberConversion previousConversion = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
+        try
+        {
+            return JsonSerializer.SerializeToElement(scriptResult, EthereumJsonSerializer.JsonOptions);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previousConversion;
+        }
+    }
+
+    // The tracer proxy roots its script object in the V8 heap until it is disposed, whatever happens to the engine.
+    private void ReleaseEngine()
+    {
+        if (_engineReleased)
         {
             return;
         }
 
-        _tracerReleased = true;
+        _engineReleased = true;
         ((object)_tracer as IDisposable)?.Dispose();
+        _engine.Dispose();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -298,25 +305,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         base.Dispose();
         _ctsRegistration.Dispose();
         _cts.Dispose();
-        ReleaseTracerObject();
-
-        if (!_resultConstructed)
-        {
-            _blockTracer.Dispose();
-        }
-    }
-
-    // Owned by the transaction trace: the JavaScript result must be released before the engine lease,
-    // so the trace keeps nothing rooted in the V8 heap once it is disposed.
-    private sealed class TraceResources(IDisposable engineLease) : IDisposable
-    {
-        public object? Result { get; set; }
-
-        public void Dispose()
-        {
-            (Result as IDisposable)?.Dispose();
-            engineLease.Dispose();
-        }
+        ReleaseEngine();
     }
 
     // ReSharper disable InconsistentNaming
