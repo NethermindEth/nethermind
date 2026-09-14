@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -71,6 +72,25 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_with_latest_tag_matches_numeric_request()
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0");
+        string byTag = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", "latest", "0x0");
+
+        Assert.That(byNumber, Does.Contain("\"result\""));
+        Assert.That(JToken.Parse(byTag), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -145,6 +165,13 @@ public partial class DebugRpcModuleTests
             """{"jsonrpc":"2.0","result":{},"id":67}"""
         )
         { TestName = "Transfer with " + Native4ByteTracer.FourByteTracer };
+
+        yield return new TestCaseData(
+            transferTransaction,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """{"jsonrpc":"2.0","result":{},"id":67}"""
+        )
+        { TestName = "Transfer with " + NativeNoopTracer.NoopTracer };
 
         yield return new TestCaseData(
             transferTransaction,

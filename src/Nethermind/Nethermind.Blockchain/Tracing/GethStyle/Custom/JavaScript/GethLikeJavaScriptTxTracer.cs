@@ -23,13 +23,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly dynamic _tracer;
     private readonly Log _log = new();
     private readonly IDisposable _blockTracer;
-    private readonly Engine _engine;
+    private readonly SharedEngine _engine;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource _cts;
     private readonly IDisposable _ctsRegistration;
+    private TraceResources? _resources;
     private bool _resultConstructed;
+    private bool _tracerReleased;
+    private bool _disposed;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
@@ -40,7 +43,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public GethLikeJavaScriptTxTracer(
         IDisposable blockTracer,
-        Engine engine,
+        SharedEngine engine,
         Db db,
         Context ctx,
         GethTraceOptions options) : base(options)
@@ -55,7 +58,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _db = db;
         _ctx = ctx;
 
-        _tracer = engine.CreateTracer(options.Tracer);
+        _tracer = engine.Engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
@@ -66,21 +69,40 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
             throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
         _cts = new CancellationTokenSource(timeout);
-        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine.Engine);
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_engine);
+    protected override GethLikeTxTrace CreateTrace()
+    {
+        _resources = new TraceResources(_engine.Lease());
+        return new GethLikeTxTrace(_resources);
+    }
 
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
+        dynamic tracerResult = _tracer.result(_ctx, _db);
+        _resources!.Result = tracerResult;
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = tracerResult };
+        ReleaseTracerObject();
         _ctsRegistration.Dispose();
         _resultConstructed = true;
 
         return result;
+    }
+
+    // The proxy roots the tracer object in the V8 heap until it is disposed, whatever happens to the engine.
+    private void ReleaseTracerObject()
+    {
+        if (_tracerReleased)
+        {
+            return;
+        }
+
+        _tracerReleased = true;
+        ((object)_tracer as IDisposable)?.Dispose();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -267,13 +289,33 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         base.Dispose();
         _ctsRegistration.Dispose();
         _cts.Dispose();
+        ReleaseTracerObject();
 
         if (!_resultConstructed)
         {
             _blockTracer.Dispose();
+        }
+    }
+
+    // Owned by the transaction trace: the JavaScript result must be released before the engine lease,
+    // so the trace keeps nothing rooted in the V8 heap once it is disposed.
+    private sealed class TraceResources(IDisposable engineLease) : IDisposable
+    {
+        public object? Result { get; set; }
+
+        public void Dispose()
+        {
+            (Result as IDisposable)?.Dispose();
+            engineLease.Dispose();
         }
     }
 

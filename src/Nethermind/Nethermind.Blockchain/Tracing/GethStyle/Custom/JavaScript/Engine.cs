@@ -34,12 +34,15 @@ public class Engine : IDisposable
 
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
+    private volatile bool _disposed;
 
     [ThreadStatic] private static Engine? _currentEngine;
 
-    private const int V8MaxOldSpaceMb = 128;
+    private const int V8MaxOldSpaceMb = 256;
+    private const double V8HeapExpansionMultiplier = 2;
+    private static readonly UIntPtr V8HeapSoftLimit = new(128 * 1024 * 1024);
 
-    private static readonly V8Runtime _runtime = new(new V8RuntimeConstraints { MaxOldSpaceSize = V8MaxOldSpaceMb });
+    private static readonly V8Runtime _runtime = CreateRuntime();
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
@@ -52,6 +55,22 @@ public class Engine : IDisposable
     static Engine() =>
         // compile default scripts in background thread
         Task.Run(CompileStandardScripts);
+
+    // Shared by every engine in the process. The soft limit interrupts a script that outgrows it, and the
+    // expansion multiplier absorbs the allocation burst between two heap samples.
+    private static V8Runtime CreateRuntime()
+    {
+        V8Runtime runtime = new(new V8RuntimeConstraints
+        {
+            MaxOldSpaceSize = V8MaxOldSpaceMb,
+            HeapExpansionMultiplier = V8HeapExpansionMultiplier
+        });
+        runtime.MaxHeapSize = V8HeapSoftLimit;
+        return runtime;
+    }
+
+    // A soft-limit violation blocks every script in the runtime until the limit is set again.
+    private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
 
@@ -152,12 +171,25 @@ public class Engine : IDisposable
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToArray().ToTypedScriptArray();
 
-    public void Interrupt() => V8Engine.Interrupt();
+    public void Interrupt()
+    {
+        if (!_disposed)
+        {
+            V8Engine.Interrupt();
+        }
+    }
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         Interlocked.CompareExchange(ref _currentEngine, null, this);
         V8Engine.Dispose();
+        RearmHeapSoftLimit();
     }
 
     /// <summary>

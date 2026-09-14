@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,6 +28,34 @@ public class GethLikeNativeTracerFactoryTests
         GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
         Assert.That(nativeTracer is Native4ByteTracer, Is.True);
+    }
+
+    [Test]
+    public void CreateTracer_NoopTracerExists()
+    {
+        GethTraceOptions options = new() { Tracer = NativeNoopTracer.NoopTracer };
+
+        GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
+
+        Assert.That(nativeTracer, Is.InstanceOf<NativeNoopTracer>());
+    }
+
+    [Test]
+    public void CreateTracer_NoopTracer_TracesNothingButTheReceipt()
+    {
+        GethTraceOptions options = new() { Tracer = NativeNoopTracer.NoopTracer };
+
+        GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(nativeTracer.IsTracingInstructions, Is.False);
+            Assert.That(nativeTracer.IsTracingActions, Is.False);
+            Assert.That(nativeTracer.IsTracingStack, Is.False);
+            Assert.That(nativeTracer.IsTracingMemory, Is.False);
+            Assert.That(nativeTracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(nativeTracer.IsTracingReceipt, Is.True);
+        });
     }
 
     [Test]
