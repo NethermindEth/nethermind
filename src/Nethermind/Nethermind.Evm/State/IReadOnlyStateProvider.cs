@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
 
@@ -22,7 +22,7 @@ public interface IReadOnlyStateProvider : IAccountStateProvider
     bool IsDeadAccount(Address address);
 
     /// <summary>The storage value at <paramref name="storageCell"/> in the state this provider reads.</summary>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
+    void Get(in StorageCell storageCell, out UInt256 value);
 
     bool IsDelegatedCode(Address address) => Eip7702Constants.IsDelegatedCode(GetCode(address));
     bool IsDelegatedCode(in ValueHash256 codeHash) => Eip7702Constants.IsDelegatedCode(GetCode(codeHash));

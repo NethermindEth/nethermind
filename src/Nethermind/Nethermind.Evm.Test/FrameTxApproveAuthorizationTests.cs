@@ -156,7 +156,7 @@ public class FrameTxApproveAuthorizationTests
 
     private void SetObservedSlot()
     {
-        _state.Set(new StorageCell(Account, ObservedSlot), [1]);
+        _state.Set(new StorageCell(Account, ObservedSlot), UInt256.One);
         _state.Commit(Spec);
     }
 
@@ -165,11 +165,15 @@ public class FrameTxApproveAuthorizationTests
         if (!_state.AccountExists(Eip8272Constants.RecentRootAddress))
             _state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
         _state.Set(RecentRootStore.ReferenceCell(sourceId, slot),
-            RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+            RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
         _state.Commit(Spec);
     }
 
-    private UInt256 RecordedCaller() => new(_state.Get(new StorageCell(Target, CallerSlot)), isBigEndian: true);
+    private UInt256 RecordedCaller()
+    {
+        _state.Get(new StorageCell(Target, CallerSlot), out UInt256 caller);
+        return caller;
+    }
 
     private static UInt256 AsWord(Address address) => new(address.Bytes, isBigEndian: true);
 

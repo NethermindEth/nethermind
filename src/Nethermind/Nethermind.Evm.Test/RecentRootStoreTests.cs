@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -256,7 +255,7 @@ public class RecentRootStoreTests
     {
         ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
         StorageCell cell = RecentRootStore.ReferenceCell(sourceId, slot);
-        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
     }
 
     private static IWorldState CreateState(out IDisposable scope)

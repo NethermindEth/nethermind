@@ -83,7 +83,7 @@ internal sealed class TransactionDiffView
                 int start = slots.Count;
                 UInt256[] keys = new UInt256[slotCount];
                 int i = 0;
-                foreach (UInt256 key in account.ChangedSlots) keys[i++] = key;
+                foreach (UInt256 key in account.StorageChanges.Keys) keys[i++] = key;
                 Array.Sort(keys);
                 foreach (UInt256 key in keys) slots.Add(new SlotRef(account.Address, key));
                 slotRuns[account.Address] = (start, slotCount);

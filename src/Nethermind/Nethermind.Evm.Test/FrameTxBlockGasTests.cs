@@ -112,7 +112,7 @@ public class FrameTxBlockGasTests
         const ulong stateCharge = (ulong)GasCostOf.SSetState;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.False,
                 "the write committed, so its state gas came from the reservoir rather than out-of-gassing");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
                 "the reservoir-funded write still bills the state dimension");
@@ -141,7 +141,7 @@ public class FrameTxBlockGasTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.True,
                 "the write halted out of gas, so no slot was committed");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
@@ -168,7 +168,7 @@ public class FrameTxBlockGasTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.True,
                 "the state pool could not cover the write and execution must not fund it, so no slot was committed");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
@@ -195,7 +195,7 @@ public class FrameTxBlockGasTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.True,
                 "the frame halted, so its write rolled back and committed no slot");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
                 "a halted frame grows no state, so it owes none even though it drew from the reservoir");
@@ -227,7 +227,7 @@ public class FrameTxBlockGasTests
         const ulong stateCharge = (ulong)GasCostOf.SSetState;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.False,
                 "the write committed from the state reservoir");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
                 "the fresh slot's state charge lands in the state dimension");
@@ -329,7 +329,7 @@ public class FrameTxBlockGasTests
                 "the charge leaves the regular dimension; counting it in both bills the block twice");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_state.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo(UInt256.One), $"key {key} stays consumed, so its slot stays paid for");
             }
         }
@@ -358,9 +358,9 @@ public class FrameTxBlockGasTests
         const ulong stateCharge = (ulong)GasCostOf.SSetState;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.False,
                 "the fresh slot is written before the fork");
-            Assert.That(_state.Get(new StorageCell(laterWriter, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(laterWriter, (UInt256)0)).IsZero, Is.False,
                 "the fresh slot is written after the fork");
             Assert.That(before.GasConsumedResult.BlockStateGas, Is.Zero,
                 "before frameLimitsTime the state dimension is inert, so a fresh slot owes no state gas");
@@ -375,7 +375,7 @@ public class FrameTxBlockGasTests
         Address clearer = TestItem.AddressE;
         Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(clearer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        _state.Set(new StorageCell(clearer, (UInt256)0), [1]);
+        _state.Set(new StorageCell(clearer, (UInt256)0), UInt256.One);
         _state.Commit(Spec);
         _state.CommitTree(0);
 
@@ -385,7 +385,7 @@ public class FrameTxBlockGasTests
         GasConsumed gas = tracer.GasConsumedResult;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(clearer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(clearer, (UInt256)0)).IsZero, Is.True,
                 "the slot was cleared, so the transaction earned a storage refund");
             Assert.That(gas.EffectiveBlockGas + gas.BlockStateGas, Is.GreaterThan(gas.SpentGas),
                 "EIP-7778: a storage refund lowers the payer charge but not the gas counted toward the block");
@@ -394,6 +394,12 @@ public class FrameTxBlockGasTests
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    private UInt256 StorageAt(in StorageCell cell)
+    {
+        _state.Get(in cell, out UInt256 value);
+        return value;
+    }
 
     private void Deploy(Address address, byte[] code, UInt256 balance = default)
     {

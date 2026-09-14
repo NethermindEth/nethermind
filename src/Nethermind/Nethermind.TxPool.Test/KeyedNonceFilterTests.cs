@@ -6,7 +6,6 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
@@ -43,7 +42,7 @@ internal class KeyedNonceFilterTests
         state.CreateAccount(Sender, UInt256.One, AccountNonce);
         if (storedSeq != 0)
         {
-            state.Set(KeyedNonceManager.StorageSlot(Sender, NonceKey), ((UInt256)storedSeq).ToBigEndian().WithoutLeadingZeros().ToArray());
+            state.Set(KeyedNonceManager.StorageSlot(Sender, NonceKey), (UInt256)storedSeq);
         }
 
         return state;

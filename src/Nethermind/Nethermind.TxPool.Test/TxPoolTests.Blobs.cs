@@ -5485,7 +5485,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(accountDomainFrame, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyC, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            _stateProvider.Set(KeyedNonceManager.StorageSlot(TestItem.AddressA, nonceKey), [1]);
+            _stateProvider.Set(KeyedNonceManager.StorageSlot(TestItem.AddressA, nonceKey), UInt256.One);
             _stateProvider.IncrementNonce(TestItem.AddressB);
             _stateProvider.IncrementNonce(TestItem.AddressC);
 

@@ -62,6 +62,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
+        IsTracingStack = false;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
         _isEip8037Enabled = spec.IsEip8037Enabled;
@@ -78,6 +81,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     }
 
     protected override GethLikeTxTrace CreateTrace() => new(_disposables);
+
+    public override bool IsTracingInstructions => false;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -157,11 +162,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         callFrame.Logs.Add(callLog);
     }
 
-    public override void ReportOperationRemainingGas(ulong gas)
-    {
-        base.ReportOperationRemainingGas(gas);
-        _remainingGas = gas > 0 ? gas : 0;
-    }
+    public override void ReportActionRemainingGas(ulong gas) => _remainingGas = gas;
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {

@@ -3992,7 +3992,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(sender, UInt256.MaxValue);
             _stateProvider.CreateAccount(sender, UInt256.MaxValue, accountNonce);
             // A sequence above the account nonce, so the keyed entry sorts behind the ordinary one.
-            _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, (UInt256)1), [(byte)keyedSequence]);
+            _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, (UInt256)1), (UInt256)keyedSequence);
 
             Transaction atAccountNonce = Build.A.Transaction
                 .WithNonce(accountNonce)
@@ -5205,7 +5205,7 @@ namespace Nethermind.TxPool.Test
             _stateProvider.CreateAccount(sender, 100.Ether, accountNonce);
             if (keyedSequence > 0)
             {
-                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, nonceKey), [(byte)keyedSequence]);
+                _stateProvider.Set(KeyedNonceManager.StorageSlot(sender, nonceKey), (UInt256)keyedSequence);
             }
 
             for (int i = 0; i < plainCount; i++)
