@@ -18,8 +18,9 @@ namespace Nethermind.Network
         /// Resolves the node's local and external IP addresses.
         /// </summary>
         /// <remarks>
-        /// Results containing automatically detected addresses are cached for five minutes; fully configured
-        /// results do not expire. Concurrent callers await the same in-flight resolution. Explicit local,
+        /// Results containing automatically detected addresses are refreshed in the background once they are
+        /// five minutes old, while callers keep receiving the cached result; fully configured results do not
+        /// expire. Concurrent callers await the same initial in-flight resolution. Explicit local,
         /// primary, IPv4, and IPv6 overrides are honored when set; otherwise missing external IPv4 and IPv6
         /// addresses are auto-detected independently. Periodic refresh lets ENR publication replace an
         /// automatically detected address when the host's public address changes.

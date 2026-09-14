@@ -28,7 +28,7 @@ namespace Nethermind.Network.IP
                     Timeout = TimeSpan.FromSeconds(3),
                     MaxResponseContentBufferSize = 64
                 };
-                if (_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
+                if (_logger.IsDebug) _logger.Debug($"Using {_url} to get external ip");
                 string ip = (await httpClient.GetStringAsync(_url)).Trim();
                 if (_logger.IsDebug) _logger.Debug($"External ip: {ip}");
                 bool result = IPAddress.TryParse(ip, out IPAddress ipAddress);

@@ -275,7 +275,7 @@ namespace Nethermind.Network
                     {
                         await SetupOutgoingPeerConnection(peer);
                     }
-                    catch (TaskCanceledException)
+                    catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
                     {
                         if (_logger.IsDebug) DebugConnectWorker(idx, isCancelled: true);
                         break;

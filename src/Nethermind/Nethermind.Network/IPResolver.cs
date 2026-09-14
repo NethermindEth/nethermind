@@ -27,10 +27,13 @@ public class IPResolver : IIPResolver
 
     private readonly Lock _lock = new();
     private Task<IIPResolver.NethermindIp>? _resolveTask;
+    private bool _refreshInProgress;
     private long _resolvedAtTimestamp;
     private int _usesAutomaticResolution;
+    private ConfiguredAddresses? _configured;
     private AutoResolvedIp? _lastExternalIpV4;
     private AutoResolvedIp? _lastExternalIpV6;
+    private bool _unresolvedExternalIpWarned;
 
     public event EventHandler? Changed;
 
@@ -58,64 +61,94 @@ public class IPResolver : IIPResolver
     public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default)
     {
         Task<IIPResolver.NethermindIp>? task = Volatile.Read(ref _resolveTask);
-        TaskCompletionSource<IIPResolver.NethermindIp>? completion = null;
-        IIPResolver.NethermindIp? previous = null;
-        if (NeedsRefresh(task))
+        if (task is null || task.IsFaulted || task.IsCanceled || IsExpired(task))
         {
+            TaskCompletionSource<IIPResolver.NethermindIp>? completion = null;
+            IIPResolver.NethermindIp? previous = null;
             lock (_lock)
             {
-                if (NeedsRefresh(_resolveTask))
+                task = _resolveTask;
+                if (task is null || task.IsFaulted || task.IsCanceled)
                 {
                     // The shared resolution is never bound to one caller's token. Per-call cancellation is
                     // honored by WaitAsync below, without cancelling or faulting the cached operation.
-                    previous = _resolveTask is { IsCompletedSuccessfully: true }
-                        ? _resolveTask.Result
-                        : null;
                     completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     task = _resolveTask = completion.Task;
                 }
-                else
+                else if (!_refreshInProgress && IsExpired(task))
                 {
-                    task = _resolveTask;
+                    // Callers on the discovery path keep the cached addresses while the lookups run.
+                    _refreshInProgress = true;
+                    previous = task.Result;
                 }
+            }
+
+            if (completion is not null)
+            {
+                _ = CompleteResolution(completion);
+            }
+            else if (previous is { } cached)
+            {
+                _ = RefreshResolution(cached);
             }
         }
 
-        if (completion is not null)
-        {
-            _ = CompleteResolution(completion, previous);
-        }
-
-        return new ValueTask<IIPResolver.NethermindIp>(task!.WaitAsync(cancellationToken));
+        return new ValueTask<IIPResolver.NethermindIp>(task.WaitAsync(cancellationToken));
     }
 
-    private bool NeedsRefresh(Task<IIPResolver.NethermindIp>? task)
-        => task is null ||
-           task.IsFaulted ||
-           task.IsCanceled ||
-           (task.IsCompletedSuccessfully &&
-            Volatile.Read(ref _usesAutomaticResolution) != 0 &&
-            _timeProvider.GetElapsedTime(Volatile.Read(ref _resolvedAtTimestamp)) >= ResolutionCacheDuration);
+    private bool IsExpired(Task<IIPResolver.NethermindIp> task)
+        => task.IsCompletedSuccessfully &&
+           Volatile.Read(ref _usesAutomaticResolution) != 0 &&
+           _timeProvider.GetElapsedTime(Volatile.Read(ref _resolvedAtTimestamp)) >= ResolutionCacheDuration;
 
-    private async Task CompleteResolution(
-        TaskCompletionSource<IIPResolver.NethermindIp> completion,
-        IIPResolver.NethermindIp? previous)
+    private async Task CompleteResolution(TaskCompletionSource<IIPResolver.NethermindIp> completion)
     {
         try
         {
-            (IIPResolver.NethermindIp result, bool usedAutomaticResolution) = await ResolveCore();
-            Volatile.Write(ref _resolvedAtTimestamp, _timeProvider.GetTimestamp());
-            Volatile.Write(ref _usesAutomaticResolution, usedAutomaticResolution ? 1 : 0);
-            completion.SetResult(result);
-            if (previous is { } previousResult && previousResult != result)
-            {
-                OnChanged();
-            }
+            completion.SetResult(await ResolveAndRecord());
         }
         catch (Exception e)
         {
             completion.SetException(e);
         }
+    }
+
+    private async Task RefreshResolution(IIPResolver.NethermindIp previous)
+    {
+        IIPResolver.NethermindIp? result = null;
+        try
+        {
+            result = await ResolveAndRecord();
+        }
+        catch (Exception e)
+        {
+            // The cached addresses stay in use; the next refresh is attempted after another cache interval.
+            Volatile.Write(ref _resolvedAtTimestamp, _timeProvider.GetTimestamp());
+            if (_logger.IsError) _logger.Error("External IP refresh failed.", e);
+        }
+
+        lock (_lock)
+        {
+            if (result is { } refreshed)
+            {
+                _resolveTask = Task.FromResult(refreshed);
+            }
+
+            _refreshInProgress = false;
+        }
+
+        if (result is { } changed && changed != previous)
+        {
+            OnChanged();
+        }
+    }
+
+    private async Task<IIPResolver.NethermindIp> ResolveAndRecord()
+    {
+        (IIPResolver.NethermindIp result, bool usedAutomaticResolution) = await ResolveCore();
+        Volatile.Write(ref _resolvedAtTimestamp, _timeProvider.GetTimestamp());
+        Volatile.Write(ref _usesAutomaticResolution, usedAutomaticResolution ? 1 : 0);
+        return result;
     }
 
     private void OnChanged()
@@ -135,6 +168,46 @@ public class IPResolver : IIPResolver
 
     private async Task<(IIPResolver.NethermindIp Result, bool UsedAutomaticResolution)> ResolveCore()
     {
+        ConfiguredAddresses configured = _configured ??= await ReadConfiguredAddresses();
+        bool resolveExternalIpV4 = configured.ExternalIpV4 is null;
+        bool resolveExternalIpV6 = configured.ExternalIpV6 is null;
+
+        // Start both missing-family lookups before awaiting either.
+        Task<IPAddress?> externalIpV4Task = resolveExternalIpV4
+            ? ResolveAutomaticExternalIp(AddressFamily.InterNetwork)
+            : Task.FromResult(configured.ExternalIpV4);
+        Task<IPAddress?> externalIpV6Task = resolveExternalIpV6
+            ? ResolveAutomaticExternalIp(AddressFamily.InterNetworkV6)
+            : Task.FromResult(configured.ExternalIpV6);
+
+        IPAddress? externalIpV4 = await externalIpV4Task;
+        IPAddress? externalIpV6 = await externalIpV6Task;
+
+        IPAddress externalIp = configured.ExternalIp
+            ?? externalIpV4
+            ?? externalIpV6
+            ?? IPAddress.None;
+
+        if (!externalIp.IsWildcardOrNone)
+        {
+            ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
+        }
+
+        bool unresolved = externalIpV4 is null && externalIpV6 is null;
+        if (unresolved && !_unresolvedExternalIpWarned && _logger.IsWarn)
+        {
+            _logger.Warn("External IP could not be resolved. Peers will not be able to connect.");
+        }
+
+        _unresolvedExternalIpWarned = unresolved;
+
+        return (
+            new IIPResolver.NethermindIp(configured.LocalIp, externalIp, externalIpV4, externalIpV6),
+            resolveExternalIpV4 || resolveExternalIpV6);
+    }
+
+    private async Task<ConfiguredAddresses> ReadConfiguredAddresses()
+    {
         IPAddress localIp;
         try
         {
@@ -150,29 +223,6 @@ public class IPResolver : IIPResolver
         IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
         IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
 
-        IPAddress? externalIpV4 = configuredExternalIpV4 ??
-            IIPResolver.NethermindIp.NormalizeExternalIp(configuredExternalIp, AddressFamily.InterNetwork);
-        IPAddress? externalIpV6 = configuredExternalIpV6 ??
-            IIPResolver.NethermindIp.NormalizeExternalIp(configuredExternalIp, AddressFamily.InterNetworkV6);
-        bool resolveExternalIpV4 = externalIpV4 is null;
-        bool resolveExternalIpV6 = externalIpV6 is null;
-
-        // Start both missing-family lookups before awaiting either.
-        Task<IPAddress?> externalIpV4Task = resolveExternalIpV4
-            ? ResolveAutomaticExternalIp(AddressFamily.InterNetwork)
-            : Task.FromResult(externalIpV4);
-        Task<IPAddress?> externalIpV6Task = resolveExternalIpV6
-            ? ResolveAutomaticExternalIp(AddressFamily.InterNetworkV6)
-            : Task.FromResult(externalIpV6);
-
-        externalIpV4 = await externalIpV4Task;
-        externalIpV6 = await externalIpV6Task;
-
-        IPAddress externalIp = configuredExternalIp
-            ?? externalIpV4
-            ?? externalIpV6
-            ?? IPAddress.None;
-
         WarnIfPrimaryAndFamilyOverrideDisagree(
             configuredExternalIp,
             configuredExternalIpV4,
@@ -184,19 +234,11 @@ public class IPResolver : IIPResolver
             AddressFamily.InterNetworkV6,
             nameof(NetworkConfig.ExternalIpV6));
 
-        if (!externalIp.IsWildcardOrNone)
-        {
-            ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
-        }
-
-        if (externalIpV4 is null && externalIpV6 is null && _logger.IsWarn)
-        {
-            _logger.Warn("External IP could not be resolved. Peers will not be able to connect.");
-        }
-
-        return (
-            new IIPResolver.NethermindIp(localIp, externalIp, externalIpV4, externalIpV6),
-            resolveExternalIpV4 || resolveExternalIpV6);
+        return new ConfiguredAddresses(
+            localIp,
+            configuredExternalIp,
+            configuredExternalIpV4 ?? IIPResolver.NethermindIp.NormalizeExternalIp(configuredExternalIp, AddressFamily.InterNetwork),
+            configuredExternalIpV6 ?? IIPResolver.NethermindIp.NormalizeExternalIp(configuredExternalIp, AddressFamily.InterNetworkV6));
     }
 
     private void WarnIfPrimaryAndFamilyOverrideDisagree(
@@ -365,4 +407,6 @@ public class IPResolver : IIPResolver
     }
 
     private sealed record AutoResolvedIp(IPAddress Address, long ResolvedAtTimestamp);
+
+    private sealed record ConfiguredAddresses(IPAddress LocalIp, IPAddress? ExternalIp, IPAddress? ExternalIpV4, IPAddress? ExternalIpV6);
 }

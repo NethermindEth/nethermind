@@ -236,16 +236,55 @@ public class IPResolverTests
         timeProvider.Advance(TimeSpan.FromMinutes(4));
         IIPResolver.NethermindIp cached = await ipResolver.Resolve();
         timeProvider.Advance(TimeSpan.FromMinutes(1));
+        IIPResolver.NethermindIp servedWhileRefreshing = await ipResolver.Resolve();
         IIPResolver.NethermindIp refreshed = await ipResolver.Resolve();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
             Assert.That(cached, Is.EqualTo(first));
+            Assert.That(servedWhileRefreshing, Is.EqualTo(first));
             Assert.That(refreshed.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.4.4")));
             Assert.That(sourceCalls, Is.EqualTo(2));
             Assert.That(changes, Is.EqualTo(1));
             Assert.That(observedFromHandler, Is.EqualTo(refreshed));
+        }
+    }
+
+    [Test]
+    public async Task Expired_resolution_keeps_serving_the_cached_result_until_the_refresh_completes()
+    {
+        ManualTimeProvider timeProvider = new();
+        TaskCompletionSource refreshStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<(bool Success, IPAddress Ip)> refreshResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int sourceCalls = 0;
+        IPResolver ipResolver = CreateResolver(
+            new NetworkConfig { ExternalIpV6 = "2001:4860:4860::8888" },
+            family => family == AddressFamily.InterNetwork
+                ? [++sourceCalls == 1 ? SuccessfulSource("8.8.8.8") : Source(refreshStarted, refreshResult.Task)]
+                : throw new InvalidOperationException("The configured IPv6 family must not be resolved."),
+            timeProvider: timeProvider);
+        TaskCompletionSource changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ipResolver.Changed += (_, _) => changed.TrySetResult();
+
+        IIPResolver.NethermindIp first = await ipResolver.Resolve();
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+        Task<IIPResolver.NethermindIp> servedWhileRefreshing = ipResolver.Resolve().AsTask();
+        await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        IIPResolver.NethermindIp servedDuringRefresh = await ipResolver.Resolve();
+
+        refreshResult.SetResult((true, IPAddress.Parse("8.8.4.4")));
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        IIPResolver.NethermindIp refreshed = await ipResolver.Resolve();
+        Assert.That(servedWhileRefreshing.IsCompletedSuccessfully, Is.True);
+        IIPResolver.NethermindIp servedBeforeRefreshCompleted = servedWhileRefreshing.Result;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(servedBeforeRefreshCompleted, Is.EqualTo(first));
+            Assert.That(servedDuringRefresh, Is.EqualTo(first));
+            Assert.That(refreshed.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.4.4")));
+            Assert.That(sourceCalls, Is.EqualTo(2));
         }
     }
 
@@ -264,7 +303,7 @@ public class IPResolverTests
         await ipResolver.Resolve();
         timeProvider.Advance(TimeSpan.FromMinutes(5));
         timeProvider.AdjustUtc(TimeSpan.FromDays(-1));
-        IIPResolver.NethermindIp refreshed = await ipResolver.Resolve();
+        IIPResolver.NethermindIp refreshed = await ResolveAfterRefresh(ipResolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -295,9 +334,9 @@ public class IPResolverTests
 
         IIPResolver.NethermindIp initial = await ipResolver.Resolve();
         timeProvider.Advance(TimeSpan.FromMinutes(5));
-        IIPResolver.NethermindIp retained = await ipResolver.Resolve();
+        IIPResolver.NethermindIp retained = await ResolveAfterRefresh(ipResolver);
         timeProvider.Advance(TimeSpan.FromMinutes(5));
-        IIPResolver.NethermindIp replaced = await ipResolver.Resolve();
+        IIPResolver.NethermindIp replaced = await ResolveAfterRefresh(ipResolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -328,7 +367,7 @@ public class IPResolverTests
 
         await ipResolver.Resolve();
         timeProvider.Advance(TimeSpan.FromMinutes(61));
-        IIPResolver.NethermindIp expired = await ipResolver.Resolve();
+        IIPResolver.NethermindIp expired = await ResolveAfterRefresh(ipResolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -552,6 +591,44 @@ public class IPResolverTests
     }
 
     [Test]
+    public async Task Unresolved_external_ip_is_warned_once_per_outage()
+    {
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
+        ILogger logger = new(underlyingLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<IPResolver>().Returns(logger);
+        ManualTimeProvider timeProvider = new();
+        Queue<(bool Success, IPAddress Ip)> results = new(
+        [
+            (false, IPAddress.None),
+            (false, IPAddress.None),
+            (true, IPAddress.Parse("8.8.8.8")),
+            (false, IPAddress.None)
+        ]);
+        IIPSource source = new StubIpSource(() => Task.FromResult(results.Dequeue()));
+        IPResolver ipResolver = CreateResolver(
+            new NetworkConfig(),
+            family => family == AddressFamily.InterNetwork ? [source] : [],
+            logManager,
+            timeProvider);
+
+        await ipResolver.Resolve();
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+        await ResolveAfterRefresh(ipResolver);
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+        await ResolveAfterRefresh(ipResolver);
+        timeProvider.Advance(TimeSpan.FromHours(2));
+        await ResolveAfterRefresh(ipResolver);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results, Is.Empty);
+            underlyingLogger.Received(2).Warn(Arg.Is<string>(message => message.Contains("External IP could not be resolved")));
+        }
+    }
+
+    [Test]
     public async Task Can_resolve_local_ip_with_override()
     {
         const string ipOverride = "99.99.99.99";
@@ -567,6 +644,16 @@ public class IPResolverTests
         ILogManager? logManager = null,
         TimeProvider? timeProvider = null)
         => new(networkConfig, logManager ?? LimboLogs.Instance, externalIpSources ?? (_ => []), timeProvider);
+
+    /// <summary>
+    /// An expired call serves the cached result and starts the refresh, which the synchronously completing
+    /// stub sources finish before that call returns; the following call observes the refreshed result.
+    /// </summary>
+    private static async Task<IIPResolver.NethermindIp> ResolveAfterRefresh(IPResolver ipResolver)
+    {
+        await ipResolver.Resolve();
+        return await ipResolver.Resolve();
+    }
 
     private static IIPSource SuccessfulSource(string address)
         => new StubIpSource(() => Task.FromResult((true, IPAddress.Parse(address))));

@@ -131,6 +131,33 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        [CancelAfter(10_000)]
+        public async Task Stop_handles_plain_operation_canceled_exception_from_connect_worker()
+        {
+            InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+            underlyingLogger.IsError.Returns(true);
+            ILogger logger = new(underlyingLogger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<PeerManager>().Returns(logger);
+            await using Context ctx = new(parallelism: 1, maxActivePeers: 1, peerManagerLogManager: logManager);
+            ctx.RlpxPeer.ThrowPlainOperationCanceledOnCancellation();
+            ctx.SetupPersistedPeers(1);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromSeconds(5));
+
+            await ctx.PeerManager.StopAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.RlpxPeer.PlainOperationCanceledCount, Is.EqualTo(1));
+                underlyingLogger.DidNotReceive().Error(
+                    Arg.Is<string>(message => message.Contains("Error setting up connection")),
+                    Arg.Any<Exception?>());
+            }
+        }
+
+        [Test]
         public async Task Disconnect_triggers_refill_without_blocking()
         {
             await using Context ctx = new();
@@ -951,7 +978,7 @@ namespace Nethermind.Network.Test
             public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = [];
 
-            public Context(int parallelism = 0, int maxActivePeers = 25)
+            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null)
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
@@ -971,10 +998,10 @@ namespace Nethermind.Network.Test
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
                 PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance, trustedNodesManager);
-                CreatePeerManager();
+                CreatePeerManager(peerManagerLogManager);
             }
 
-            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 
@@ -1093,6 +1120,8 @@ namespace Nethermind.Network.Test
             private readonly List<Session> _sessions = sessions;
             private NodeFilter _nodeFilter = NodeFilter.AcceptAll;
             private int _connectAsyncCallsCount;
+            private int _plainOperationCanceledCount;
+            private bool _throwPlainOperationCanceledOnCancellation;
 
             public ISessionMonitor SessionMonitor { get; }
 
@@ -1103,6 +1132,13 @@ namespace Nethermind.Network.Test
             public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
             {
                 Interlocked.Increment(ref _connectAsyncCallsCount);
+
+                if (_throwPlainOperationCanceledOnCancellation)
+                {
+                    Task<bool> connectTask = ThrowPlainOperationCanceled(cancellationToken);
+                    ConnectCalled?.Invoke();
+                    return connectTask;
+                }
 
                 if (_isFailing)
                 {
@@ -1165,6 +1201,10 @@ namespace Nethermind.Network.Test
 
             public int ConnectAsyncCallsCount => Volatile.Read(ref _connectAsyncCallsCount);
 
+            public int PlainOperationCanceledCount => Volatile.Read(ref _plainOperationCanceledCount);
+
+            public void ThrowPlainOperationCanceledOnCancellation() => _throwPlainOperationCanceledOnCancellation = true;
+
             public Task Shutdown() => Task.CompletedTask;
 
             public int LocalPort => 0;
@@ -1210,6 +1250,17 @@ namespace Nethermind.Network.Test
             }
 
             private void Track(Session session) => session.Disconnected += OnSessionDisconnected;
+
+            private async Task<bool> ThrowPlainOperationCanceled(CancellationToken cancellationToken)
+            {
+                TaskCompletionSource cancellationRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                using CancellationTokenRegistration registration = cancellationToken.Register(
+                    static state => ((TaskCompletionSource)state!).TrySetResult(),
+                    cancellationRequested);
+                await cancellationRequested.Task;
+                Interlocked.Increment(ref _plainOperationCanceledCount);
+                throw new OperationCanceledException(cancellationToken);
+            }
 
             private void OnSessionDisconnected(object? sender, DisconnectEventArgs args)
             {
