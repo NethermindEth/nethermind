@@ -56,6 +56,19 @@ public abstract class BlockchainTestBase
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
 
+    private static long _fcuInclusionListAssertions;
+
+    /// <summary>
+    /// How many fork-choice responses have had their <c>inclusionListSatisfied</c> asserted in this process
+    /// (EIP-7805), counted across every test run so far.
+    /// </summary>
+    /// <remarks>
+    /// A fixture that states no expectation leaves the response unasserted, so a fixture release that stopped
+    /// stating one would return this rule to zero coverage with the lane still green. A run that is supposed
+    /// to cover the rule gates on this being non-zero — see nethtest's <c>--minFcuInclusionListAssertions</c>.
+    /// </remarks>
+    public static long FcuInclusionListAssertionCount => Volatile.Read(ref _fcuInclusionListAssertions);
+
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
     /// Null means use the default config value.
@@ -477,6 +490,11 @@ public abstract class BlockchainTestBase
 
                 if (expectWitness)
                 {
+                    // The witness result has no PayloadStatusV2, so a payload-side expectation would be
+                    // skipped silently; the fork-choice update below still carries one.
+                    Assert.That(enginePayload.InclusionListSatisfied, Is.Null,
+                        $"engine_newPayloadWithWitnessV{newPayloadVersion} cannot report inclusionListSatisfied, which this fixture states");
+
                     using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
                     PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
                     AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
@@ -496,7 +514,9 @@ public abstract class BlockchainTestBase
                             CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                         }
 
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                        JsonRpcResponse fcuResponse = await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString());
+                        AssertRpcSuccess(fcuResponse);
+                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
                     }
                 }
                 else
@@ -511,7 +531,9 @@ public abstract class BlockchainTestBase
                     if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                     {
                         string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                        JsonRpcResponse fcuResponse = await SendFcu(rpcService, rpcContext, fcuVersion, blockHash);
+                        AssertRpcSuccess(fcuResponse);
+                        AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
                     }
                 }
             }
@@ -608,6 +630,37 @@ public abstract class BlockchainTestBase
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
     }
+
+    /// <summary>
+    /// Describes why the inclusion-list compliance reported by the fork-choice update that follows a payload
+    /// contradicts the fixture (EIP-7805), or null when it matches or the fixture states no expectation.
+    /// </summary>
+    /// <remarks>
+    /// Counts every expectation it checks in <see cref="FcuInclusionListAssertionCount"/>, so a run can tell
+    /// the rule holding apart from the fixtures having stopped stating it. A fork-choice version that cannot
+    /// carry the field is a mismatch in its own right rather than an absent field, so it can neither satisfy
+    /// an expectation nor pass a null one vacuously while still counting as a check that ran. The reported
+    /// payload status is named too: an FCU answering SYNCING also reports no compliance, and that is a
+    /// different failure from the head being VALID and disagreeing.
+    /// </remarks>
+    internal static string? DescribeFcuInclusionListMismatch(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion)
+    {
+        if (!JsonToEthereumTest.TryParseForkchoiceInclusionListSatisfied(enginePayload, out bool? expected)) return null;
+
+        Interlocked.Increment(ref _fcuInclusionListAssertions);
+
+        if ((response as IResultWrapper)?.Data is not ForkchoiceUpdatedV2Result result)
+            return $"engine_forkchoiceUpdatedV{fcuVersion} answered with {((response as IResultWrapper)?.Data ?? response).GetType().Name}, which cannot report inclusionListSatisfied, expected {expected?.ToString() ?? "null"}";
+
+        bool? actual = result.PayloadStatus.InclusionListSatisfied;
+
+        return actual == expected
+            ? null
+            : $"engine_forkchoiceUpdatedV{fcuVersion} returned {result.PayloadStatus.Status} and reported inclusionListSatisfied={actual?.ToString() ?? "null"}, expected {expected?.ToString() ?? "null"}";
+    }
+
+    private static void AssertFcuInclusionListSatisfied(JsonRpcResponse response, TestEngineNewPayloadsJson enginePayload, int fcuVersion) =>
+        Assert.That(DescribeFcuInclusionListMismatch(response, enginePayload, fcuVersion), Is.Null);
 
     private static void AssertValidationError(string? actualError, string expectedError, int payloadVersion)
     {
