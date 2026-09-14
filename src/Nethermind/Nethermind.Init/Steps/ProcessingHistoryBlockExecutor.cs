@@ -4,7 +4,6 @@
 using System.Threading;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.State;

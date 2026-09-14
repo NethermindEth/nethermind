@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
