@@ -47,7 +47,6 @@ public sealed class OneTimeChainProcessor(
     IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
     IStateReader stateReader,
     ILogManager logManager,
-    BlockchainProcessor.Options options,
     IEnumerable<IBlockTracer>? blockTracers = null
 ) : IBlockchainProcessor
 {
@@ -58,7 +57,6 @@ public sealed class OneTimeChainProcessor(
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps = preprocessorSteps;
     private readonly IStateReader _stateReader = stateReader;
-    private readonly BlockchainProcessor.Options _options = options;
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ILogger _logger = logManager.GetClassLogger<OneTimeChainProcessor>();
     private readonly Lock _lock = new();
@@ -119,33 +117,8 @@ public sealed class OneTimeChainProcessor(
         return lastProcessed;
     }
 
-    private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
-    {
-        if ((_options.DumpOptions & dumpType) != 0)
-        {
-            try
-            {
-                _branchProcessor.Process(
-                    processingBranch.BaseBlock,
-                    processingBranch.BlocksToProcess,
-                    options,
-                    blockTracer);
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, processingBranch.BlocksToProcess, _logger);
-            }
-            catch (InvalidBlockException ex)
-            {
-                BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
-            }
-            catch (Exception ex)
-            {
-                BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.BaseBlock, ex, _logger);
-            }
-        }
-    }
-
     private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
-        Hash256? invalidBlockHash = null;
         Block[]? processedBlocks;
         try
         {
@@ -159,40 +132,6 @@ public sealed class OneTimeChainProcessor(
         catch (InvalidBlockException ex)
         {
             if (_logger.IsWarn) _logger.Warn($"Issue processing block {ex.InvalidBlock} {ex}");
-            invalidBlockHash = ex.InvalidBlock.Hash;
-            Block? invalidBlock = null;
-            for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
-            {
-                if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
-                {
-                    invalidBlock = processingBranch.BlocksToProcess[i];
-                    break;
-                }
-            }
-            if (invalidBlock is not null)
-            {
-                BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
-                    (_options.DumpOptions & DumpOptions.Rlp) != 0,
-                    (_options.DumpOptions & DumpOptions.RlpLog) != 0);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new BlockReceiptsTracer(),
-                    DumpOptions.Receipts);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                    DumpOptions.Parity);
-
-                TraceFailingBranch(
-                    processingBranch,
-                    options,
-                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, _specProvider),
-                    DumpOptions.Geth);
-            }
 
             // Previously invalid blocks were deleted from the block tree except when processed with
             // ReadOnlyChain, which is the case with _blocksConfig.BuildBlocksOnMainState; they are now
