@@ -3,10 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Init.Modules;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -67,7 +71,7 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [TestCaseSource(nameof(CacheReadCases))]
-    public void RetainedReader_RecordsCurrentCacheProbeButNotStaleBypass(CacheKind kind, bool found)
+    public async Task RetainedReader_RecordsCurrentCacheProbeButNotStaleBypass(CacheKind kind, bool found)
     {
         bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
         FakePersistence inner = new()
@@ -75,7 +79,8 @@ public class CarryForwardCachingPersistenceTests
             AccountExists = found,
             SlotExists = found,
         };
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         try
         {
             cache.Clear();
@@ -114,11 +119,12 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [TestCaseSource(nameof(CacheKinds))]
-    public void Reader_CapturesDetailedMetricsEnabledAtConstruction(CacheKind kind)
+    public async Task Reader_CapturesDetailedMetricsEnabledAtConstruction(CacheKind kind)
     {
         bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         try
         {
             cache.Clear();
@@ -154,10 +160,11 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [TestCaseSource(nameof(CacheKinds))]
-    public void OnCommitted_IncrementalInvalidationPublishesCacheCount(CacheKind kind)
+    public async Task OnCommitted_IncrementalInvalidationPublishesCacheCount(CacheKind kind)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         try
         {
             cache.Clear();
@@ -180,10 +187,11 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void Clear_PublishesZeroCacheCounts()
+    public async Task Clear_PublishesZeroCacheCounts()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         try
         {
             cache.Clear();
@@ -211,10 +219,11 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [TestCaseSource(nameof(CacheKinds))]
-    public void CapacityWipe_PublishesPostRefillCount(CacheKind kind)
+    public async Task CapacityWipe_PublishesPostRefillCount(CacheKind kind)
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner, maxEntriesPerKind: 1);
         try
         {
             cache.Clear();
@@ -279,6 +288,22 @@ public class CarryForwardCachingPersistenceTests
     {
         yield return new TestCaseData(CacheKind.Account) { TestName = "account" };
         yield return new TestCaseData(CacheKind.Slot) { TestName = "slot" };
+    }
+
+    private static IContainer CreateCacheContainer() => new ContainerBuilder()
+        .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
+        .Build();
+
+    private static CarryForwardCachingPersistence ResolveCache(IContainer container, FakePersistence inner, int? maxEntriesPerKind = null)
+    {
+        if (maxEntriesPerKind is int capacity)
+        {
+            return container.Resolve<CarryForwardCachingPersistence>(
+                TypedParameter.From<IPersistence>(inner),
+                new NamedParameter("maxEntriesPerKind", capacity));
+        }
+
+        return container.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(inner));
     }
 
     private static IEnumerable<TestCaseData> CacheReadCases()
