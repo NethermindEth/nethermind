@@ -48,6 +48,8 @@ env:
   TERM: xterm
 
 # cancel-in-progress would abandon a running sync, which is why #12817 removed this guard.
+# The event_name suffix gives a manual dispatch its own slot: it is the tool for debugging
+# a broken validation, so it must not queue behind the run it is meant to investigate.
 concurrency:
   group: sync-master-validation-${{ github.event_name }}
   cancel-in-progress: false
