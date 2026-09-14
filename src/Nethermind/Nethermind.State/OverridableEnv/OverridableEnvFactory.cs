@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -68,6 +69,40 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                 }
 
                 return new Scope(this);
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
+        }
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out IDisposable? scope)
+        {
+            if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
+
+            Reset();
+
+            if (specOverride is not null)
+                overridableSpecProvider.SetOverride(specOverride);
+
+            if (!_worldState.TryBeginScope(targetBlock, out _worldScopeCloser))
+            {
+                Reset();
+                scope = null;
+                return false;
+            }
+
+            try
+            {
+                // Committed on top of the parent state at the target's height, where the target's own commit lands too.
+                if (stateOverride is not null)
+                {
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(targetBlock), targetBlock.Number);
+                }
+
+                scope = new Scope(this);
+                return true;
             }
             catch
             {

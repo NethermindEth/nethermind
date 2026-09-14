@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -25,6 +26,18 @@ public class DisposableScopeOverridableEnv<T>(
     {
         IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
         return new Scope<T>(resolvedComponents, disposable);
+    }
+
+    public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<T>? scope)
+    {
+        if (!overridableEnv.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out IDisposable? disposable))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new Scope<T>(resolvedComponents, disposable);
+        return true;
     }
 }
 

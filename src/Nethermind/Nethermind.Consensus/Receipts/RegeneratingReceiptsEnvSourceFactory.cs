@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -60,6 +61,9 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
             IReleaseSpec? specOverride = null,
             BlockOverride? blockOverride = null) =>
             inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<ReceiptsRegenerationEnv>? scope) =>
+            inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out scope);
 
         public void Dispose() => scope.Dispose();
     }
