@@ -36,6 +36,7 @@ public sealed class TransactionChangesetBuilder(
     private readonly List<Thread> _threads = [];
     private IHistoryBlockExecutor? _tipExecutor;
     private ulong? _nextChunkTop;
+    private bool _stalled;
     private long _progressReportedAt;
     private long _builtSinceReport;
     private int _disposed;
@@ -97,6 +98,7 @@ public sealed class TransactionChangesetBuilder(
         lock (_chunks)
         {
             if (_retry.TryPop(out chunk)) return true;
+            if (_stalled) return false;
 
             ulong top = _nextChunkTop ?? from - 1;
             if (from == 0 || top < _retrofitFromBlock || _retrofitFromBlock == 0) return false;
@@ -135,6 +137,7 @@ public sealed class TransactionChangesetBuilder(
     {
         lock (_chunks)
         {
+            _stalled = false;
             _completedByTop[chunk.Top] = chunk.Bottom;
             while (index.TryGetCoverage(out ulong from, out _) && from > 0 && _completedByTop.Remove(from - 1, out ulong bottom))
             {
@@ -144,7 +147,9 @@ public sealed class TransactionChangesetBuilder(
     }
 
     /// <summary>A chunk that keeps failing is never dropped, since coverage could then never cross it; it is retried
-    /// at the idle interval and, past the cap, said so, because a coverage edge that stops moving is otherwise silent.</summary>
+    /// at the idle interval and, past the cap, said so, because a coverage edge that stops moving is otherwise silent.
+    /// Past the cap no new chunk is handed out either: coverage cannot reach anything below the failing one, so the
+    /// other workers would only be writing rows nothing can ever claim.</summary>
     private void Requeue(in Chunk chunk)
     {
         Chunk again = chunk with { Attempts = chunk.Attempts + 1 };
@@ -154,6 +159,7 @@ public sealed class TransactionChangesetBuilder(
         lock (_chunks)
         {
             _retry.Push(again);
+            _stalled |= again.Attempts >= WarnAfterAttempts;
         }
     }
 
