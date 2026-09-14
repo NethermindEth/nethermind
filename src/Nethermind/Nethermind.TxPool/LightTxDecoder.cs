@@ -12,9 +12,15 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
-    private const byte ConsensusEncodingSizeFormatVersion = 1;
+    /// <summary>
+    /// Format marker for the trailing size field. Version 1 stored the transaction's *consensus* encoding
+    /// size, which is not a valid eth/72 announcement size; version 2 stores the blob-elided network size.
+    /// Records written with any other marker are read back as <c>0</c>; persistent storage recovers the value
+    /// from the corresponding blob-elided payload when available.
+    /// </summary>
+    private const byte ElidedNetworkSizeFormatVersion = 2;
 
-    private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx, int networkSize, int elidedNetworkSize) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -25,15 +31,17 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
-               + Rlp.LengthOf(tx.GetLength())
+               + Rlp.LengthOf(networkSize)
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
-               + Rlp.LengthOf(GetConsensusEncodingSize(tx))
-               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion);
+               + Rlp.LengthOf(elidedNetworkSize)
+               + Rlp.LengthOf(ElidedNetworkSizeFormatVersion);
 
     public static byte[] Encode(Transaction tx)
     {
-        byte[] bytes = new byte[GetLength(tx)];
+        int networkSize = tx.GetLength();
+        int elidedNetworkSize = GetElidedNetworkSize(tx);
+        byte[] bytes = new byte[GetLength(tx, networkSize, elidedNetworkSize)];
         RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
@@ -47,11 +55,11 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.MaxFeePerBlobGas!.Value);
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
-        writer.Encode(tx.GetLength());
+        writer.Encode(networkSize);
         writer.Encode((byte)(tx.GetProofVersion() ?? default));
         EncodeAvailableCellMask(tx, ref writer);
-        writer.Encode(GetConsensusEncodingSize(tx));
-        writer.Encode(ConsensusEncodingSizeFormatVersion);
+        writer.Encode(elidedNetworkSize);
+        writer.Encode(ElidedNetworkSizeFormatVersion);
 
         return bytes;
     }
@@ -85,7 +93,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             : BlobCellMask.Full;
         int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
         byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
-        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
+        int elidedNetworkSize = sizeFormatVersion == ElidedNetworkSizeFormatVersion
             ? persistedEncodingSize
             : 0;
         ctx.Check(data.Length);
@@ -105,7 +113,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             size,
             proofVersion,
             blobCellMask,
-            consensusEncodingSize);
+            elidedNetworkSize);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
@@ -122,8 +130,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 ? lightTx.BlobCellMask
                 : BlobCellMask.Empty;
 
-    private static int GetConsensusEncodingSize(Transaction tx) =>
-        tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0
-            ? lightTx.GetConsensusEncodingSize()
-            : tx.GetLength(shouldCountBlobs: false);
+    private static int GetElidedNetworkSize(Transaction tx) =>
+        tx is LightTransaction lightTx
+            ? lightTx.GetElidedNetworkSize()
+            : tx.GetElidedNetworkLength();
 }

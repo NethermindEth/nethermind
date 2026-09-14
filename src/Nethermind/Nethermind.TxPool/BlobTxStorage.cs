@@ -22,6 +22,7 @@ namespace Nethermind.TxPool;
 public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
+    private const int LightRecordUpgradeBatchSize = 128;
     private const int TransactionLockCount = 64;
 
     // Sidecar-free records live in the full-txs column under a key shape (prefix + hash) that
@@ -120,7 +121,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     {
         int skipped = 0;
         int restored = 0;
+        int missingElidedPayloads = 0;
         string? firstFailure = null;
+        string? firstElidedPayloadFailure = null;
+        List<LightTransaction> pendingRecovery = new(LightRecordUpgradeBatchSize);
+        List<LightTransaction>? upgradedTransactions = null;
 
         try
         {
@@ -140,15 +145,144 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                     continue;
                 }
 
+                if (transaction.Hash is null || transaction.SenderAddress is null)
+                {
+                    skipped++;
+                    firstFailure ??= "Decoded record has no transaction hash or sender address.";
+                    continue;
+                }
+
+                if (transaction.GetElidedNetworkSize() == 0)
+                {
+                    pendingRecovery.Add(transaction);
+                    if (pendingRecovery.Count < LightRecordUpgradeBatchSize)
+                    {
+                        continue;
+                    }
+
+                    RecoverElidedNetworkSizes(pendingRecovery, ref upgradedTransactions, ref missingElidedPayloads, ref firstElidedPayloadFailure);
+                    foreach (LightTransaction recoveredTransaction in pendingRecovery)
+                    {
+                        restored++;
+                        yield return recoveredTransaction;
+                    }
+
+                    pendingRecovery.Clear();
+                    continue;
+                }
+
                 restored++;
                 yield return transaction;
+            }
+
+            if (pendingRecovery.Count > 0)
+            {
+                RecoverElidedNetworkSizes(pendingRecovery, ref upgradedTransactions, ref missingElidedPayloads, ref firstElidedPayloadFailure);
+                foreach (LightTransaction recoveredTransaction in pendingRecovery)
+                {
+                    restored++;
+                    yield return recoveredTransaction;
+                }
             }
         }
         finally
         {
+            PersistUpgradedLightTransactions(upgradedTransactions);
+
             if (skipped > 0 && _logger.IsWarn)
             {
                 _logger.Warn($"Skipped {skipped} of {skipped + restored} blob transaction record(s) as unreadable while restoring the blob transaction pool. First failure: {firstFailure}");
+            }
+
+            if (missingElidedPayloads > 0 && _logger.IsWarn)
+            {
+                string failure = firstElidedPayloadFailure is null ? string.Empty : $" First failure: {firstElidedPayloadFailure}";
+                _logger.Warn($"Could not recover the eth/72 announcement size for {missingElidedPayloads} restored blob transaction record(s) because their elided payload is missing or unreadable.{failure}");
+            }
+        }
+    }
+
+    private void RecoverElidedNetworkSizes(
+        List<LightTransaction> transactions,
+        ref List<LightTransaction>? upgradedTransactions,
+        ref int missingElidedPayloads,
+        ref string? firstFailure)
+    {
+        byte[][] keys = new byte[transactions.Count][];
+        for (int i = 0; i < transactions.Count; i++)
+        {
+            byte[] key = new byte[ElidedTxKeyLength];
+            GetElidedTxKey(transactions[i].Hash!, key);
+            keys[i] = key;
+        }
+
+        KeyValuePair<byte[], byte[]?>[] results = _fullBlobTxsDb[keys];
+        for (int i = 0; i < results.Length; i++)
+        {
+            byte[]? elidedBytes = results[i].Value;
+            if (elidedBytes is null)
+            {
+                missingElidedPayloads++;
+                continue;
+            }
+
+            try
+            {
+                Transaction? elidedTransaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+                if (elidedTransaction is null)
+                {
+                    missingElidedPayloads++;
+                    continue;
+                }
+
+                LightTransaction transaction = transactions[i];
+                transaction.UpdateElidedNetworkSize(elidedTransaction.GetLength());
+                (upgradedTransactions ??= []).Add(transaction);
+            }
+            catch (Exception e) when (e is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+                missingElidedPayloads++;
+                firstFailure ??= $"{e.GetType().Name}: {e.Message}";
+            }
+        }
+    }
+
+    private void PersistUpgradedLightTransactions(List<LightTransaction>? transactions)
+    {
+        if (transactions is null)
+        {
+            return;
+        }
+
+        for (int offset = 0; offset < transactions.Count; offset += LightRecordUpgradeBatchSize)
+        {
+            try
+            {
+                using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+                try
+                {
+                    IWriteBatch lightBlobTxsBatch = batch.GetColumnBatch(BlobTxsColumns.LightBlobTxs);
+                    int end = Math.Min(offset + LightRecordUpgradeBatchSize, transactions.Count);
+                    for (int i = offset; i < end; i++)
+                    {
+                        LightTransaction transaction = transactions[i];
+                        lightBlobTxsBatch.Set(transaction.Hash!.Bytes, LightTxDecoder.Encode(transaction));
+                    }
+                }
+                catch
+                {
+                    batch.Clear();
+                    throw;
+                }
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Could not persist upgraded blob transaction records; their eth/72 announcement sizes will be recovered again on the next startup. {e.GetType().Name}: {e.Message}");
+                }
+
+                return;
             }
         }
     }

@@ -19,6 +19,11 @@ internal static class BlobTransactionPayload
             return transaction;
         }
 
+        return Elide(transaction, wrapper);
+    }
+
+    public static Transaction Elide(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+    {
         Transaction elided = new();
         transaction.CopyTo(elided, copyHash: true);
         elided.NetworkWrapper = wrapper with { Blobs = [], CellMask = default, Cells = null };

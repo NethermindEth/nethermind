@@ -18,6 +18,28 @@ namespace Nethermind.TxPool
 
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
+        /// <summary>
+        /// Length of the blob-elided typed transaction encoding of <paramref name="tx"/>, as announced in
+        /// <c>NewPooledTransactionHashes</c> for eth/72 and measured by peers after decoding a
+        /// <c>PooledTransactions</c> response.
+        /// </summary>
+        /// <remarks>
+        /// The current devp2p text calls for the consensus encoding size, but established clients size-check the
+        /// delivered encoding instead. See <see href="https://github.com/ethereum/devp2p/pull/281"/>.
+        /// </remarks>
+        public static int GetElidedNetworkLength(this Transaction tx)
+        {
+            if (!tx.SupportsBlobs)
+            {
+                return tx.GetLength();
+            }
+
+            // A blob transaction without its network wrapper has no network encoding to announce.
+            return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+                ? BlobTransactionPayload.Elide(tx, wrapper).GetLength()
+                : 0;
+        }
+
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
         public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.SupportsBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
