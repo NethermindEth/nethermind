@@ -232,7 +232,7 @@ namespace Nethermind.Trie.Test
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
                 _finalizedStateProvider.TrieStore = _trieStore;
                 _stateProvider = new WorldState(
-                    new TrieStoreScopeProvider(_trieStore, _codeDb, TestParentHeaderProvider.Instance, _logManager), _logManager);
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, TestStateHeaderProvider.Instance, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
             }
@@ -435,7 +435,7 @@ namespace Nethermind.Trie.Test
                 TestFinalizedStateProvider finalizedStateProvider = new(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(
-                    new TrieStoreScopeProvider(_trieStore, _codeDb, TestParentHeaderProvider.Instance, _logManager), _logManager);
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, TestStateHeaderProvider.Instance, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 return this;
             }

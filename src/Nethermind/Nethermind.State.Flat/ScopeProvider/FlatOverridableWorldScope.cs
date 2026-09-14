@@ -35,7 +35,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
-        IParentHeaderProvider parentHeaderProvider,
+        IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
     {
         GlobalStateReader = new OverridableStateReader(this);
@@ -48,7 +48,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             configuration,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
-            parentHeaderProvider,
+            stateHeaderProvider,
             logManager);
     }
 
@@ -130,11 +130,11 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
-        IParentHeaderProvider parentHeaderProvider,
+        IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
         : IWorldStateScopeProvider
     {
-        private readonly IParentHeaderProvider _parentHeaderProvider = parentHeaderProvider;
+        private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
 
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
@@ -173,7 +173,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 return true;
             }
 
-            parent = _parentHeaderProvider.FindParentHeader(targetBlock);
+            parent = _stateHeaderProvider.FindParentHeader(targetBlock);
             return parent is not null;
         }
 

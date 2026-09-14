@@ -13,12 +13,12 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Core.Test;
 
 /// <summary>
-/// Fake <see cref="IParentHeaderProvider"/> that simulate previous behaviour where it just check the
+/// Fake <see cref="IStateHeaderProvider"/> that simulate previous behaviour where it just check the
 /// LatestCommittedBlockNumber minute depth. Not for prod use.
 /// TrieStore must be set later.
 /// </summary>
 /// <param name="depth"></param>
-public class TestFinalizedStateProvider(ulong depth) : IParentHeaderProvider
+public class TestFinalizedStateProvider(ulong depth) : IStateHeaderProvider
 {
     public TrieStore TrieStore { get; set; } = null!;
     private BlockHeader? _manualFinalizedPoint = null;

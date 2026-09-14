@@ -28,7 +28,7 @@ namespace Nethermind.Store.Test;
 
 public class WorldStateManagerTests
 {
-    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager(IParentHeaderProvider parentHeaderProvider)
+    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager(IStateHeaderProvider stateHeaderProvider)
     {
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
@@ -37,14 +37,14 @@ public class WorldStateManagerTests
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
-        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, parentHeaderProvider ?? TestParentHeaderProvider.Unavailable, LimboLogs.Instance);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, stateHeaderProvider ?? TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
         return (worldState, trieStore, manager, boundary);
     }
 
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager(TestParentHeaderProvider.Unavailable);
+        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager(TestStateHeaderProvider.Unavailable);
         Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
     }
 
@@ -53,7 +53,7 @@ public class WorldStateManagerTests
     {
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).WithNumber(1).TestObject;
         BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(12345).TestObject;
-        (_, _, WorldStateManager manager, _) = CreateWorldStateManager(new TestParentHeaderProvider { Parent = parent });
+        (_, _, WorldStateManager manager, _) = CreateWorldStateManager(new TestStateHeaderProvider { Parent = parent });
 
         IWorldStateScopeProvider resettable = manager.CreateResettableWorldState();
         Assert.That(resettable.HasStateForTarget(target), Is.True);
@@ -72,7 +72,7 @@ public class WorldStateManagerTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, TestParentHeaderProvider.Unavailable, LimboLogs.Instance);
+        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
 
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
@@ -85,7 +85,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager(TestParentHeaderProvider.Unavailable);
+        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager(TestStateHeaderProvider.Unavailable);
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);
@@ -110,7 +110,7 @@ public class WorldStateManagerTests
         // Asserts the pruning trie store's best-persisted-state reorg announcement; a patricia-only concept.
         configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         ulong reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
-        IParentHeaderProvider manualFinalizedStateProvider = Substitute.For<IParentHeaderProvider>();
+        IStateHeaderProvider manualFinalizedStateProvider = Substitute.For<IStateHeaderProvider>();
         manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
         manualFinalizedStateProvider.GetFinalizedHeader(lastBlock - reorgDepth)
             .Returns(new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, lastBlock - reorgDepth, 30_000_000, 0, [])
@@ -123,7 +123,7 @@ public class WorldStateManagerTests
         {
             using IContainer ctx = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton<IParentHeaderProvider>(manualFinalizedStateProvider)
+                .AddSingleton<IStateHeaderProvider>(manualFinalizedStateProvider)
                 .AddSingleton(blockTree)
                 .Build();
 

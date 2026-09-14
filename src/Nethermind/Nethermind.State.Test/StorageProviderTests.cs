@@ -2067,13 +2067,13 @@ public class StorageProviderTests(bool useFlat)
             IWorldStateScopeProvider scopeProvider;
             if (useFlat)
             {
-                (scopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider(UnavailableParentHeaderProvider.Instance);
+                (scopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider(UnavailableStateHeaderProvider.Instance);
             }
             else
             {
                 scopeProvider = new TrieStoreScopeProvider(
                     TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
-                    new MemDb(), TestParentHeaderProvider.Unavailable, LimboLogs.Instance);
+                    new MemDb(), TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
             }
 
             if (preBlockCaches is not null)

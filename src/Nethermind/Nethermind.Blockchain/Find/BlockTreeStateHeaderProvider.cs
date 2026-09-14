@@ -8,7 +8,7 @@ using Nethermind.Core;
 namespace Nethermind.Blockchain.Find;
 
 /// <summary>Resolves parent headers and finalized canonical headers from the block tree.</summary>
-public sealed class BlockTreeParentHeaderProvider(IBlockTree blockTree) : IParentHeaderProvider
+public sealed class BlockTreeStateHeaderProvider(IBlockTree blockTree) : IStateHeaderProvider
 {
     public ulong FinalizedBlockNumber => blockTree.BestKnownNumber.SaturatingSub(Reorganization.MaxDepth);
 

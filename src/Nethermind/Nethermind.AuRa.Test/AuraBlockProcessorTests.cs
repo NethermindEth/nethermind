@@ -94,9 +94,9 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts([Values] bool isPostMerge)
         {
-            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge, TestParentHeaderProvider parentHeaderProvider)
+            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge, TestStateHeaderProvider stateHeaderProvider)
             {
-                parentHeaderProvider.Parent = parent;
+                stateHeaderProvider.Parent = parent;
                 BlockHeader header = Build.A.BlockHeader
                     .WithAuthor(TestItem.AddressD)
                     .WithParent(parent)
@@ -140,7 +140,7 @@ namespace Nethermind.AuRa.Test
                 (1000036, TestItem.AddressD, Bytes.FromHexString("0x654"))
             ];
 
-            (BranchProcessor processor, IWorldState stateProvider, IBlockTree blockTree, TestParentHeaderProvider parentHeaderProvider) =
+            (BranchProcessor processor, IWorldState stateProvider, IBlockTree blockTree, TestStateHeaderProvider stateHeaderProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides, contractOverridesTimestamp));
 
             Hash256 stateRoot;
@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test
             }
 
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
-            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, parentHeaderProvider);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
 
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
@@ -169,7 +169,7 @@ namespace Nethermind.AuRa.Test
                 Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Array.Empty<byte>()));
             }
 
-            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, parentHeaderProvider);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
 
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
@@ -180,7 +180,7 @@ namespace Nethermind.AuRa.Test
                 Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x321")));
             }
 
-            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, parentHeaderProvider);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
 
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
@@ -192,17 +192,17 @@ namespace Nethermind.AuRa.Test
             }
         }
 
-        private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree, TestParentHeaderProvider ParentHeaderProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null, BlockHeader? parentHeader = null)
+        private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree, TestStateHeaderProvider StateHeaderProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null, BlockHeader? parentHeader = null)
         {
-            TestParentHeaderProvider parentHeaderProvider = new() { Parent = parentHeader };
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parentHeaderProvider);
+            TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
             if (parentHeader is null)
             {
                 using (stateProvider.BeginScope(IWorldState.PreGenesis))
                 {
                     stateProvider.Commit(GnosisSpecProvider.Instance.GenesisSpec, isGenesis: true);
                     stateProvider.CommitTree(0);
-                    parentHeaderProvider.Parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateProvider.StateRoot).TestObject;
+                    stateHeaderProvider.Parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateProvider.StateRoot).TestObject;
                 }
             }
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
@@ -239,7 +239,7 @@ namespace Nethermind.AuRa.Test
                 new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
                 LimboLogs.Instance);
 
-            return (branchProcessor, stateProvider, blockTree, parentHeaderProvider);
+            return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);
         }
     }
 }

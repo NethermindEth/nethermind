@@ -13,16 +13,16 @@ namespace Nethermind.Blockchain.Test;
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class BlockTreeParentHeaderProviderTests
+public class BlockTreeStateHeaderProviderTests
 {
     private IBlockTree _blockTree = null!;
-    private BlockTreeParentHeaderProvider _provider = null!;
+    private BlockTreeStateHeaderProvider _provider = null!;
 
     [SetUp]
     public void Setup()
     {
         _blockTree = Substitute.For<IBlockTree>();
-        _provider = new BlockTreeParentHeaderProvider(_blockTree);
+        _provider = new BlockTreeStateHeaderProvider(_blockTree);
     }
 
     [Test]

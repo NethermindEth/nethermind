@@ -9,9 +9,9 @@ using Nethermind.State;
 
 namespace Nethermind.Store.Test;
 
-internal sealed class TestParentHeaderProvider : IParentHeaderProvider
+internal sealed class TestStateHeaderProvider : IStateHeaderProvider
 {
-    public static TestParentHeaderProvider Unavailable { get; } = new();
+    public static TestStateHeaderProvider Unavailable { get; } = new();
 
     public BlockHeader? Parent { get; set; }
     public int LookupCalls { get; private set; }

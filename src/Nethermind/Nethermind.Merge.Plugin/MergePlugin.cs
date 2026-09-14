@@ -165,7 +165,7 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
 
-            .AddDecorator<IParentHeaderProvider, MergeFinalizedStateProvider>()
+            .AddDecorator<IStateHeaderProvider, MergeFinalizedStateProvider>()
 
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()

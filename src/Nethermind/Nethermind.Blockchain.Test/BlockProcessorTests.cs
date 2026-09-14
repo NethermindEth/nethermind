@@ -557,13 +557,13 @@ public class BlockProcessorTests
         }
     }
 
-    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, TestParentHeaderProvider parentHeaderProvider) CreateProcessorAndBranch(
+    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, TestStateHeaderProvider stateHeaderProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null,
         BlockHeader? parentHeader = null)
     {
-        TestParentHeaderProvider parentHeaderProvider = new() { Parent = parentHeader };
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parentHeaderProvider);
+        TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
@@ -592,7 +592,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             preWarmer);
 
-        return (processor, branchProcessor, stateProvider, parentHeaderProvider);
+        return (processor, branchProcessor, stateProvider, stateHeaderProvider);
     }
 
     [TestCase(ProcessingOptions.None)]
@@ -601,11 +601,11 @@ public class BlockProcessorTests
     public void BranchProcessor_normal_options_open_target_scope(ProcessingOptions options)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
-        (_, BranchProcessor branchProcessor, _, TestParentHeaderProvider parentHeaderProvider) = CreateProcessorAndBranch(parentHeader: parent);
+        (_, BranchProcessor branchProcessor, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessorAndBranch(parentHeader: parent);
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
 
         Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
-        Assert.That(parentHeaderProvider.LastTarget, Is.SameAs(block.Header));
+        Assert.That(stateHeaderProvider.LastTarget, Is.SameAs(block.Header));
     }
 
     [TestCase(ProcessingOptions.Trace)]
@@ -613,11 +613,11 @@ public class BlockProcessorTests
     [TestCase(ProcessingOptions.ForceProcessing)]
     public void BranchProcessor_legacy_options_use_base_scope(ProcessingOptions options)
     {
-        (_, BranchProcessor branchProcessor, _, TestParentHeaderProvider parentHeaderProvider) = CreateProcessorAndBranch();
+        (_, BranchProcessor branchProcessor, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessorAndBranch();
         Block block = Build.A.Block.TestObject;
 
         Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
-        Assert.That(parentHeaderProvider.LastTarget, Is.Null);
+        Assert.That(stateHeaderProvider.LastTarget, Is.Null);
     }
 
     [Test]

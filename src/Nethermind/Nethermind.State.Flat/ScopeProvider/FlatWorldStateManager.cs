@@ -24,7 +24,7 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
-    IParentHeaderProvider parentHeaderProvider,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
@@ -34,7 +34,7 @@ public class FlatWorldStateManager(
         configuration,
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
-        parentHeaderProvider,
+        stateHeaderProvider,
         logManager,
         isReadOnly: false);
 
@@ -57,7 +57,7 @@ public class FlatWorldStateManager(
             configuration,
             new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            parentHeaderProvider,
+            stateHeaderProvider,
             logManager,
             isReadOnly: true);
 

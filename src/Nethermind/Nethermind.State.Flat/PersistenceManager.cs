@@ -28,7 +28,7 @@ namespace Nethermind.State.Flat;
 public class PersistenceManager(
     IFlatDbConfig configuration,
     ICompactionSchedule schedule,
-    IParentHeaderProvider finalizedStateProvider,
+    IStateHeaderProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     IStatePersistenceBarrier persistenceBarrier,
@@ -97,7 +97,7 @@ public class PersistenceManager(
     ///   <item>Finalized trigger: if <c>finalizedBlock &gt;= persistedBlock + CompactSize</c> AND
     ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
-    ///   <see cref="IParentHeaderProvider"/> — the boundary is always locally synced even
+    ///   <see cref="IStateHeaderProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long

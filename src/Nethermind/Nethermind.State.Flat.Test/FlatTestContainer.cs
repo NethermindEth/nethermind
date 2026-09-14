@@ -58,7 +58,7 @@ public sealed class FlatTestContainer : IDisposable
         string? baseDbPath = null,
         IDb? catalogDb = null,
         Action<ContainerBuilder>? configure = null,
-        IParentHeaderProvider? finalizedStateProvider = null)
+        IStateHeaderProvider? finalizedStateProvider = null)
     {
         Config = config ?? new FlatDbConfig();
         Config.ArenaFileSizeBytes = arenaFileSizeBytes;
@@ -91,7 +91,7 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<IProcessExitSource>(processExitSource)
             .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
-            .AddSingleton<IParentHeaderProvider>(finalizedStateProvider ?? UnavailableParentHeaderProvider.Instance)
+            .AddSingleton<IStateHeaderProvider>(finalizedStateProvider ?? UnavailableStateHeaderProvider.Instance)
             // The production module wires the catalog and metadata to columned RocksDB via IDbFactory,
             // which the test project does not provide; an in-memory db is behavior-equivalent here.
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, CatalogDb)

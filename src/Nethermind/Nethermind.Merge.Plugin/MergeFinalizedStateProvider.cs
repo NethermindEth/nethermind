@@ -10,7 +10,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IParentHeaderProvider baseFinalizedStateProvider) : IParentHeaderProvider
+public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IStateHeaderProvider baseFinalizedStateProvider) : IStateHeaderProvider
 {
     public ulong FinalizedBlockNumber
     {

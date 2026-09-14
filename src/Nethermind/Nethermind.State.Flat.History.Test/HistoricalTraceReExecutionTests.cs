@@ -164,7 +164,7 @@ public class HistoricalTraceReExecutionTests
         new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },
         new NoopTrieWarmer(),
         ResourcePool.Usage.ReadOnlyProcessingEnv,
-        UnavailableParentHeaderProvider.Instance,
+        UnavailableStateHeaderProvider.Instance,
         LimboLogs.Instance,
         isReadOnly: false);
 }

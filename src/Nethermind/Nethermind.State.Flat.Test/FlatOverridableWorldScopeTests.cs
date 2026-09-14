@@ -79,7 +79,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<IProcessExitSource>(_ => new CancellationTokenSourceProcessExitSource(_cancellationTokenSource))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .AddSingleton<IFlatDbConfig>(config)
-                .AddSingleton<IParentHeaderProvider>(UnavailableParentHeaderProvider.Instance)
+                .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
                 .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
                 .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 

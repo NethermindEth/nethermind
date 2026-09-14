@@ -1621,7 +1621,7 @@ public class PersistenceManagerTests
         method.Invoke(_persistenceManager, [compacted]);
     }
 
-    private class TestFinalizedStateProvider : IParentHeaderProvider
+    private class TestFinalizedStateProvider : IStateHeaderProvider
     {
         private ulong _finalizedBlockNumber;
         private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
