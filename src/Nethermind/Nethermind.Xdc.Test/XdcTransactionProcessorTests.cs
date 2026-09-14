@@ -18,7 +18,6 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
-using System.Collections.Generic;
 
 namespace Nethermind.Xdc.Test;
 
