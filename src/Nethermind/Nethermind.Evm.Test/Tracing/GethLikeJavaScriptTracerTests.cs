@@ -641,15 +641,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [NonParallelizable]
     public void Heap_limit_violation_fails_the_trace_and_later_traces_recover()
     {
-        const string hoardingTracer = @"{
-                    hoard: [],
-                    step: function(log, db) { this.hoard.push(new Array(524288).fill(1)); },
-                    fault: function(log, db) { },
-                    result: function(ctx, db) { return this.hoard.length; }
-                }";
         Action hoardingTrace = () =>
         {
-            using GethLikeBlockJavaScriptTracer tracer = GetTracer(hoardingTracer);
+            using GethLikeBlockJavaScriptTracer tracer = GetTracer(HoardingTracer);
             ExecuteBlock(tracer, PushPopSequence(400));
         };
 
@@ -676,6 +670,26 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
     }
+
+    [Test]
+    [NonParallelizable]
+    public void Heap_limit_violation_still_trips_after_an_earlier_transaction_re_armed_it()
+    {
+        Action hoardingSecondTransaction = () =>
+        {
+            using GethLikeBlockJavaScriptTracer tracer = GetTracer(HoardingTracer);
+            ExecuteTwoTransactionBlock(tracer, MStore(), PushPopSequence(400));
+        };
+
+        Assert.That(hoardingSecondTransaction, Throws.InstanceOf(typeof(IScriptEngineException)));
+    }
+
+    private const string HoardingTracer = @"{
+                    hoard: [],
+                    step: function(log, db) { this.hoard.push(new Array(524288).fill(1)); },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.hoard.length; }
+                }";
 
     private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer) =>
         ExecuteTwoTransactionBlock(tracer, MStore(), MStore());

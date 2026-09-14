@@ -73,8 +73,12 @@ public class Engine : IDisposable
         return runtime;
     }
 
-    // A soft-limit violation blocks every script in the runtime until the limit is set again, so every
-    // engine re-arms it when it starts and when it goes away.
+    /// <summary>
+    /// A soft-limit violation blocks every script in the runtime until the limit is set again, so every engine
+    /// re-arms it when it starts and when it goes away. Setting the limit only clears the violation flag: the
+    /// runtime checks the heap on every outermost host-to-script call regardless, so re-arming per transaction
+    /// does not delay detection.
+    /// </summary>
     private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
@@ -197,6 +201,11 @@ public class Engine : IDisposable
         }
     }
 
+    /// <summary>
+    /// Releases the engine. Must run on the thread that created it: <see cref="CurrentEngine"/> is thread-local,
+    /// and disposing elsewhere would leave the creating thread pointing at a disposed engine until its block
+    /// trace ends.
+    /// </summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -205,8 +214,14 @@ public class Engine : IDisposable
         }
 
         Interlocked.CompareExchange(ref _currentEngine, null, this);
-        V8Engine.Dispose();
-        RearmHeapSoftLimit();
+        try
+        {
+            V8Engine.Dispose();
+        }
+        finally
+        {
+            RearmHeapSoftLimit();
+        }
     }
 
     /// <summary>

@@ -74,58 +74,34 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
-    [Test]
-    public async Task Debug_traceTransactionByBlockAndIndex_with_latest_tag_matches_numeric_request()
+    [TestCaseSource(nameof(BlockParameterShapes))]
+    public async Task Debug_traceTransactionByBlockAndIndex_with_block_parameter_matches_numeric_request(Func<Block, object> blockParameter)
     {
         using Context context = await Context.Create();
+        Block head = await AddTransferBlock(context.Blockchain);
 
-        Transaction transaction = Build.A.Transaction
-            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        await context.Blockchain.AddBlock(transaction);
-
-        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
-        string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0");
-        string byTag = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", "latest", "0x0");
-
-        Assert.That(byNumber, Does.Contain("\"result\""));
-        Assert.That(JToken.Parse(byTag), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
-    }
-
-    [Test]
-    public async Task Debug_traceTransactionByBlockAndIndex_with_pending_tag_returns_a_well_formed_response()
-    {
-        using Context context = await Context.Create();
-
-        Transaction transaction = Build.A.Transaction
-            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        await context.Blockchain.AddBlock(transaction);
-
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", "pending", "0x0");
-
-        Assert.That(response, Does.Contain("\"jsonrpc\"").And.Not.Contain("Internal error"));
-    }
-
-    [Test]
-    public async Task Debug_traceTransactionByBlockAndIndex_with_block_hash_parameter_matches_numeric_request()
-    {
-        using Context context = await Context.Create();
-
-        Transaction transaction = Build.A.Transaction
-            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        await context.Blockchain.AddBlock(transaction);
-
-        Block head = context.Blockchain.BlockTree.Head!;
         string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, "0x0");
-        string byHash = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", new { blockHash = head.Hash }, "0x0");
+        string byParameter = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockParameter(head), "0x0");
 
         Assert.That(byNumber, Does.Contain("\"result\""));
-        Assert.That(JToken.Parse(byHash), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(byParameter), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
+    }
+
+    private static IEnumerable<TestCaseData> BlockParameterShapes()
+    {
+        yield return new TestCaseData(new Func<Block, object>(static _ => "latest")) { TestName = "latest tag" };
+        yield return new TestCaseData(new Func<Block, object>(static _ => "pending")) { TestName = "pending tag" };
+        yield return new TestCaseData(new Func<Block, object>(static head => new { blockHash = head.Hash })) { TestName = "block hash" };
+    }
+
+    private static async Task<Block> AddTransferBlock(TestRpcBlockchain blockchain)
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await blockchain.AddBlock(transaction);
+        return blockchain.BlockTree.Head!;
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]

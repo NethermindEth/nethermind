@@ -11,12 +11,12 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom;
 /// A tracer result already rendered to UTF-8 JSON, written to the response verbatim.
 /// </summary>
 [JsonConverter(typeof(RenderedJsonConverter))]
-public sealed class RenderedJson(byte[] utf8)
+internal sealed class RenderedJson(byte[] utf8)
 {
     public ReadOnlyMemory<byte> Utf8 => utf8;
 }
 
-public class RenderedJsonConverter : JsonConverter<RenderedJson>
+internal sealed class RenderedJsonConverter : JsonConverter<RenderedJson>
 {
     public override void Write(Utf8JsonWriter writer, RenderedJson value, JsonSerializerOptions options) =>
         writer.WriteRawValue(value.Utf8.Span, skipInputValidation: true);
