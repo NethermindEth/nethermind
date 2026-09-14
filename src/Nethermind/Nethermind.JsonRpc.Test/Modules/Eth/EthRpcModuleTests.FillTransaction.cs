@@ -112,6 +112,17 @@ public partial class EthRpcModuleTests
             "invalid chain id").SetName("ChainIdMismatch");
 
         yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                GasPrice = 1,
+                MaxFeePerGas = 2,
+            },
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithDynamicFeeField");
+
+        yield return new TestCaseData(
             (TransactionForRpc)new EIP1559TransactionForRpc { From = TestItem.AddressC, To = null, Value = 1 },
             null).SetName("ContractCreationWithoutData");
     }
