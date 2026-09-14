@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -34,10 +35,17 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
             return new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState);
         }
 
-        public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock) =>
-            worldState.TryBeginScope(targetBlock, out IDisposable? closer)
-                ? new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState)
-                : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+        public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+        {
+            if (!worldState.TryBeginScope(targetBlock, out IDisposable? closer))
+            {
+                scope = null;
+                return false;
+            }
+
+            scope = new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState);
+            return true;
+        }
 
         public void Dispose() => lifetimeScope.Dispose();
     }

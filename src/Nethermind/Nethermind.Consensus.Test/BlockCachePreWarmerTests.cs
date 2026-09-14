@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -1630,7 +1631,7 @@ public class BlockCachePreWarmerTests
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
 
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock)
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 if (Interlocked.CompareExchange(ref owner._captured, 1, 0) == 0)
                 {
@@ -1638,7 +1639,7 @@ public class BlockCachePreWarmerTests
                     owner._observed.Set();
                 }
 
-                return inner.BuildAtTarget(targetBlock);
+                return inner.TryBuildAtTarget(targetBlock, out scope);
             }
 
             public void Dispose() => inner.Dispose();
@@ -1677,7 +1678,8 @@ public class BlockCachePreWarmerTests
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
 
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock) => inner.BuildAtTarget(targetBlock);
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) =>
+                inner.TryBuildAtTarget(targetBlock, out scope);
 
             public void Dispose()
             {
@@ -1709,10 +1711,10 @@ public class BlockCachePreWarmerTests
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
 
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock)
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 if (owner._caches.CurrentStorageReadCapture is not null) Interlocked.Increment(ref owner._discoveryBuilds);
-                return inner.BuildAtTarget(targetBlock);
+                return inner.TryBuildAtTarget(targetBlock, out scope);
             }
 
             public void Dispose() => inner.Dispose();
@@ -1749,7 +1751,7 @@ public class BlockCachePreWarmerTests
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 throw new InvalidOperationException("scope build failure");
 
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock) =>
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) =>
                 throw new InvalidOperationException("scope build failure");
 
             public void Dispose() { }
@@ -1848,10 +1850,11 @@ public class BlockCachePreWarmerTests
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
 
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock)
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 gate.Wait();
-                return new CountingScope(inner.BuildAtTarget(targetBlock), onWarmup);
+                scope = new CountingScope(inner.BuildAtTarget(targetBlock), onWarmup);
+                return true;
             }
 
             public void Dispose() => inner.Dispose();
@@ -1918,7 +1921,11 @@ public class BlockCachePreWarmerTests
         {
             public bool BuiltTxWarmScope;
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock) => new GateScope(inner.BuildAtTarget(targetBlock), owner, this);
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                scope = new GateScope(inner.BuildAtTarget(targetBlock), owner, this);
+                return true;
+            }
             public void Dispose() => inner.Dispose();
         }
 

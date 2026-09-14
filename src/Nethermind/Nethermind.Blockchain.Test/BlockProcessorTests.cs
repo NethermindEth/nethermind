@@ -43,6 +43,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1837,12 +1838,13 @@ public class BlockProcessorTests
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => throw new NotSupportedException();
 
-            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock)
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 IWorldState worldState = Substitute.For<IWorldState>();
                 factory.BuiltHeaders.Add(targetBlock);
                 factory.BuiltWorldStates.Add(worldState);
-                return new Scope(factory, transactionProcessor, worldState);
+                scope = new Scope(factory, transactionProcessor, worldState);
+                return true;
             }
 
             public void Dispose() { }
