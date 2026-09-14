@@ -71,9 +71,12 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     {
         if (GasPrice is { } gasPrice)
         {
+            if (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null)
+                return RpcTransactionErrors.GasPriceInEip1559;
+
             // Same gasPrice pricing as ToTransaction, made explicit so the filled tx validates as-is.
-            MaxPriorityFeePerGas ??= gasPrice;
-            MaxFeePerGas ??= gasPrice;
+            MaxPriorityFeePerGas = gasPrice;
+            MaxFeePerGas = gasPrice;
             GasPrice = null;
         }
 
