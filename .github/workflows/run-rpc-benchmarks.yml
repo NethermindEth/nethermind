@@ -289,6 +289,22 @@ jobs:
           user_tool_config="${IN_TOOL_CONFIG:-}"
           node_config="${IN_NODE_CONFIG:-}"
 
+          [[ -n "${user_tool_config}" ]] || user_tool_config="{}"
+          if ! user_tool_config_type="$(printf '%s' "${user_tool_config}" | jq -r 'type' 2>/dev/null)"; then
+            fail "tool_config must be a JSON object."
+          fi
+          [[ "${user_tool_config_type}" == "object" ]] || fail "tool_config must be a JSON object."
+          user_clients_type="$(printf '%s' "${user_tool_config}" | jq -r 'if has("clients") then .clients | type else "absent" end')"
+          user_clients=""
+          case "${user_clients_type}" in
+            absent) ;;
+            string)
+              user_clients="$(printf '%s' "${user_tool_config}" | jq -r '.clients')"
+              [[ -n "${user_clients//[[:space:]]/}" ]] || fail "tool_config.clients must be a non-empty string."
+              ;;
+            *) fail "tool_config.clients must be a string when provided." ;;
+          esac
+
           for pair in "requests_per_cell=${requests}" "rounds=${rounds}" "timings_passes=${timings_passes}" "warmup=${warmup}" "duration=${duration}"; do
             [[ "${pair#*=}" =~ ^[0-9]+$ ]] || fail "${pair%%=*} must be a non-negative integer, got '${pair#*=}'."
           done
@@ -390,10 +406,13 @@ jobs:
                  + (if $passes > 0 then {timings_passes: $passes} else {} end)
                  + (if $corpus != "" then {corpus_glob: $corpus} else {} end)')" ;;
             jsonbench-sweep)
-              # 'cache' is a corpus-preset sentinel resolved only above; interpolated here it becomes an image
-              # name and the arm dies ~90s in. Ask for a real baseline rather than burning the runner.
-              [[ "${baseline_image}" != "cache" ]] || fail "jsonbench-sweep needs an explicit baseline_image; 'cache' is only resolved for corpus-ab/corpus-baseline."
-              preset_cfg="$(jq -n --arg clients "nethermind@${baseline_image} nethermind@${image_ref}" --arg rps "${rps}" \
+              # A complete tool_config.clients override supplies both arms, so it does not need a top-level baseline image.
+              sweep_clients="${user_clients}"
+              if [[ "${user_clients_type}" == "absent" ]]; then
+                [[ "${baseline_image}" != "cache" ]] || fail "jsonbench-sweep needs an explicit baseline_image or tool_config.clients."
+                sweep_clients="nethermind@${baseline_image} nethermind@${image_ref}"
+              fi
+              preset_cfg="$(jq -n --arg clients "${sweep_clients}" --arg rps "${rps}" \
                 --argjson rounds "${rounds}" --arg duration "${duration}s" --arg snapshot "${snapshot_block}" \
                 '{clients: $clients, rps_list: $rps, rounds: $rounds, duration: $duration}
                  + (if $snapshot != "" then {snapshot_block: $snapshot} else {} end)')" ;;
@@ -401,8 +420,6 @@ jobs:
             flood) preset_cfg="$(jq -n --arg rates "${rps}" --argjson duration "${duration}" '{rates: $rates, duration: $duration}')" ;;
             ethcallchaos) preset_cfg="$(jq -n --argjson rate "${first_rps}" --argjson duration "${duration}" '{rate: $rate, duration: $duration}')" ;;
           esac
-          [[ -n "${user_tool_config}" ]] || user_tool_config="{}"
-          echo "${user_tool_config}" | jq -e 'type == "object"' >/dev/null 2>&1 || fail "tool_config must be a JSON object: ${user_tool_config}"
           tool_config="$(jq -c -n --argjson a "${preset_cfg}" --argjson b "${user_tool_config}" '$a * $b')"
           corpus_raw="$(echo "${tool_config}" | jq -r 'if has("eth_call_corpus") then (.eth_call_corpus|type) else "absent" end')"
           case "${corpus_raw}" in absent|boolean) ;; *) fail "eth_call_corpus must be a JSON boolean, got ${corpus_raw}." ;; esac

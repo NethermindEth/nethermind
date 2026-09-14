@@ -12,6 +12,7 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT_PATH = Path(__file__).with_name("prepare-eth-call-corpus.py")
 SPECIFICATION = importlib.util.spec_from_file_location("prepare_eth_call_corpus", SCRIPT_PATH)
@@ -112,6 +113,28 @@ class PrepareEthCallCorpusTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn(f"{source}: line 2:", standard_error)
         self.assertEqual(list(self.destination.iterdir()), [])
+
+    def test_many_selector_classes_do_not_exhaust_file_descriptors(self) -> None:
+        source = self.write_jsonl("many-classes.jsonl", [call(f"0x{index:08x}") for index in range(100)])
+        real_fdopen = CONVERTER.os.fdopen
+        handles = []
+
+        def guarded_fdopen(*args, **kwargs):
+            if sum(not handle.closed for handle in handles) >= 16:
+                raise OSError(24, "Too many open files")
+            handle = real_fdopen(*args, **kwargs)
+            handles.append(handle)
+            return handle
+
+        with patch.object(CONVERTER.os, "fdopen", side_effect=guarded_fdopen):
+            status, standard_error = self.run_converter(source)
+
+        self.assertEqual(status, 0, standard_error)
+        self.assertEqual(100, len(handles))
+        self.assertTrue(all(handle.closed for handle in handles))
+        classes = json.loads((self.destination / "classes.json").read_text(encoding="utf-8"))
+        self.assertEqual(100, len(classes))
+        self.assertEqual(100, sum(classes.values()))
 
 
 if __name__ == "__main__":

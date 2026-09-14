@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -166,11 +168,12 @@ class SweepShellHelperTests(unittest.TestCase):
 class BenaadamsFindingsTests(unittest.TestCase):
     """Four findings from @benaadams' review: each turned a documented input into a silently wrong run."""
 
-    def test_jsonbench_sweep_refuses_the_corpus_only_cache_sentinel(self):
+    def test_jsonbench_sweep_requires_baseline_when_clients_are_not_overridden(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         block = workflow[workflow.index("            jsonbench-sweep)"):workflow.index("            jsonbench) preset_cfg=")]
-        # baseline_image defaults to 'cache', a sentinel resolved only for the corpus presets. Interpolated
-        # here it became an image name and the arm died ~90s into a 30-minute booking.
+        # The cache sentinel is valid when tool_config supplies both sweep arms, but cannot be interpolated
+        # into a derived image when clients are absent.
+        self.assertIn('if [[ "${user_clients_type}" == "absent" ]]; then', block)
         self.assertIn('[[ "${baseline_image}" != "cache" ]] || fail', block)
 
     def test_the_snapshot_block_input_reaches_both_sweep_presets(self):
@@ -211,6 +214,95 @@ class BenaadamsFindingsTests(unittest.TestCase):
         self.assertLess(restore.index('total=$((total + 1))'), restore.index('write_sys "$path" "$value"'))
         # counted after the skip guard, or a blank line would block cleanup forever
         self.assertLess(restore.index('|| continue'), restore.index('total=$((total + 1))'))
+
+
+@unittest.skipUnless(BASH, "no usable bash to execute the workflow resolver")
+class ResolverExecutionTests(unittest.TestCase):
+    @staticmethod
+    def resolver_script():
+        block = RpcBenchmarkWorkflowTests.step("Resolve configuration")
+        lines = block.splitlines()
+        run_line = next(index for index, line in enumerate(lines) if line == "        run: |")
+        body = []
+        for line in lines[run_line + 1:]:
+            if line and len(line) - len(line.lstrip(" ")) < 10:
+                break
+            body.append(line[10:] if line else "")
+        return "\n".join(body) + "\n"
+
+    def run_resolver(self, tool_config: str, baseline_image: str = "cache"):
+        output_name = f".rpc-resolver-test-{os.getpid()}"
+        script_name = f".rpc-resolver-test-{os.getpid()}.sh"
+        wrapper_name = f".rpc-resolver-test-{os.getpid()}.wrapper.sh"
+        script = WORKFLOW.parents[2] / script_name
+        wrapper = WORKFLOW.parents[2] / wrapper_name
+        output = WORKFLOW.parents[2] / output_name
+        script.write_bytes(self.resolver_script().encode("utf-8"))
+        output.touch()
+        environment = {
+            "EVENT_NAME": "workflow_dispatch",
+            "PR_HEAD_BRANCH": "",
+            "PUSH_BRANCH": "feature/rpc-resolver-test",
+            "IN_TOOL": "jsonbench-sweep",
+            "IN_ARCH": "amd64",
+            "IN_DOCKER_IMAGE": "",
+            "IN_BASELINE_IMAGE": baseline_image,
+            "IN_RPS": "1",
+            "IN_REQUESTS": "1",
+            "IN_ROUNDS": "1",
+            "IN_TIMINGS_PASSES": "0",
+            "IN_WARMUP": "0",
+            "IN_CORPUS": "eth-call-corpus-test.jsonl.gz",
+            "IN_DURATION": "1",
+            "IN_SNAPSHOT_BLOCK": "",
+            "IN_DOTTRACE": "false",
+            "IN_CLIENT": "nethermind",
+            "IN_REFERENCE_CLIENT": "none",
+            "IN_PERF": "false",
+            "IN_DOTNET_TRACE": "false",
+            "IN_STATE_LAYOUT": "flat",
+            "IN_FLAGS": "",
+            "IN_TOOL_CONFIG": tool_config,
+            "IN_NODE_CONFIG": "{}",
+            "WR_EVENT": "",
+            "WR_CONCLUSION": "",
+            "WR_HEAD_BRANCH": "",
+            "WR_HEAD_SHA": "",
+            "GITHUB_OUTPUT": output_name,
+        }
+        wrapper_lines = ["#!/usr/bin/env bash", "set -e"]
+        wrapper_lines.extend(f"export {name}={shlex.quote(value)}" for name, value in environment.items())
+        wrapper_lines.append(f"exec bash {shlex.quote(script_name)}")
+        wrapper.write_bytes(("\n".join(wrapper_lines) + "\n").encode("utf-8"))
+        try:
+            result = subprocess.run(
+                [BASH, "--noprofile", "--norc", wrapper_name],
+                cwd=WORKFLOW.parents[2], env=os.environ.copy(),
+                capture_output=True, text=True, timeout=60,
+            )
+            return result, output.read_text(encoding="utf-8")
+        finally:
+            wrapper.unlink(missing_ok=True)
+            script.unlink(missing_ok=True)
+            output.unlink(missing_ok=True)
+
+    def test_jsonbench_sweep_accepts_complete_user_clients_with_cache_sentinel(self):
+        clients = "nethermind@baseline/image:tag nethermind@candidate/image:tag"
+        result, output = self.run_resolver(json.dumps({"clients": clients}))
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        tool_config = re.search(r"tool_config<<TOOLCFG\n(.*?)\nTOOLCFG", output, re.S)
+        self.assertIsNotNone(tool_config)
+        self.assertEqual(clients, json.loads(tool_config.group(1))["clients"])
+
+    def test_jsonbench_sweep_requires_real_or_well_formed_clients(self):
+        for config, expected in (("{}", "explicit baseline_image or tool_config.clients"),
+                                 (json.dumps({"clients": []}), "clients must be a string"),
+                                 (json.dumps({"clients": "   "}), "clients must be a non-empty string")):
+            with self.subTest(config=config):
+                result, _ = self.run_resolver(config)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(expected, result.stdout + result.stderr)
 
 
 class SweepContractTests(unittest.TestCase):

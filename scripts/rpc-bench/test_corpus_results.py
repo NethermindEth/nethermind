@@ -285,6 +285,21 @@ class CommentRenderingTests(unittest.TestCase):
         self.assertIn("10 faster", body)
         self.assertIn("Closed-loop throughput (concurrency 16): master 800.0 req/s, PR 880.0 req/s", body)
 
+    def test_cached_timing_floor_applies_to_latency_and_throughput(self):
+        for delta, expected_arrow in (
+            (3.0, corpus_results._arrow(3.0, corpus_results.CACHED_NOISE_FLOOR_PCT)),
+            (6.0, corpus_results._arrow(6.0, corpus_results.CACHED_NOISE_FLOOR_PCT)),
+        ):
+            with self.subTest(delta=delta):
+                self._timings("nethermind_master", [100.0], achieved=100.0)
+                self._timings("nethermind", [100.0 * (1 + delta / 100)], achieved=100.0 * (1 - delta / 100))
+                body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind", cached_baseline=True)
+                lines = body.splitlines()
+                latency = next(line for line in lines if line.startswith("Paired per-record replay"))
+                throughput = next(line for line in lines if line.startswith("Closed-loop throughput"))
+                self.assertIn(f"median delta {expected_arrow}", latency)
+                self.assertIn(f", {expected_arrow} -{delta:.1f}%.", throughput)
+
     def test_record_shift_needs_to_exceed_the_records_own_aa_spread(self):
         self._cell("nethermind_master", 20.0, 100.0)
         self._cell("nethermind", 20.0, 100.0)

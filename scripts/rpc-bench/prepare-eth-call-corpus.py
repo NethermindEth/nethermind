@@ -66,21 +66,36 @@ class _ClassWriter:
     def __init__(self, directory: Path) -> None:
         descriptor, name = tempfile.mkstemp(dir=directory, prefix=".class.", suffix=".tmp")
         self.path = Path(name)
-        self.handle = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
-        self.handle.write("[")
+        stream = None
+        try:
+            stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+            with stream as handle:
+                handle.write("[")
+        except BaseException:
+            if stream is None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            try:
+                self.path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
         self.count = 0
 
     def write(self, record: dict) -> None:
-        if self.count:
-            self.handle.write(",")
-        json.dump(record, self.handle, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self.path.open("a", encoding="utf-8", newline="\n") as handle:
+            if self.count:
+                handle.write(",")
+            json.dump(record, handle, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         self.count += 1
 
     def close(self) -> None:
-        self.handle.write("]\n")
-        self.handle.flush()
-        os.fsync(self.handle.fileno())
-        self.handle.close()
+        with self.path.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("]\n")
+            handle.flush()
+            os.fsync(handle.fileno())
 
 
 def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> dict[str, int]:
@@ -125,10 +140,6 @@ def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str])
         return classes
     finally:
         for writer in writers.values():
-            try:
-                writer.handle.close()
-            except OSError:
-                pass
             writer.path.unlink(missing_ok=True)
 
 

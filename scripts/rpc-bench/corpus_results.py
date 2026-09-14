@@ -521,7 +521,7 @@ def _render_cells(lines: list[str], slot: str, cell: dict, no_repeat_floor: floa
         lines.append("")
 
 
-def _render_timings(lines: list[str], corpus: dict) -> None:
+def _render_timings(lines: list[str], corpus: dict, no_repeat_floor: float) -> None:
     timings, meta = corpus["timings"], corpus["meta"]
     if "master" not in timings or "PR" not in timings:
         return
@@ -529,7 +529,7 @@ def _render_timings(lines: list[str], corpus: dict) -> None:
     if paired is None:
         return
     lines += [f"Paired per-record replay ({paired['records']} records, medians across passes/runs): "
-              f"median delta {_arrow(paired['median_delta'], 1.0)} {paired['median_delta']:+.1f}% "
+              f"median delta {_arrow(paired['median_delta'], no_repeat_floor)} {paired['median_delta']:+.1f}% "
               f"(95% CI {paired['ci_low']:+.1f}% .. {paired['ci_high']:+.1f}%), mean {paired['mean_delta']:+.1f}%; "
               f"{paired['regressed']} records slower and {paired['improved']} faster beyond {RECORD_SHIFT_PCT:g}% "
               f"and twice their own A/A spread."]
@@ -541,7 +541,7 @@ def _render_timings(lines: list[str], corpus: dict) -> None:
         where = f"concurrency {levels[0]}" if len(levels) == 1 \
             else "mixed concurrency " + "/".join(str(level) for level in levels) + ", not comparable"
         lines.append(f"Closed-loop throughput ({where}): master {base:.1f} req/s, "
-                     f"PR {cand:.1f} req/s, {_arrow(-delta, 1.0)} {delta:+.1f}%.")
+                     f"PR {cand:.1f} req/s, {_arrow(-delta, no_repeat_floor)} {delta:+.1f}%.")
     failed = sum(v for metas in meta.values() for m in metas for k, v in m["outcomes"].items() if k != "ok")
     if failed:
         lines.append(f"⚠️ {failed} replay request(s) did not return a result — the paired figures above are not clean.")
@@ -579,7 +579,7 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str, cached_b
         lines += [f"**`{name}`**", ""]
         for slot in sorted(corpus["cells"], key=_slot_order):
             _render_cells(lines, slot, corpus["cells"][slot], floor, spread_is_control=not cached_baseline)
-        _render_timings(lines, corpus)
+        _render_timings(lines, corpus, floor)
         _render_parity(lines, corpus["parity"])
         lines.append("")
     # On the cached path no repeat can act as a control, so describing one contradicts the paragraph below.

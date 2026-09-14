@@ -353,7 +353,8 @@ gh workflow run run-rpc-benchmarks.yml --ref <branch> -f docker_image=nethermind
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f rps="50 100 300"
 
 # Two images on a json-bench workload instead of the corpus (timed cells)
-gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench-sweep -f rps="50 100" -f duration=60 \n  -f baseline_image=nethermindeth/nethermind:master
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench-sweep -f rps="50 100" -f duration=60 \
+  -f baseline_image=nethermindeth/nethermind:master
 
 # Single node: json-bench curated workload / flood / EthCallChaos
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f rps=50 -f duration=60 \
@@ -391,11 +392,13 @@ things are kept:
 The comment then names the master image, date and run the baseline came from. When no cache exists
 yet (new arch, new corpus, changed cell shape, cache evicted after 7 idle days) the run falls back to
 executing `nethermindeth/nethermind:master` itself; when the comparison against the saved responses
-cannot run (snapshot head moved, unreadable state, node unreachable) the run **fails** with parity
-"not checked" — with a saved baseline that check is the run's only correctness gate, so it is never a
-warning — and the master baseline needs re-recording if the snapshot moved. Caches made from a feature
-branch are visible to that branch only — production
-baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is what the presets set.
+cannot run (snapshot head moved, unreadable state, node unreachable) the run **fails** with parity not checked.
+With a saved baseline that check is the only correctness gate for the run, so it is never a warning.
+Cached aggregates do not replace the saved parity responses: if they are missing on this box,
+rerun the `corpus-baseline` preset on the same box before the cached comparison can succeed. Re-record
+the master baseline if the snapshot moved. Caches made from a feature branch are visible to that branch
+only; production baselines come from master. `tool_config.corpus_baseline` (`none|save|use`) is what
+the presets set.
 
 `Validate the cached master baseline` runs before the sweep and drops a restored tree this run cannot
 use — one staged at a different `corpus_results.BASELINE_SCHEMA` (a staged-file schema change since
@@ -411,10 +414,10 @@ Three limits worth knowing before trusting a cached comparison:
   — or pass `baseline_image=<master image>` and take the two-arm run deliberately.
 - **The two halves of a baseline live in different places.** The aggregates are in the Actions cache,
   which is repo-global and outlives any box; the parity responses are a file on one runner. So they can
-  disagree: a box whose `baselines/` dir was cleaned still restores cached aggregates (the run then
-  captures parity against its own arm and says so in the step summary), and the amd64 cache says
-  nothing about what the arm box holds. The comment names the vintage of the aggregates; the step
-  summary's parity table names the label of the saved responses. Read both.
+  disagree: a box whose `baselines/` dir was cleaned still restores cached aggregates, but the job
+  fails until `corpus-baseline` is rerun on that same box; it does not capture parity against its own
+  arm. The amd64 cache says nothing about what the arm box holds. The comment names the vintage of the
+  aggregates; the step summary's parity table names the label of the saved responses. Read both.
 - **The default cell is a warm-compute signal.** The 60 s warm-up at 400 rps delivers ~24k requests
   before a 20k-request cell, so both arms measure a node whose caches are hot — the analogue of expb's
   `EXPB_EVM_WARMUP=1`. That is the right default for compute changes and weak for storage-layer ones;
