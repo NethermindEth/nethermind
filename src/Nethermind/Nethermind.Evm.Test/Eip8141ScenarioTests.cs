@@ -466,6 +466,63 @@ public class Eip8141ScenarioTests
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
+    // Frame receipts slice the shared log journal by index range, so several logs per frame pin the slice
+    // bounds that one log per frame cannot tell apart from an off-by-one.
+    [Test]
+    public void MultipleLogsPerFrame_EachFrameReceiptKeepsOnlyItsOwnInOrder()
+    {
+        Address first = TestItem.AddressD;
+        Address second = TestItem.AddressE;
+        Address third = TestItem.AddressF;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(first, LoggingCode(1, 2, 3));
+        DeployContract(second, LoggingCode(4, 5));
+        DeployContract(third, LoggingCode(6, 7, 8, 9));
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(first),
+            SenderFrame(second),
+            SenderFrame(third));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts![0].Logs, Is.Empty, "the VERIFY frame emits nothing");
+            AssertFrameLogMarkers(receipt.FrameReceipts[1], 1, 2, 3);
+            AssertFrameLogMarkers(receipt.FrameReceipts[2], 4, 5);
+            AssertFrameLogMarkers(receipt.FrameReceipts[3], 6, 7, 8, 9);
+        }
+
+        AssertBloomAndReceiptLogsAgree(receipt);
+    }
+
+    private static void AssertFrameLogMarkers(TxFrameReceipt frameReceipt, params byte[] expected)
+    {
+        byte[] actual = frameReceipt.Logs.Select(static log => log.Topics[0].Bytes[^1]).ToArray();
+        Assert.That(actual, Is.EqualTo(expected), "a frame receipt must carry its own logs, in emission order");
+    }
+
+    private static byte[] LoggingCode(params byte[] markers)
+    {
+        Prepare code = Prepare.EvmCode;
+        foreach (byte marker in markers)
+        {
+            code.Log(0, 0, [LogMarkerTopic(marker)]);
+        }
+
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private static Hash256 LogMarkerTopic(byte marker)
+    {
+        byte[] topic = new byte[Hash256.Size];
+        topic[^1] = marker;
+        return new Hash256(topic);
+    }
+
     // Two batches in one transaction: batch B's bounds depend on batchStartIndex being re-seeded, which
     // rests on inBatch being reset when batch A closes. A stale start would wipe the between frame's log.
     [Test]

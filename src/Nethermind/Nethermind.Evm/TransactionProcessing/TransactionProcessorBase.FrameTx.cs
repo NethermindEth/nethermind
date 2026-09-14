@@ -121,7 +121,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (ShouldValidate(opts))
         {
             TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
-            if (!nonceResult) return nonceResult;
+            if (!nonceResult)
+            {
+                WorldState.Restore(txSnapshot);
+                return nonceResult;
+            }
         }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
@@ -129,6 +133,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
         if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
         {
+            WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
         }
 
@@ -138,12 +143,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (ShouldValidateGas(tx, opts) && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
         {
             TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+            WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(
                 $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
         }
 
         if (tx.RecentRootReferences is not null && !spec.IsEip8272Enabled)
         {
+            WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.RecentRootReferencesNotEnabled);
         }
 
@@ -156,6 +163,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
+            WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
@@ -167,6 +175,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobFee))
             {
                 TraceLogInvalidTx(tx, "BLOB_BASE_FEE_OVERFLOW");
+                WorldState.Restore(txSnapshot);
                 return RequiredBalanceExceeds256Bits(tx);
             }
 
@@ -174,6 +183,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             if (tx.MaxFeePerBlobGas.GetValueOrDefault() < feePerBlobGas)
             {
                 TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
+                WorldState.Restore(txSnapshot);
                 return TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
                     BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
             }
@@ -183,6 +193,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             || UInt256.AddOverflow(maxCost, blobFee, out maxCost))
         {
             TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE");
+            WorldState.Restore(txSnapshot);
             return RequiredBalanceExceeds256Bits(tx);
         }
 
@@ -221,6 +232,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
         {
+            WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
         }
 
@@ -308,27 +320,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             int frameLogCount = accessTracker.Logs.Count - frameLogStart;
-            LogEntry[] frameLogs;
-            if (frameSucceeded && frameLogCount > 0)
-            {
-                frameLogs = new LogEntry[frameLogCount];
-                int skipped = 0;
-                int written = 0;
-                foreach (LogEntry log in accessTracker.Logs)
-                {
-                    if (skipped < frameLogStart)
-                    {
-                        skipped++;
-                        continue;
-                    }
-
-                    frameLogs[written++] = log;
-                }
-            }
-            else
-            {
-                frameLogs = [];
-            }
+            LogEntry[] frameLogs = frameSucceeded && frameLogCount > 0
+                ? accessTracker.Logs.AsSpan().Slice(frameLogStart, frameLogCount).ToArray()
+                : [];
             ulong frameStateGasUsed = frameSucceeded ? (ulong)frameStateGas : 0;
             frameReceipts[i] = new TxFrameReceipt(
                 frameSucceeded ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
