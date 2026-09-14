@@ -89,10 +89,9 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
             .AddSingleton<ISyncConfig>(new SyncConfig())
-            .AddSingleton<IParentHeaderProvider>(finalizedStateProvider ?? Substitute.For<IParentHeaderProvider>())
             .AddSingleton<IProcessExitSource>(processExitSource)
             .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
-            .AddSingleton<IParentHeaderProvider>(UnavailableParentHeaderProvider.Instance)
+            .AddSingleton<IParentHeaderProvider>(finalizedStateProvider ?? UnavailableParentHeaderProvider.Instance)
             // The production module wires the catalog and metadata to columned RocksDB via IDbFactory,
             // which the test project does not provide; an in-memory db is behavior-equivalent here.
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, CatalogDb)

@@ -48,7 +48,10 @@ public class TestFinalizedStateProvider(ulong depth) : IParentHeaderProvider
 
     public BlockHeader? FindParentHeader(BlockHeader target) => throw new InvalidOperationException("Parent lookup is not supported by this test finality provider.");
 
-    public static BlockHeader FinalizedHeader(ulong blockNumber, Hash256 stateRoot) => new(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, []);
+    public static BlockHeader FinalizedHeader(ulong blockNumber, Hash256 stateRoot) => new(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, [])
+    {
+        StateRoot = stateRoot
+    };
 
     public void SetFinalizedPoint(BlockHeader baseBlock) => _manualFinalizedPoint = baseBlock;
 }
