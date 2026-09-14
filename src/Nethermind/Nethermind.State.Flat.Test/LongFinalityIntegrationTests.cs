@@ -384,7 +384,7 @@ public class LongFinalityIntegrationTests
     }
 
     // A settable finalized-state provider so a test can park finality at an arbitrary block/root.
-    private sealed class SettableFinalizedProvider : IParentHeaderProvider
+    private sealed class SettableFinalizedProvider : IStateHeaderProvider
     {
         private readonly System.Collections.Generic.Dictionary<ulong, Hash256> _roots = [];
         public ulong FinalizedBlockNumber { get; set; }
@@ -409,7 +409,7 @@ public class LongFinalityIntegrationTests
         return new PersistenceManager(
             tier.Config,
             ScheduleHelper.CreateWithOffset(tier.Config, 0),
-            tier.Resolve<IParentHeaderProvider>(),
+            tier.Resolve<IStateHeaderProvider>(),
             persistence,
             tier.Repository,
             NullStatePersistenceBarrier.Instance,

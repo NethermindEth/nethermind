@@ -78,13 +78,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-    private readonly IParentHeaderProvider _finalizedStateProvider;
+    private readonly IStateHeaderProvider _finalizedStateProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
-        IParentHeaderProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {

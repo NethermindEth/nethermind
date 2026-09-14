@@ -21,7 +21,7 @@ public class MergeFinalizedStateProviderTests
 {
     private IPoSSwitcher _poSSwitcher = null!;
     private IBlockTree _blockTree = null!;
-    private IParentHeaderProvider _baseFinalizedStateProvider = null!;
+    private IStateHeaderProvider _baseFinalizedStateProvider = null!;
     private MergeFinalizedStateProvider _provider = null!;
     private IBlockCacheService _blockCacheService;
 
@@ -30,7 +30,7 @@ public class MergeFinalizedStateProviderTests
     {
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _blockTree = Substitute.For<IBlockTree>();
-        _baseFinalizedStateProvider = Substitute.For<IParentHeaderProvider>();
+        _baseFinalizedStateProvider = Substitute.For<IStateHeaderProvider>();
         _blockCacheService = Substitute.For<IBlockCacheService>();
         _provider = new MergeFinalizedStateProvider(_poSSwitcher, _blockCacheService, _blockTree, _baseFinalizedStateProvider);
     }

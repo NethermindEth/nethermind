@@ -6,14 +6,14 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test;
 
-public sealed class TestParentHeaderProvider : IParentHeaderProvider
+public sealed class TestStateHeaderProvider : IStateHeaderProvider
 {
-    public static TestParentHeaderProvider Instance { get; } = new();
+    public static TestStateHeaderProvider Instance { get; } = new();
 
     public BlockHeader? Parent { get; set; }
     public BlockHeader? LastTarget { get; private set; }
 
-    public TestParentHeaderProvider() { }
+    public TestStateHeaderProvider() { }
 
     public BlockHeader? FindParentHeader(BlockHeader target)
     {

@@ -18,9 +18,9 @@ namespace Nethermind.Core.Test;
 public static class TestWorldStateFactory
 {
     public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null) =>
-        CreateForTest(UnavailableParentHeaderProvider.Instance, dbProvider, logManager);
+        CreateForTest(UnavailableStateHeaderProvider.Instance, dbProvider, logManager);
 
-    public static IWorldState CreateForTest(IParentHeaderProvider parentHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IStateHeaderProvider stateHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
@@ -34,14 +34,14 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, parentHeaderProvider, logManager), logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
     }
 
-    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, IParentHeaderProvider? parentHeaderProvider = null)
+    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, IStateHeaderProvider? stateHeaderProvider = null)
     {
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
-        parentHeaderProvider ??= UnavailableParentHeaderProvider.Instance;
+        stateHeaderProvider ??= UnavailableStateHeaderProvider.Instance;
 
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
@@ -53,12 +53,12 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, parentHeaderProvider, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
-    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IParentHeaderProvider parentHeaderProvider)
+    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IStateHeaderProvider stateHeaderProvider)
     {
-        IContainer container = BuildFlatContainer(parentHeaderProvider);
+        IContainer container = BuildFlatContainer(stateHeaderProvider);
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (wsm.GlobalWorldState, container);
     }
@@ -66,18 +66,18 @@ public static class TestWorldStateFactory
     public static (IWorldState worldState, IStateReader reader, IContainer container) CreateFlatForTestWithStateReader(ILogManager? logManager = null)
     {
         logManager ??= LimboLogs.Instance;
-        IContainer container = BuildFlatContainer(UnavailableParentHeaderProvider.Instance);
+        IContainer container = BuildFlatContainer(UnavailableStateHeaderProvider.Instance);
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (new WorldState(wsm.GlobalWorldState, logManager), wsm.GlobalStateReader, container);
     }
 
-    private static IContainer BuildFlatContainer(IParentHeaderProvider parentHeaderProvider)
+    private static IContainer BuildFlatContainer(IStateHeaderProvider stateHeaderProvider)
     {
         ConfigProvider configProvider = new();
         configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider));
-        if (parentHeaderProvider is not null) builder.AddSingleton(parentHeaderProvider);
+        if (stateHeaderProvider is not null) builder.AddSingleton(stateHeaderProvider);
         return builder.Build();
     }
 
@@ -93,10 +93,10 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, UnavailableParentHeaderProvider.Instance, logManager);
+        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider,
             new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null, logManager),
-            UnavailableParentHeaderProvider.Instance, logManager);
+            UnavailableStateHeaderProvider.Instance, logManager);
     }
 }

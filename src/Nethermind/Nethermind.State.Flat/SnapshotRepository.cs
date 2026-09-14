@@ -27,7 +27,7 @@ namespace Nethermind.State.Flat;
 public class SnapshotRepository : ISnapshotRepository, IDisposable
 {
     private readonly ILogger _logger;
-    private readonly IParentHeaderProvider _finalizedStateProvider;
+    private readonly IStateHeaderProvider _finalizedStateProvider;
 
     // ---- Persisted tier: four buckets keyed by StateId.To. Each bucket is self-contained and
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
@@ -65,7 +65,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         BlobArenaManager blobArenaManager,
         ISnapshotCatalog catalog,
         IFlatDbConfig config,
-        IParentHeaderProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         ILogManager logManager)
     {
         _catalog = catalog;

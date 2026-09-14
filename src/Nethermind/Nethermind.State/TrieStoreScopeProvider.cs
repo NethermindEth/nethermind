@@ -38,12 +38,12 @@ namespace Nethermind.State;
 public class TrieStoreScopeProvider(
     ITrieStore trieStore,
     IKeyValueStoreWithBatching codeDb,
-    IParentHeaderProvider parentHeaderProvider,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager,
     bool codeDbIsPersistent = false) : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore = trieStore;
-    private readonly IParentHeaderProvider _parentHeaderProvider = parentHeaderProvider;
+    private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
@@ -100,7 +100,7 @@ public class TrieStoreScopeProvider(
             return true;
         }
 
-        parent = _parentHeaderProvider.FindParentHeader(targetBlock);
+        parent = _stateHeaderProvider.FindParentHeader(targetBlock);
         return parent is not null;
     }
 

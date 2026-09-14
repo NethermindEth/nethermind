@@ -36,7 +36,7 @@ public class PruningTrieStateFactory(
     Lazy<IPathRecovery> pathRecovery,
     Lazy<ICodeRecovery> codeRecovery,
     StateBoundaryStore boundaryStore,
-    IParentHeaderProvider parentHeaderProvider,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
 )
@@ -62,12 +62,12 @@ public class PruningTrieStateFactory(
                 mainNodeStorage,
                 pathRecovery,
                 codeRecovery,
-                parentHeaderProvider,
+                stateHeaderProvider,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
-                parentHeaderProvider,
+                stateHeaderProvider,
                 logManager,
                 codeDbIsPersistent: true);
 
@@ -76,7 +76,7 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             boundaryStore,
-            parentHeaderProvider,
+            stateHeaderProvider,
             logManager,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
@@ -106,7 +106,7 @@ public class MainPruningTrieStoreFactory
         IPruningConfig pruningConfig,
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
-        IParentHeaderProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IBlockTree blockTree,
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
@@ -206,10 +206,10 @@ public class MainPruningTrieStoreFactory
     public IPruningTrieStore PruningTrieStore { get; }
 
     private class DelayedFinalizedStateProvider(
-        IParentHeaderProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IBlockTree blockTree,
         ulong pruningConfigSimulateLongFinalizationDepth
-    ) : IParentHeaderProvider
+    ) : IStateHeaderProvider
     {
         private ulong? _lastFinalizedBlockNumber = null;
 

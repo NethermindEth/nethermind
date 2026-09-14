@@ -27,7 +27,7 @@ namespace Nethermind.Store.Test
             MemDb stateDb = new();
             NodeStorage nodeStorage = new(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
-            WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, UnavailableParentHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
             BlockHeader baseBlock;
 

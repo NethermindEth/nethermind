@@ -8,7 +8,7 @@ namespace Nethermind.Core;
 /// parent header, and exposes the state-pruning finality boundary and the canonical header at
 /// finalized heights.
 /// </summary>
-public interface IParentHeaderProvider
+public interface IStateHeaderProvider
 {
     /// <summary>Finds the parent header of <paramref name="target"/>, or <c>null</c> when it is unavailable.</summary>
     BlockHeader? FindParentHeader(BlockHeader target);

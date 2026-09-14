@@ -6,11 +6,11 @@ using Nethermind.Core;
 namespace Nethermind.State;
 
 /// <summary>Parent header provider for contexts where parent lookup is unavailable.</summary>
-public sealed class UnavailableParentHeaderProvider : IParentHeaderProvider
+public sealed class UnavailableStateHeaderProvider : IStateHeaderProvider
 {
-    public static UnavailableParentHeaderProvider Instance { get; } = new();
+    public static UnavailableStateHeaderProvider Instance { get; } = new();
 
-    private UnavailableParentHeaderProvider() { }
+    private UnavailableStateHeaderProvider() { }
 
     /// <inheritdoc />
     public BlockHeader? FindParentHeader(BlockHeader target) => null;

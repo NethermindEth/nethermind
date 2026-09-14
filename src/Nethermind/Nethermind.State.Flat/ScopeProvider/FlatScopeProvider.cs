@@ -17,13 +17,13 @@ public class FlatScopeProvider(
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
-    IParentHeaderProvider parentHeaderProvider,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager,
     bool isReadOnly)
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
-    private readonly IParentHeaderProvider _parentHeaderProvider = parentHeaderProvider;
+    private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
@@ -69,7 +69,7 @@ public class FlatScopeProvider(
             return true;
         }
 
-        parent = _parentHeaderProvider.FindParentHeader(targetBlock);
+        parent = _stateHeaderProvider.FindParentHeader(targetBlock);
         return parent is not null;
     }
 
