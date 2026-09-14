@@ -109,7 +109,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> ProductionDelayCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling, 0);
             yield return new TestCaseData(ceiling, 100);
@@ -118,7 +118,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingRateCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -140,7 +140,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingCases()
     {
-        foreach (ulong ceiling in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 500_000ul })
+        foreach (ulong ceiling in SweptCeilings)
         {
             yield return new TestCaseData(ceiling);
         }
@@ -231,6 +231,19 @@ public class FrameTxFloodMeasurement
                       + "deliberately.");
     }
 
+    /// <summary>Environment variable naming the target core count for the analytic core-normalized
+    /// projection. Unset (the default) means the projected field is omitted entirely, not zero.</summary>
+    private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
+
+    /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
+    /// <remarks>322,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
+    /// verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
+    /// the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
+    /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
+    /// ever reach that cap — produce a row at that point; every keccak-wide/production/ramp arm is gated by
+    /// it and Assert.Ignores instead.</remarks>
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+
     /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
 
@@ -317,7 +330,10 @@ public class FrameTxFloodMeasurement
     public async Task Block_production_delay_at_fixed_occupancy(ulong ceiling, int offeredRate)
     {
         SkipUnlessSingleCore();
-        if (offeredRate > 0) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        // Applied regardless of offeredRate: the offeredRate=0 baseline exists to be diffed against the
+        // flood arm at the same ceiling, so an unreachable ceiling must skip both together, not leave the
+        // baseline behind orphaned once the paired flood row is ignored.
+        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
         using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
@@ -531,8 +547,28 @@ public class FrameTxFloodMeasurement
         bool saturated = flooded.AchievedRate < offeredRate * RateHeldFloor || !lagBounded;
         double shedPct = ShedPct(flooded);
 
+        // signature-stuffed is refused before the prefix simulator's lock, so unlike execution shapes its
+        // rejection throughput scales with cores rather than serializing on contention. That's a claim
+        // about achieved_rate, not about this single-core run's delay: with attacker and victim sharing
+        // one core (SkipUnlessSingleCore above), w - w0 already reflects that contention, and projecting
+        // it by a core count would describe neither the 1-core run nor an N-core one, where the generator
+        // and block processor need not share a core at all. Project achieved_rate instead, and only from a
+        // run whose baseline was valid and that actually held its offered rate — a noisy or starved run's
+        // achieved_rate isn't a throughput this shape could sustain.
+        string coreNormalizedField = "";
+        if (shape == "signature-stuffed" && IsSingleCore() && worstDriftPct < MaxBaselineDriftPercent && !saturated
+            && int.TryParse(Environment.GetEnvironmentVariable(ProjectCoresVariable), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out int targetCores)
+            && targetCores > 0)
+        {
+            coreNormalizedField = $"achieved_rate_core_normalized={flooded.AchievedRate * targetCores:F1} "
+                                  + $"achieved_rate_core_normalized_cores={targetCores} "
+                                  + "achieved_rate_core_normalized_basis=analytic_projection_lower_bound ";
+        }
+
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
+             + coreNormalizedField
              + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
              + $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
              + $"valid={(worstDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
