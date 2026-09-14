@@ -18,8 +18,7 @@ namespace Nethermind.Consensus.Producers
     {
         protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
             base.ConfigureBuilder(builder)
-                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddScoped(BlockchainProcessor.Options.NoReceipts);
+                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance);
 
         protected override IWorldStateScopeProvider CreateWorldState() => WorldStateManager.CreateResettableWorldState();
     }

@@ -28,7 +28,6 @@ public class TraceModuleFactory(
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
             .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?

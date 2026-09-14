@@ -34,11 +34,9 @@ public class OneTimeChainProcessorTests
         private readonly ConcurrentDictionary<Hash256, bool> _allowedToFail = [];
 
         public List<Block[]> ProcessedBranches { get; } = [];
-        public ProcessingOptions? LastOptions { get; private set; }
 
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
         {
-            LastOptions = processingOptions;
             foreach (Block block in suggestedBlocks)
             {
                 if (!_allowed.ContainsKey(block.Hash!))
@@ -117,13 +115,10 @@ public class OneTimeChainProcessorTests
     private void Suggest(Block block) =>
         Assert.That(_blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None), Is.EqualTo(AddBlockResult.Added));
 
-    // (a) ProducingBlock (ForceProcessing | DoNotUpdateHead | ...) processes but keeps the head;
-    // ReadOnlyChain of a better-than-head block also processes without touching the head;
-    // (c) a non-better-than-head block without ForceProcessing is skipped outright.
-    [TestCase(ProcessingOptions.ProducingBlock, true, false, 2_000_000)]
-    [TestCase(ProcessingOptions.ReadOnlyChain, true, false, 2_000_000)]
-    [TestCase(ProcessingOptions.None, false, false, 1)]
-    public void Process_follows_head_and_option_semantics(ProcessingOptions options, bool expectProcessed, bool headUpdated, long totalDifficulty)
+    [TestCase(ProcessingOptions.ProducingBlock, true, 2_000_000)]
+    [TestCase(ProcessingOptions.ReadOnlyChain, true, 2_000_000)]
+    [TestCase(ProcessingOptions.None, false, 1)]
+    public void Process_follows_head_and_option_semantics(ProcessingOptions options, bool expectProcessed, long totalDifficulty)
     {
         Block block = BuildBlockOnHead(totalDifficulty);
         _branchProcessor.Allow(block);
@@ -132,25 +127,23 @@ public class OneTimeChainProcessorTests
         Block? processed = _processor.Process(block, options, NullBlockTracer.Instance);
 
         Assert.That(processed, expectProcessed ? Is.Not.Null : Is.Null);
-        Assert.That(() => _blockTree.Head!.Hash, headUpdated
-            ? Is.EqualTo(block.Hash).After(5000, 100)
-            : Is.Not.EqualTo(block.Hash).After(5000, 100));
+        Assert.That(_blockTree.Head!.Hash, Is.Not.EqualTo(block.Hash));
         Assert.That(_branchProcessor.ProcessedBranches, expectProcessed ? Is.Not.Empty : Is.Empty);
     }
 
-    // (b) an invalid block is refused (returns null) and, under ReadOnlyChain, is not deleted from the block tree.
-    [Test]
-    public void Invalid_block_is_refused_and_not_deleted_when_read_only()
+    // The second case is what BlockProducerBase uses with BuildBlocksOnMainState.
+    [TestCase(ProcessingOptions.ReadOnlyChain)]
+    [TestCase(ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts | ProcessingOptions.DoNotUpdateHead)]
+    public void Invalid_block_is_refused_and_kept_in_block_tree(ProcessingOptions options)
     {
         Block block = BuildBlockOnHead();
         _branchProcessor.AllowToFail(block);
         Suggest(block);
 
-        Block? processed = _processor.Process(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance);
+        Block? processed = _processor.Process(block, options, NullBlockTracer.Instance);
 
         Assert.That(processed, Is.Null);
-        Assert.That(_blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null,
-            "ReadOnlyChain must not delete the invalid block");
+        Assert.That(_blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
     }
 
     [Test]

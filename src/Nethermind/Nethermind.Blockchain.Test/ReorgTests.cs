@@ -150,6 +150,7 @@ public class ReorgTests
             lock (events) events.Add(args.Block);
             if (args.Block.Hash == block2B.Hash) block2BAdded.TrySetResult();
         };
+
         _blockchainProcessor.Start();
 
         _blockTree.SuggestBlock(block0);
