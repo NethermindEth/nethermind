@@ -156,10 +156,37 @@ public interface IJsonRpcConfig : IConfig
             HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
             concurrency cap on the override-path env pool used by sharable `eth_call` /
             `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
-            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Defaults
+            overrides: EVM-executing calls queue for a slot at the JSON-RPC admission gate
+            (`EvmExecutionMaxQueueWaitMs`) before they can reach this cap. Defaults
             to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
+
+    /// <summary>Maximum time, in milliseconds, that an EVM-executing request may wait for a slot. Defaults to 500 ms; 0 disables queueing.</summary>
+    [ConfigItem(
+        Description = """
+            The max time, in milliseconds, an EVM-executing JSON-RPC request may wait for an
+            execution slot before it is answered with `LimitExceeded` (HTTP 503). Waiting requests are served lightest first,
+            weighted by their `params` size (one unit per 128 KiB, at most 8), FIFO within a weight. A waiter aged through
+            half its budget takes priority over lighter newcomers, while expired requests are shed at their full budget.
+            `0` disables queueing: a request that finds every slot busy is rejected at once, before its parameters are read.
+            A longer budget adds latency to the requests it serves without
+            adding throughput. Queueing is bypassed for batch items and authenticated requests, including all IPC requests.
+            WebSocket connections configured with at most one processing worker also bypass queueing, to avoid delaying later calls.
+            """,
+        DefaultValue = "500")]
+    int EvmExecutionMaxQueueWaitMs { get; set; }
+
+    /// <summary>Maximum number of EVM-executing requests waiting for a slot. Defaults to 500; 0 removes the queue limit.</summary>
+    [ConfigItem(
+        Description = """
+            The max number of EVM-executing JSON-RPC requests waiting for an execution slot
+            at once; further requests are answered with `LimitExceeded` (HTTP 503) immediately, before their parameters are
+            read. `0` to lift the limit, leaving `EvmExecutionMaxQueueWaitMs` as the only bound on the queue. Negative
+            values are treated as zero and therefore leave the queue uncapped.
+            """,
+        DefaultValue = "500")]
+    int EvmExecutionQueueLimit { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }

@@ -47,6 +47,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
 
         JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig);
+        api.DisposeStack.Push(jsonRpcService);
         IRpcAuthentication auth =
             jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
