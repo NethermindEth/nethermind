@@ -664,8 +664,8 @@ public partial class EthRpcModule(
 
     private ResultWrapper<BlockHeaderForRpc?> GetHeader(BlockParameter blockParameter)
     {
-        // ethereum/execution-apis#877 makes the pending tag return null; the block methods keep
-        // their partially-nulled pending object, which that spec does not cover.
+        // The pending tag returns null as proposed in ethereum/execution-apis#877; the block methods
+        // keep their partially-nulled pending object, which that spec does not cover.
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             return ResultWrapper<BlockHeaderForRpc?>.Success(null);
