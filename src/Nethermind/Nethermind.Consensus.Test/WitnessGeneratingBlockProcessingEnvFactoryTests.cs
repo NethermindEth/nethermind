@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -39,7 +38,6 @@ public class WitnessGeneratingBlockProcessingEnvFactoryTests
         using WitnessGeneratingBlockProcessingEnvFactory factory = new(
             container.Resolve<ILifetimeScope>(),
             container.Resolve<IWorldStateManager>(),
-            container.Resolve<IDbProvider>(),
             [.. container.Resolve<IBlockValidationModule[]>(), probe],
             container.Resolve<ISpecProvider>(),
             LimboLogs.Instance);
