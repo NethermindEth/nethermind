@@ -6,6 +6,7 @@
 
 import contextlib
 import io
+import json
 import os
 import signal
 import sys
@@ -258,6 +259,92 @@ class SequentialDriverParserTests(unittest.TestCase):
                     "compute-warm warmup is missing or failed" in result["failure_reasons"],
                 )
                 verify_clean.assert_called_once()
+
+    def test_run_sample_keeps_export_credentials_out_of_success_failure_and_cancel_artifacts(self):
+        sentinel = "credential-sentinel-for-expb-test"
+        base = {
+            "export": {"prometheus_remote_write": {"basic_auth": {"password": sentinel}}},
+            "scenarios": {"nethermind": {"amount": 1}},
+        }
+        image = {"id": "image-a", "image": "repo/image:tag@sha256:" + "a" * 64}
+        log = (
+            "[payload-server] client_metric block_number=100 processing_ms=10.0\n"
+            "| 100 | 200 | 11.0 |\n"
+            "Nethermind is shut down\nCleanup completed\n"
+        ).encode("utf-8")
+
+        for case, exit_code, cancellation_requested in (
+            ("success", 0, False),
+            ("failure", 7, False),
+            ("cancelled", 143, True),
+        ):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "campaign"
+                root.mkdir()
+                data_dir = Path(directory) / "data"
+                data_dir.mkdir()
+                observed = {}
+                runtime_paths = []
+
+                class FakeChild:
+                    pid = 1234
+
+                    def poll(self):
+                        return None if cancellation_requested else 0
+
+                    def wait(self):
+                        return exit_code
+
+                def fake_popen(command, **kwargs):
+                    runtime_path = Path(command[command.index("--config-file") + 1])
+                    runtime_paths.append(runtime_path)
+                    observed["config"] = json.loads(runtime_path.read_text(encoding="utf-8"))
+                    kwargs["stdout"].write(log)
+                    kwargs["stdout"].flush()
+                    return FakeChild()
+
+                environment = {
+                    "EXPB_DATA_DIR": str(data_dir),
+                    "MEASUREMENT_MODE": "standard",
+                    "AMOUNT": "1",
+                    "DELAY_SECONDS": "0",
+                    "EXPB_ENV_PASSTHROUGH": "",
+                    "ADDITIONAL_EXTRA_FLAGS": "",
+                    "CLIENT_ENV": "",
+                    "TRACE_BLOCKS": "",
+                    "DOTTRACE": "false",
+                    "PERF": "false",
+                }
+                with patch.object(sequential_driver, "current", None), patch.object(
+                    sequential_driver, "cancelled", cancellation_requested
+                ), patch.object(sequential_driver, "watchdog", None), patch.dict(
+                    os.environ, environment, clear=False
+                ), patch.object(
+                    sequential_driver.subprocess, "Popen", side_effect=fake_popen
+                ), patch.object(sequential_driver, "verify_clean"), patch.object(
+                    sequential_driver.os, "killpg", create=True
+                ) as killpg, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    result = sequential_driver.run_sample(base, image, 1, root)
+
+                self.assertEqual(case == "success", result["status"] == "success")
+                self.assertEqual(
+                    sentinel,
+                    observed["config"]["export"]["prometheus_remote_write"]["basic_auth"]["password"],
+                )
+                self.assertEqual(1, len(runtime_paths))
+                self.assertNotIn(root, runtime_paths[0].parents)
+                self.assertFalse(runtime_paths[0].exists())
+                artifact_config = json.loads((root / "image-a-run1" / "config.json").read_text(encoding="utf-8"))
+                self.assertNotIn("export", artifact_config)
+                artifact_files = [path for path in root.rglob("*") if path.is_file()]
+                self.assertTrue(artifact_files)
+                self.assertTrue(
+                    all(sentinel not in path.read_text(encoding="utf-8", errors="replace") for path in artifact_files)
+                )
+                if cancellation_requested:
+                    killpg.assert_called_once()
+                else:
+                    killpg.assert_not_called()
 
 
 class _CompletedProcess:

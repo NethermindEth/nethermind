@@ -15,6 +15,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SSE = re.compile(r"\[payload-server\]\s+client_metric\s+block_number=(\d+)\s+processing_ms=(\d+(?:\.\d+)?)")
@@ -184,22 +185,28 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     config = base
     try:
         config, scenario = render(base, image, run)
-        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-        configured = parse_amount(get("AMOUNT"))
-        if configured is None:
-            configured = config["scenarios"][scenario].get("amount", 0)
-        result["expected_amount"] = int(configured)
-        command = [get("EXPB_BIN", "expb"), "execute-scenarios", "--config-file", str(config_path), "--per-payload-metrics", "--per-payload-metrics-logs", "--print-logs"]
-        if get("DOTTRACE", "false") == "true": command += ["--dottrace", "--dottrace-mode", get("DOTTRACE_MODE", "sampling"), "--dotnet-trace"]
-        if get("PERF", "false") == "true": command.append("--perf")
-        result["command"] = command
-        child_env = os.environ.copy()
-        child_env.update(parse_pairs(get("EXPB_ENV_PASSTHROUGH")))
-        if get("MEASUREMENT_MODE", "standard") == "compute-warm": child_env["EXPB_EVM_WARMUP"] = "1"
-        with log_path.open("wb") as output:
-            current = subprocess.Popen(command, cwd=get("EXPB_DATA_DIR"), env=child_env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
-            if cancelled: stop(signal.SIGTERM, None)
-            code = current.wait()
+        # The artifact is retained and uploaded; only the private runtime copy may contain export credentials.
+        artifact_config = dict(config)
+        artifact_config.pop("export", None)
+        config_path.write_text(json.dumps(artifact_config, indent=2) + "\n", encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".expb-runtime-", dir=root.parent) as runtime_directory:
+            runtime_config_path = Path(runtime_directory) / "config.json"
+            runtime_config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+            configured = parse_amount(get("AMOUNT"))
+            if configured is None:
+                configured = config["scenarios"][scenario].get("amount", 0)
+            result["expected_amount"] = int(configured)
+            command = [get("EXPB_BIN", "expb"), "execute-scenarios", "--config-file", str(runtime_config_path), "--per-payload-metrics", "--per-payload-metrics-logs", "--print-logs"]
+            if get("DOTTRACE", "false") == "true": command += ["--dottrace", "--dottrace-mode", get("DOTTRACE_MODE", "sampling"), "--dotnet-trace"]
+            if get("PERF", "false") == "true": command.append("--perf")
+            result["command"] = command
+            child_env = os.environ.copy()
+            child_env.update(parse_pairs(get("EXPB_ENV_PASSTHROUGH")))
+            if get("MEASUREMENT_MODE", "standard") == "compute-warm": child_env["EXPB_EVM_WARMUP"] = "1"
+            with log_path.open("wb") as output:
+                current = subprocess.Popen(command, cwd=get("EXPB_DATA_DIR"), env=child_env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+                if cancelled: stop(signal.SIGTERM, None)
+                code = current.wait()
     except Exception as error:
         code = 125
         result["error"] = str(error)
