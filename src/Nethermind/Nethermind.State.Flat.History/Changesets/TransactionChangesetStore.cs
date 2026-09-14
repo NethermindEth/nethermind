@@ -17,6 +17,7 @@ internal sealed class TransactionChangesetStore
     private bool _hasCoverage;
     private ulong _coverageFrom;
     private ulong _coverageTo;
+    private ulong _prunedBelow;
 
     public TransactionChangesetStore(IDb column)
     {
@@ -85,11 +86,13 @@ internal sealed class TransactionChangesetStore
     public bool Covers(ulong block) => TryGetCoverage(out ulong from, out ulong to) && block >= from && block <= to;
 
     /// <summary>Drops every row below <paramref name="floor"/>. Coverage is trimmed first, so a crash between the two
-    /// leaves rows nothing claims rather than a claim nothing backs.</summary>
+    /// leaves rows nothing claims rather than a claim nothing backs, and a claim below the floor is refused from then
+    /// on, so rows written before the prune and claimed after it cannot slip back in.</summary>
     public void PruneBelow(ulong floor)
     {
         lock (_coverageLock)
         {
+            _prunedBelow = Math.Max(_prunedBelow, floor);
             if (TryGetCoverage(out ulong from, out ulong to) && from < floor)
             {
                 if (to < floor) ClearCoverage();
@@ -128,6 +131,8 @@ internal sealed class TransactionChangesetStore
     {
         lock (_coverageLock)
         {
+            if (fromInclusive < _prunedBelow) return false;
+
             if (TryGetCoverage(out ulong from, out ulong to))
             {
                 if (fromInclusive > to + 1 || toInclusive + 1 < from) return false;
@@ -146,11 +151,13 @@ internal sealed class TransactionChangesetStore
         if (_coverageLoaded) return;
 
         byte[]? value = _column.Get(CoverageKey());
-        _hasCoverage = value is { Length: 2 * sizeof(ulong) };
-        if (_hasCoverage)
+        if (value is { Length: 2 * sizeof(ulong) })
         {
-            _coverageFrom = BinaryPrimitives.ReadUInt64BigEndian(value);
-            _coverageTo = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
+            ulong from = BinaryPrimitives.ReadUInt64BigEndian(value);
+            ulong to = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
+            _hasCoverage = from <= to;
+            _coverageFrom = _hasCoverage ? from : 0;
+            _coverageTo = _hasCoverage ? to : 0;
         }
 
         _coverageLoaded = true;
@@ -171,6 +178,8 @@ internal sealed class TransactionChangesetStore
     {
         _column.Remove(CoverageKey());
         _hasCoverage = false;
+        _coverageFrom = 0;
+        _coverageTo = 0;
     }
 
     private static readonly byte[] CoverageKeyBytes = BuildCoverageKey();

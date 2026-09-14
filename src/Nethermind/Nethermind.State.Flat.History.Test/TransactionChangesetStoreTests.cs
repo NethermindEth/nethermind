@@ -90,6 +90,30 @@ public class TransactionChangesetStoreTests
     }
 
     [Test]
+    public void AClaimBelowThePruneFloor_IsRefused()
+    {
+        WriteTransaction(20, 0, TestItem.AddressA);
+        _store.TryExtendCoverage(20, 20);
+        _store.PruneBelow(20);
+
+        bool claimed = _store.TryExtendCoverage(19, 19);
+
+        Assert.That(claimed, Is.False, "rows written before a prune and claimed after it would be a claim nothing backs");
+    }
+
+    [Test]
+    public void PruningPastTheWholeCoverage_ReportsNoBounds()
+    {
+        WriteTransaction(10, 0, TestItem.AddressA);
+        _store.TryExtendCoverage(10, 10);
+
+        _store.PruneBelow(11);
+        bool has = _store.TryGetCoverage(out ulong from, out ulong to);
+
+        Assert.That((has, from, to), Is.EqualTo((false, 0UL, 0UL)), "a caller that reads the bounds past a false must not see the range that was pruned away");
+    }
+
+    [Test]
     public void PruningAnIndexThatIsOff_TouchesNothing()
     {
         WriteTransaction(10, 0, TestItem.AddressA);

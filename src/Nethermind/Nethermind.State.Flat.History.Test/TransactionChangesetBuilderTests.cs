@@ -286,6 +286,27 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void AChunkThatKeepsFailing_IsNeverDropped()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+        _executor.Fail = true;
+
+        for (int attempt = 0; attempt < TransactionChangesetBuilder.WarnAfterAttempts + 2; attempt++) builder.TryBuildNextChunk(_executor);
+        _executor.Fail = false;
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk retried);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((retried.Bottom, retried.Top), Is.EqualTo((172UL, 299UL)), "coverage can never cross a dropped chunk, so a failing one stays in the queue");
+            Assert.That(retried.Attempts, Is.EqualTo(TransactionChangesetBuilder.WarnAfterAttempts + 2));
+        }
+    }
+
+    [Test]
     public void AChunkWhoseBuildThrew_IsRequeuedRatherThanLost()
     {
         Capture(upTo: 300);

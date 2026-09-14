@@ -75,6 +75,7 @@ public sealed class InlineChangesetCapture(TransactionChangesetIndex index, Func
         {
             foreach (ChangesetCollector? collector in _collectors) collector?.Release();
             Array.Clear(_collectors);
+            _positions.Clear();
             _active = false;
         }
     }

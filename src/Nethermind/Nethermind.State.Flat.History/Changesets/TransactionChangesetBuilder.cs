@@ -21,6 +21,7 @@ public sealed class TransactionChangesetBuilder(
     ILogManager logManager) : IDisposable
 {
     internal const ulong ChunkBlocks = 128;
+    internal const int WarnAfterAttempts = 8;
     private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
 
@@ -142,11 +143,17 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
+    /// <summary>A chunk that keeps failing is never dropped, since coverage could then never cross it; it is retried
+    /// at the idle interval and, past the cap, said so, because a coverage edge that stops moving is otherwise silent.</summary>
     private void Requeue(in Chunk chunk)
     {
+        Chunk again = chunk with { Attempts = chunk.Attempts + 1 };
+        if (again.Attempts == WarnAfterAttempts && _logger.IsWarn) _logger.Warn(
+            $"Transaction changeset chunk {again.Bottom}-{again.Top} has failed {again.Attempts} times; coverage cannot advance below it until it builds.");
+
         lock (_chunks)
         {
-            _retry.Push(chunk);
+            _retry.Push(again);
         }
     }
 
@@ -155,9 +162,9 @@ public sealed class TransactionChangesetBuilder(
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         _cancellation.Cancel();
-        bool joined = true;
-        foreach (Thread thread in _threads) joined &= thread.Join(TimeSpan.FromSeconds(5));
-        if (joined) _tipExecutor?.Dispose();
+        bool everyThreadStopped = true;
+        foreach (Thread thread in _threads) everyThreadStopped &= thread.Join(TimeSpan.FromSeconds(5));
+        if (everyThreadStopped) _tipExecutor?.Dispose();
     }
 
     private Thread StartThread(Action body, string name)
@@ -281,5 +288,5 @@ public sealed class TransactionChangesetBuilder(
         return !availability.IsBelowGlobalFloor(block) && availability.IsCovered(block);
     }
 
-    internal readonly record struct Chunk(ulong Bottom, ulong Top);
+    internal readonly record struct Chunk(ulong Bottom, ulong Top, int Attempts = 0);
 }
