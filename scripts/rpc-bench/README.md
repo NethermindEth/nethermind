@@ -415,8 +415,8 @@ Three limits worth knowing before trusting a cached comparison:
 - **The two halves of a baseline live in different places.** The aggregates are in the Actions cache,
   which is repo-global and outlives any box; the parity responses are a file on one runner. So they can
   disagree: a box whose `baselines/` dir was cleaned still restores cached aggregates, but the job
-  fails until `corpus-baseline` is rerun on that same box; it does not capture parity against its own
-  arm. The amd64 cache says nothing about what the arm box holds. The comment names the vintage of the
+  fails until `corpus-baseline` is rerun on that same box. The run can still capture local parity
+  responses for later arms, but those do not satisfy the missing saved-baseline gate. The amd64 cache says nothing about what the arm box holds. The comment names the vintage of the
   aggregates; the step summary's parity table names the label of the saved responses. Read both.
 - **The default cell is a warm-compute signal.** The 60 s warm-up at 400 rps delivers ~24k requests
   before a 20k-request cell, so both arms measure a node whose caches are hot — the analogue of expb's

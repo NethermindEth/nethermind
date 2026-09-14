@@ -57,6 +57,8 @@ MANIFEST_LINE_PATTERN = re.compile(
     rf"(?P<prefix>iso\|{_LABEL}\|{_LABEL}\|{_LABEL}|mix\|{_LABEL}\|{_LABEL})=(?P<path>.+jsonbench-summary\.md)$")
 COMMENT_METRICS = (("avg", "avg"), ("med", "median"), ("p(90)", "p90"), ("p(95)", "p95"), ("p(99)", "p99"), ("max", "max"))
 NOISE_FLOOR_PCT = 2.5
+# Paired replay compares each record against itself, so its control is more sensitive than a cell.
+PAIRED_FLOOR_PCT = 1.0
 # With a cached master baseline the arms are not co-run: master was measured in another job on another day, so
 # day-to-day drift (page cache, snapshot copy, kernel, ambient thermals) is inside the delta and no A/A control in
 # the run measures it. NOISE_FLOOR_PCT was calibrated from in-run repeats, so it does not apply; widen it until
@@ -579,7 +581,7 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str, cached_b
         lines += [f"**`{name}`**", ""]
         for slot in sorted(corpus["cells"], key=_slot_order):
             _render_cells(lines, slot, corpus["cells"][slot], floor, spread_is_control=not cached_baseline)
-        _render_timings(lines, corpus, floor)
+        _render_timings(lines, corpus, CACHED_NOISE_FLOOR_PCT if cached_baseline else PAIRED_FLOOR_PCT)
         _render_parity(lines, corpus["parity"])
         lines.append("")
     # On the cached path no repeat can act as a control, so describing one contradicts the paragraph below.

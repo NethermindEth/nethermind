@@ -300,6 +300,19 @@ class CommentRenderingTests(unittest.TestCase):
                 self.assertIn(f"median delta {expected_arrow}", latency)
                 self.assertIn(f", {expected_arrow} -{delta:.1f}%.", throughput)
 
+    def test_uncached_paired_timing_keeps_one_percent_floor(self):
+        for delta in (1.5, 2.0):
+            with self.subTest(delta=delta):
+                self._timings("nethermind_master", [100.0], achieved=100.0)
+                self._timings("nethermind", [100.0 * (1 + delta / 100)], achieved=100.0 * (1 - delta / 100))
+                body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+                lines = body.splitlines()
+                latency = next(line for line in lines if line.startswith("Paired per-record replay"))
+                throughput = next(line for line in lines if line.startswith("Closed-loop throughput"))
+                red = corpus_results._arrow(delta, corpus_results.PAIRED_FLOOR_PCT)
+                self.assertIn(f"median delta {red}", latency)
+                self.assertIn(f", {red} -{delta:.1f}%.", throughput)
+
     def test_record_shift_needs_to_exceed_the_records_own_aa_spread(self):
         self._cell("nethermind_master", 20.0, 100.0)
         self._cell("nethermind", 20.0, 100.0)

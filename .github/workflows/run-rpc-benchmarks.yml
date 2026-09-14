@@ -369,8 +369,30 @@ jobs:
               nethermind) echo "nethermindeth/nethermind:master" ;;
             esac
           }
+          explicit_sweep_image=""
+          if [[ "${benchmark_tool}" == "jsonbench-sweep" && "${user_clients_type}" == "string" ]]; then
+            # An explicit sweep arm owns its image only when every arm names one. The sweep itself
+            # falls back to NM_IMAGE for a bare arm, so using the first explicit image for a mixed
+            # string would silently replace that fallback and skip the branch-image/ARM guard.
+            read -ra sweep_arms <<< "${user_clients}"
+            (( ${#sweep_arms[@]} > 0 )) || fail "tool_config.clients must contain at least one arm."
+            all_sweep_images="true"
+            for sweep_arm in "${sweep_arms[@]}"; do
+              sweep_arm="${sweep_arm%%#*}"
+              if [[ "${sweep_arm}" != *@* ]]; then
+                all_sweep_images="false"
+                break
+              fi
+              sweep_image="${sweep_arm#*@}"
+              [[ -n "${sweep_image}" ]] || fail "tool_config.clients contains an arm with an empty image."
+              [[ -n "${explicit_sweep_image}" ]] || explicit_sweep_image="${sweep_image}"
+            done
+            [[ "${all_sweep_images}" == "true" ]] || explicit_sweep_image=""
+          fi
           if [[ -n "${docker_image}" ]]; then
             image_mode="provided"; image_ref="${docker_image}"
+          elif [[ -n "${explicit_sweep_image}" ]]; then
+            image_mode="provided"; image_ref="${explicit_sweep_image}"
           elif [[ "${client}" != "nethermind" ]]; then
             image_mode="provided"; image_ref="$(default_client_image "${client}")"
           elif [[ "${branch}" == "master" || "${branch}" == "performance" || "${branch}" == "paprika" || "${branch}" == release/* ]]; then

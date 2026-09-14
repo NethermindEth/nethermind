@@ -4,6 +4,7 @@
 
 """Regression coverage for folded perf profiles and their reporting contract."""
 
+import json
 import os
 import re
 import shutil
@@ -1055,6 +1056,39 @@ esac
                 result, _ = self.resolve(IN_DOTNET_TRACE="true", **inputs)
                 self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
                 self.assertIn("::error::", result.stdout)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_explicit_sweep_clients_supply_the_image_on_arm(self) -> None:
+        clients = " \t nethermind@registry.example/master:baseline#trace=true\t nethermind@registry.example/pr:head"
+        result, outputs = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG=json.dumps({"clients": clients}),
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["image_mode"], "provided")
+        self.assertEqual(outputs["image_ref"], "registry.example/master:baseline")
+        self.assertEqual(outputs["baseline_image"], "cache")
+        tool_config = re.search(r"^tool_config: (\{.*\})$", result.stdout, re.M)
+        self.assertIsNotNone(tool_config)
+        self.assertEqual(json.loads(tool_config.group(1))["clients"], clients)
+
+        mixed_clients = " \t nethermind@registry.example/master:baseline nethermind"
+        mixed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG=json.dumps({"clients": mixed_clients}),
+        )
+        self.assertNotEqual(mixed.returncode, 0, f"{mixed.stdout}\n{mixed.stderr}")
+        self.assertIn("does not build images", mixed.stdout)
+
+        malformed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG='{"clients":["nethermind@registry.example/a","nethermind@registry.example/b"]}',
+        )
+        self.assertEqual(malformed.returncode, 1, f"{malformed.stdout}\n{malformed.stderr}")
+        self.assertIn("tool_config.clients must be a string", malformed.stdout)
 
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
