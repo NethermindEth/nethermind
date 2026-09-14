@@ -89,33 +89,33 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
     public void Decode(ref RlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position))
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position))
         {
             transaction = null;
             return;
         }
 
         int txSequenceStart = position;
-        ReadOnlySpan<byte> transactionSequence = rlp.Slice(position, RlpHelpers.PeekNextRlpLength(rlp, position));
+        ReadOnlySpan<byte> transactionSequence = rlp.Data.Slice(position, rlp.PeekNextRlpLength(position));
 
         TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            if (rlp[position] <= Transaction.MaxTxType) // it is typed transactions
+            if (rlp.Data[position] <= Transaction.MaxTxType) // it is typed transactions
             {
-                transactionSequence = rlp.Slice(position);
-                txType = (TxType)rlp[position++];
+                transactionSequence = rlp.Data.Slice(position);
+                txType = (TxType)rlp.Data[position++];
                 ThrowIfLegacy(txType);
             }
         }
         else
         {
-            if (!RlpHelpers.IsSequenceNext(rlp, position))
+            if (!rlp.IsSequenceNext(position))
             {
-                position = RlpHelpers.ReadPrefixAndContentLength(rlp, position, out _, out int contentLength);
+                rlp.ReadPrefixAndContentLength(ref position, out _, out int contentLength);
                 txSequenceStart = position;
-                transactionSequence = rlp.Slice(position, contentLength);
-                txType = (TxType)rlp[position++];
+                transactionSequence = rlp.Data.Slice(position, contentLength);
+                txType = (TxType)rlp.Data[position++];
                 ThrowIfLegacy(txType);
             }
         }

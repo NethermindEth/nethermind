@@ -284,7 +284,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                 caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
             {
-                SuppressLogs = ShouldSuppressLogs(opts, tracer)
+                SuppressLogs = ShouldSuppressLogs(opts, tracer),
+                MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
             });
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
@@ -620,7 +621,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                     caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
                 {
-                    SuppressLogs = ShouldSuppressLogs(opts, tracer)
+                    SuppressLogs = ShouldSuppressLogs(opts, tracer),
+                    MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
                 });
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
