@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Pbt;
 
@@ -15,7 +17,7 @@ namespace Nethermind.Pbt;
 /// under 100). Longer inputs use a correctness-oriented general path. Every stack buffer below is fully
 /// written or explicitly cleared before it is read, so the frames skip zero-initialization.</remarks>
 [SkipLocalsInit]
-public static class Blake3Managed
+public static partial class Blake3Managed
 {
     private const int BlockLength = 64;
     private const int ChunkLength = 1024;
@@ -103,14 +105,26 @@ public static class Blake3Managed
 
     private static void InitialCv(Span<uint> cv)
     {
-        cv[0] = Iv0; cv[1] = Iv1; cv[2] = Iv2; cv[3] = Iv3;
-        cv[4] = Iv4; cv[5] = Iv5; cv[6] = Iv6; cv[7] = Iv7;
+        Debug.Assert(cv.Length == 8);
+        ref uint cvRef = ref MemoryMarshal.GetReference(cv);
+        Vector128.Create(Iv0, Iv1, Iv2, Iv3).StoreUnsafe(ref cvRef);
+        Vector128.Create(Iv4, Iv5, Iv6, Iv7).StoreUnsafe(ref cvRef, 4);
     }
 
     private static void WriteWords(ReadOnlySpan<uint> words, Span<byte> destination)
     {
-        for (int i = 0; i < 8; i++)
-            BinaryPrimitives.WriteUInt32LittleEndian(destination[(i * 4)..], words[i]);
+        Debug.Assert(words.Length == 8 && destination.Length >= 32);
+        if (!BitConverter.IsLittleEndian)
+        {
+            for (int i = 0; i < 8; i++)
+                BinaryPrimitives.WriteUInt32LittleEndian(destination[(i * 4)..], words[i]);
+            return;
+        }
+
+        ref uint wordsRef = ref MemoryMarshal.GetReference(words);
+        ref byte destinationRef = ref MemoryMarshal.GetReference(destination);
+        Vector128.LoadUnsafe(ref wordsRef).AsByte().StoreUnsafe(ref destinationRef);
+        Vector128.LoadUnsafe(ref wordsRef, 4).AsByte().StoreUnsafe(ref destinationRef, 16);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -339,13 +353,23 @@ public static class Blake3Managed
     /// value — which for a ROOT compression is the digest itself.
     /// </summary>
     /// <remarks>
-    /// The whole compression is held in locals so that it stays in registers: the state is a fixed 16 words
-    /// and the round message order is a compile-time permutation, so the rounds unroll with no indexing and
-    /// no bounds checks. A half that <typeparamref name="TShape"/> declares zero is never read, so its
-    /// reference is not required to be valid. A short final block is zero-padded by the caller and its true
-    /// length passed as <paramref name="blockLength"/>.
+    /// A half that <typeparamref name="TShape"/> declares zero is never read, so its reference is not
+    /// required to be valid. A short final block is zero-padded by the caller and its true length passed as
+    /// <paramref name="blockLength"/>. On SSE4.1 the compression runs on 128-bit rows
+    /// (<see cref="CompressSse41{TShape}"/>); elsewhere it is held in scalar locals so that it stays in
+    /// registers: the state is a fixed 16 words and the round message order is a compile-time permutation,
+    /// so the rounds unroll with no indexing and no bounds checks.
     /// </remarks>
     private static void Compress<TShape>(Span<uint> cv, ref byte lowRef, ref byte highRef, ulong counter, uint blockLength, uint flags)
+        where TShape : IBlockShape
+    {
+        if (Sse41.IsSupported) CompressSse41<TShape>(cv, ref lowRef, ref highRef, counter, blockLength, flags);
+        else CompressScalar<TShape>(cv, ref lowRef, ref highRef, counter, blockLength, flags);
+    }
+
+    // Each half-step adds the message word to the state word before the critical operand, which the
+    // previous half-step produced last, so that only one add depends on it.
+    private static void CompressScalar<TShape>(Span<uint> cv, ref byte lowRef, ref byte highRef, ulong counter, uint blockLength, uint flags)
         where TShape : IBlockShape
     {
         uint m0 = TShape.LowIsZero ? 0 : ReadWord(ref lowRef, 0);
@@ -370,124 +394,124 @@ public static class Blake3Managed
         uint v8 = Iv0, v9 = Iv1, v10 = Iv2, v11 = Iv3;
         uint v12 = (uint)counter, v13 = (uint)(counter >> 32), v14 = blockLength, v15 = flags;
 
-        v0 += v4 + m0; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m1; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m2; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m3; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m4; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m5; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m6; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m8; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m9; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m10; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m11; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m12; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m13; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m14; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m15; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m0 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m1 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m2 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m3 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m4 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m5 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m6 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m7 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m8 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m9 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m10 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m11 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m12 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m13 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m14 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m15 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        v0 += v4 + m2; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m6; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m3; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m10; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m7; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m0; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m4; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m13; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m1; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m11; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m12; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m5; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m9; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m14; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m15; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m8; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m2 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m6 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m3 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m10 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m7 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m0 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m4 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m13 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m1 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m11 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m12 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m5 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m9 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m14 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m15 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m8 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        v0 += v4 + m3; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m10; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m12; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m13; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m2; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m14; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m6; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m9; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m0; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m11; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m15; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m8; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m1; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m3 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m4 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m10 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m12 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m13 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m2 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m7 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m14 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m6 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m5 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m9 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m0 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m11 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m15 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m8 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m1 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        v0 += v4 + m10; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m7; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m12; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m9; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m14; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m3; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m13; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m15; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m4; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m0; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m11; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m2; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m5; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m8; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m1; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m6; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m10 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m7 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m12 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m9 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m14 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m3 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m13 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m15 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m4 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m0 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m11 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m2 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m5 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m8 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m1 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m6 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        v0 += v4 + m12; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m13; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m9; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m11; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m15; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m10; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m14; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m8; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m7; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m2; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m5; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m3; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m0; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m1; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m6; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m12 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m13 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m9 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m11 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m15 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m10 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m14 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m8 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m7 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m2 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m5 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m3 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m0 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m1 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m6 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m4 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        v0 += v4 + m9; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m14; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m11; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m8; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m12; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m15; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m1; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m13; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m3; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m0; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m10; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m2; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m6; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m7; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m9 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m14 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m11 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m5 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m8 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m12 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m15 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m1 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m13 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m3 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m0 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m10 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m2 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m6 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m4 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m7 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
-        v0 += v4 + m11; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
-        v0 += v4 + m15; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
-        v1 += v5 + m5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
-        v1 += v5 + m0; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
-        v2 += v6 + m1; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
-        v2 += v6 + m9; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
-        v3 += v7 + m8; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
-        v3 += v7 + m6; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
-        v0 += v5 + m14; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
-        v0 += v5 + m10; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
-        v1 += v6 + m2; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
-        v1 += v6 + m12; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
-        v2 += v7 + m3; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
-        v2 += v7 + m4; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
-        v3 += v4 + m7; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
-        v3 += v4 + m13; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
+        v0 = v0 + m11 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 16); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 12);
+        v0 = v0 + m15 + v4; v12 = BitOperations.RotateRight(v12 ^ v0, 8); v8 += v12; v4 = BitOperations.RotateRight(v4 ^ v8, 7);
+        v1 = v1 + m5 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 16); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 12);
+        v1 = v1 + m0 + v5; v13 = BitOperations.RotateRight(v13 ^ v1, 8); v9 += v13; v5 = BitOperations.RotateRight(v5 ^ v9, 7);
+        v2 = v2 + m1 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 16); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 12);
+        v2 = v2 + m9 + v6; v14 = BitOperations.RotateRight(v14 ^ v2, 8); v10 += v14; v6 = BitOperations.RotateRight(v6 ^ v10, 7);
+        v3 = v3 + m8 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 16); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 12);
+        v3 = v3 + m6 + v7; v15 = BitOperations.RotateRight(v15 ^ v3, 8); v11 += v15; v7 = BitOperations.RotateRight(v7 ^ v11, 7);
+        v0 = v0 + m14 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 16); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 12);
+        v0 = v0 + m10 + v5; v15 = BitOperations.RotateRight(v15 ^ v0, 8); v10 += v15; v5 = BitOperations.RotateRight(v5 ^ v10, 7);
+        v1 = v1 + m2 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 16); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 12);
+        v1 = v1 + m12 + v6; v12 = BitOperations.RotateRight(v12 ^ v1, 8); v11 += v12; v6 = BitOperations.RotateRight(v6 ^ v11, 7);
+        v2 = v2 + m3 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 16); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 12);
+        v2 = v2 + m4 + v7; v13 = BitOperations.RotateRight(v13 ^ v2, 8); v8 += v13; v7 = BitOperations.RotateRight(v7 ^ v8, 7);
+        v3 = v3 + m7 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 16); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 12);
+        v3 = v3 + m13 + v4; v14 = BitOperations.RotateRight(v14 ^ v3, 8); v9 += v14; v4 = BitOperations.RotateRight(v4 ^ v9, 7);
 
         cv[0] = v0 ^ v8; cv[1] = v1 ^ v9; cv[2] = v2 ^ v10; cv[3] = v3 ^ v11;
         cv[4] = v4 ^ v12; cv[5] = v5 ^ v13; cv[6] = v6 ^ v14; cv[7] = v7 ^ v15;
