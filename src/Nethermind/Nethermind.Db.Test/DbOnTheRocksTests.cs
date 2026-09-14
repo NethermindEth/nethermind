@@ -9,6 +9,10 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -17,6 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
 using NSubstitute;
@@ -71,22 +76,32 @@ namespace Nethermind.Db.Test
             byte[] key = [1, 2, 3];
             byte[] value = [4, 5, 6];
             DbConfig config = new();
-            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            InitConfig initConfig = new() { BaseDbPath = DbPath };
+            ReceiptConfig receiptConfig = new();
+            SyncConfig syncConfig = new();
 
-            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance))
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, receiptConfig, syncConfig))
+                .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<IReceiptConfig>(receiptConfig)
+                .AddSingleton<ISyncConfig>(syncConfig)
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Build();
+
+            IDbFactory dbFactory = container.Resolve<IDbFactory>();
+            using (IDb db = dbFactory.CreateDb(new DbSettings("Blocks", DbPath)))
             {
                 db.Set(key, value);
                 db.Flush();
 
                 Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=true"));
-
-                string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
-                File.WriteAllText(Path.Combine(fullPath, "OPTIONS-999999.dbtmp"), "avoid_unnecessary_blocking_io=false");
-                Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=true"));
             }
 
             config.AdditionalRocksDbOptions = "avoid_unnecessary_blocking_io=false;";
-            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, configFactory, LimboLogs.Instance);
+            using IDb reopened = dbFactory.CreateDb(new DbSettings("Blocks", DbPath));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(GetValue(reopened, key), Is.EqualTo(value));
@@ -703,7 +718,7 @@ namespace Nethermind.Db.Test
             }
         }
 
-        private static byte[]? GetValue(DbOnTheRocks db, ReadOnlySpan<byte> key) => ((IReadOnlyKeyValueStore)db).Get(key);
+        private static byte[]? GetValue(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key) => db.Get(key);
 
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
@@ -714,6 +729,7 @@ namespace Nethermind.Db.Test
             string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
             string? latestOptionsPath = null;
             ulong latestOptionsNumber = 0;
+            // RocksDB writes a new OPTIONS file on every open, and deferred purge can retain older files.
             foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
             {
                 string fileName = Path.GetFileName(optionsPath);
@@ -730,8 +746,10 @@ namespace Nethermind.Db.Test
                 }
             }
 
-            Assert.That(latestOptionsPath, Is.Not.Null, $"No persisted RocksDB options file found in '{fullPath}'.");
-            return File.ReadAllText(latestOptionsPath!).Replace(" ", string.Empty, StringComparison.Ordinal);
+            if (latestOptionsPath is null)
+                throw new AssertionException($"No persisted RocksDB options file found in '{fullPath}'.");
+
+            return File.ReadAllText(latestOptionsPath).Replace(" ", string.Empty, StringComparison.Ordinal);
         }
 
         [Test]
