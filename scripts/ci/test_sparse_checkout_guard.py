@@ -34,6 +34,21 @@ CHMOD_STEP = "Make scripts executable"
 
 # The tree the benchmark job needs; `scripts/expb` stands in for what an expb job narrows the
 # checkout down to, and is the only path that survives the poisoning.
+# `git sparse-checkout disable` as a no-op, so the guard has to notice the entries that survived it -
+# the fallback branch, which a real `disable` always repairs before it can be reached. Everything else
+# passes through to real git.
+STUBBORN_SPARSE = r"""
+git() {
+  if [[ "$1" == "sparse-checkout" && "$2" == "disable" ]]; then return 0; fi
+  command git "$@"
+}
+"""
+
+# Enough tracked paths that `git ls-files -v` overruns the 64 KiB pipe buffer. `grep -q` exits on the
+# first match, leaving git writing into a closed pipe: it dies on SIGPIPE and pipefail then makes the
+# whole condition false, so the fallback never fires on a real poisoned workspace.
+BULK_FILES = 2000
+
 TRACKED = [
     "scripts/expb/run.sh",
     "scripts/rpc-bench/start-node.sh",
@@ -72,14 +87,18 @@ class SparseCheckoutGuardTests(unittest.TestCase):
             cwd=str(cwd or self.work), capture_output=True, text=True, check=True,
         )
 
-    def make_repo(self):
+    def make_repo(self, bulk=0):
         self.git("init", "-q", "-b", "main")
-        for rel in TRACKED:
+        rels = list(TRACKED)
+        for i in range(bulk):
+            rels.append(f"src/Nethermind/Nethermind.Generated/Directory{i // 100}/Generated{i}Source.cs")
+        for rel in rels:
             path = self.work / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"# {rel}\n")
         self.git("add", "-A")
         self.git("commit", "-qm", "seed")
+        return rels
 
     def poison(self):
         """Leave the workspace the way an expb job's sparse checkout leaves it."""
@@ -140,6 +159,19 @@ class SparseCheckoutGuardTests(unittest.TestCase):
         self.assertEqual(1, proc.returncode)
         self.assertIn("::error::", proc.stdout)
         self.assertIn("scripts/rpc-bench", proc.stdout)
+
+    def test_fallback_removes_a_workspace_whose_bits_survive(self):
+        """The destructive branch, at a size where `grep -q` would lose git to SIGPIPE and skip it."""
+        rels = self.make_repo(bulk=BULK_FILES)
+        self.git("update-index", "--skip-worktree", *rels)
+        self.assertEqual(len(rels), self.skip_worktree_count())
+        self.assertGreater(len(self.git("ls-files", "-v").stdout), 64 * 1024,
+                           "fixture must overrun the pipe buffer or it cannot catch the SIGPIPE bug")
+
+        proc = self.run_body(STUBBORN_SPARSE + self.clear_body)
+
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        self.assertEqual([], list(self.work.iterdir()), "the workspace should have been removed")
 
     def test_chmod_guard_passes_a_complete_tree(self):
         self.make_repo()
