@@ -405,14 +405,14 @@ serialization rather than execution. `tool_config.max_response_bytes` sets the p
 ceiling for corpus parity and paired replay (the default is 16 MiB); the workflow exports it as
 `RPC_BENCH_MAX_RESPONSE_BYTES`.
 
-Parity still runs, and still compares two clients exactly — an outcome becomes a SHA-256 digest
-of the canonicalized trace instead of the returned bytes, which keeps the state file small and
-the privacy boundary intact. Two caveats: the word-level `parity_diffs` characterisation is
-refused in these modes (it would describe the hash), and a divergence between two **different**
-client implementations is reported but not gated, since trace formatting legitimately differs
-between Nethermind, geth and reth — gating it would mark a good cross-client timing comparison as
-failed. A **same-client** trace A/B keeps the gate, which is where a divergence means something.
-Response bytes stay the gate for `eth_call` in every combination.
+Parity still runs, and the `jsonbench-sweep` compares its Nethermind image arms exactly — an
+outcome becomes a SHA-256 digest of the canonicalized trace instead of the returned bytes, which
+keeps the state file small and the privacy boundary intact. Every trace divergence and failed
+replay is gated. The word-level `parity_diffs` characterisation is refused in these modes because
+it would describe the hash, so the digest cannot show response length or word-level differences.
+The first rewritten record is probed on each node before the measured replay; a method-not-found,
+transport, or invalid response fails before timing data is collected. Response bytes stay the gate
+for `eth_call` in every combination.
 
 **Sizing a cell by request count.** By default a corpus cell runs for `duration` at each
 `rps_list` rate. `corpus_requests` (absolute) or `corpus_passes` (a multiple of that

@@ -24,8 +24,7 @@ SENTINEL = "SENTINEL_PRIVATE_CALLDATA"
 
 
 class RpcServer:
-    """Minimal JSON-RPC test double; responder(id) -> result hex | ('error',) | ('http', status)
-    | ('http_json_error', status) | bytes. Answers the node-identity calls itself."""
+    """Minimal JSON-RPC test double; responder(id) -> result | error/status tuples | bytes."""
 
     def __init__(self, responder, head=25_490_000, chain=1, block_hash=None):
         outer = self
@@ -54,11 +53,13 @@ class RpcServer:
                     self.send_response(verdict[1])
                 elif isinstance(verdict, tuple) and verdict[0] == "http_json_error":
                     body = json.dumps({"jsonrpc": "2.0", "id": request["id"],
-                                       "error": {"code": -32000, "message": SENTINEL}}).encode()
+                                       "error": {"code": verdict[2] if len(verdict) > 2 else -32000,
+                                                  "message": SENTINEL}}).encode()
                     self.send_response(verdict[1])
                 elif isinstance(verdict, tuple) and verdict[0] == "error":
                     body = json.dumps({"jsonrpc": "2.0", "id": request["id"],
-                                       "error": {"code": -32000, "message": SENTINEL}}).encode()
+                                       "error": {"code": verdict[1] if len(verdict) > 1 else -32000,
+                                                  "message": SENTINEL}}).encode()
                     self.send_response(200)
                 elif isinstance(verdict, bytes):
                     body = verdict
@@ -547,6 +548,35 @@ class TraceCallModeTests(unittest.TestCase):
         self.assertIsNone(category)
         # A trace is compared by digest, never stored: fixed width and no response content.
         self.assertRegex(outcome, r"^0x[0-9a-f]{64}$")
+
+    def test_probe_accepts_results_and_legitimate_rpc_errors_but_rejects_method_not_found(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.trace_mode():
+            with RpcServer(lambda i: {"type": "CALL"}) as server:
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    corpus_parity.probe(str(corpus), server.url)
+                self.assertIn("probe OK", output.getvalue())
+            with RpcServer(lambda i: ("error", -32000)) as server:
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    corpus_parity.probe(str(corpus), server.url)
+                self.assertIn("accepted RPC error", output.getvalue())
+            for response in (("error", -32601), ("http_json_error", 404, -32601)):
+                with self.subTest(response=response), RpcServer(lambda i, response=response: response) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                    self.assertIn("rpc_error:-32601", str(raised.exception))
+                    self.assertNotIn(SENTINEL, str(raised.exception))
+            malformed = json.dumps({"jsonrpc": "2.0", "id": 1,
+                                    "error": {"message": SENTINEL}}).encode()
+            with RpcServer(lambda i: malformed) as server:
+                with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                    corpus_parity.probe(str(corpus), server.url)
+                self.assertIn("rpc_error", str(raised.exception))
+                self.assertNotIn(SENTINEL, str(raised.exception))
+            with RpcServer(lambda i: ("http", 503)) as server:
+                with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                    corpus_parity.probe(str(corpus), server.url)
+                self.assertIn("transport_failure", str(raised.exception))
 
     def test_clients_agreeing_on_a_trace_match_and_disagreeing_is_a_content_mismatch(self):
         corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])

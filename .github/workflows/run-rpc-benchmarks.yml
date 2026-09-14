@@ -559,14 +559,6 @@ jobs:
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
-          # Corpus runs issue exactly one method — serve the minimal module set that carries it.
-          if [[ "${eth_call_corpus}" == "true" ]]; then
-            case "${corpus_method}" in
-              debug_traceCall) jsonrpc_modules="Eth,Debug" ;;
-              trace_call)      jsonrpc_modules="Eth,Trace" ;;
-              *)               jsonrpc_modules="Eth" ;;
-            esac
-          fi
           health_min="$(nc '.health_timeout_minutes')"; [[ -z "${health_min}" ]] && health_min="30"
           node_cpuset="$(nc '.cpuset')"
           node_memory="$(nc '.memory')"

@@ -260,12 +260,11 @@ corpus_label() {
   printf '%s' "${b:-default}" | tr -c 'a-zA-Z0-9._\n' '-'
 }
 
-# Compare one corpus replay and gate only defects that cannot be explained by trace output formats.
-# The report counters are deliberately checked here as well as in corpus_parity.py: a trace response
-# that never arrived, was invalid, or was an RPC error is a failed replay, whatever the client pair.
+# Compare one corpus replay. The report is counts-only, and every replay defect is gated: a trace
+# response that never arrived, was invalid, or was an RPC error is a failed replay.
 compare_corpus_parity() {
   local corpus="$1" rpc_url="$2" state="$3" report="$4" baseline_label="$5" label="$6"
-  local ctype="$7" baseline_ctype="$8" report_dir="$9" corpus_label="${10}" parity_status=0
+  local report_dir="$7" corpus_label="$8" parity_status=0
   python3 "$here/corpus_parity.py" compare \
     --corpus "$corpus" --rpc-url "$rpc_url" \
     --state "$state" --report "$report" \
@@ -273,10 +272,6 @@ compare_corpus_parity() {
     $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json") \
     || parity_status=$?
   if (( parity_status == 0 )); then
-    PARITY_ROWS+=("${corpus_label}|${label}|${report}")
-  elif (( parity_status == 1 )) && [[ "$CORPUS_METHOD" != "eth_call" && "$ctype" != "$baseline_ctype" && -f "$report" ]] \
-       && jq -e 'all([.candidate_transport_failures, .candidate_invalid_responses, .candidate_rpc_errors, .baseline_rpc_errors][]; type == "number" and . == 0)' "$report" >/dev/null 2>&1; then
-    echo "::warning::parity: ${label} (${ctype}) diverges from ${baseline_label} (${baseline_ctype}) on ${CORPUS_METHOD} — expected across client implementations, not gated"
     PARITY_ROWS+=("${corpus_label}|${label}|${report}")
   else
     echo "::warning::parity defects for ${label} vs ${baseline_label} on corpus ${corpus_label} (see report counts)"
@@ -296,7 +291,6 @@ cell_fail=0   # load-test cells that ran but failed (distinct from a client skip
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 parity_fail=0 # corpus parity defects or a failed parity replay
 BASELINE_LABEL=""  # first successfully started client; all later clients diff against it
-BASELINE_CTYPE=""  # and its client type, which decides whether a trace divergence is gated
 
 case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
@@ -526,7 +520,7 @@ for entry in $CLIENTS; do
         report="$report_dir/parity.json"
         echo "-- PARITY ${clabel}: ${label} vs baseline ${BASELINE_LABEL} --"
         compare_corpus_parity "$corpus" "http://localhost:8545" \
-          "$PARITY_STATE/${clabel}.json" "$report" "$BASELINE_LABEL" "$label" "$ctype" "$BASELINE_CTYPE" "$report_dir" "$clabel"
+          "$PARITY_STATE/${clabel}.json" "$report" "$BASELINE_LABEL" "$label" "$report_dir" "$clabel"
       fi
 
       if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
@@ -542,9 +536,8 @@ for entry in $CLIENTS; do
         fi
       fi
     done
-    # The client TYPE of the baseline, not just its label: it decides whether a later divergence is
-    # a cross-implementation formatting difference or a real one.
-    [[ -z "$BASELINE_LABEL" ]] && { BASELINE_LABEL="$label"; BASELINE_CTYPE="$ctype"; }
+    # The first started client is the baseline; later image arms are compared against it.
+    [[ -z "$BASELINE_LABEL" ]] && BASELINE_LABEL="$label"
   else
   for rps in $RPS_LIST; do
     # ISOLATED: each scenario alone

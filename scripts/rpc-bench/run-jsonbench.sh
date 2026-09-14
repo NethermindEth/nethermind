@@ -120,6 +120,18 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   JB_HTML_REPORT="false"
 fi
 
+probe_corpus_node() {
+  local url="$1"
+  python3 "$HERE/corpus_parity.py" probe \
+    --corpus "$JB_ETH_CALL_CORPUS_FILE" --rpc-url "$url" \
+    || die "corpus method capability probe failed for $url"
+}
+if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$CORPUS_METHOD" != "eth_call" ]]; then
+  # Check support outside the measured window on every invocation, including prepared-fixture reuse.
+  probe_corpus_node "$RPC_URL"
+  [[ -z "$REFERENCE_RPC_URL" ]] || probe_corpus_node "$REFERENCE_RPC_URL"
+fi
+
 mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"

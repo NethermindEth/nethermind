@@ -334,6 +334,8 @@ def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, 
     if fetched is None:
         return "transport_failure", ""
     status, raw = fetched
+    if len(raw) > MAX_RESPONSE_BYTES:
+        return "transport_failure", ""
     if status >= 400:
         # Some clients/proxies answer JSON-RPC errors with a non-200 status — that is a
         # response, not a transport failure. The body is parsed but never stored.
@@ -342,9 +344,9 @@ def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, 
         except ValueError:
             return "transport_failure", ""
         if isinstance(envelope, dict) and "error" in envelope and envelope.get("id") in (index, None):
-            return "rpc_error", ""
-        return "transport_failure", ""
-    if len(raw) > MAX_RESPONSE_BYTES:
+            error = envelope["error"]
+            code = error.get("code") if isinstance(error, dict) else None
+            return (f"rpc_error:{code}" if type(code) is int else "rpc_error"), ""
         return "transport_failure", ""
     try:
         envelope = json.loads(raw)
@@ -357,7 +359,7 @@ def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, 
         code = error.get("code") if isinstance(error, dict) else None
         # The code is a protocol-level integer, never call content — recording it is what
         # distinguishes "this call legitimately reverts" from "the node is shedding load".
-        return (f"rpc_error:{code}" if isinstance(code, int) else "rpc_error"), ""
+        return (f"rpc_error:{code}" if type(code) is int else "rpc_error"), ""
     result = envelope.get("result")
     if method != "eth_call":
         # A tracer answers with a JSON document, not return data. Store its digest: the comparison
@@ -377,6 +379,30 @@ def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, 
     except ValueError:
         return "invalid_response", ""
     return None, result.lower()
+
+
+def probe(corpus: str, rpc_url: str) -> None:
+    """Verify that the configured trace method is available before measured replay.
+
+    A normal JSON-RPC error (for example a reverted call) is a supported method response. The
+    method-not-found code is the one capability failure that must stop a run; transport and
+    malformed responses are failures too. Request and response contents stay private.
+    """
+    params_list = load_corpus(corpus)
+    method = corpus_method()
+    category, _ = _post(rpc_url, 1, params_list[0], method)
+    if category is None:
+        print(f"corpus method probe OK: {method}", flush=True)
+        return
+    if category.startswith("rpc_error:"):
+        try:
+            code = int(category.partition(":")[2])
+        except ValueError:
+            code = None
+        if code is not None and code != -32601:
+            print(f"corpus method probe accepted RPC error: {method}", flush=True)
+            return
+    raise CorpusParityError(f"corpus method probe failed: {category}")
 
 
 # eth_call is read-only and deterministic against a parked head, so replaying concurrently cannot
@@ -757,6 +783,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     validate_parser = subparsers.add_parser("validate", help="check a corpus is loadable; prints the record count only")
     validate_parser.add_argument("--corpus", required=True)
 
+    probe_parser = subparsers.add_parser("probe", help="check that the configured corpus method is supported")
+    probe_parser.add_argument("--corpus", required=True)
+    probe_parser.add_argument("--rpc-url", required=True)
+
     baseline_parser = subparsers.add_parser("baseline", help="replay the corpus and store baseline responses")
     baseline_parser.add_argument("--corpus", required=True)
     baseline_parser.add_argument("--rpc-url", required=True)
@@ -798,6 +828,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 detail = ""
             print(f"corpus OK: {len(load_corpus(arguments.corpus))} records{detail}")
+            return 0
+        if arguments.command == "probe":
+            probe(arguments.corpus, arguments.rpc_url)
             return 0
         if arguments.command == "timings":
             timings(arguments.corpus, arguments.rpc_url, arguments.out,
