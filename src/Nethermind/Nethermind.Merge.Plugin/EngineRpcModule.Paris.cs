@@ -28,6 +28,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
     private readonly GCKeeper _gcKeeper = gcKeeper;
+    // Well above a normal payload, so the line only appears when something outside block processing intervened.
+    private const long SlowNewPayloadMs = 500;
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
@@ -93,6 +95,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (await _locker.WaitAsync(_timeout))
         {
             long startTime = Stopwatch.GetTimestamp();
+            TimeSpan gcPauseAtStart = System.GC.GetTotalPauseDuration();
             try
             {
                 // Hide the tx-root computation (consumed by TryGetBlock) under the no-GC-region
@@ -113,7 +116,13 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             finally
             {
-                Metrics.NewPayloadExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                long elapsedMs = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                Metrics.NewPayloadExecutionTime = elapsedMs;
+                if (elapsedMs >= SlowNewPayloadMs && _logger.IsInfo)
+                {
+                    double gcPauseMs = (System.GC.GetTotalPauseDuration() - gcPauseAtStart).TotalMilliseconds;
+                    _logger.Info($"engine_newPayloadV{version} for block {executionPayload.BlockNumber} took {elapsedMs} ms, {gcPauseMs:F0} ms of it in GC pauses");
+                }
                 _locker.Release();
             }
         }
