@@ -16,7 +16,6 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 {
     private readonly IWorldStateScopeProvider _baseProvider = baseProvider;
     private readonly Action<double> _updateMetrics = updateMetrics;
-    private double _stateMerkleizationTime;
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
     public bool SupportsConcurrentScopes => _baseProvider.SupportsConcurrentScopes;
@@ -24,15 +23,13 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
+        private double _stateMerkleizationTime;
+
         public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
 
-        public void Dispose()
-        {
-            baseScope.Dispose();
-            parent._stateMerkleizationTime = 0d;
-        }
+        public void Dispose() => baseScope.Dispose();
 
         public Hash256 RootHash => baseScope.RootHash;
 
@@ -52,8 +49,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         {
             long start = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
-            parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            parent._updateMetrics(parent._stateMerkleizationTime);
+            _stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            parent._updateMetrics(_stateMerkleizationTime);
         }
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)

@@ -187,8 +187,18 @@ public class PrewarmerScopeProvider(
                     TryReserveStridePrefetcherEngagement));
         }
 
-        private bool TryReserveStridePrefetcherEngagement() =>
-            Interlocked.Increment(ref _stridePrefetcherEngagements) <= MaxStridePrefetcherEngagements;
+        private bool TryReserveStridePrefetcherEngagement()
+        {
+            // Engagement is requested by the block-processing thread, so the holder count and total
+            // engagement budget are checked without another lock. A detector may be created eagerly,
+            // but it cannot claim a reader slot until it actually engages.
+            if (CountReaderSlotHolders() >= MaxStridePrefetchers)
+            {
+                return false;
+            }
+
+            return Interlocked.Increment(ref _stridePrefetcherEngagements) <= MaxStridePrefetcherEngagements;
+        }
 
         private int CountReaderSlotHolders()
         {

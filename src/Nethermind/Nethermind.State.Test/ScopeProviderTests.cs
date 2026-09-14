@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -434,6 +436,104 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public async Task Test_StridePrefetcher_LimitsActiveReadersWithoutSpendingEngagementsOnInertDetectors()
+    {
+        if (!useFlat)
+        {
+            Assert.Ignore("The stride prefetcher requires concurrent scopes.");
+        }
+
+        const int detectorCount = 9;
+        const int activeDetectorCount = 4;
+        const int slotCount = 201;
+        UInt256 start = (UInt256)1 << 40;
+        UInt256 stride = 7;
+        Address[] addresses = new Address[detectorCount];
+        for (int i = 0; i < addresses.Length; i++)
+            addresses[i] = new Address(Keccak.Compute($"stride-cap-{i}"));
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(detectorCount))
+            {
+                for (int i = 0; i < addresses.Length; i++)
+                {
+                    writeBatch.Set(addresses[i], new Account(100, 100));
+                    using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(addresses[i], slotCount);
+                    UInt256 index = start;
+                    for (int j = 0; j < slotCount; j++, index += stride)
+                        storage.Set(index, [(byte)(i + 1)]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider prewarmer = new(
+            new WorldStateMetricsScopeProvider(
+                new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), static _ => { }),
+            new PrewarmerState(caches, isPrewarmer: false),
+            LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            IWorldStateScopeProvider.IStorageTree[] storages = new IWorldStateScopeProvider.IStorageTree[detectorCount];
+            for (int i = 0; i < storages.Length; i++)
+                storages[i] = scope.CreateStorageTree(addresses[i]);
+
+            for (int i = 0; i < activeDetectorCount; i++)
+                ReadStride(storages[i]);
+
+            for (int i = 0; i < activeDetectorCount; i++)
+            {
+                StorageCell farCell = new(addresses[i], start + (stride * 200));
+                Assert.That(await WaitForWarmedSlot(caches, farCell, [(byte)(i + 1)]), Is.True,
+                    $"Initial detector {i} did not engage.");
+            }
+
+            // These detectors were created before the four reader slots filled. They must become inert
+            // at engagement and must not consume the scope's total engagement budget.
+            for (int i = activeDetectorCount; i < detectorCount - 1; i++)
+            {
+                ReadStride(storages[i]);
+                StorageCell farCell = new(addresses[i], start + (stride * 200));
+                for (int attempt = 0; attempt < 60; attempt++)
+                {
+                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out _), Is.False,
+                        $"Detector {i} engaged despite the active reader cap.");
+                    await Task.Delay(5);
+                }
+            }
+
+            // Free one reader slot. If the refused detectors had consumed total engagements, the final
+            // detector would be rejected at eight even though a reader slot is now available.
+            UInt256 offPatternIndex = start;
+            for (int i = 0; i < 16; i++)
+            {
+                offPatternIndex += (UInt256)(1000 + (i * i * 2));
+                storages[0].Get(in offPatternIndex);
+            }
+
+            ReadStride(storages[^1]);
+            StorageCell finalFarCell = new(addresses[^1], start + (stride * 200));
+            Assert.That(await WaitForWarmedSlot(caches, finalFarCell, [(byte)detectorCount]), Is.True,
+                "A detector refused by the active-reader cap consumed the total engagement budget.");
+        }
+
+        void ReadStride(IWorldStateScopeProvider.IStorageTree storage)
+        {
+            UInt256 index = start;
+            for (int i = 0; i < 12; i++, index += stride)
+                storage.Get(in index);
+        }
+    }
+
+    [Test]
     public async Task Test_StridePrefetcher_DoesNotCacheInBlockWrittenValues()
     {
         UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
@@ -589,6 +689,35 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(ctx.ScopeProvider.SupportsConcurrentScopes, Is.EqualTo(useFlat));
             Assert.That(decorated.SupportsConcurrentScopes, Is.EqualTo(useFlat));
+        }
+    }
+
+    [Test]
+    public void Test_MetricsScope_DisposeDoesNotResetAnotherScopeAccumulator()
+    {
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope processingBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IScope backgroundBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
+            .Returns(processingBaseScope, backgroundBaseScope);
+        processingBaseScope.When(scope => scope.Commit(1)).Do(_ => Thread.Sleep(40));
+        processingBaseScope.When(scope => scope.Commit(2)).Do(_ => Thread.Sleep(5));
+
+        List<double> measurements = [];
+        WorldStateMetricsScopeProvider metricsProvider = new(baseProvider, measurements.Add);
+        IWorldStateScopeProvider.IScope processingScope = metricsProvider.BeginScope(null, new LocalMetrics());
+        IWorldStateScopeProvider.IScope backgroundScope = metricsProvider.BeginScope(null, new LocalMetrics());
+
+        processingScope.Commit(1);
+        backgroundScope.Dispose();
+        processingScope.Commit(2);
+        processingScope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(measurements, Has.Count.EqualTo(2));
+            Assert.That(measurements[0], Is.GreaterThan(20d));
+            Assert.That(measurements[1], Is.GreaterThan(measurements[0]));
         }
     }
 
