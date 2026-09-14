@@ -117,7 +117,7 @@ public class PbtMetricsTests
             reader.GetSlot(storageKey).Returns(slot);
             reader.GetCode(codeHash).Returns(code);
             reader.GetCodeReference(codeHash).Returns(1UL);
-            reader.GetNodeGroup(groupKey).Returns(_ => { payload.AcquireLease(); return payload; });
+            reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>()).Returns(_ => { payload.AcquireLease(); return payload; });
         }
 
         using PbtSnapshotContent content = new();

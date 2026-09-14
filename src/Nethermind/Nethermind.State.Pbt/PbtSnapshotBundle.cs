@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -26,7 +27,9 @@ public sealed class PbtSnapshotBundle(
     private readonly PbtWriteBatchBuilder<PbtFullKey> _codeBatch = resourcePool.GetWriteBatch(usage);
     private readonly PbtWriteBatchBuilder<PbtStorageFullKey> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
     private readonly Lock _accountLock = new();
-    private readonly Dictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = [];
+    private readonly Dictionary<ValueHash256, AwaitedCode> _accountsAwaitingCode = [];
+    // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
+    private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     private bool _isDisposed;
 
@@ -66,10 +69,10 @@ public sealed class PbtSnapshotBundle(
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         lock (_accountLock)
         {
-            foreach ((ValueHash256 addressHash, ValueHash256 codeHash) in _accountsAwaitingCode)
+            foreach ((ValueHash256 addressHash, AwaitedCode awaited) in _accountsAwaitingCode)
             {
-                CodeInfo code = GetCode(codeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {codeHash}.");
-                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
+                CodeInfo code = GetCode(awaited.CodeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaited.CodeHash}.");
+                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code, awaited.IncludeCode);
             }
             _accountsAwaitingCode.Clear();
         }
@@ -101,12 +104,13 @@ public sealed class PbtSnapshotBundle(
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
+        PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
+        if (WriteBuffer.TryGetNodeGroup(storagePath, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
-        if (trieNodeCache?.TryGet(groupHash, groupKey, out payload) == true) return payload;
-        payload = readOnlyBundle.GetNodeGroup(groupKey);
-        if (payload is not null) trieNodeCache?.Add(groupHash, groupKey, payload);
+            if (snapshots[index].Content.TryGetNodeGroup(storagePath, out payload)) return payload;
+        if (trieNodeCache?.TryGet(groupHash, storagePath, out payload) == true) return payload;
+        payload = readOnlyBundle.GetNodeGroup(storagePath);
+        if (payload is not null) trieNodeCache?.Add(groupHash, storagePath, payload);
         return payload;
     }
 
@@ -191,8 +195,12 @@ public sealed class PbtSnapshotBundle(
                 throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
             CodeInfo? code = account is { HasCode: true } ? GetCode(account.CodeHash.ValueHash256) : null;
 
+            // Code chunk leaves are shared per code hash, so they are written only when this update makes the
+            // code referenced; an unresolved earlier decision for the same code carries over unchanged.
+            bool includeCode = _accountsAwaitingCode.TryGetValue(addressHash, out AwaitedCode awaited) && awaited.IncludeCode;
             if (previous?.CodeHash != account?.CodeHash)
             {
+                includeCode = false;
                 if (previous is { HasCode: true })
                 {
                     ValueHash256 previousHash = previous.CodeHash.ValueHash256;
@@ -205,11 +213,13 @@ public sealed class PbtSnapshotBundle(
                 if (account is { HasCode: true })
                 {
                     ValueHash256 codeHash = account.CodeHash.ValueHash256;
-                    WriteBuffer.SetCodeReference(codeHash, checked(GetCodeReference(codeHash) + 1));
+                    ulong count = GetCodeReference(codeHash);
+                    includeCode = count == 0;
+                    WriteBuffer.SetCodeReference(codeHash, checked(count + 1));
                 }
             }
 
-            WriteAccountLeaves(addressHash, account, code);
+            WriteAccountLeaves(addressHash, account, code, includeCode);
 
             _accountsAwaitingCode.Remove(addressHash);
             WriteBuffer.Accounts[addressHash] = account;
@@ -219,17 +229,17 @@ public sealed class PbtSnapshotBundle(
             }
             else if (account.HasCode && code is null)
             {
-                _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
+                _accountsAwaitingCode[addressHash] = new AwaitedCode(account.CodeHash.ValueHash256, includeCode);
             }
         }
     }
 
-    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code)
+    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code, bool includeCode)
     {
         bool hasBasicData = false;
         if (account is not null && (!account.HasCode || code is not null))
         {
-            foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code))
+            foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code, includeCode))
             {
                 if (key.Bytes[0] == Eip8297KeyDerivation.AccountZone && key.Bytes[^1] == PbtKeyDerivation.BasicDataLeafKey)
                     hasBasicData = true;
@@ -267,10 +277,10 @@ public sealed class PbtSnapshotBundle(
         {
             WriteBuffer.Codes[codeHash] = code;
             using ArrayPoolListRef<ValueHash256> resolved = new(0);
-            foreach ((ValueHash256 addressHash, ValueHash256 pendingHash) in _accountsAwaitingCode)
+            foreach ((ValueHash256 addressHash, AwaitedCode awaited) in _accountsAwaitingCode)
             {
-                if (pendingHash != codeHash) continue;
-                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
+                if (awaited.CodeHash != codeHash) continue;
+                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code, awaited.IncludeCode);
                 resolved.Add(addressHash);
             }
             foreach (ValueHash256 addressHash in resolved) _accountsAwaitingCode.Remove(addressHash);
@@ -283,14 +293,18 @@ public sealed class PbtSnapshotBundle(
         if (WriteBuffer.Codes.TryGetValue(codeHash, out CodeInfo? code)) return code;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.Codes.TryGetValue(codeHash, out code)) return code;
+        if (_codeMemo.TryGetValue(codeHash, out code)) return code;
         code = readOnlyBundle.GetCode(codeHash);
-        if (code is null && ReadCode?.Invoke(codeHash) is { } bytes)
+        if (code is not null) _codeMemo[codeHash] = code;
+        else if (ReadCode?.Invoke(codeHash) is { } bytes)
         {
             code = new CodeInfo(bytes) { CodeHash = codeHash };
             WriteBuffer.Codes[codeHash] = code;
         }
         return code;
     }
+
+    private readonly record struct AwaitedCode(ValueHash256 CodeHash, bool IncludeCode);
 
     /// <summary>Records a prewarm hint, returning false for probable duplicates or a disposed bundle.</summary>
     public bool ShouldQueuePrewarm(Address address, UInt256? slot = null)
@@ -408,6 +422,7 @@ public sealed class PbtSnapshotBundle(
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
         _accountsAwaitingCode.Clear();
+        _codeMemo.Clear();
         ReadCode = null;
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;

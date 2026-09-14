@@ -14,6 +14,14 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
     private const int MaxEntriesLength = ushort.MaxValue;
+    private const int MaxCapacity = PbtNodeGroupCodec.HeaderLength + MaxEntriesLength + PbtNodeGroupCodec.MaxTrailerLength;
+    /// <summary>A pool bucket that holds most groups outright, so growth rarely copies more than once.</summary>
+    private const int InitialCapacity = 1024;
+    /// <summary>
+    /// A detached group is compacted only when its payload fills at most this fraction of the buffer:
+    /// pool buckets are powers of two, so a smaller rent lands in a smaller bucket only below half.
+    /// </summary>
+    private const int CompactionSlackRatio = 2;
     private readonly int _bitDepth;
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private RefCountingMemory? _memory;
@@ -81,12 +89,12 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Emits the resolved subtree root at its final position and clears the borrowed value.</summary>
-    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node)
+    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node, TrieUpdaterMetrics? metrics)
         where TKey : struct, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
         Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
-        ValueHash256 hash = node.Encode(encoding, depth);
+        ValueHash256 hash = node.Encode(encoding, depth, metrics);
         Commit(path);
         node.Node = default;
         return hash;
@@ -132,8 +140,21 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability);
         Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
         PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability);
+        int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
         RefCountingMemory memory = _memory;
-        memory.Shrink(PbtNodeGroupCodec.HeaderLength + _written + trailerLength);
+        if (memory.GetSpan().Length >= length * CompactionSlackRatio)
+        {
+            // The snapshot retains the detached buffer's whole capacity until the segment is persisted.
+            RefCountingMemory compacted = _memoryProvider.Rent(length);
+            memory.GetSpan()[..length].CopyTo(compacted.GetSpan());
+            ((IDisposable)memory).Dispose();
+            memory = compacted;
+        }
+        else
+        {
+            memory.Shrink(length);
+        }
+
         _memory = null;
         _disposed = true;
         return memory;
@@ -176,7 +197,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     {
         int capacity = _memory?.GetSpan().Length ?? 0;
         if (capacity >= required) return;
-        int nextCapacity = Math.Min(PbtNodeGroupCodec.HeaderLength + MaxEntriesLength + PbtNodeGroupCodec.MaxTrailerLength, Math.Max(required, capacity * 2));
+        int nextCapacity = Math.Min(MaxCapacity, Math.Max(required, Math.Max(InitialCapacity, capacity * 2)));
         RefCountingMemory grown = _memoryProvider.Rent(nextCapacity);
         if (_memory is { } previous)
         {

@@ -12,10 +12,10 @@ namespace Nethermind.State.Pbt.Test;
 
 public class Blake3ManagedTests
 {
-    /// <summary>Sizes around BLAKE3 block, chunk, and chaining-value stack boundaries.</summary>
+    /// <summary>Sizes around BLAKE3 block, chunk, and chaining-value stack boundaries, plus the EIP-8297 node encoding lengths.</summary>
     private static IEnumerable<int> Sizes()
     {
-        foreach (int size in new[] { 0, 1, 31, 32, 33, 63, 64, 65, 127, 128, 1023, 1024, 1025, 2048, 2049, 3072, 4096, 5000, 8192, 100_000 })
+        foreach (int size in new[] { 0, 1, 31, 32, 33, 63, 64, 65, 67, 99, 100, 127, 128, 192, 1023, 1024, 1025, 2048, 2049, 3072, 4096, 5000, 8192, 100_000 })
             yield return size;
     }
 

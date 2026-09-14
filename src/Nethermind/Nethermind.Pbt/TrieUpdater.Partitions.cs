@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -41,6 +42,7 @@ public static partial class TrieUpdater
     /// The supplied store must support concurrent reads and writes. Failed folds may leave partial writes;
     /// the caller owns failure isolation and must not reuse that state without recovery.
     /// </remarks>
+    [SkipLocalsInit]
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
         in ValueHash256 currentRoot,
@@ -91,7 +93,7 @@ public static partial class TrieUpdater
                         if (sharedWriters[slot] is not { } sharedWriter)
                         {
                             TraversalSubtree boundary = TakeBoundary(ref rootReader, rootWriter, rootPath, ref rootFrontier, slot, sourceBuffer);
-                            sharedReader = new(store, 4, boundary.Hash(4), metrics);
+                            sharedReader = new(store, 4, boundary.Hash(4, metrics), metrics);
                             sharedWriter = new(4, memoryProvider);
                             sharedWriters[slot] = sharedWriter;
                             Decompose(ref sharedReader, sharedWriter, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
@@ -117,13 +119,13 @@ public static partial class TrieUpdater
                         sharedPath.AppendMut(slot);
                         ref GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         TraversalSubtree composed = Compose(ref sharedReader, sharedWriter, sharedPath, metrics, ref zoneFrontiers.AsSpan()[slot], sourceBuffer);
-                        ValueHash256 groupHash = composed.Hash(4);
+                        ValueHash256 groupHash = composed.Hash(4, metrics);
                         SetBoundary(rootPath, ref rootFrontier, slot, ref composed);
                         using RefCountingMemory? payload = sharedWriter.Detach();
                         store.SetNodeGroup(sharedPath, groupHash, payload);
                     }
                     TraversalSubtree result = Compose(ref rootReader, rootWriter, rootPath, metrics, ref rootFrontier, sourceBuffer);
-                    ValueHash256 hash = rootWriter.Write(rootPath, PbtFourLevelGroupGeometry.RootPosition, 0, ref result);
+                    ValueHash256 hash = rootWriter.Write(rootPath, PbtFourLevelGroupGeometry.RootPosition, 0, ref result, metrics);
                     using (RefCountingMemory? payload = rootWriter.Detach())
                         store.SetNodeGroup(rootPath, hash, payload);
                     return hash;
@@ -170,6 +172,7 @@ public static partial class TrieUpdater
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
+        [SkipLocalsInit]
         internal override void Fold()
         {
             Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
@@ -177,7 +180,7 @@ public static partial class TrieUpdater
             path.AppendMut(Zone >> 4);
             path.AppendMut(Zone & 15);
             Span<byte> sourceBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
-            GroupFrameReader<TKey, TPath> reader = new(store, 8, Current.Borrow(sourceBuffer).Hash(8), Metrics);
+            GroupFrameReader<TKey, TPath> reader = new(store, 8, Current.Borrow(sourceBuffer).Hash(8, Metrics), Metrics);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
                 using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider);
@@ -188,7 +191,7 @@ public static partial class TrieUpdater
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, current,
                     operations.AsSpan(), ref path, 8, new(table.AsSpan(), 8, false));
                 using (RefCountingMemory? payload = writer.Detach())
-                    store.SetNodeGroup(path, result.Borrow(sourceBuffer).Hash(8), payload);
+                    store.SetNodeGroup(path, result.Borrow(sourceBuffer).Hash(8, Metrics), payload);
                 Result = OwnedSubtree.TakeFrom<TKey, TPath>(ref result);
             }
         }
@@ -205,6 +208,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TKey : struct, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
+    [SkipLocalsInit]
     internal static OwnedSubtree FoldBoundary(
         IPbtStore store,
         TrieUpdaterMetrics? metrics,
