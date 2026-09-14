@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
+using Nethermind.Facade.Find;
 using Nethermind.Init.Modules;
 using Nethermind.Db;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -171,5 +172,21 @@ public class PseudoNethermindModuleTests
         Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
         Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
         Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+    }
+
+    // The indexed branch casts the ILogFinder registration to IRpcLogFinder, so a decorator that drops the
+    // marker fails at resolve time rather than silently bypassing the RPC path.
+    [Test]
+    public void Rpc_log_finder_is_range_limited_only_without_the_log_index([Values] bool logIndexEnabled)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new LogIndexConfig { Enabled = logIndexEnabled }))
+            .Build();
+
+        IRpcLogFinder rpcLogFinder = container.Resolve<IRpcLogFinder>();
+
+        Assert.That(rpcLogFinder, logIndexEnabled
+            ? Is.SameAs(container.Resolve<ILogFinder>())
+            : Is.InstanceOf<RangeLimitedLogFinder>());
     }
 }
