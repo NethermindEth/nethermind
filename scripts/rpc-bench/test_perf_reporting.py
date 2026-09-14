@@ -1003,9 +1003,6 @@ esac
     def test_run_jsonbench_probes_primary_and_reference_even_when_preparation_is_reused(self) -> None:
         fake_bin = self.directory / "probe-bin"
         fake_bin.mkdir()
-        state = self.directory / "probe-state"
-        (state / "images").mkdir(parents=True)
-        probe_log = self.directory / "probe.log"
         corpus = self.directory / "eth-call-corpus.jsonl.gz"
         corpus.write_bytes(b"fixture contents are never read by the command stub\n")
         self.write_executable("probe-bin/sudo", '#!/bin/bash\nexec "$@"\n')
@@ -1015,7 +1012,10 @@ esac
             "probe-bin/python3",
             "#!/bin/bash\n"
             "printf '%s\\n' \"$*\" >> \"$PROBE_LOG\"\n"
-            "if [[ \"${1:-}\" == *corpus_parity.py && \"${2:-}\" == probe && -n \"${PROBE_FAILURE_URL:-}\" && \"$*\" == *\"$PROBE_FAILURE_URL\"* ]]; then exit 7; fi\n"
+            "if [[ \"${1:-}\" == *corpus_parity.py && \"${2:-}\" == probe && -n \"${PROBE_FAILURE_URL:-}\" && \"$*\" == *\"$PROBE_FAILURE_URL\"* ]]; then\n"
+            "  if [[ \"${PROBE_FAILURE_RESPONSE:-}\" == all-error ]]; then printf '%s\\n' 'corpus method probe found no successful results over 2 records (rpc_error:-32000)' >&2; fi\n"
+            "  exit 7\n"
+            "fi\n"
             "if [[ \"${1:-}\" == *prepare-eth-call-corpus.py ]]; then\n"
             "  mkdir -p \"$(dirname \"$3\")\"; printf '[]' > \"$3\"\n"
             "fi\n"
@@ -1023,42 +1023,50 @@ esac
             "  mkdir -p \"$(dirname \"$4\")\"; printf '%s\\n' '{\"metrics\":{\"http_req_duration\":{\"values\":{\"avg\":1,\"med\":1,\"p(90)\":1,\"p(95)\":1,\"p(99)\":1,\"max\":1}},\"http_reqs\":{\"values\":{\"count\":1,\"rate\":1}},\"http_req_failed\":{\"values\":{\"rate\":0}},\"checks\":{\"values\":{\"passes\":1,\"fails\":0}},\"dropped_iterations\":{\"values\":{\"count\":0}}}}' > \"$4\"\n"
             "fi\n",
         )
-        environment = os.environ.copy()
-        environment.update({
-            "FAKE_BIN": fake_bin.as_posix(),
-            "FAKE_STATE": state.as_posix(),
-            "PROBE_LOG": probe_log.as_posix(),
-            "RPC_URL": "http://primary.invalid:8545",
-            "REFERENCE_RPC_URL": "http://reference.invalid:8546",
-            "SCRATCH_ROOT": (self.directory / "scratch").as_posix(),
-            "JB_MODE": "benchmark",
-            "JB_ETH_CALL_CORPUS": "true",
-            "JB_ETH_CALL_CORPUS_FILE": corpus.as_posix(),
-            "CORPUS_METHOD": "trace_call",
-            "JB_REUSE_PREPARED": "true",
-            "PROBE_FAILURE_URL": "",
-        })
+        for method in ("trace_call", "debug_traceCall"):
+            with self.subTest(method=method):
+                state = self.directory / f"probe-state-{method}"
+                (state / "images").mkdir(parents=True)
+                probe_log = self.directory / f"probe-{method}.log"
+                environment = os.environ.copy()
+                environment.update({
+                    "FAKE_BIN": fake_bin.as_posix(),
+                    "FAKE_STATE": state.as_posix(),
+                    "PROBE_LOG": probe_log.as_posix(),
+                    "RPC_URL": "http://primary.invalid:8545",
+                    "REFERENCE_RPC_URL": "http://reference.invalid:8546",
+                    "SCRATCH_ROOT": (self.directory / f"scratch-{method}").as_posix(),
+                    "JB_MODE": "benchmark",
+                    "JB_ETH_CALL_CORPUS": "true",
+                    "JB_ETH_CALL_CORPUS_FILE": corpus.as_posix(),
+                    "CORPUS_METHOD": method,
+                    "JB_REUSE_PREPARED": "true",
+                    "PROBE_FAILURE_URL": "",
+                    "PROBE_FAILURE_RESPONSE": "",
+                })
 
-        first = self.run_jsonbench(environment, self.directory / "out1")
-        second = self.run_jsonbench(environment, self.directory / "out2")
+                first = self.run_jsonbench(environment, self.directory / f"out-{method}-1")
+                second = self.run_jsonbench(environment, self.directory / f"out-{method}-2")
 
-        self.assertEqual(first.returncode, 0, f"{first.stdout}\n{first.stderr}")
-        self.assertEqual(second.returncode, 0, f"{second.stdout}\n{second.stderr}")
-        calls = probe_log.read_text(encoding="utf-8").splitlines()
-        probes = [call for call in calls if "corpus_parity.py probe " in call]
-        self.assertEqual(len(probes), 4, calls)
-        self.assertTrue(any("http://primary.invalid:8545" in call for call in probes), probes)
-        self.assertTrue(any("http://reference.invalid:8546" in call for call in probes), probes)
-        docker_calls = (state / "docker.log").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len([call for call in docker_calls if call.startswith("build ")]), 1)
-        self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
+                self.assertEqual(first.returncode, 0, f"{first.stdout}\n{first.stderr}")
+                self.assertEqual(second.returncode, 0, f"{second.stdout}\n{second.stderr}")
+                calls = probe_log.read_text(encoding="utf-8").splitlines()
+                probes = [call for call in calls if "corpus_parity.py probe " in call]
+                self.assertEqual(len(probes), 4, calls)
+                self.assertTrue(any("http://primary.invalid:8545" in call for call in probes), probes)
+                self.assertTrue(any("http://reference.invalid:8546" in call for call in probes), probes)
+                docker_calls = (state / "docker.log").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len([call for call in docker_calls if call.startswith("build ")]), 1)
+                self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
 
-        environment["PROBE_FAILURE_URL"] = "http://reference.invalid:8546"
-        before_failure = len(docker_calls)
-        failed = self.run_jsonbench(environment, self.directory / "out3")
-        self.assertNotEqual(failed.returncode, 0, failed.stdout)
-        self.assertEqual(len((state / "docker.log").read_text(encoding="utf-8").splitlines()), before_failure)
-        self.assertFalse((self.directory / "out3").exists())
+                environment["PROBE_FAILURE_URL"] = "http://reference.invalid:8546"
+                environment["PROBE_FAILURE_RESPONSE"] = "all-error"
+                before_failure = len(docker_calls)
+                failed = self.run_jsonbench(environment, self.directory / f"out-{method}-3")
+                self.assertNotEqual(failed.returncode, 0, failed.stdout)
+                self.assertIn("rpc_error:-32000", failed.stderr)
+                self.assertEqual(len((state / "docker.log").read_text(encoding="utf-8").splitlines()), before_failure)
+                self.assertFalse((self.directory / f"out-{method}-3").exists())
 
     def resolve(self, **inputs: str) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
         """Run the workflow's resolve body with these dispatch inputs; return it plus its outputs."""

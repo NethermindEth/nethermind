@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import csv
 import gzip
 import hashlib
@@ -32,7 +33,7 @@ import urllib.parse
 import urllib.request
 import zlib
 from pathlib import Path
-from typing import Sequence
+from typing import Iterator, Sequence
 
 
 def _env_int(name: str, default: int) -> int:
@@ -193,28 +194,23 @@ def rewrite_record(params: list, method: str, options: dict) -> list:
     return to_parity_trace_call(params, options["trace_types"])
 
 
-def load_corpus(path: str | Path) -> list[list]:
-    """Return the params of each corpus record, in file order.
-
-    In a trace mode every record is rewritten here — once, before any request is sent — so the
-    rewrite never sits in the measured path.
-    """
+def _iter_corpus(path: str | Path) -> Iterator[list]:
+    """Yield validated, rewritten corpus params while the caller consumes the file."""
     path = Path(path)
     method, options = corpus_rewrite()
-    load_started = time.perf_counter()
     # The latency cells convert the same file with prepare-eth-call-corpus.py, which requires one
     # of these suffixes. Enforcing it here too keeps both readers agreeing on what a legal corpus
     # is, so a bad corpus_glob fails at validation rather than inside the first cell.
     if not (path.name.endswith(".jsonl") or path.name.endswith(".jsonl.gz")):
         raise CorpusParityError("corpus must have a .jsonl or .jsonl.gz extension")
     opener = gzip.open if path.name.endswith(".gz") else open
-    params: list[list] = []
+    record_count = 0
     try:
         with opener(path, "rt", encoding="utf-8") as source:
             for number, line in enumerate(source, start=1):
                 if not line.strip():
                     continue
-                if len(params) >= MAX_CORPUS_RECORDS:
+                if record_count >= MAX_CORPUS_RECORDS:
                     raise CorpusParityError(f"corpus exceeds {MAX_CORPUS_RECORDS} records")
                 try:
                     # Match the converter: NaN/Infinity are not JSON, and accepting them here
@@ -227,17 +223,28 @@ def load_corpus(path: str | Path) -> list[list]:
                 if not isinstance(record, dict) or record.get("method") != "eth_call" \
                         or not isinstance(record.get("params"), list):
                     raise CorpusParityError(f"corpus line {number}: not an eth_call record")
+                record_count += 1
                 if method == "eth_call":
-                    params.append(record["params"])
+                    yield record["params"]
                 else:
                     try:
-                        params.append(rewrite_record(record["params"], method, options))
+                        yield rewrite_record(record["params"], method, options)
                     except CorpusParityError as error:
                         raise CorpusParityError(f"corpus line {number}: {error}") from None
     # EOFError/zlib.error (truncated or corrupt gzip) and UnicodeError (invalid UTF-8) are not
     # OSError, so they previously escaped as tracebacks — which print the offending corpus bytes.
     except (OSError, EOFError, UnicodeError, zlib.error) as error:
         raise CorpusParityError(f"cannot read corpus: {error.__class__.__name__}") from None
+
+
+def load_corpus(path: str | Path) -> list[list]:
+    """Return the params of each corpus record, in file order.
+
+    In a trace mode every record is rewritten here — once, before any request is sent — so the
+    rewrite never sits in the measured path.
+    """
+    load_started = time.perf_counter()
+    params = list(_iter_corpus(path))
     if not params:
         raise CorpusParityError("corpus contains no records")
     # Decompressing and parsing a large corpus takes minutes; say so rather than looking hung.
@@ -382,27 +389,54 @@ def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, 
 
 
 def probe(corpus: str, rpc_url: str) -> None:
-    """Verify that the configured trace method is available before measured replay.
+    """Verify that the configured corpus method is available before measured replay.
 
-    A normal JSON-RPC error (for example a reverted call) is a supported method response. The
-    disabled/invalid-request and method-not-found codes are capability failures that must stop a
-    run; transport and malformed responses are failures too. Request and response contents stay private.
+    A normal JSON-RPC error (for example a reverted call) is a supported method response, so trace
+    probes continue until one record succeeds. Disabled/invalid-request and method-not-found codes,
+    transport failures, and malformed responses fail immediately. Request and response contents stay
+    private.
     """
-    params_list = load_corpus(corpus)
     method = corpus_method()
-    category, _ = _post(rpc_url, 1, params_list[0], method)
-    if category is None:
-        print(f"corpus method probe OK: {method}", flush=True)
-        return
-    if category.startswith("rpc_error:"):
-        try:
-            code = int(category.partition(":")[2])
-        except ValueError:
-            code = None
-        if code is not None and code not in (-32600, -32601):
-            print(f"corpus method probe accepted RPC error: {method}", flush=True)
+    if method == "eth_call":
+        # Preserve the existing eth_call probe semantics, including full corpus validation and the
+        # first-record-only request. Trace modes need to establish that at least one record executes.
+        params_list = load_corpus(corpus)
+        category, _ = _post(rpc_url, 1, params_list[0], method)
+        if category is None:
+            print(f"corpus method probe OK: {method}", flush=True)
             return
-    raise CorpusParityError(f"corpus method probe failed: {category}")
+        if category.startswith("rpc_error:"):
+            try:
+                code = int(category.partition(":")[2])
+            except ValueError:
+                code = None
+            if code is not None and code not in (-32600, -32601):
+                print(f"corpus method probe accepted RPC error: {method}", flush=True)
+                return
+        raise CorpusParityError(f"corpus method probe failed: {category}")
+
+    record_count = 0
+    with contextlib.closing(_iter_corpus(corpus)) as records:
+        for index, params in enumerate(records, start=1):
+            record_count = index
+            category, _ = _post(rpc_url, index, params, method)
+            if category is None:
+                print(f"corpus method probe OK: {method}", flush=True)
+                return
+            if category.startswith("rpc_error:"):
+                try:
+                    code = int(category.partition(":")[2])
+                except ValueError:
+                    code = None
+                if code is not None and code not in (-32600, -32601):
+                    continue
+            raise CorpusParityError(f"corpus method probe failed: {category}")
+
+    if record_count == 0:
+        raise CorpusParityError("corpus contains no records")
+    raise CorpusParityError(
+        f"corpus method probe found no successful results over {record_count} records"
+    )
 
 
 # eth_call is read-only and deterministic against a parked head, so replaying concurrently cannot

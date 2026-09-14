@@ -558,36 +558,69 @@ class TraceCallModeTests(unittest.TestCase):
         # A trace is compared by digest, never stored: fixed width and no response content.
         self.assertRegex(outcome, r"^0x[0-9a-f]{64}$")
 
-    def test_probe_accepts_results_and_legitimate_rpc_errors_but_rejects_method_not_found(self):
-        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
-        with self.trace_mode():
-            with RpcServer(lambda i: {"type": "CALL"}) as server:
-                with contextlib.redirect_stdout(io.StringIO()) as output:
-                    corpus_parity.probe(str(corpus), server.url)
+    def test_probe_requires_a_successful_trace_result_and_rejects_capability_failures(self):
+        modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
+        for mode, mode_context in modes:
+            with self.subTest(mode=mode), mode_context():
+                first_only = self.dir / "first-only.jsonl.gz"
+                with gzip.open(first_only, "wt", encoding="utf-8") as output:
+                    output.write(json.dumps({"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}))
+                    output.write("\n{not json\n")
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or {"type": "CALL"}) as server:
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        corpus_parity.probe(str(first_only), server.url)
+                self.assertEqual(calls, [1], "a successful first record should stop parsing and probing")
                 self.assertIn("probe OK", output.getvalue())
-            for code in (-32000, -32003):
-                for response in (("error", code), ("http_json_error", 404, code)):
-                    with self.subTest(response=response), RpcServer(lambda i, response=response: response) as server:
+
+                corpus = self.write_corpus([
+                    {"method": "eth_call", "params": [{"to": "0x1"}, "latest"]},
+                    {"method": "eth_call", "params": [{"to": "0x2"}, "latest"]},
+                ])
+                for response in (("error", -32000), ("http_json_error", 404, -32003)):
+                    calls = []
+                    with self.subTest(response=response), \
+                            RpcServer(lambda i, response=response: calls.append(i) or
+                                      (response if i == 1 else {"type": "CALL"})) as server:
                         with contextlib.redirect_stdout(io.StringIO()) as output:
                             corpus_parity.probe(str(corpus), server.url)
-                        self.assertIn("accepted RPC error", output.getvalue())
-            for code in (-32600, -32601):
-                for response in (("error", code), ("http_json_error", 404, code)):
-                    with self.subTest(response=response), RpcServer(lambda i, response=response: response) as server:
-                        with self.assertRaises(corpus_parity.CorpusParityError) as raised:
-                            corpus_parity.probe(str(corpus), server.url)
+                    self.assertEqual(calls, [1, 2], "ordinary RPC errors should advance to the next record")
+                    self.assertIn("probe OK", output.getvalue())
+
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or ("error", -32000)) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertEqual(calls, [1, 2])
+                self.assertIn("no successful results over 2 records", str(raised.exception))
+                self.assertNotIn(SENTINEL, str(raised.exception))
+
+                for code in (-32600, -32601):
+                    for response in (("error", code), ("http_json_error", 404, code)):
+                        calls = []
+                        with self.subTest(response=response), \
+                                RpcServer(lambda i, response=response: calls.append(i) or response) as server:
+                            with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                                corpus_parity.probe(str(corpus), server.url)
+                        self.assertEqual(calls, [1])
                         self.assertIn(f"rpc_error:{code}", str(raised.exception))
                         self.assertNotIn(SENTINEL, str(raised.exception))
-            malformed = json.dumps({"jsonrpc": "2.0", "id": 1,
-                                    "error": {"message": SENTINEL}}).encode()
-            with RpcServer(lambda i: malformed) as server:
-                with self.assertRaises(corpus_parity.CorpusParityError) as raised:
-                    corpus_parity.probe(str(corpus), server.url)
+
+                malformed = json.dumps({"jsonrpc": "2.0", "id": 1,
+                                        "error": {"message": SENTINEL}}).encode()
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or malformed) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertEqual(calls, [1])
                 self.assertIn("rpc_error", str(raised.exception))
                 self.assertNotIn(SENTINEL, str(raised.exception))
-            with RpcServer(lambda i: ("http", 503)) as server:
-                with self.assertRaises(corpus_parity.CorpusParityError) as raised:
-                    corpus_parity.probe(str(corpus), server.url)
+
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or ("http", 503)) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertEqual(calls, [1])
                 self.assertIn("transport_failure", str(raised.exception))
 
     def test_trace_requires_successful_results_but_allows_mixed_errors(self):
@@ -657,17 +690,21 @@ class TraceCallModeTests(unittest.TestCase):
             ("timings", ("--out", str(timings_output), "--passes", "1"),
              (timings_output, timings_output.with_name("timings.meta.json"))),
         )
-        for command, options, outputs in cases:
-            with self.subTest(command=command), self.trace_mode(), \
-                    RpcServer(lambda i: ("error", -32600)) as server, \
-                    contextlib.redirect_stderr(io.StringIO()) as error:
-                status = corpus_parity.main([
-                    command, "--corpus", str(corpus), "--rpc-url", server.url, *options,
-                ])
-            self.assertEqual(status, 2)
-            self.assertIn("rpc_error:-32600", error.getvalue())
-            for output in outputs:
-                self.assertFalse(output.exists(), f"{command} wrote {output}")
+        for mode, mode_context in (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode)):
+            for response, expected_error in (
+                    (("error", -32600), "rpc_error:-32600"),
+                    (("error", -32000), "no successful results over 1 records")):
+                for command, options, outputs in cases:
+                    with self.subTest(mode=mode, response=response, command=command), mode_context(), \
+                            RpcServer(lambda i, response=response: response) as server, \
+                            contextlib.redirect_stderr(io.StringIO()) as error:
+                        status = corpus_parity.main([
+                            command, "--corpus", str(corpus), "--rpc-url", server.url, *options,
+                        ])
+                    self.assertEqual(status, 2)
+                    self.assertIn(expected_error, error.getvalue())
+                    for output in outputs:
+                        self.assertFalse(output.exists(), f"{command} wrote {output}")
 
         eth_state = self.dir / "eth-call-state.json.gz"
         calls = []
