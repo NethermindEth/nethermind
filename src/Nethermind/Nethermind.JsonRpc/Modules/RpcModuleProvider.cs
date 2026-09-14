@@ -486,15 +486,17 @@ namespace Nethermind.JsonRpc.Modules
                     {
                         TaskResultAccessor = CreateTaskResultAccessor(ResultWrapperType);
                     }
+                }
 
-                    // Enforced here rather than only documented: the execution permit is released when the
-                    // invocation completes, so a streamable result that drives the EVM while the response is
-                    // written would run ungated, with no diagnostic to say so.
-                    if (isEvmExecution && SuccessPayloadType is not null && SuccessPayloadType.IsAssignableTo(typeof(IStreamableResult)))
-                    {
-                        throw new InvalidOperationException(
-                            $"{moduleType}.{methodInfo.Name} is flagged {nameof(JsonRpcMethodAttribute.IsEvmExecution)} but returns the streamable {SuccessPayloadType.Name}, which would execute after its permit is released.");
-                    }
+                // Enforced here rather than only documented: the execution permit is released when the invocation
+                // completes, so a streamable result that drives the EVM while the response is written would run
+                // ungated, with no diagnostic to say so. Checked on the awaited return type as well as on the
+                // wrapped payload, so a method that streams without a result wrapper is caught too.
+                Type streamedType = SuccessPayloadType ?? taskResultType ?? methodInfo.ReturnType;
+                if (isEvmExecution && streamedType.IsAssignableTo(typeof(IStreamableResult)))
+                {
+                    throw new InvalidOperationException(
+                        $"{moduleType}.{methodInfo.Name} is flagged {nameof(JsonRpcMethodAttribute.IsEvmExecution)} but returns the streamable {streamedType.Name}, which would execute after its permit is released.");
                 }
 
                 Invoker = MethodInvoker.Create(methodInfo);

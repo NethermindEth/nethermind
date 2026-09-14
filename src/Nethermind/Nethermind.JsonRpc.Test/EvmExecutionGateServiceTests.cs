@@ -152,14 +152,23 @@ public class EvmExecutionGateServiceTests
     /// while the response is written would run ungated with no diagnostic. The contract was stated in two places
     /// and enforced nowhere; this pins that resolving such a module fails loudly instead.</remarks>
     [Test]
-    public void A_gated_method_returning_a_streamable_result_is_rejected_at_resolve_time()
+    public void A_gated_method_returning_a_streamable_result_is_rejected_at_resolve_time() =>
+        AssertRegistrationRejected<IStreamingGatedRpcModule>("Streaming", new StreamingGatedModule());
+
+    /// <summary>The same, for a gated method that streams without a result wrapper around it.</summary>
+    /// <remarks>The payload the guard reads is only populated for result-wrapped returns, so a check nested under
+    /// that branch would look like it covered every gated method while silently passing this shape.</remarks>
+    [Test]
+    public void A_gated_method_returning_a_bare_streamable_result_is_rejected_at_resolve_time() =>
+        AssertRegistrationRejected<IBareStreamingGatedRpcModule>("BareStreaming", new BareStreamingGatedModule());
+
+    private static void AssertRegistrationRejected<T>(string moduleName, T module) where T : class, IRpcModule
     {
-        JsonRpcConfig config = new() { Enabled = true, EnabledModules = ["Streaming"] };
+        JsonRpcConfig config = new() { Enabled = true, EnabledModules = [moduleName] };
         RpcModuleProvider moduleProvider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
 
         Assert.That(
-            () => moduleProvider.Register(new SingletonModulePool<IStreamingGatedRpcModule>(
-                new SingletonFactory<IStreamingGatedRpcModule>(new StreamingGatedModule()), true)),
+            () => moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true)),
             Throws.InstanceOf<InvalidOperationException>());
     }
 
@@ -551,6 +560,23 @@ public class EvmExecutionGateServiceTests
     private sealed class StreamingGatedModule : IStreamingGatedRpcModule
     {
         public ResultWrapper<StubStreamableResult> streaming_execute() => ResultWrapper<StubStreamableResult>.Success(new StubStreamableResult());
+    }
+
+    /// <summary>Breaks the same rule in the shape a result-wrapper-only guard misses: streaming with no wrapper.</summary>
+    [RpcModule("BareStreaming")]
+    public interface IBareStreamingGatedRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(
+            Description = "Test method that streams its result without a result wrapper while flagged as EVM execution.",
+            IsImplemented = true,
+            IsSharable = true,
+            IsEvmExecution = true)]
+        Task<StubStreamableResult> bare_streaming_execute();
+    }
+
+    private sealed class BareStreamingGatedModule : IBareStreamingGatedRpcModule
+    {
+        public Task<StubStreamableResult> bare_streaming_execute() => Task.FromResult(new StubStreamableResult());
     }
 
     public sealed class StubStreamableResult : IStreamableResult
