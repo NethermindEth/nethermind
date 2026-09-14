@@ -11,6 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -252,21 +253,21 @@ internal class XdcTransactionProcessorTests
         _transactionProcessor!.SetBlockExecutionContext(header);
 
         UInt256 balanceBefore = _stateProvider!.GetBalance(TestItem.AddressA);
-        tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out UInt256 effectiveGasPrice);
+        CallOutputTracer tracer = new();
 
-        TransactionResult result = _transactionProcessor.Execute(tx, NullTxTracer.Instance);
+        TransactionResult result = _transactionProcessor.Execute(tx, tracer);
 
         UInt256 charged = balanceBefore - _stateProvider.GetBalance(TestItem.AddressA);
 
         Assert.Multiple(() =>
         {
-            // Asserted so the charge below cannot pass vacuously on a zeroed price.
-            Assert.That(effectiveGasPrice, Is.EqualTo((UInt256)gasPrice));
-
             if (expectedToBeCharged)
             {
                 Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
-                Assert.That(charged, Is.EqualTo(effectiveGasPrice * gasLimit));
+                // Execute refunds the unused gas, so the sender pays for what it spent, at its own price.
+                // Spent gas is asserted separately so the charge cannot pass vacuously on a zeroed price.
+                Assert.That(tracer.GasSpent, Is.GreaterThan(0UL));
+                Assert.That(charged, Is.EqualTo((UInt256)gasPrice * tracer.GasSpent));
             }
             else
             {
