@@ -138,18 +138,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <remarks>
     /// The journal only ever holds cells this contract has written, so for one that has written nothing
     /// the probe cannot hit and is pure cost — and it is the more expensive of the two lookups, hashing
-    /// the whole <see cref="StorageCell"/> rather than just the index. The trade: a journal hit used to
-    /// return without resolving the contract at all, and now pays <see cref="GetOrCreateStorage"/> first —
-    /// a reference compare when the address repeats, a map probe when execution alternates contracts.
-    /// Note this makes even a journal-hit read mutating: the resolution writes the last-contract memo
-    /// and can grow the contract map.
+    /// the whole <see cref="StorageCell"/> rather than just the index. That probe is skipped only when the
+    /// last-resolved contract is this one and it has journalled nothing: a reference compare against the
+    /// memo, never a map probe. Every other case falls back to the probe-first path, which does not resolve
+    /// the contract on a journal hit — so a read that alternates between contracts keeps its original cost
+    /// rather than paying <see cref="GetOrCreateStorage"/> on every hit.
     /// </remarks>
     protected override void GetCurrentValue(in StorageCell storageCell, out UInt256 value)
     {
-        PerContractState state = GetOrCreateStorage(storageCell.Address);
+        if (_lastStorageAddress == storageCell.Address && _lastStorage is { HasJournalledWrites: false } cached)
+        {
+            cached.LoadFromTree(in storageCell, out value);
+            return;
+        }
 
-        if (!state.HasJournalledWrites || !TryGetCachedValue(in storageCell, out value))
-            state.LoadFromTree(in storageCell, out value);
+        if (!TryGetCachedValue(in storageCell, out value))
+            GetOrCreateStorage(storageCell.Address).LoadFromTree(in storageCell, out value);
     }
 
     /// <summary>
