@@ -26,7 +26,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int networkWrapperCheck = 0;
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             int networkWrapperLength = decoderContext.ReadSequenceLength();
             networkWrapperCheck = decoderContext.Position + networkWrapperLength;
@@ -39,7 +39,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
         if (transaction is not null)
         {
-            if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
+            if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
                 DecodeShardBlobNetworkWrapper(transaction, ref decoderContext, rlpBehaviors);
 
@@ -62,7 +62,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
     protected override void EncodeTypedWrapped<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
     {
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             writer.StartSequence(contentLength);
             // if the transaction is in mempool form, we started the mempool form sequence
@@ -74,7 +74,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         base.EncodeTypedWrapped(transaction, ref writer, rlpBehaviors, forSigning, contentLength);
 
         // we encode additional mempool form contents if needed
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
             EncodeShardBlobNetworkWrapper(transaction, ref writer, rlpBehaviors);
         }
@@ -91,7 +91,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             writer.Encode(networkWrapper.Commitments);
             writer.Encode(networkWrapper.Proofs);
 
-            if ((rlpBehaviors & RlpBehaviors.Storage) != 0)
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
             {
                 Span<byte> cellMaskBytes = stackalloc byte[BlobCellMask.FixedByteLength];
                 networkWrapper.CellMask.WriteTo(cellMaskBytes);
@@ -144,7 +144,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         BlobCellMask cellMask = default;
         byte[][]? cells = null;
 
-        if ((rlpBehaviors & RlpBehaviors.Storage) != 0 && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
+        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
         {
             cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
             byte[][] decodedCells = decoderContext.DecodeByteArrays(NetworkWrapperCellProofsCountLimit);
@@ -167,7 +167,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         bool isEip155Enabled = false, ulong chainId = 0)
     {
         int contentLength = base.GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        return (rlpBehaviors & RlpBehaviors.InMempoolForm) != 0
+        return rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? GetShardBlobNetworkWrapperLength(transaction, contentLength, rlpBehaviors)
             : contentLength;
 
@@ -179,7 +179,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                    + Rlp.LengthOf(networkWrapper.Blobs)
                    + Rlp.LengthOf(networkWrapper.Commitments)
                    + Rlp.LengthOf(networkWrapper.Proofs)
-                   + ((rlpBehaviors & RlpBehaviors.Storage) != 0
+                   + (rlpBehaviors.HasFlag(RlpBehaviors.Storage)
                        ? Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0) + Rlp.LengthOf(networkWrapper.Cells ?? [])
                        : 0);
         }

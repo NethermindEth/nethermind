@@ -44,7 +44,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         }
         ReadOnlySlotChanges slotChanges = new(slot, changes);
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
             ctx.Check(check);
         }

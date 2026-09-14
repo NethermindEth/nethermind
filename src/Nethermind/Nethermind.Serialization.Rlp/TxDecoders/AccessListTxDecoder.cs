@@ -37,7 +37,7 @@ public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFacto
         ulong chainId = 0)
     {
         int txPayloadLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        return (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0
+        return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
             ? 1 + txPayloadLength
             : Rlp.LengthOfSequence(1 + txPayloadLength);
     }

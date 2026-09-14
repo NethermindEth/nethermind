@@ -12,7 +12,7 @@ public static class SignatureBuilder
 {
     public static Signature? FromBytes(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, RlpBehaviors rlpBehaviors)
     {
-        bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) != 0;
+        bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
         bool isSignatureOk = true;
         string? signatureError = null;
         if (rBytes.Length == 0 || sBytes.Length == 0)

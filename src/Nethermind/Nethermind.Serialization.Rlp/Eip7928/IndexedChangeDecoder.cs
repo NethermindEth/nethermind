@@ -22,7 +22,7 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
 
         T result = DecodeFields(ref ctx);
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
             ctx.Check(check);
         }
