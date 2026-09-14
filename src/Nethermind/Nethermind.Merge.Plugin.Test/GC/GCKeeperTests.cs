@@ -62,8 +62,11 @@ public class GCKeeperTests
 
         Assert.That(runtime.RegionEnded.Wait(Patience), "a region entered for a finished request was left active");
         Assert.That(runtime.Collections.Wait(Patience), "the block's garbage was never swept");
-        Assert.That(runtime.RegionsStarted, Is.EqualTo(1));
-        Assert.That(runtime.RegionsEnded, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.RegionsStarted, Is.EqualTo(1));
+            Assert.That(runtime.RegionsEnded, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -87,8 +90,11 @@ public class GCKeeperTests
         // The next block's sweep bounds the check that the burst produced no further sweeps.
         RunBlock(keeper, runtime);
         Assert.That(runtime.Collections.Wait(Patience), "the following block was never swept");
-        Assert.That(runtime.Collections.Calls, Has.Length.EqualTo(2));
-        Assert.That(runtime.RegionsStarted, Is.EqualTo(2), "released requests must not enter regions of their own");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections.Calls, Has.Length.EqualTo(2));
+            Assert.That(runtime.RegionsStarted, Is.EqualTo(2), "released requests must not enter regions of their own");
+        }
     }
 
     [Test]
@@ -125,7 +131,7 @@ public class GCKeeperTests
 
         // The JSON-RPC layer reports the next payload as soon as its method name is known, before its parameters
         // are bound, which can be while the previous block is still being processed.
-        RunBlock(keeper, runtime, whileRunning: GCScheduler.MarkLatencySensitiveRequest);
+        RunBlock(keeper, runtime, whileRunning: ReportNextPayload);
 
         Assert.That(runtime.Collections.Wait(SettleAllowance), Is.False, "the sweep ran although the next payload was arriving");
         // The next block's sweep shows the keeper is still sweeping when nothing is arriving.
@@ -140,12 +146,16 @@ public class GCKeeperTests
         FakeRuntime runtime = new();
         using GCKeeper keeper = new(CompactingStrategy(), LimboLogs.Instance, runtime);
 
+        Task before = keeper.PendingCollection;
         RunBlock(keeper, runtime);
-        AwaitCollectionDecision(keeper);
+        AwaitCollectionDecision(keeper, before);
 
         Assert.That(runtime.Collections.Wait(Patience, count: 2), "the delayed compacting collection never ran");
-        Assert.That(runtime.Collections.Calls, Does.Contain(new Collection(1, GCCollectionMode.Forced, true, true)));
-        Assert.That(runtime.Collections.Calls, Does.Contain(new Collection(1, GCCollectionMode.Forced, false, false)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections.Calls, Does.Contain(new Collection(1, GCCollectionMode.Forced, true, true)));
+            Assert.That(runtime.Collections.Calls, Does.Contain(new Collection(1, GCCollectionMode.Forced, false, false)));
+        }
     }
 
     [Test]
@@ -154,8 +164,9 @@ public class GCKeeperTests
         FakeRuntime runtime = new();
         using GCKeeper keeper = new(CompactingStrategy(), LimboLogs.Instance, runtime);
 
-        RunBlock(keeper, runtime, whileRunning: GCScheduler.MarkLatencySensitiveRequest);
-        AwaitCollectionDecision(keeper);
+        Task before = keeper.PendingCollection;
+        RunBlock(keeper, runtime, whileRunning: ReportNextPayload);
+        AwaitCollectionDecision(keeper, before);
 
         Assert.That(runtime.Collections.Calls, Is.Empty, "a collection ran although the next payload was arriving");
         // The next block reschedules nothing (3 s throttle) and only sweeps, which bounds the wait.
@@ -178,8 +189,11 @@ public class GCKeeperTests
         GCScheduler.MarkGCResumed();
 
         Assert.That(runtime.RegionEnded.Wait(Patience));
-        Assert.That(pausedWhileInFlight, Is.False, "forced collections must be excluded while a request is in flight");
-        Assert.That(pausedAfterRelease, Is.True, "the request's exclusion was not lifted");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pausedWhileInFlight, Is.False, "forced collections must be excluded while a request is in flight");
+            Assert.That(pausedAfterRelease, Is.True, "the request's exclusion was not lifted");
+        }
     }
 
     [Test]
@@ -194,9 +208,12 @@ public class GCKeeperTests
         bool pausedAfterRelease = GCScheduler.MarkGCPaused();
         GCScheduler.MarkGCResumed();
 
-        Assert.That(runtime.RegionsStarted, Is.Zero);
-        Assert.That(pausedWhileInFlight, Is.False);
-        Assert.That(pausedAfterRelease, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.RegionsStarted, Is.Zero);
+            Assert.That(pausedWhileInFlight, Is.False);
+            Assert.That(pausedAfterRelease, Is.True);
+        }
     }
 
     [Test]
@@ -260,13 +277,16 @@ public class GCKeeperTests
         Assert.That(runtime.RegionEnded.Wait(Patience), "the keeper never left the region");
     }
 
+    /// <summary>What the JSON-RPC layer does when the next payload's method name is known: an arrival with no lease yet.</summary>
+    private static void ReportNextPayload() => GCScheduler.EnterLatencySensitiveRequest(carriesBlock: true).Dispose();
+
     /// <summary>Waits for the collection scheduled after the last block to reach its run-or-stand-down decision.</summary>
-    private static void AwaitCollectionDecision(GCKeeper keeper)
+    /// <param name="before">The keeper's pending collection from before the block; the new one is installed right after the region ends.</param>
+    private static void AwaitCollectionDecision(GCKeeper keeper, Task before)
     {
-        // The task is installed right after the region ends, so it can still be the completed placeholder here.
         long start = Stopwatch.GetTimestamp();
         Task pending = keeper.PendingCollection;
-        while (pending.IsCompleted)
+        while (ReferenceEquals(pending, before))
         {
             if (Stopwatch.GetElapsedTime(start) > Patience) Assert.Fail("no collection was scheduled after the block");
             Thread.Sleep(1);

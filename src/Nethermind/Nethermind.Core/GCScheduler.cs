@@ -24,7 +24,11 @@ public sealed class GCScheduler
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
+    // Held while a blocking collection is decided and started, so a request cannot arrive in between.
+    private static readonly Lock _requestActivityLock = new();
     private static long _latencySensitiveRequests;
+    private static int _latencySensitiveRequestsInFlight;
+    private static readonly AsyncLocal<long> _currentLatencySensitiveRequest = new();
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
@@ -143,16 +147,51 @@ public sealed class GCScheduler
     public static void MarkGCResumed() => Volatile.Write(ref _canPerformGC, CanPerformGC);
 
     /// <summary>
-    /// Records that a latency-sensitive request, such as an engine payload, has started arriving.
+    /// Marks the current async flow as a latency-sensitive request, such as an engine call, until the scope is disposed.
     /// </summary>
+    /// <param name="carriesBlock">
+    /// True when the request brings a block to process: it is then counted in <see cref="LatencySensitiveRequests"/>
+    /// and collections scheduled after the previous block treat it as the next one arriving.
+    /// </param>
     /// <remarks>
-    /// Raised before the request's parameters are bound, so collections scheduled after the previous block can
-    /// stand down before that work begins. A change in <see cref="LatencySensitiveRequests"/> is the signal.
+    /// Entered before the request's parameters are bound. No blocking collection issued through this scheduler starts
+    /// while a request is in flight, and one that is starting holds new requests at the door until it has begun,
+    /// where the collection's own suspension takes over.
     /// </remarks>
-    public static void MarkLatencySensitiveRequest() => Interlocked.Increment(ref _latencySensitiveRequests);
+    public static LatencySensitiveRequestScope EnterLatencySensitiveRequest(bool carriesBlock)
+    {
+        lock (_requestActivityLock)
+        {
+            _latencySensitiveRequestsInFlight++;
+        }
+        if (carriesBlock)
+        {
+            _currentLatencySensitiveRequest.Value = Interlocked.Increment(ref _latencySensitiveRequests);
+        }
+        return new LatencySensitiveRequestScope();
+    }
 
-    /// <summary>Number of latency-sensitive requests seen so far.</summary>
+    /// <summary>
+    /// The arrival number of the block-carrying request in the current async flow, or a fresh one for a caller that
+    /// did not come through <see cref="EnterLatencySensitiveRequest"/>.
+    /// </summary>
+    public static long ClaimLatencySensitiveRequest() =>
+        _currentLatencySensitiveRequest.Value is > 0 and long known ? known : Interlocked.Increment(ref _latencySensitiveRequests);
+
+    /// <summary>Number of block-carrying latency-sensitive requests seen so far.</summary>
     public static long LatencySensitiveRequests => Volatile.Read(ref _latencySensitiveRequests);
+
+    public readonly struct LatencySensitiveRequestScope : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (_requestActivityLock)
+            {
+                _latencySensitiveRequestsInFlight--;
+            }
+            _currentLatencySensitiveRequest.Value = 0;
+        }
+    }
 
     /// <summary>
     /// Determines and performs the appropriate type of garbage collection.
@@ -206,17 +245,44 @@ public sealed class GCScheduler
 
     /// <inheritdoc cref="GCCollect(int, GCCollectionMode, bool, bool)"/>
     /// <param name="trimNativeMemory">Whether to hand freed native allocator memory back to the OS afterwards.</param>
+    /// <remarks>A blocking collection is refused while a latency-sensitive request is in flight; a background one only pauses briefly and is not.</remarks>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {
-            return false;
+            return Refused();
         }
 
+        if (!blocking)
+        {
+            return Collect(generation, mode, blocking, compacting, trimNativeMemory);
+        }
+
+        lock (_requestActivityLock)
+        {
+            if (_latencySensitiveRequestsInFlight > 0)
+            {
+                return Refused();
+            }
+
+            return Collect(generation, mode, blocking, compacting, trimNativeMemory);
+        }
+    }
+
+    // Callers arm LOH compaction right before asking; a refused collection must not leave it armed for the
+    // runtime's next gen2, which may land inside a block.
+    private static bool Refused()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
+        return false;
+    }
+
+    private bool Collect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
+    {
         if (!MarkGCPaused())
         {
             // Skip if another GC is in progress
-            return false;
+            return Refused();
         }
 
         // Reset the block counter after GC

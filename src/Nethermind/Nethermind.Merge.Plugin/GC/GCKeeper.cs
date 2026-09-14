@@ -25,7 +25,8 @@ public class GCKeeper : IDisposable
     // full totalSize for LOH as well, committing that much LOH inside the per-call EE suspension.
     private static readonly long _lohSize = 64.MB;
     private static readonly long _defaultSize = 512.MB + _lohSize;
-    // Long enough for the response and the fork-choice update that follows a payload to be handled first.
+    // Long enough for the response and the fork-choice update that follows a payload to be handled first; the
+    // scheduler refuses the sweep outright if an engine call is still in flight when the window ends.
     private const int PostBlockSettleMs = 100;
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
@@ -76,7 +77,6 @@ public class GCKeeper : IDisposable
     /// </remarks>
     public IDisposable TryStartNoGCRegion()
     {
-        GCScheduler.MarkLatencySensitiveRequest();
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
         if (!_gcStrategy.CanStartNoGCRegion())
         {
@@ -88,8 +88,8 @@ public class GCKeeper : IDisposable
         {
             if (_disposed || _keeperStopped) return new NoGCRegion(null, pausedGCScheduler);
 
-            // Stamped here, after this payload's own report: any later report is the next payload arriving.
-            RegionRequest request = new(_releaseSignal, GCScheduler.LatencySensitiveRequests);
+            // This payload's own arrival number: any later one is the next payload arriving.
+            RegionRequest request = new(_releaseSignal, GCScheduler.ClaimLatencySensitiveRequest());
             _requests.Enqueue(request);
             EnsureKeeperRunning();
             _requestSignal.Release();
@@ -288,7 +288,7 @@ public class GCKeeper : IDisposable
         Exception
     }
 
-    /// <param name="requestsSeen">Payloads reported up to this request; a later change means the next one is arriving.</param>
+    /// <param name="requestsSeen">This payload's arrival number; a higher count later means the next one is arriving.</param>
     private sealed class RegionRequest(ManualResetEventSlim releaseSignal, long requestsSeen)
     {
         private volatile bool _released;

@@ -53,16 +53,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return ValueTask.FromResult<JsonRpcResponse>(errorResponse);
         }
 
-        if (context.IsAuthenticated && methodName.StartsWith("engine_newPayload", StringComparison.Ordinal))
-        {
-            // Binding a payload's parameters is the bulk of the work before block processing; GC work scheduled
-            // after the previous block must stand down before it starts, not once the module is reached.
-            GCScheduler.MarkLatencySensitiveRequest();
-        }
-
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = context.IsAuthenticated && methodName.StartsWith("engine_", StringComparison.Ordinal)
+                ? ExecuteEngineCallAsync(rpcRequest, methodName, method!, context)
+                : ExecuteAsync(rpcRequest, methodName, method!, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -82,6 +77,27 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             {
                 return ReturnErrorResponse(rpcRequest, ex);
             }
+        }
+    }
+
+    // Engine calls are the consensus client's critical path: the GC scheduler holds blocking collections back while
+    // one is in flight, and a payload counts as the next block arriving from the moment its method name is known,
+    // before its parameters are bound.
+    private async ValueTask<JsonRpcResponse> ExecuteEngineCallAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    {
+        GCScheduler.LatencySensitiveRequestScope scope = GCScheduler.EnterLatencySensitiveRequest(
+            carriesBlock: methodName.StartsWith("engine_newPayload", StringComparison.Ordinal));
+        try
+        {
+            JsonRpcResponse response = await ExecuteAsync(request, methodName, method, context);
+            // The response still has to be serialized and written; the call is in flight until the processor disposes it.
+            response.AddDisposable(scope.Dispose);
+            return response;
+        }
+        catch
+        {
+            scope.Dispose();
+            throw;
         }
     }
 

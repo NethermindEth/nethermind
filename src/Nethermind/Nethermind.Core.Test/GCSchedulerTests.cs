@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime;
 using Nethermind.Core.Memory;
 using NSubstitute;
 using NUnit.Framework;
@@ -42,6 +43,55 @@ public class GCSchedulerTests
 
         Assert.That(_scheduler.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void Blocking_collection_is_refused_while_a_latency_sensitive_request_is_in_flight()
+    {
+        using (GCScheduler.EnterLatencySensitiveRequest(carriesBlock: false))
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: true, compacting: false), Is.False);
+                Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True, "a background collection only pauses briefly");
+            }
+        }
+
+        Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: true, compacting: false), Is.True, "the refusal outlived the request");
+    }
+
+    [Test]
+    public void Refused_collection_disarms_the_large_object_heap_compaction_its_caller_requested()
+    {
+        using (GCScheduler.EnterLatencySensitiveRequest(carriesBlock: false))
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            Assert.That(_scheduler.GCCollect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true), Is.False);
+        }
+
+        Assert.That(GCSettings.LargeObjectHeapCompactionMode, Is.EqualTo(GCLargeObjectHeapCompactionMode.Default), "the runtime's next gen2 would have compacted the LOH inside a block");
+    }
+
+    [Test]
+    public void Block_carrying_request_is_numbered_and_the_number_follows_its_async_flow()
+    {
+        long before = GCScheduler.LatencySensitiveRequests;
+        using (GCScheduler.EnterLatencySensitiveRequest(carriesBlock: false))
+        {
+            Assert.That(GCScheduler.LatencySensitiveRequests, Is.EqualTo(before), "a call without a block is not an arrival");
+        }
+
+        long claimedInsideScope;
+        using (GCScheduler.EnterLatencySensitiveRequest(carriesBlock: true))
+        {
+            claimedInsideScope = GCScheduler.ClaimLatencySensitiveRequest();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(claimedInsideScope, Is.EqualTo(before + 1), "the claim must return the flow's own number, not a new one");
+            Assert.That(GCScheduler.LatencySensitiveRequests, Is.EqualTo(before + 1));
+        }
     }
 
     [Test]
