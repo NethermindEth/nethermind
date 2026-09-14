@@ -20,6 +20,7 @@ WARM_OK = re.compile(r"\[payload-server\]\s+warmup\s+block=(\d+)\s+ok\b", re.I)
 WARM_BAD = re.compile(r"\[payload-server\]\s+warmup\s+block=(\d+)\s+FAILED\b", re.I)
 SEVERE = re.compile(r"\b(?:Unhandled|Fatal|ERROR)\b", re.I)
 LIMIT = 4096
+MAX_DIAGNOSTIC_LINES = 20
 current = None
 cancelled = False
 watchdog: threading.Timer | None = None
@@ -85,14 +86,61 @@ def stop(_signum: int, _frame: object) -> None:
     watchdog = threading.Timer(int(get("CLEANUP_GRACE_SECONDS", "90")), force, (process,))
     watchdog.daemon = True
     watchdog.start()
-def collect_metrics(text: str) -> tuple[dict, list[str], list[str], list[str]]:
-    clean = ANSI.sub("", text)
-    sse = [(int(a), float(b)) for a, b in SSE.findall(clean)]
-    rows = [(int(a), float(b)) for a, b in K6.findall(clean)]
+def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
+    """Parse a campaign log once while keeping diagnostics bounded in memory."""
+    sse = []
+    rows = []
+    diagnostics = {"exceptions": [], "invalid": [], "severe": []}
+    diagnostic_counts = {"exceptions": 0, "invalid": 0, "severe": 0}
+    warm_ok = set()
+    warm_bad = set()
+    shutdown = False
+    cleanup = False
+
+    with Path(log_path).open("r", encoding="utf-8", errors="replace") as log:
+        for raw_line in log:
+            line = ANSI.sub("", raw_line).rstrip("\r\n")
+            if match := SSE.search(line):
+                sse.append((int(match.group(1)), float(match.group(2))))
+            if match := K6.match(line):
+                rows.append((int(match.group(1)), float(match.group(2))))
+            if match := WARM_OK.search(line):
+                warm_ok.add(int(match.group(1)))
+            if match := WARM_BAD.search(line):
+                warm_bad.add(int(match.group(1)))
+            if "Exception" in line:
+                diagnostic_counts["exceptions"] += 1
+                if len(diagnostics["exceptions"]) < MAX_DIAGNOSTIC_LINES:
+                    diagnostics["exceptions"].append(bounded(line))
+            if re.search(r"invalid[\s_-]*blocks?", line, re.I):
+                diagnostic_counts["invalid"] += 1
+                if len(diagnostics["invalid"]) < MAX_DIAGNOSTIC_LINES:
+                    diagnostics["invalid"].append(bounded(line))
+            if SEVERE.search(line):
+                diagnostic_counts["severe"] += 1
+                if len(diagnostics["severe"]) < MAX_DIAGNOSTIC_LINES:
+                    diagnostics["severe"].append(bounded(line))
+            shutdown |= "Nethermind is shut down" in line
+            cleanup |= "Cleanup completed" in line
+
     values, source = sse or rows, "SSE" if sse else "TTFB"
-    exceptions, invalid, severe = ([x for x in clean.splitlines() if "Exception" in x], [x for x in clean.splitlines() if re.search(r"invalid[\s_-]*blocks?", x, re.I)], [x for x in clean.splitlines() if SEVERE.search(x)])
-    if not values: return {"source": "none", "count": 0, "avg": None, "ids": [], "payload_indices": [x[0] for x in rows], "delivered": len(rows), "sse_count": len(sse)}, exceptions, invalid, severe
-    return {"source": source, "count": len(values), "avg": sum(x[1] for x in values) / len(values), "ids": [x[0] for x in values], "payload_indices": [x[0] for x in rows], "delivered": len(rows), "sse_count": len(sse)}, exceptions, invalid, severe
+    parsed = {
+        "source": source if values else "none",
+        "count": len(values),
+        "avg": sum(value for _, value in values) / len(values) if values else None,
+        "ids": [block for block, _ in values],
+        "payload_indices": [index for index, _ in rows],
+        "delivered": len(rows),
+        "sse_count": len(sse),
+        "warm_ok": sorted(warm_ok),
+        "warm_bad": sorted(warm_bad),
+        "shutdown": shutdown,
+        "cleanup": cleanup,
+        "exception_count": diagnostic_counts["exceptions"],
+        "invalid_count": diagnostic_counts["invalid"],
+        "severe_count": diagnostic_counts["severe"],
+    }
+    return parsed, diagnostics
 def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     global current, watchdog
     sample_id = f"{image['id']}-run{run}"
@@ -127,33 +175,30 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     finally:
         if watchdog is not None: watchdog.cancel()
         current = None
-    text = ANSI.sub("", log_path.read_text(encoding="utf-8", errors="replace"))
-    parsed, exceptions, invalid, severe = collect_metrics(text)
+    parsed, diagnostics = collect_metrics(log_path)
     try:
         verify_clean(config)
         clean_error = ""
     except Exception as error:
         clean_error = str(error)
-    warm_ok = {int(x) for x in WARM_OK.findall(text)}
-    warm_bad = {int(x) for x in WARM_BAD.findall(text)}
     expected, delivered = result.get("expected_amount"), parsed["delivered"]
     reasons = []
     if code != 0: reasons.append(f"execution exited with code {code}")
     if expected is None or delivered != expected or len(set(parsed["payload_indices"])) != delivered: reasons.append(f"delivery count/IDs expected {expected}, got {delivered}")
     if parsed["source"] == "SSE" and (delivered < 1 or parsed["sse_count"] not in (delivered, delivered - 1) or len(set(parsed["ids"])) != parsed["sse_count"]): reasons.append(f"SSE coverage/IDs are {parsed['sse_count']} for {delivered} delivered")
     if parsed["avg"] is None: reasons.append("processing metrics are missing")
-    if "Nethermind is shut down" not in text: reasons.append("normal shutdown marker is missing")
-    if "Cleanup completed" not in text: reasons.append("cleanup completed marker is missing")
-    for lines, label in ((exceptions, "exception"), (invalid, "invalid block")):
-        if lines: reasons.append(f"{len(lines)} {label} line(s) detected")
+    if not parsed["shutdown"]: reasons.append("normal shutdown marker is missing")
+    if not parsed["cleanup"]: reasons.append("cleanup completed marker is missing")
+    if parsed["exception_count"]: reasons.append(f"{parsed['exception_count']} exception line(s) detected")
+    if parsed["invalid_count"]: reasons.append(f"{parsed['invalid_count']} invalid block line(s) detected")
     if clean_error: reasons.append("cleanup verification failed: " + clean_error)
-    if get("MEASUREMENT_MODE", "standard") == "compute-warm" and (warm_bad or set(parsed["payload_indices"]) - warm_ok): reasons.append("compute-warm warmup is missing or failed")
+    if get("MEASUREMENT_MODE", "standard") == "compute-warm" and (parsed["warm_bad"] or set(parsed["payload_indices"]) - set(parsed["warm_ok"])): reasons.append("compute-warm warmup is missing or failed")
     if cancelled: reasons.append("campaign cancellation requested")
-    result.update({"finished_at": now(), "exit_code": code, "metrics": parsed, "sse_block_ids": parsed["ids"] if parsed["source"] == "SSE" else [], "cleanup_verified": not clean_error, "cleanup_problems": [clean_error] if clean_error else [], "exception_count": len(exceptions), "invalid_count": len(invalid), "severe_count": len(severe), "failure_reasons": reasons, "status": "success" if not reasons else "failed"})
+    result.update({"finished_at": now(), "exit_code": code, "metrics": parsed, "sse_block_ids": parsed["ids"] if parsed["source"] == "SSE" else [], "cleanup_verified": not clean_error, "cleanup_problems": [clean_error] if clean_error else [], "exception_count": parsed["exception_count"], "invalid_count": parsed["invalid_count"], "severe_count": parsed["severe_count"], "failure_reasons": reasons, "status": "success" if not reasons else "failed"})
     (directory / "metadata.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(f"{sample_id}: {result['status']} AVG={parsed['avg']}")
-    if severe: print(f"::warning::severe runtime signal in {sample_id}; see combined log")
-    for line in (exceptions + invalid + severe)[:20]: print(bounded(line), file=sys.stderr)
+    if parsed["severe_count"]: print(f"::warning::severe runtime signal in {sample_id}; see combined log")
+    for line in (diagnostics["exceptions"] + diagnostics["invalid"] + diagnostics["severe"])[:20]: print(line, file=sys.stderr)
     return result
 def save_campaign(root: Path, started: str, images: list[dict], run_count: int, samples: list[dict]) -> None:
     (root / "campaign.json").write_text(json.dumps({"started_at": started, "finished_at": now(), "images": images, "run_count": run_count, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "samples": samples}, indent=2) + "\n", encoding="utf-8")
@@ -197,4 +242,5 @@ def main() -> int:
     (root / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     save_campaign(root, started, images, run_count, samples)
     return 0 if not cancelled and len(samples) == len(images) * run_count and all(x["status"] == "success" for x in samples) else 1
-raise SystemExit(main())
+if __name__ == "__main__":
+    raise SystemExit(main())
