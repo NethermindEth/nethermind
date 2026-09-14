@@ -513,7 +513,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
             ulong blockNumber = 22222;
-            Filter filter = Substitute.For<Filter>();
+            Filter filter = new() { FromBlock = new BlockParameter(33333) };
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
@@ -525,6 +525,63 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _, expectedResults: 0);
 
             Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void LogsSubscription_with_null_arguments_publishes_logs_of_a_block_below_the_head()
+        {
+            // The head is already past this block when its event is handled (multi-block branch, or a head advancing
+            // before the asynchronous dispatch); "latest" must not be resolved against it.
+            SetHead(100);
+            Filter filter = Substitute.For<Filter>();
+            Block block = BlockWithMatchingLog(99);
+
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, new BlockReplacementEventArgs(block), out _);
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\"").And.Contain("\"removed\":false"));
+        }
+
+        [Test]
+        public void LogsSubscription_with_null_arguments_publishes_removed_logs_of_a_reorged_block_below_the_head()
+        {
+            SetHead(100);
+            Filter filter = Substitute.For<Filter>();
+            Block block = BlockWithMatchingLog(99);
+            Block replacedBlock = Build.A.Block.WithNumber(99).WithExtraData([1]).TestObject;
+
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, new BlockReplacementEventArgs(block, replacedBlock), out _, expectedResults: 2);
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"removed\":true"));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"removed\":false"));
+        }
+
+        [Test]
+        public void LogsSubscription_with_block_number_range_skips_a_block_outside_it()
+        {
+            SetHead(100);
+            Filter filter = new() { FromBlock = new BlockParameter(100) };
+            Block block = BlockWithMatchingLog(99);
+
+            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, new BlockReplacementEventArgs(block), out _, expectedResults: 0);
+
+            Assert.That(jsonRpcResults, Is.Empty);
+        }
+
+        private void SetHead(ulong number)
+        {
+            BlockHeader head = Build.A.BlockHeader.WithNumber(number).TestObject;
+            _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(head);
+            _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(head);
+        }
+
+        private Block BlockWithMatchingLog(ulong blockNumber)
+        {
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            return Build.A.Block.WithNumber(blockNumber).TestObject;
         }
 
         [Test]

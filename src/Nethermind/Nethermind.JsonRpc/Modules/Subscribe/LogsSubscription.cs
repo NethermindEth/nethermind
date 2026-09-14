@@ -61,13 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {
-            BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
-            BlockHeader toBlock = _blockTree.FindHeader(_filter.ToBlock, true);
-
-            bool isAfterFromBlock = blockHeader.Number >= fromBlock?.Number;
-            bool isBeforeToBlock = blockHeader.Number <= toBlock?.Number;
-
-            if (isAfterFromBlock && isBeforeToBlock)
+            if (IsAtOrAfter(_filter.FromBlock, blockHeader) && IsAtOrBefore(_filter.ToBlock, blockHeader))
             {
                 IEnumerable<FilterLog> filterLogs = GetFilterLogs(blockHeader, receipts, removed);
 
@@ -83,6 +77,25 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id}: {eventName} event happens, but there are no logs matching filter.");
             }
         }
+
+        // "latest" (the default) is an open-ended subscription, not the head at publish time: the head is moved
+        // before BlockAddedToMain fires for each block of a branch and the receipts event is dispatched asynchronously,
+        // so resolving it here would drop every block that is not the head, including the removed side of a reorg.
+        private bool IsAtOrAfter(BlockParameter from, BlockHeader header) => from.Type switch
+        {
+            BlockParameterType.Latest or BlockParameterType.Pending => true,
+            BlockParameterType.BlockNumber => header.Number >= from.BlockNumber,
+            BlockParameterType.BlockHash => header.Hash == from.BlockHash,
+            _ => header.Number >= _blockTree.FindHeader(from)?.Number,
+        };
+
+        private bool IsAtOrBefore(BlockParameter to, BlockHeader header) => to.Type switch
+        {
+            BlockParameterType.Latest or BlockParameterType.Pending => true,
+            BlockParameterType.BlockNumber => header.Number <= to.BlockNumber,
+            BlockParameterType.BlockHash => header.Hash == to.BlockHash,
+            _ => header.Number <= _blockTree.FindHeader(to, true)?.Number,
+        };
 
         private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
         {
