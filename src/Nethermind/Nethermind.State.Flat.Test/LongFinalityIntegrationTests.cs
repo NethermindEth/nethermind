@@ -414,14 +414,101 @@ public class LongFinalityIntegrationTests
             Substitute.For<IProcessExitSource>());
     }
 
+    // AddressA's balance is the block number, so a read at any state names the block the chain ends at.
+    private static Snapshot CreateNumberedBase(FlatTestContainer tier, StateId from, in StateId to)
+    {
+        Snapshot snap = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        snap.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)to.BlockNumber).TestObject;
+        return snap;
+    }
+
     private static StateId AddInMemoryBase(FlatTestContainer tier, StateId from, ulong toBlock)
     {
         StateId to = new(toBlock, Keccak.Compute($"s{toBlock}"));
-        Snapshot snap = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        snap.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)toBlock).TestObject;
-        tier.Repository.TryAdd(snap, SnapshotTier.InMemoryBase);
+        tier.Repository.TryAdd(CreateNumberedBase(tier, from, to), SnapshotTier.InMemoryBase);
         tier.Repository.AddStateId(to);
         return to;
+    }
+
+    private static StateId AddPersistedBase(FlatTestContainer tier, StateId from, ulong toBlock)
+    {
+        StateId to = new(toBlock, Keccak.Compute($"s{toBlock}"));
+        using Snapshot snap = CreateNumberedBase(tier, from, to);
+        tier.ConvertToPersistedBase(snap).Dispose();
+        return to;
+    }
+
+    [Test]
+    public async Task ShutdownPersist_LeavesStatesBelowTheHeadAssemblableAfterRestart()
+    {
+        // The persisted base is the floor of what the flat database can assemble, so a shutdown that
+        // collapses the in-memory tier into it strands every state below the head. A consensus that has
+        // to process a block whose parent sits below its head — XDPoS proposes on top of the highest QC,
+        // one block down — then has no parent state left to stand on, and no way to rebuild one.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 64,
+            MaxInMemoryBaseSnapshotCount = 1000, // Phase-2 conversion never fires on its own
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true
+        };
+        MemDb catalogDb = new();
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        StateId alreadyPersisted;
+        StateId belowHead;
+        StateId head;
+        StateId persistedAtShutdown;
+
+        using (FlatTestContainer tier = new(
+            config: config, baseDbPath: _testDir, catalogDb: catalogDb, finalizedStateProvider: new SettableFinalizedProvider()))
+        {
+            using PersistenceManager pm = BuildManager(tier, block0);
+            // Blocks 1-2 are what a running node's Phase-2 conversion already moved into the persisted
+            // tier; 3-5 are the in-memory window it had not converted yet. Shutdown must keep both.
+            StateId prev = block0;
+            for (ulong b = 1; b <= 2; b++) prev = AddPersistedBase(tier, prev, b);
+            alreadyPersisted = prev;
+            for (ulong b = 3; b <= 4; b++) prev = AddInMemoryBase(tier, prev, b);
+            belowHead = prev;
+            head = AddInMemoryBase(tier, prev, 5);
+
+            persistedAtShutdown = pm.PersistForShutdown(CancellationToken.None);
+        }
+
+        using FlatTestContainer restarted = new(config: config, baseDbPath: _testDir, catalogDb: catalogDb);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(persistedAtShutdown);
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        persistenceManager.LeaseReader().Returns(reader);
+        persistenceManager.GetCurrentPersistedStateId().Returns(persistedAtShutdown);
+
+        await using FlatDbManager manager = new(
+            Substitute.For<IResourcePool>(),
+            _processExitSource,
+            Substitute.For<ITrieNodeCache>(),
+            Substitute.For<ISnapshotCompactor>(),
+            restarted.Repository,
+            persistenceManager,
+            Substitute.For<IPersistedSnapshotLoader>(),
+            _config,
+            new BlocksConfig(),
+            LimboLogs.Instance,
+            enableDetailedMetrics: false);
+
+        // The balance names the state the assembled chain actually ends at.
+        using (ReadOnlySnapshotBundle persistedBundle = manager.GatherReadOnlySnapshotBundle(alreadyPersisted))
+        {
+            Assert.That(persistedBundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)2));
+        }
+
+        using (ReadOnlySnapshotBundle belowHeadBundle = manager.GatherReadOnlySnapshotBundle(belowHead))
+        {
+            Assert.That(belowHeadBundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)4));
+        }
+
+        using ReadOnlySnapshotBundle headBundle = manager.GatherReadOnlySnapshotBundle(head);
+        Assert.That(headBundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)5));
     }
 
     [Test]

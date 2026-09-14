@@ -11,5 +11,6 @@ public interface IPersistenceManager
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence(CancellationToken cancellationToken);
+    StateId PersistForShutdown(CancellationToken cancellationToken);
     void ResetPersistedStateId();
 }

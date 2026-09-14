@@ -458,6 +458,53 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
+    /// <summary>
+    /// Shutdown counterpart to <see cref="FlushToPersistence"/>: makes the in-memory tier durable by
+    /// converting it into the persisted-snapshot tier, leaving the persisted base where it is.
+    /// </summary>
+    /// <remarks>
+    /// The persisted base is the floor of what the flat database can assemble — nothing below it can be
+    /// read back. Collapsing the in-memory tier into the base, as the flush does, therefore leaves the
+    /// next start with a single usable state, and a block whose parent is anywhere below the head (a
+    /// fork, or a consensus proposing on top of something other than its own head) has neither a parent
+    /// state to stand on nor a way to rebuild one. Converted snapshots are reloaded from the catalog on
+    /// the next start, so the whole window stays assemblable.
+    /// Without the persisted-snapshot tier (<c>EnableLongFinality</c> off) there is nowhere to keep the
+    /// window, so this falls back to the flush.
+    /// </remarks>
+    public StateId PersistForShutdown(CancellationToken cancellationToken)
+    {
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        if (!_enableLongFinality) return FlushToPersistenceLocked(cancellationToken);
+
+        // long.MaxValue, not ulong.MaxValue: the latter is the PreGenesis sentinel GetStatesUpToBlock
+        // reads as "before any state". Ascending order keeps the converted chain contiguous.
+        using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
+        int converted = 0;
+        foreach (StateId state in ordered)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+            if (!snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? baseSnapshot)) continue;
+
+            using Snapshot leased = baseSnapshot;
+
+            long sw = Stopwatch.GetTimestamp();
+            loader.ConvertAndRegister(leased);
+            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
+
+            // A To can live in both in-memory tiers, and the converted base covers the compacted one's range.
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
+            converted++;
+        }
+
+        StateId persistedState = GetCurrentPersistedStateId();
+        if (converted > 0 && _logger.IsInfo)
+            _logger.Info($"Converted {converted} in-memory snapshot(s) into the persisted tier on shutdown; persisted state stays at {persistedState}.");
+
+        return persistedState;
+    }
+
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();

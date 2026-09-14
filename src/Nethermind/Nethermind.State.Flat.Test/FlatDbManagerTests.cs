@@ -164,12 +164,12 @@ public class FlatDbManagerTests
     [Test]
     public async Task DisposeAsync_CallsFlushOnce([Values(1, 2)] int disposeCalls)
     {
-        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(CreateStateId(10));
+        _persistenceManager.PersistForShutdown(CancellationToken.None).Returns(CreateStateId(10));
 
         FlatDbManager manager = CreateManager();
         for (int i = 0; i < disposeCalls; i++) await manager.DisposeAsync();
 
-        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
+        _persistenceManager.Received(1).PersistForShutdown(CancellationToken.None);
     }
 
     [Test]
@@ -178,18 +178,18 @@ public class FlatDbManagerTests
     {
         (FlatDbManager manager, StateId snapshotTo) =
             CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
-        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(snapshotTo);
+        _persistenceManager.PersistForShutdown(CancellationToken.None).Returns(snapshotTo);
 
         await manager.DisposeAsync();
 
         _snapshotRepository.Received(1).AddStateId(snapshotTo);
         await _persistenceManager.Received(1).AddToPersistence(snapshotTo);
-        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
+        _persistenceManager.Received(1).PersistForShutdown(CancellationToken.None);
         Received.InOrder(() =>
         {
             _snapshotRepository.AddStateId(snapshotTo);
             _ = _persistenceManager.AddToPersistence(snapshotTo);
-            _persistenceManager.FlushToPersistence(CancellationToken.None);
+            _persistenceManager.PersistForShutdown(CancellationToken.None);
         });
     }
 
@@ -207,7 +207,7 @@ public class FlatDbManagerTests
         });
 
         (FlatDbManager manager, _) = CreateManagerWithQueuedSnapshot();
-        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(_ =>
+        _persistenceManager.PersistForShutdown(CancellationToken.None).Returns(_ =>
         {
             flushAttempted.TrySetResult();
             throw flushFailure;
