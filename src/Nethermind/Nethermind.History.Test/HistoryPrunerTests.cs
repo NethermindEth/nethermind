@@ -547,14 +547,27 @@ public class HistoryPrunerTests
     {
         (HistoryPruner pruner, TestMemDb metadataDb, IPrunedReceiptRetention retention) = CreateFrontierFixture(
             synchronizationEnabled: true,
-            pruningInterval: 8);
+            pruningInterval: 256);
 
         pruner.TryPruneHistory(CancellationToken.None);
         retention.DidNotReceive().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
+        Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningDeletePointer), Is.False,
+            "the ancient backfill hold must leave the pruning state unloaded");
 
         metadataDb.Set(MetadataDbKeys.AncientBodiesDownloadComplete, [1]);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(1UL).Bytes);
+        ulong cutoff = pruner.CutoffBlockNumber!.Value;
+        retention.RetainedHeights(Arg.Any<ulong>(), Arg.Any<ulong>(), out Arg.Any<ulong>(), out Arg.Any<ulong>())
+            .Returns(callInfo =>
+            {
+                callInfo[2] = callInfo.ArgAt<ulong>(0);
+                callInfo[3] = callInfo.ArgAt<ulong>(1);
+                return new HashSet<ulong>();
+            });
         pruner.TryPruneHistory(CancellationToken.None);
 
+        Assert.That(new RlpReader(metadataDb.Get(MetadataDbKeys.HistoryPruningDeletePointer)!).DecodeULong(),
+            Is.EqualTo(cutoff));
         retention.Received().OnPruningPassStarting(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<ulong>());
     }
 
