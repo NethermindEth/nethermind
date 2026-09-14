@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
@@ -339,22 +338,22 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
+    [Test]
     [NonParallelizable]
-    public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
+    public void FindLogs_WhenEnumerated_ObservesCancellation([Values] bool cancelBeforeEnumeration)
     {
-        TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
-        using CancellationTokenSource cancellationTokenSource = new(timeout);
+        using CancellationTokenSource cancellationTokenSource = new();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
         _logFinder = CreateLogFinder();
         LogFilter logFilter = AllBlockFilter().Build();
         IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
-        await Task.Delay(timeout * waitTime);
+        if (cancelBeforeEnumeration) cancellationTokenSource.Cancel();
 
-        Action action = () => _ = logs.ToArray();
+        FilterLog[] result = [];
+        Action action = () => result = logs.ToArray();
 
-        if (waitTime > 1)
+        if (cancelBeforeEnumeration)
         {
             Assert.That(action, Throws
                 .Exception.InstanceOf<OperationCanceledException>()
@@ -364,6 +363,7 @@ public class LogFinderTests
         else
         {
             Assert.DoesNotThrow(action);
+            Assert.That(result, Has.Length.EqualTo(5), "uncancelled enumeration must return every fixture log");
         }
     }
 

@@ -207,7 +207,8 @@ public class GethStyleTracer(
 
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash);
+            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
         catch

@@ -24,6 +24,7 @@ public class TraceModuleFactory(
     private ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory) =>
         builder
             .AddModule(validationBlockProcessingModules)
+            .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
             .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
