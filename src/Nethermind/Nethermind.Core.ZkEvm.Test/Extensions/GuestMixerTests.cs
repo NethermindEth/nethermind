@@ -184,7 +184,7 @@ public class GuestMixerTests
 
     private static readonly UInt256[] ReferenceSeeds = [UInt256.Zero, UInt256.MaxValue, SeedGuestHashes.Seed, SecondSeed];
 
-    /// <summary>Checks the 32-byte mixer against an independent widening-product reference.</summary>
+    /// <summary>Checks the 32-byte mixer against a reference with BigInteger products and finalization.</summary>
     [Test]
     public void Guest_word_mixer_matches_reference([ValueSource(nameof(ReferenceSeeds))] UInt256 seed)
     {
