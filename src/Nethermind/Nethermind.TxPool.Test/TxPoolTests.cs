@@ -56,6 +56,9 @@ namespace Nethermind.TxPool.Test
         private TestBlockTree _blockTree;
 
         private const int TxGasLimit = 1_000_000;
+        /// <summary>Timestamp of the head the fixture starts from, which the pool reads at construction, so the
+        /// expiry cases below state their deadlines relative to it rather than against an empty head.</summary>
+        private const ulong FixtureHeadTimestamp = 1_000_000;
         // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
         private const ulong UnderGassedTransactionGasLimit = 42_400;
 
@@ -89,7 +92,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             _stateProvider = new TestReadOnlyStateProvider();
             _blockTree = new TestBlockTree();
-            Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0).TestObject;
+            Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0).WithTimestamp(FixtureHeadTimestamp).TestObject;
             _blockTree.Head = block;
             _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).WithBaseFee(0).TestObject;
         }
@@ -3409,9 +3412,9 @@ namespace Nethermind.TxPool.Test
 
         // EIP-8141: expired frame txs must be evicted on the new head; deadline == timestamp is still valid
         // (the predeploy reverts only on strictly greater-than).
-        [TestCase(1_000UL, 1_500UL, 0, TestName = "deadline in the past is dropped")]
-        [TestCase(2_000UL, 1_500UL, 1, TestName = "deadline in the future is retained")]
-        [TestCase(1_500UL, 1_500UL, 1, TestName = "deadline equal to head timestamp is retained")]
+        [TestCase(FixtureHeadTimestamp + 1_000UL, FixtureHeadTimestamp + 1_500UL, 0, TestName = "deadline in the past is dropped")]
+        [TestCase(FixtureHeadTimestamp + 2_000UL, FixtureHeadTimestamp + 1_500UL, 1, TestName = "deadline in the future is retained")]
+        [TestCase(FixtureHeadTimestamp + 1_500UL, FixtureHeadTimestamp + 1_500UL, 1, TestName = "deadline equal to head timestamp is retained")]
         public async Task Expired_frame_transaction_is_dropped_on_new_head(ulong deadline, ulong headTimestamp, int expectedPending)
         {
             _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
@@ -3453,7 +3456,7 @@ namespace Nethermind.TxPool.Test
         // empty ledger; then one past it, and a resubmission only a leaked reservation would reject.
         private async Task AssertExpiredFrameTxReleasesItsPayerExposure(Func<ulong, Transaction> signedFrameTx, TxHandlingOptions options)
         {
-            Transaction first = signedFrameTx(1_000);
+            Transaction first = signedFrameTx(FixtureHeadTimestamp + 1_000);
             int Pending() => first.CarriesBlobs ? _txPool.GetPendingBlobTransactionsCount() : _txPool.GetPendingTransactionsCount();
 
             // Balance for exactly one such transaction, so a reservation outliving the first rejects the second.
@@ -3464,14 +3467,14 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(first, options), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "no reservation is taken unless the payer resolves");
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(FixtureHeadTimestamp + 500).TestObject);
             Assert.That(Pending(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(FixtureHeadTimestamp + 1_500).TestObject);
             Assert.That(Pending(), Is.EqualTo(0), "the expired frame transaction must be evicted");
 
             // Same payer and same cost, told apart only by its deadline: only a leaked reservation rejects it.
-            Assert.That(_txPool.SubmitTx(signedFrameTx(2_000), options), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(signedFrameTx(FixtureHeadTimestamp + 2_000), options), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         // No expiry frame means no deadline, so the expiry pass (and the count guard that gates it) must never
@@ -3526,17 +3529,17 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
-            Transaction a = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000);
+            Transaction a = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: FixtureHeadTimestamp + 1_000);
             Assert.That(_txPool.SubmitTx(a, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
                 "the original expiring frame transaction must first enter the pool");
 
             // Same sender + nonce + deadline, both fees bumped well past the 10% replacement threshold.
-            Transaction b = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000, maxPriorityFeePerGas: 2.GWei, maxFeePerGas: 2.GWei);
+            Transaction b = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: FixtureHeadTimestamp + 1_000, maxPriorityFeePerGas: 2.GWei, maxFeePerGas: 2.GWei);
             Assert.That(_txPool.SubmitTx(b, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
                 "the fee-bumped replacement must be accepted");
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the replacement must displace the original");
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(FixtureHeadTimestamp + 1_500).TestObject);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0),
                 "the replacement inherits the deadline and must still be evicted by the expiry pass");
@@ -3575,6 +3578,23 @@ namespace Nethermind.TxPool.Test
             else
             {
                 peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        // A node that is syncing or idle sees no BlockAddedToMain for as long as that lasts, so the ingress
+        // filter has to read the head the pool was built on rather than wait to be told about the next one.
+        [Test]
+        public void Expired_frame_transaction_is_rejected_before_the_first_head_change()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: FixtureHeadTimestamp - 1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.FrameTxExpired));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
             }
         }
 
