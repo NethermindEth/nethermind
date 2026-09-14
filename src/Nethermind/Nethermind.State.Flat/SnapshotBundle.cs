@@ -416,6 +416,21 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    /// <summary>
+    /// Reopens warming for the same frozen state view, binding the session to the transient resource
+    /// the bundle owns after the commit's swap. The root and captured snapshots are unchanged.
+    /// </summary>
+    internal void ResumeWarming()
+    {
+        lock (_warmupSessionLock)
+        {
+            if (_isDisposed) return;
+
+            _warmingStopped = false;
+            _warmupSession?.ResumeWarming(_transientResource);
+        }
+    }
+
     internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
         in StateId baseState,
         ITrieWarmer trieWarmer,

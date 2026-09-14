@@ -21,13 +21,13 @@ internal sealed class FlatTrieWarmupSession :
     private readonly SnapshotBundle _snapshotBundle;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
     private readonly SnapshotPooledList _initialSnapshots;
-    private readonly TransientResource _transientResource;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
     private readonly PatriciaTree _stateTree;
     private readonly ILogManager _logManager;
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer?> _storageWarmers = [];
-    private readonly int _hintSequenceId;
+    private int _hintSequenceId;
+    private volatile TransientResource _transientResource;
     private bool _isStopped;
     private long _leases = RefCountingLease.Single;
     private long _operations = RefCountingLease.Single;
@@ -63,9 +63,42 @@ internal sealed class FlatTrieWarmupSession :
 
     internal void StopWarming()
     {
-        if (!Interlocked.Exchange(ref _isStopped, true)) RefCountingLease.ReleaseOnce(ref _operations);
+        if (!Interlocked.Exchange(ref _isStopped, true))
+        {
+            RefCountingLease.ReleaseOnce(ref _operations);
+            DrainOperations();
+        }
+    }
+
+    /// <summary>
+    /// Reopens warming on the same frozen state view with the bundle's current transient resource.
+    /// Must run while admissions are stopped and drained, under the bundle's session lock.
+    /// </summary>
+    /// <remarks>
+    /// The session acquires its own lease on the new resource before the retired resource's lease is
+    /// released, so the pool cannot reclaim either mid-handover. The retired resource was already handed
+    /// to the commit target, so releasing here lets it return to the pool at commit time instead of
+    /// pinning it until the session is disposed. The sequence is taken fresh so jobs queued before the
+    /// stop stay rejected even after the latch reopens, and the operation counter restarts only after the
+    /// previous generation's drain reached its terminal <see cref="RefCountingLease.Disposing"/> state
+    /// (not merely zero — <see cref="RefCountingLease.ReleaseOnce"/> CASes 0 → Disposing after the last
+    /// release, so a reader that only saw zero could not tell whether teardown had completed).
+    /// </remarks>
+    internal void ResumeWarming(TransientResource transientResource)
+    {
+        if (!transientResource.TryAcquireLease()) throw new ObjectDisposedException(nameof(FlatTrieWarmupSession));
+        TransientResource retired = Interlocked.Exchange(ref _transientResource, transientResource);
+        retired.ReleaseLease();
+        _hintSequenceId = _snapshotBundle.HintSequenceId;
+        _operations = RefCountingLease.Single;
+        Volatile.Write(ref _isStopped, false);
+    }
+
+    private void DrainOperations()
+    {
         SpinWait spinWait = default;
         while (Volatile.Read(ref _operations) > RefCountingLease.NoAccessors) spinWait.SpinOnce();
+        while (Volatile.Read(ref _operations) != RefCountingLease.Disposing) spinWait.SpinOnce();
     }
 
     public void HintWarmAccount(in ValueAddress address)

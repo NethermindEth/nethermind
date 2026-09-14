@@ -39,19 +39,21 @@ public class FlatWorldStateScopeProviderTests
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
 
-        public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public IResourcePool ResourcePool => field ??= Container.Resolve<IResourcePool>();
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
+        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null,
+            IPersistence.IPersistenceReader? persistenceReader = null, Hash256? stateRoot = null, IResourcePool? resourcePool = null)
         {
             config ??= new FlatDbConfig();
+            _stateRoot = stateRoot;
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
-                    .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
+                    .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader ?? Substitute.For<IPersistence.IPersistenceReader>())
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
@@ -88,6 +90,11 @@ public class FlatWorldStateScopeProviderTests
                 _containerBuilder.AddSingleton(trieWarmer);
             }
 
+            if (resourcePool is not null)
+            {
+                _containerBuilder.AddSingleton<IResourcePool>(resourcePool);
+            }
+
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
@@ -102,12 +109,14 @@ public class FlatWorldStateScopeProviderTests
         private void ConfigureSnapshotBundle() =>
             _containerBuilder.RegisterType<SnapshotBundle>()
                 .SingleInstance()
-                .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
+                .WithParameter(TypedParameter.From(Flat.ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
+
+        private Hash256? _stateRoot;
 
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
-                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From(new StateId(0, _stateRoot ?? Keccak.EmptyTreeHash)))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -131,7 +140,7 @@ public class FlatWorldStateScopeProviderTests
 
         public void AddSnapshot(Action<SnapshotContent> populator)
         {
-            SnapshotContent snapshotContent = ResourcePool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+            SnapshotContent snapshotContent = ResourcePool.GetSnapshotContent(Flat.ResourcePool.Usage.MainBlockProcessing);
             populator(snapshotContent);
 
             ReadOnlySnapshots.Add(new Snapshot(
@@ -139,7 +148,7 @@ public class FlatWorldStateScopeProviderTests
                 StateId.PreGenesis,
                 snapshotContent,
                 ResourcePool,
-                ResourcePool.Usage.MainBlockProcessing));
+                Flat.ResourcePool.Usage.MainBlockProcessing));
         }
     }
 
@@ -1035,10 +1044,10 @@ public class FlatWorldStateScopeProviderTests
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    private static TestContext CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer)
+    private static TestContext CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer, IPersistence.IPersistenceReader? persistenceReader = null, IResourcePool? resourcePool = null, Hash256? stateRoot = null)
     {
         warmer = new RecordingTrieWarmer(acceptSlotJob: true, acceptMpmcSlotJob: true);
-        return new TestContext(trieWarmer: warmer);
+        return new TestContext(trieWarmer: warmer, persistenceReader: persistenceReader, resourcePool: resourcePool, stateRoot: stateRoot);
     }
 
     [Test]
@@ -1107,7 +1116,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public async Task StartWriteBatch_PermanentlyStopsWarmup([Values] bool commit)
+    public async Task StartWriteBatch_StopsUntilCommitResumes([Values] bool commit)
     {
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;
@@ -1128,9 +1137,62 @@ public class FlatWorldStateScopeProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(borrow, Is.SameAs(initialBorrow));
-            Assert.That(warmer.AddressJobPushes, Is.Empty);
+            Assert.That(warmer.AddressJobPushes, commit ? Is.EquivalentTo(new[] { TestItem.AddressB, TestItem.AddressD }) : Is.Empty);
             Assert.That(warmer.SlotJobPushes + warmer.MpmcSlotJobPushes, Is.Zero);
         }
+
+        // Once the scope is disposed the warmup session is gone: resume cannot happen after dispose.
+        scope.Dispose();
+        Assert.That(scope.CreateTrieWarmupSession(), Is.SameAs(IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance));
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressE.Bytes));
+        Assert.That(warmer.AddressJobPushes, Has.Length.EqualTo(commit ? 2 : 0));
+    }
+
+    [Test]
+    public void CommitResumesWarmupWithCurrentTransientAndStaleJobsRejected()
+    {
+        RecordingPersistenceReader reader = new();
+        CountingResourcePool resourcePool = new(new ResourcePool(new FlatDbConfig()));
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer, reader, resourcePool, stateRoot: TestItem.KeccakA);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
+
+        // Pre-commit job: queued while warming runs; it stays stale across every stop/resume cycle.
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        int staleSequence = warmer.AddressJobSequences[0];
+        int staleTargetIdx = 0;
+
+        using (scope.StartWriteBatch(0)) { }
+        scope.Commit(1);
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        int resumedSequence = warmer.AddressJobSequences[^1];
+        Assert.That(resumedSequence, Is.GreaterThan(staleSequence));
+        Assert.That(warmer.AddressTargets[^1], Is.SameAs(borrow));
+
+        Assert.That(warmer.AddressTargets[staleTargetIdx].WarmUpStateTrie(TestItem.AddressA, staleSequence), Is.False);
+        Assert.That(reader.TrieReads, Is.Zero);
+        Assert.That(warmer.AddressTargets[^1].WarmUpStateTrie(TestItem.AddressB, resumedSequence), Is.True);
+        Assert.That(reader.TrieReads, Is.EqualTo(1));
+
+        // Second cycle: the previous generation's job becomes stale while the fresh one traverses.
+        using (scope.StartWriteBatch(0)) { }
+        scope.Commit(2);
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
+        int secondResumedSequence = warmer.AddressJobSequences[^1];
+        Assert.That(warmer.AddressJobSequences, Has.Count.EqualTo(3));
+
+        Assert.That(warmer.AddressTargets[^2].WarmUpStateTrie(TestItem.AddressB, resumedSequence), Is.False);
+        Assert.That(reader.TrieReads, Is.EqualTo(1));
+        Assert.That(warmer.AddressTargets[^1].WarmUpStateTrie(TestItem.AddressC, secondResumedSequence), Is.True);
+        Assert.That(reader.TrieReads, Is.EqualTo(2));
+
+        // Disposal with the resumed session drains and cleans the current transient resource exactly once.
+        borrow.Dispose();
+        scope.Dispose();
+        Assert.That(resourcePool.ReturnedCachedResources, Is.EqualTo(3));
+        Assert.That(reader.DisposeCount, Is.EqualTo(1));
+        Assert.That(warmer.AddressTargets[^1].WarmUpStateTrie(TestItem.AddressC, secondResumedSequence), Is.False);
     }
 
     [Test]
@@ -1442,6 +1504,29 @@ public class FlatWorldStateScopeProviderTests
         public bool HasStateForBlock(in StateId stateId) => true;
     }
 
+    private sealed class CountingResourcePool(IResourcePool inner) : IResourcePool
+    {
+        public int ReturnedCachedResources { get; private set; }
+
+        public SnapshotContent GetSnapshotContent(ResourcePool.Usage usage) => inner.GetSnapshotContent(usage);
+        public void ReturnSnapshotContent(ResourcePool.Usage usage, SnapshotContent snapshotContent) => inner.ReturnSnapshotContent(usage, snapshotContent);
+        public SortedSnapshotContent GetSortedSnapshotContent(ResourcePool.Usage usage) => inner.GetSortedSnapshotContent(usage);
+        public void ReturnSortedSnapshotContent(ResourcePool.Usage usage, SortedSnapshotContent sortedContent) => inner.ReturnSortedSnapshotContent(usage, sortedContent);
+        public TransientResource GetCachedResource(ResourcePool.Usage usage)
+        {
+            TransientResource transientResource = inner.GetCachedResource(usage);
+            // Re-arm the return owner: the inner pool registered itself, which would bypass this counter.
+            transientResource.OnRented(this, usage);
+            return transientResource;
+        }
+        public void ReturnCachedResource(ResourcePool.Usage usage, TransientResource transientResource)
+        {
+            ReturnedCachedResources++;
+            inner.ReturnCachedResource(usage, transientResource);
+        }
+        public Snapshot CreateSnapshot(in StateId from, in StateId to, ResourcePool.Usage usage) => inner.CreateSnapshot(from, to, usage);
+    }
+
     private sealed class TrackingResourcePool : IResourcePool, IDisposable
     {
         public int ReturnedCachedResources { get; private set; }
@@ -1596,6 +1681,7 @@ public class FlatWorldStateScopeProviderTests
 
         public List<ITrieWarmer.IAddressWarmer> AddressTargets { get; } = [];
         public List<ITrieWarmer.IStorageWarmer> StorageTargets { get; } = [];
+        public List<int> AddressJobSequences { get; } = [];
 
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
@@ -1628,6 +1714,7 @@ public class FlatWorldStateScopeProviderTests
             {
                 AddressTargets.Add(scope);
                 if (path is not null) _addressJobPushes.Add(path);
+                AddressJobSequences.Add(sequenceId);
             }
             return false;
         }

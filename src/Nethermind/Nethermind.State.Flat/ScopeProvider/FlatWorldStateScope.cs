@@ -373,6 +373,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
+        _snapshotBundle.ResumeWarming();
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
