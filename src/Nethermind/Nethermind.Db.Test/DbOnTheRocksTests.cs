@@ -930,14 +930,20 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase(1 << 30, 4)]
-        public void MultiGet_rejects_key_length_product_overflow(int keyLength, int valueCount)
+        [TestCase(1 << 30, 4, false)]
+        [TestCase(1 << 30, 4, true)]
+        public void MultiGet_rejects_key_length_product_overflow(int keyLength, int valueCount, bool snapshot)
         {
+            using IKeyValueStoreSnapshot? snapshotStore = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
+            IReadOnlyKeyValueStore store = snapshotStore is null ? _db : snapshotStore;
+            byte[] sentinel = [0xA5];
             byte[]?[] values = new byte[]?[valueCount];
+            Array.Fill(values, sentinel);
 
             Assert.That(
-                () => ((IReadOnlyKeyValueStore)_db).MultiGet([], keyLength, values),
+                () => store.MultiGet([], keyLength, values, snapshot ? ReadFlags.HintReadAhead : ReadFlags.None),
                 Throws.ArgumentException);
+            Assert.That(values, Is.All.SameAs(sentinel));
         }
 
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
