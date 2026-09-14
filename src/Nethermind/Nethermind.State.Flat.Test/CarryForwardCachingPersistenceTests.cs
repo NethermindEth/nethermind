@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -197,6 +199,91 @@ public class CarryForwardCachingPersistenceTests
             {
                 Assert.That(read?.Nonce, Is.EqualTo(oldAccount.Nonce), "a retained reader must not serve a refreshed entry from a newer generation");
                 Assert.That(inner.AccountReads, Is.EqualTo(2), "the retained reader reads through to its own inner snapshot");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+        }
+    }
+
+    [Test]
+    public void RetainedReader_WhenCommitRacesCacheLookup_UsesItsInnerSnapshot()
+    {
+        Account oldAccount = Build.An.Account.WithNonce(1).TestObject;
+        Account refreshedAccount = Build.An.Account.WithNonce(2).TestObject;
+        FakePersistence inner = new() { AccountValue = oldAccount };
+        CarryForwardCachingPersistence cache = new(inner);
+        try
+        {
+            cache.Clear();
+            ReadAccount(cache, Address);
+            using IPersistence.IPersistenceReader reader = cache.CreateReader();
+
+            CommitDuringLookupComparer<Address> comparer = new(EqualityComparer<Address>.Default, () =>
+            {
+                inner.AccountValue = refreshedAccount;
+                inner.ReaderState = Basis1;
+                using IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1);
+                batch.SetAccount(Address, refreshedAccount);
+            });
+            ReplaceDictionaryComparer(cache, "_accounts", comparer);
+            comparer.Armed = true;
+
+            Account? read = reader.GetAccount(Address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read?.Nonce, Is.EqualTo(oldAccount.Nonce), "an entry published by the racing commit is newer than the retained reader");
+                Assert.That(inner.AccountReads, Is.EqualTo(2), "the newer stamped entry was rejected and the reader used its inner snapshot");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+        }
+    }
+
+    [Test]
+    public void RetainedReader_WhenCommitRacesSlotLookup_RefillsFromItsInnerSnapshot()
+    {
+        SlotValue oldValue = SlotValue.FromSpanWithoutLeadingZero([0x11]);
+        SlotValue refreshedValue = SlotValue.FromSpanWithoutLeadingZero([0x22]);
+        FakePersistence inner = new() { SlotValueValue = oldValue };
+        CarryForwardCachingPersistence cache = new(inner);
+        try
+        {
+            cache.Clear();
+            ReadSlot(cache, 1);
+            using IPersistence.IPersistenceReader reader = cache.CreateReader();
+
+            SlotValue currentValue = default;
+            bool currentFound = false;
+            CommitDuringLookupComparer<(Address, UInt256)> comparer = new(EqualityComparer<(Address, UInt256)>.Default, () =>
+            {
+                inner.SlotValueValue = refreshedValue;
+                inner.ReaderState = Basis1;
+                using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+                    batch.SetStorage(Address, 1, refreshedValue);
+                using IPersistence.IPersistenceReader currentReader = cache.CreateReader();
+                currentFound = currentReader.TryGetSlot(Address, 1, ref currentValue);
+            });
+            ReplaceDictionaryComparer(cache, "_slots", comparer);
+            comparer.Armed = true;
+
+            SlotValue readValue = default;
+            bool found = reader.TryGetSlot(Address, 1, ref readValue);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True);
+                Assert.That(readValue.AsReadOnlySpan.ToArray(), Is.EqualTo(oldValue.AsReadOnlySpan.ToArray()),
+                    "the retained reader must use its inner snapshot after the racing commit invalidates the entry");
+                Assert.That(currentFound, Is.True);
+                Assert.That(currentValue.AsReadOnlySpan.ToArray(), Is.EqualTo(refreshedValue.AsReadOnlySpan.ToArray()),
+                    "the stale refill must not survive for a current reader");
+                Assert.That(inner.SlotReads, Is.EqualTo(3),
+                    "the retained read and the current refill both reached their inner snapshots");
             }
         }
         finally
@@ -719,6 +806,56 @@ public class CarryForwardCachingPersistenceTests
     private static int GetInnerReads(CacheKind kind, FakePersistence inner) => kind == CacheKind.Account
         ? inner.AccountReads
         : inner.SlotReads;
+
+    private static void ReplaceDictionaryComparer<T>(
+        CarryForwardCachingPersistence cache,
+        string fieldName,
+        IEqualityComparer<T> comparer)
+    {
+        // The comparer commits from GetHashCode, forcing the commit between IsCurrent and TryGetValue
+        // without adding a production test hook or changing the reader's lock-free path.
+        FieldInfo field = typeof(CarryForwardCachingPersistence).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object original = field.GetValue(cache)!;
+        object replacement = Activator.CreateInstance(
+            field.FieldType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.CreateInstance,
+            binder: null,
+            args: [Environment.ProcessorCount, 1, comparer],
+            culture: null)!;
+        MethodInfo tryAdd = field.FieldType.GetMethod("TryAdd")!;
+
+        foreach (object entry in (IEnumerable)original)
+        {
+            Type entryType = entry.GetType();
+            object key = entryType.GetProperty("Key")!.GetValue(entry)!;
+            object value = entryType.GetProperty("Value")!.GetValue(entry)!;
+            bool added = (bool)tryAdd.Invoke(replacement, [key, value])!;
+            Assert.That(added, Is.True);
+        }
+
+        field.SetValue(cache, replacement);
+    }
+
+    private sealed class CommitDuringLookupComparer<T>(IEqualityComparer<T> comparer, Action commit) : IEqualityComparer<T>
+        where T : notnull
+    {
+        private bool _committing;
+
+        public bool Armed { get; set; }
+
+        public bool Equals(T? x, T? y) => x is null ? y is null : y is not null && comparer.Equals(x, y);
+
+        public int GetHashCode(T obj)
+        {
+            if (Armed && !_committing)
+            {
+                _committing = true;
+                commit();
+            }
+
+            return comparer.GetHashCode(obj);
+        }
+    }
 
     public sealed class FakePersistence : IPersistence
     {

@@ -23,18 +23,20 @@ internal interface IAbortableWriteBatch
 /// </summary>
 /// <remarks>
 /// There is no per-entry account eviction: residency grows until the entry cap forces a wholesale wipe, so
-/// the account-count gauge and the account wipe counter form a sawtooth under sustained churn. A rising
-/// wipe rate is the signal that the cap is binding and a warm working set is being discarded.
+/// the account-count gauge and the shared account/slot wipe counter form a sawtooth under sustained churn.
+/// A rising wipe rate is the signal that the cap is binding and a warm working set is being discarded.
 /// </remarks>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
     private const int DefaultMaxEntriesPerKind = 262144;
+    // Avoid repeated early table growth while keeping the default construction cost below the full cap.
+    private const int InitialEntriesPerKind = DefaultMaxEntriesPerKind / 8;
 
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
-    private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
-    private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots = new();
+    private readonly ConcurrentDictionary<Address, CachedAccount> _accounts;
+    private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots;
     private int _accountCount;
     private int _slotCount;
 
@@ -44,8 +46,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxEntriesPerKind);
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
+        int initialCapacity = Math.Min(maxEntriesPerKind, InitialEntriesPerKind);
+        _accounts = new(Environment.ProcessorCount, initialCapacity);
+        _slots = new(Environment.ProcessorCount, initialCapacity);
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
     }
@@ -100,12 +106,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 _accountCount = 0;
                 Metrics.IncrementCarryForwardWipes();
             }
-            if (_accounts.TryAdd(address, account)) _accountCount++;
+            if (_accounts.TryAdd(address, new CachedAccount(account, readerGeneration))) _accountCount++;
             Metrics.PublishCarryForwardAccountCount(_accountCount);
         }
     }
 
-    private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
+    private void TryCacheSlot(in (Address, UInt256) key, bool found, in SlotValue value, long readerGeneration)
     {
         if (_slots.ContainsKey(key)) return;
         using (_lock.EnterScope())
@@ -118,7 +124,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 _slotCount = 0;
                 Metrics.IncrementCarryForwardWipes();
             }
-            if (_slots.TryAdd(key, slot)) _slotCount++;
+            if (_slots.TryAdd(key, new CachedSlot(found, value, readerGeneration))) _slotCount++;
             Metrics.PublishCarryForwardSlotCount(_slotCount);
         }
     }
@@ -144,8 +150,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 // the new state, so caching it is as correct as caching a read of it.
                 foreach (KeyValuePair<Address, Account?> written in writtenAccounts)
                 {
-                    if (_accounts.ContainsKey(written.Key)) _accounts[written.Key] = written.Value;
-                    else if (_accountCount < _maxEntriesPerKind && _accounts.TryAdd(written.Key, written.Value)) _accountCount++;
+                    CachedAccount refreshed = new(written.Value, _generation);
+                    if (_accountCount < _maxEntriesPerKind)
+                    {
+                        if (_accounts.TryAdd(written.Key, refreshed)) _accountCount++;
+                        else _accounts[written.Key] = refreshed;
+                    }
+                    else if (_accounts.ContainsKey(written.Key))
+                    {
+                        _accounts[written.Key] = refreshed;
+                    }
                 }
                 Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
@@ -181,10 +195,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private readonly struct CachedSlot(bool found, SlotValue value)
+    private sealed class CachedAccount(Account? value, long generation)
+    {
+        public readonly Account? Value = value;
+        public readonly long Generation = generation;
+    }
+
+    private readonly struct CachedSlot(bool found, SlotValue value, long generation)
     {
         public readonly bool Found = found;
         public readonly SlotValue Value = value;
+        public readonly long Generation = generation;
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
@@ -201,14 +222,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (!current)
                 return inner.GetAccount(address);
 
-            if (parent._accounts.TryGetValue(address, out Account? account))
+            if (parent._accounts.TryGetValue(address, out CachedAccount? cachedAccount)
+                && cachedAccount!.Generation <= generation)
             {
                 if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
-                return account;
+                return cachedAccount.Value;
             }
 
             if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
-            account = inner.GetAccount(address);
+            Account? account = inner.GetAccount(address);
             parent.TryCacheAccount(address, account, generation);
             return account;
         }
@@ -220,7 +242,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (!current)
                 return inner.TryGetSlot(address, slot, ref outValue);
 
-            if (parent._slots.TryGetValue(key, out CachedSlot cachedSlot))
+            if (parent._slots.TryGetValue(key, out CachedSlot cachedSlot) && cachedSlot.Generation <= generation)
             {
                 if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
                 if (cachedSlot.Found) outValue = cachedSlot.Value;
@@ -229,7 +251,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
             if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
             bool found = inner.TryGetSlot(address, slot, ref outValue);
-            parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
+            parent.TryCacheSlot(key, found, found ? outValue : default, generation);
             return found;
         }
 
@@ -254,6 +276,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SelfDestruct(Address addr)
         {
+            // These operations are also used outside PersistenceManager's abort wrapper; a failed inner
+            // operation must not let Dispose publish a partial batch target as the new cache basis.
             try
             {
                 inner.SelfDestruct(addr);
