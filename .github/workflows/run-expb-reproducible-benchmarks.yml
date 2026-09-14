@@ -396,6 +396,10 @@ jobs:
               echo "client=${client} is available only for workflow_dispatch; automated runs use Nethermind."
               exit 1
             fi
+            if [[ "${state_layout}" != "flat" ]]; then
+              echo "::error::Reference client=${client} requires state_layout=flat (got '${state_layout}')."
+              exit 1
+            fi
             if [[ "${payload_set}" != "fusaka" ]]; then
               echo "client=${client} currently supports payload_set=fusaka only (got '${payload_set}')."
               exit 1
@@ -2072,6 +2076,10 @@ jobs:
                 all_dates+=("n/a")
               fi
             done
+            if [[ "${#all_images[@]}" -eq 0 ]]; then
+              echo "::error::docker_images must contain at least one non-empty image reference."
+              exit 1
+            fi
             duplicate_tag_count="$(printf '%s\n' "${all_tags[@]}" | sort | uniq -d | wc -l)"
             if [[ "${duplicate_tag_count}" -gt 0 ]]; then
               original_tags=("${all_tags[@]}")
@@ -3051,6 +3059,7 @@ jobs:
           # Parse ordered tags JSON (unique tags, not expanded by run)
           mapfile -t tags < <(echo "${ORDERED_TAGS}" | jq -r '.[].tag')
           mapfile -t dates < <(echo "${ORDERED_TAGS}" | jq -r '.[].date')
+          mapfile -t images < <(echo "${ORDERED_TAGS}" | jq -r '.[].image')
 
           load_metric() {
             local file="$1"
@@ -3088,6 +3097,21 @@ jobs:
             echo ""
             echo "Benchmarked ${#tags[@]} Docker images${run_count:+, ${run_count} run(s) each}."
             echo ""
+            show_image_mapping=false
+            for i in "${!tags[@]}"; do
+              image_tag="${images[$i]##*:}"
+              if [[ "${tags[$i]}" != "${image_tag}" ]]; then
+                show_image_mapping=true
+                break
+              fi
+            done
+            if [[ "${show_image_mapping}" == "true" ]]; then
+              echo "**Image tag mapping:**"
+              for i in "${!tags[@]}"; do
+                echo "- \`${tags[$i]}\` → \`${images[$i]}\`"
+              done
+              echo ""
+            fi
             echo "${header}"
             echo "${separator}"
           } > "${summary_file}"

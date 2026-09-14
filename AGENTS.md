@@ -142,8 +142,10 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
   with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
-  `/data`. ARM requires flat layout and prebuilt images; support for other clients is limited to
-  available Fusaka snapshots and validated by the workflow. **Never compare timings across the two boxes.**
+  `/data`. ARM requires flat layout and prebuilt images; it supports Nethermind and the Reth Fusaka
+  snapshot at `/data/reth/reth-25490000`, while Geth requires amd64. Reference-client runs are
+  workflow-dispatch Fusaka runs with explicit `docker_images` and `state_layout=flat`; the workflow
+  rejects Nethermind-only flags and environment settings. **Never compare timings across the two boxes.**
 
 ### What the workflow does
 
@@ -158,7 +160,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Installs `expb` via `uv tool install --force --from ... expb`.
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
-- Metrics source: `measurement_source=auto` retains SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) with a K6 TTFB fallback. `engine-api` skips SSE and uses K6 TTFB, required for other clients.
+- Metrics source: `measurement_source=auto` retains SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) with a K6 TTFB fallback. `engine-api` always skips SSE and uses the common K6 TTFB timing, and is forced for reference clients.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.
