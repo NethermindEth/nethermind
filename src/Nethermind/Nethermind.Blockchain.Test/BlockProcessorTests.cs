@@ -230,8 +230,10 @@ public class BlockProcessorTests
         [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
     {
         List<TracedAccessWorldState> workers = [];
+        TestStateHeaderProvider stateHeaderProvider = new();
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddSingleton<IStateHeaderProvider>(stateHeaderProvider)
             .AddDecorator<CodeInfoRepositoryFactory>((_, factory) => state =>
             {
                 if (state is TracedAccessWorldState traced) workers.Add(traced);
@@ -249,6 +251,7 @@ public class BlockProcessorTests
             state.CommitTree(0);
             parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
         }
+        stateHeaderProvider.Parent = parent;
         using IDisposable scope = state.BeginScope(parent);
         BlockAccessListManager manager = (BlockAccessListManager)lifetime.Resolve<IBlockAccessListManager>();
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
@@ -461,77 +464,12 @@ public class BlockProcessorTests
             Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
         }
 
-        for (int i = 0; i < parentReaderFactory.BuiltHeaders.Count; i++)
-        {
-            BlockHeader builtHeader = parentReaderFactory.BuiltHeaders[i]!;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(builtHeader.Number, Is.EqualTo(6));
-                Assert.That(builtHeader.Hash, Is.EqualTo(parentHash));
-                Assert.That(builtHeader.StateRoot, Is.EqualTo(parentStateRoot));
-            }
-        }
+        Assert.That(parentReaderFactory.BuiltHeaders, Is.All.SameAs(block.Header));
 
         balManager.ReturnTxProcessor(1);
         balManager.ReturnTxProcessor(2);
 
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void Parallel_validation_parent_reader_uses_parent_root_captured_before_pre_block_changes()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        Hash256 parentStateRoot;
-        using (stateProvider.BeginScope(IWorldState.PreGenesis))
-        {
-            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
-            stateProvider.CommitTree(0);
-            parentStateRoot = stateProvider.StateRoot;
-        }
-
-        Hash256 parentHash = TestItem.KeccakA;
-        BlockHeader parentHeader = Build.A.BlockHeader
-            .WithNumber(6)
-            .WithHash(parentHash)
-            .WithStateRoot(parentStateRoot)
-            .TestObject;
-
-        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
-        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
-            stateProvider,
-            LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
-            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
-            readOnlyTxProcessingEnvFactory: parentReaderFactory);
-
-        Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
-        Block block = Build.A.Block
-            .WithNumber(7)
-            .WithParentHash(parentHash)
-            .WithTransactions(tx)
-            .WithBlockAccessList(new ReadOnlyBlockAccessList())
-            .TestObject;
-
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-
-        stateProvider.CreateAccount(TestItem.AddressB, 1);
-        stateProvider.Commit(Amsterdam.Instance, commitRoots: false);
-
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        Assert.DoesNotThrow(() => balManager.Setup(block));
-
-        _ = balManager.GetTxProcessor(1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(1));
-            Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
-        }
-
-        balManager.ReturnTxProcessor(1);
     }
 
     private static void ApplyStateChangesInParentScope(
@@ -1897,10 +1835,12 @@ public class BlockProcessorTests
             TrackingReadOnlyTxProcessingEnvFactory factory,
             ITransactionProcessor transactionProcessor) : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => throw new NotSupportedException();
+
+            public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock)
             {
                 IWorldState worldState = Substitute.For<IWorldState>();
-                factory.BuiltHeaders.Add(baseBlock);
+                factory.BuiltHeaders.Add(targetBlock);
                 factory.BuiltWorldStates.Add(worldState);
                 return new Scope(factory, transactionProcessor, worldState);
             }

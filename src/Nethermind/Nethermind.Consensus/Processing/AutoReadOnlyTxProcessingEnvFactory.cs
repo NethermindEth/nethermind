@@ -34,6 +34,11 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
             return new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState);
         }
 
+        public IReadOnlyTxProcessingScope BuildAtTarget(BlockHeader targetBlock) =>
+            worldState.TryBeginScope(targetBlock, out IDisposable? closer)
+                ? new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState)
+                : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+
         public void Dispose() => lifetimeScope.Dispose();
     }
 }

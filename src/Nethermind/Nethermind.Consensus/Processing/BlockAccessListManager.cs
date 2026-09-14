@@ -71,10 +71,6 @@ public partial class BlockAccessListManager(
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
 
-    // Snapshot point for parallel workers' parent-reader scopes. Set only when
-    // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
-    private Hash256? _parentStateRoot;
-
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
     // suggested index is built once at PrepareForProcessing; the generated index mirrors its
     // layout and is appended-to per-tx from MergeAndReturnBal. Equality at a given tx index
@@ -168,7 +164,6 @@ public partial class BlockAccessListManager(
                 _suggestedChargeableStorageReads = suggestedReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
-            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
@@ -224,7 +219,7 @@ public partial class BlockAccessListManager(
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
         }
     }
 
@@ -314,7 +309,6 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
-        _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);

@@ -39,7 +39,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -68,7 +68,6 @@ public partial class BlockAccessListManager
         private Block? _currentBlock;
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
-        private BlockHeader? _parentStateHeader;
         private BalReadStoragePlan? _readPlan;
 
         // _inUse[i] is the processor currently bound to balIndex i.
@@ -104,17 +103,11 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            _parentStateHeader = null;
-            if (_parentReaderEnvPool is not null)
-            {
-                if (parentStateRoot is null) ThrowNotInitialized(nameof(parentStateRoot));
-                _parentStateHeader = CreateParentStateHeader(block, parentStateRoot);
-            }
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -253,12 +246,12 @@ public partial class BlockAccessListManager
                 return null;
             }
 
-            if (_parentStateHeader is null) ThrowNotInitialized(nameof(_parentStateHeader));
+            if (_currentBlock is null) ThrowNotInitialized(nameof(_currentBlock));
 
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
             try
             {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
+                return new ParentReaderLease(source, _parentReaderEnvPool, source.BuildAtTarget(_currentBlock.Header));
             }
             catch
             {
@@ -303,23 +296,6 @@ public partial class BlockAccessListManager
                 : null;
         }
 
-        private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
-        {
-            Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
-            return new BlockHeader(
-                parentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                block.Number == 0 ? 0 : block.Number - 1,
-                0,
-                0,
-                [])
-            {
-                StateRoot = stateRoot,
-                Hash = parentHash,
-            };
-        }
     }
 
     private class SequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -335,7 +311,7 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             if (readPlan is not null)
                 ThrowReadCoverageUnavailable();
