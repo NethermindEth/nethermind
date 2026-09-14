@@ -450,22 +450,15 @@ public sealed class SnapshotBundle : IDisposable
                 if (!_readOnlySnapshotBundle.TryLease()) throw new ObjectDisposedException(nameof(SnapshotBundle));
                 TransientResource transientResource = _transientResource;
                 bool transientLeased = false;
-                SnapshotPooledList initialSnapshots = new(_snapshots.Count);
                 try
                 {
                     transientLeased = transientResource.TryAcquireLease();
                     if (!transientLeased) throw new ObjectDisposedException(nameof(SnapshotBundle));
-                    foreach (Snapshot snapshot in _snapshots)
-                    {
-                        snapshot.AcquireLease();
-                        initialSnapshots.Add(snapshot);
-                    }
                     _warmupSession = new FlatTrieWarmupSession(
-                        baseState, this, _readOnlySnapshotBundle, initialSnapshots, transientResource, _trieNodeCache, trieWarmer, logManager);
+                        baseState, this, _readOnlySnapshotBundle, transientResource, _trieNodeCache, trieWarmer, logManager);
                 }
                 catch
                 {
-                    initialSnapshots.Dispose();
                     if (transientLeased) transientResource.ReleaseLease();
                     _readOnlySnapshotBundle.Dispose();
                     throw;

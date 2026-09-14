@@ -20,7 +20,6 @@ internal sealed class FlatTrieWarmupSession :
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
-    private readonly SnapshotPooledList _initialSnapshots;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
     private readonly PatriciaTree _stateTree;
@@ -36,7 +35,6 @@ internal sealed class FlatTrieWarmupSession :
         in StateId baseState,
         SnapshotBundle snapshotBundle,
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        SnapshotPooledList initialSnapshots,
         TransientResource transientResource,
         ITrieNodeCache trieNodeCache,
         ITrieWarmer trieWarmer,
@@ -44,7 +42,6 @@ internal sealed class FlatTrieWarmupSession :
     {
         _snapshotBundle = snapshotBundle;
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
-        _initialSnapshots = initialSnapshots;
         _transientResource = transientResource;
         _trieNodeCache = trieNodeCache;
         _trieWarmer = trieWarmer;
@@ -171,29 +168,17 @@ internal sealed class FlatTrieWarmupSession :
 
     private void ExitOperation() => RefCountingLease.ReleaseOnce(ref _operations);
 
-    private Account? GetAccount(Address address)
-    {
-        HashedKey<Address> key = new(address);
-        for (int i = _initialSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (_initialSnapshots[i].TryGetAccount(key, out Account? account)) return account;
-        }
+    private Account? GetAccount(Address address) =>
+        _readOnlySnapshotBundle.GetAccount(address, new HashedKey<Address>(address));
 
-        return _readOnlySnapshotBundle.GetAccount(address, key);
-    }
-
-    // State and storage roots are frozen; every traversal uses the same captured, leased snapshots and pinned persistence.
-    // Find covers the in-memory layers skipped by TryLoadRlp, so a shared unknown can only resolve to this initial state.
+    // State and storage roots are frozen: the session only reads the leased read-only snapshot bundle and its
+    // transient resource at the starting root. It never scans the bundle's live _snapshots — any state committed
+    // after the session was created already lives there for main processing, so warming it is redundant. Traversal
+    // nodes are resolved exclusively through this starting-root view, which is what makes the debug RLP hash
+    // check below sound.
     private TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
-        HashedKey<TreePath> key = new(path);
-        for (int i = _initialSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (_initialSnapshots[i].TryGetStateNode(key, out TrieNode? snapshotNode))
-                return ValidateNode(snapshotNode, address: null, in path, hash);
-        }
-
-        if (!_readOnlySnapshotBundle.TryFindStateNodes(key, out TrieNode? node)
+        if (!_readOnlySnapshotBundle.TryFindStateNodes(new HashedKey<TreePath>(path), out TrieNode? node)
             && !_transientResource.TryGetStateNode(in path, hash, out node)
             && !_trieNodeCache.TryGet(address: null, in path, hash, out node))
         {
@@ -205,14 +190,7 @@ internal sealed class FlatTrieWarmupSession :
 
     private TrieNode FindStorageNodeOrUnknown(Hash256AsKey address, in TreePath path, Hash256 hash)
     {
-        HashedKey<(Hash256, TreePath)> key = new((address, path));
-        for (int i = _initialSnapshots.Count - 1; i >= 0; i--)
-        {
-            if (_initialSnapshots[i].TryGetStorageNode(key, out TrieNode? snapshotNode))
-                return ValidateNode(snapshotNode, address, in path, hash);
-        }
-
-        if (!_readOnlySnapshotBundle.TryFindStorageNodes(key, out TrieNode? node)
+        if (!_readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out TrieNode? node)
             && !_transientResource.TryGetStorageNode(address, in path, hash, out node)
             && !_trieNodeCache.TryGet(address, in path, hash, out node))
         {
@@ -249,7 +227,6 @@ internal sealed class FlatTrieWarmupSession :
         }
         finally
         {
-            _initialSnapshots.Dispose();
             _readOnlySnapshotBundle.Dispose();
         }
     }
