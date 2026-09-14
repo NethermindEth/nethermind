@@ -108,8 +108,9 @@ public class FrameTxFloodMeasurement
         }
     }
 
-    // 322,800 is a dedicated point at soispoke's restated floor (see docs/eip8141-max-verify-gas-benchmark-spec.md
-    // §4b); 236,285 stays as a curve-shape interior point below the stock MAX_VERIFY_GAS cap, same as before.
+    // 322,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
+    // verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
+    // the stock MAX_VERIFY_GAS cap, same as before.
     private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
 
     private static IEnumerable<TestCaseData> ProductionDelayCases()
@@ -236,7 +237,8 @@ public class FrameTxFloodMeasurement
                       + "deliberately.");
     }
 
-    /// <summary>Target core count for the analytic core-normalized projection (see §4a of the spec).</summary>
+    /// <summary>Environment variable naming the target core count for the analytic core-normalized
+    /// projection. Unset (the default) means the projected field is omitted entirely, not zero.</summary>
     private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
 
     /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
