@@ -338,23 +338,22 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
+    [Test]
     [NonParallelizable]
-    public void Throw_log_finder_operation_canceled_when_token_is_canceled([Values] bool cancel)
+    public void FindLogs_WhenEnumerated_ObservesCancellation([Values] bool cancelBeforeEnumeration)
     {
         using CancellationTokenSource cancellationTokenSource = new();
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
         _logFinder = CreateLogFinder();
         LogFilter logFilter = AllBlockFilter().Build();
-        IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationTokenSource.Token);
+        IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
-        if (cancel)
-        {
-            cancellationTokenSource.Cancel();
-        }
+        if (cancelBeforeEnumeration) cancellationTokenSource.Cancel();
 
-        Action action = () => _ = logs.ToArray();
+        FilterLog[] result = [];
+        Action action = () => result = logs.ToArray();
 
-        if (cancel)
+        if (cancelBeforeEnumeration)
         {
             Assert.That(action, Throws
                 .Exception.InstanceOf<OperationCanceledException>()
@@ -364,6 +363,7 @@ public class LogFinderTests
         else
         {
             Assert.DoesNotThrow(action);
+            Assert.That(result, Has.Length.EqualTo(5), "uncancelled enumeration must return every fixture log");
         }
     }
 
