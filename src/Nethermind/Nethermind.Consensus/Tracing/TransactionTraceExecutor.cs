@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,6 +19,7 @@ public sealed class TransactionTraceExecutor(
     ITransactionProcessorAdapter transactionProcessor,
     IWorldState state,
     IBlockAccessListManager balManager,
+    ISpecProvider specProvider,
     BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
@@ -33,7 +35,16 @@ public sealed class TransactionTraceExecutor(
         inner.SetupTxTimingMetrics(block);
         if (balManager.Enabled) balManager.NextTransaction();
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
+        // and a block access list under construction would miss them, so seeding yields to it.
+        int first = 0;
+        if (boundary.Seeds is { } seeds && !balManager.Enabled)
+        {
+            int target = boundary.IndexOf(block);
+            if (target > 0 && seeds.TrySeed(block, target, state, specProvider.GetSpec(block.Header))) first = target;
+        }
+
+        for (int i = first; i < block.Transactions.Length; i++)
         {
             token.ThrowIfCancellationRequested();
             Transaction tx = block.Transactions[i];
@@ -50,7 +61,7 @@ public sealed class TransactionTraceExecutor(
             }
 
             if (!result) BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, tx, i);
-            transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
+            transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i - first]));
             if (balManager.Enabled)
             {
                 balManager.NextTransaction();

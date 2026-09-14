@@ -38,7 +38,8 @@ public class GethStyleTracer(
     ISpecProvider specProvider,
     ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
     IFileSystem fileSystem,
-    IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv
+    IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
+    IPrefixStateSeedSource prefixSeeds
 ) : IGethStyleTracer
 {
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -207,7 +208,8 @@ public class GethStyleTracer(
 
         try
         {
-            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash);
+            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
+                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, options.StateOverrides is null ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }

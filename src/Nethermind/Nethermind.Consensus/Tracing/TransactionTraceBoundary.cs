@@ -14,23 +14,41 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 {
     private readonly IBlockTracer _inner;
     private readonly Hash256 _transactionHash;
+    private readonly IPrefixStateSeedSource? _seeds;
 
-    private TransactionTraceBoundary(IBlockTracer inner, Hash256 transactionHash)
+    private TransactionTraceBoundary(IBlockTracer inner, Hash256 transactionHash, IPrefixStateSeedSource? seeds)
     {
         _inner = inner;
         _transactionHash = transactionHash;
+        _seeds = seeds;
     }
 
     private bool _isTarget;
     internal bool IsComplete { get; private set; }
     internal IBlockTracer Inner => _inner;
 
+    /// <summary>Where the state before the target may come from instead of replaying the transactions ahead of it;
+    /// null keeps the replay.</summary>
+    internal IPrefixStateSeedSource? Seeds => _seeds;
+
     /// <summary>Wraps a transaction tracer for early completion in a supported read-only replay environment.</summary>
     /// <param name="tracer">The tracer to forward callbacks to; reward tracing retains full replay.</param>
     /// <param name="transactionHash">The transaction to stop after, or null for unrestricted replay.</param>
+    /// <param name="seeds">Where the state before the target may come from instead of replaying the prefix.</param>
     /// <returns>The original tracer for a null hash or reward tracing; otherwise a completion boundary.</returns>
-    public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash) =>
-        transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash);
+    public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash, IPrefixStateSeedSource? seeds = null) =>
+        transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
+
+    internal int IndexOf(Block block)
+    {
+        Transaction[] transactions = block.Transactions;
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            if (transactions[i].Hash == _transactionHash) return i;
+        }
+
+        return -1;
+    }
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
         options.ContainsFlag(ProcessingOptions.Trace)

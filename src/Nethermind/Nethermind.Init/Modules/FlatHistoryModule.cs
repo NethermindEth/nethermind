@@ -6,6 +6,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.History;
 using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
@@ -72,5 +73,6 @@ public class FlatHistoryModule : Module
             .AddScoped<ProcessingHistoryBlockExecutor.Components>()
             .AddSingleton<IHistoryBlockExecutor, ProcessingHistoryBlockExecutor>()
             .AddSingleton<TransactionChangesetBuilder>()
-            .AddStep(typeof(StartTransactionChangesetBuilder));
+            .AddStep(typeof(StartTransactionChangesetBuilder))
+            .AddSingleton<IPrefixStateSeedSource, ChangesetPrefixStateSeedSource>();
 }

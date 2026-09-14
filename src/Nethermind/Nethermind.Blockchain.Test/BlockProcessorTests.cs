@@ -52,6 +52,9 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Db;
+using FlatHistoryColumns = Nethermind.State.Flat.FlatHistoryColumns;
+using Nethermind.State.Flat.History.Changesets;
 using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Test;
@@ -159,6 +162,117 @@ public class BlockProcessorTests
         Assert.That(boundary.IsComplete, Is.True, "completion follows EndTxTrace");
         boundary.StartNewBlockTrace(block);
         Assert.That(boundary.IsComplete, Is.False, "a new block must reset the boundary");
+    }
+
+    [TestCase("callTracer")]
+    [TestCase("prestateTracer")]
+    public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_ExecutesOnlyTheTargetWithTheSameTrace(string tracerName)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(ThreeTransfers());
+        Hash256 target = block.Transactions[2].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
+
+        string expected = Replay(null, out int replayed);
+
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        using (TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number))
+        {
+            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+            chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
+                capture.Tracer, spec, CancellationToken.None);
+            Assert.That(capture.Commit(), Is.True, "precondition: the block must be indexed");
+        }
+
+        string actual = Replay(new ChangesetPrefixStateSeedSource(index), out int seeded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
+            Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
+            Assert.That(actual, Is.EqualTo(expected), "a trace over a seeded prefix must match a trace over a replayed one, prestate included");
+        }
+
+        string Replay(IPrefixStateSeedSource? seeds, out int count)
+        {
+            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+            IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, chain.MainWorldState, chain.SpecProvider);
+            RecordingPrefixTracer recording = new(tracer);
+            chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
+                TransactionTraceBoundary.Wrap(recording, target, seeds), spec, CancellationToken.None);
+            count = recording.Started;
+            using GethLikeTxTraceCollection result = new(tracer.BuildResult());
+            return chain.JsonSerializer.Serialize(result);
+        }
+    }
+
+    [Test]
+    public async Task TransactionTraceBoundary_WhenTheSeedIsRefused_ReplaysThePrefix()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(ThreeTransfers());
+        RefusingSeedSource seeds = new();
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        RecordingPrefixTracer recording = new(NullBlockTracer.Instance);
+        chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
+            TransactionTraceBoundary.Wrap(recording, block.Transactions[2].Hash!, seeds), spec, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.AskedFor, Is.EqualTo(2), "the seed is asked for the state before the target");
+            Assert.That(recording.Started, Is.EqualTo(3), "a refused seed means the prefix is replayed as before");
+        }
+    }
+
+    [Test]
+    public async Task TransactionTraceBoundary_WhenTheTargetIsFirst_NeverAsksForASeed()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(ThreeTransfers());
+        RefusingSeedSource seeds = new();
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
+            TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, block.Transactions[0].Hash!, seeds), spec, CancellationToken.None);
+
+        Assert.That(seeds.AskedFor, Is.EqualTo(-1), "there is nothing before the first transaction to seed");
+    }
+
+    private static Transaction[] ThreeTransfers()
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+
+        return transactions;
+    }
+
+    private sealed class RefusingSeedSource : IPrefixStateSeedSource
+    {
+        public int AskedFor { get; private set; } = -1;
+
+        public bool TrySeed(Block block, int transactionIndex, IWorldState state, IReleaseSpec spec)
+        {
+            AskedFor = transactionIndex;
+            return false;
+        }
     }
 
     private sealed class PrefixReplayValidationModule : Module, IBlockValidationModule

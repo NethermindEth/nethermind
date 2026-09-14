@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Evm.Tracing;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -1384,6 +1385,7 @@ public class TraceRpcModuleTests
             Substitute.For<IBlockchainBridge>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>(),
+            NullPrefixStateSeedSource.Instance,
             LimboLogs.Instance);
     }
 

@@ -25,6 +25,10 @@ internal sealed class MidBlockOverlay
 
     internal int Pins { get; set; }
 
+    internal Dictionary<AddressAsKey, AccountOverlay>.Enumerator Accounts => _accounts.GetEnumerator();
+
+    internal Dictionary<StorageCell, StorageWrite>.Enumerator Writes => _storage.GetEnumerator();
+
     public void Reset(ulong block)
     {
         _accounts.Clear();
@@ -108,7 +112,7 @@ internal sealed class MidBlockOverlay
         overlay.Exists = true;
     }
 
-    private readonly struct StorageWrite(ushort transaction, byte[] value)
+    internal readonly struct StorageWrite(ushort transaction, byte[] value)
     {
         public int Transaction { get; } = transaction;
 
