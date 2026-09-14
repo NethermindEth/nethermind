@@ -25,9 +25,6 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
-            BlockGasUsed = receipt.BlockGasUsed;
-            ExecutionGasUsed = receipt.ExecutionGasUsed;
-            StorageGasUsed = receipt.StorageGasUsed;
             EffectiveGasPrice = gasInfo.EffectiveGasPrice ?? receipt.EffectiveGasPrice;
             BlobGasUsed = gasInfo.BlobGasUsed;
             BlobGasPrice = gasInfo.BlobGasPrice;
@@ -61,17 +58,20 @@ namespace Nethermind.JsonRpc.Data
         public ulong CumulativeGasUsed { get; set; }
         public ulong GasUsed { get; set; }
 
-        /// <summary>Diagnostic-only EIP-7778 pre-refund gas counted by block-level execution accounting.
-        /// Non-standard (not in execution-apis); zero for non-frame receipts.</summary>
+        /// <summary>EIP-7778 pre-refund gas counted by block-level execution accounting.</summary>
+        /// <remarks>Outside the execution-apis receipt shape, so the constructor leaves it unset and the eth_ and
+        /// parity_ namespaces never emit it; it carries the value back on <see cref="Nethermind.JsonRpc.Converters.TxReceiptConverter"/>'s debug round trip.</remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public ulong BlockGasUsed { get; set; }
 
-        /// <summary>Diagnostic-only post-refund execution gas (OperationGas) without the EIP-7976 floor
-        /// adjustment. Not the EIP-8037 execution-dimension block figure — see <see cref="BlockGasUsed"/>.</summary>
+        /// <summary>Post-refund execution gas (OperationGas) without the EIP-7976 floor adjustment. Not the
+        /// EIP-8037 execution-dimension block figure — see <see cref="BlockGasUsed"/>.</summary>
+        /// <remarks>Carried and emitted exactly as <see cref="BlockGasUsed"/> is.</remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public ulong ExecutionGasUsed { get; set; }
 
-        /// <summary>Diagnostic-only EIP-8037 state-dimension gas used by block accounting.</summary>
+        /// <summary>EIP-8037 state-dimension gas used by block accounting.</summary>
+        /// <remarks>Carried and emitted exactly as <see cref="BlockGasUsed"/> is.</remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public ulong StorageGasUsed { get; set; }
 
