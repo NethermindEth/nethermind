@@ -530,7 +530,8 @@ def _render_timings(lines: list[str], corpus: dict, no_repeat_floor: float) -> N
     paired = paired_timings(timings["master"], timings["PR"])
     if paired is None:
         return
-    lines += [f"Paired per-record replay ({paired['records']} records, medians across passes/runs): "
+    lines += [f"Paired per-record replay ({paired['records']} records, medians across passes/runs; "
+              f"{no_repeat_floor:g}% arrow floor): "
               f"median delta {_arrow(paired['median_delta'], no_repeat_floor)} {paired['median_delta']:+.1f}% "
               f"(95% CI {paired['ci_low']:+.1f}% .. {paired['ci_high']:+.1f}%), mean {paired['mean_delta']:+.1f}%; "
               f"{paired['regressed']} records slower and {paired['improved']} faster beyond {RECORD_SHIFT_PCT:g}% "

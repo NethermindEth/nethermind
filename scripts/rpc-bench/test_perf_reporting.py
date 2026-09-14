@@ -1059,19 +1059,38 @@ esac
 
     @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
     def test_explicit_sweep_clients_supply_the_image_on_arm(self) -> None:
-        clients = " \t nethermind@registry.example/master:baseline#trace=true\t nethermind@registry.example/pr:head"
-        result, outputs = self.resolve(
-            IN_TOOL="jsonbench-sweep",
-            IN_ARCH="arm64",
-            IN_TOOL_CONFIG=json.dumps({"clients": clients}),
+        cases = (
+            (
+                " \t nethermind@registry.example/master:baseline#trace=true\t nethermind@registry.example/pr:head",
+                "registry.example/pr:head",
+            ),
+            (
+                "nethermind@registry.example/pr:head nethermind@registry.example/master:baseline",
+                "registry.example/master:baseline",
+            ),
+            (
+                "nethermind@registry.example/master:baseline reth@registry.example/reth:latest",
+                "registry.example/master:baseline",
+            ),
+            (
+                "reth@registry.example/reth:first reth@registry.example/reth:second",
+                "registry.example/reth:first",
+            ),
         )
-        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
-        self.assertEqual(outputs["image_mode"], "provided")
-        self.assertEqual(outputs["image_ref"], "registry.example/master:baseline")
-        self.assertEqual(outputs["baseline_image"], "cache")
-        tool_config = re.search(r"^tool_config: (\{.*\})$", result.stdout, re.M)
-        self.assertIsNotNone(tool_config)
-        self.assertEqual(json.loads(tool_config.group(1))["clients"], clients)
+        for clients, expected_image in cases:
+            with self.subTest(clients=clients):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench-sweep",
+                    IN_ARCH="arm64",
+                    IN_TOOL_CONFIG=json.dumps({"clients": clients}),
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["image_mode"], "provided")
+                self.assertEqual(outputs["image_ref"], expected_image)
+                self.assertEqual(outputs["baseline_image"], "cache")
+                tool_config = re.search(r"^tool_config: (\{.*\})$", result.stdout, re.M)
+                self.assertIsNotNone(tool_config)
+                self.assertEqual(json.loads(tool_config.group(1))["clients"], clients)
 
         mixed_clients = " \t nethermind@registry.example/master:baseline nethermind"
         mixed, _ = self.resolve(

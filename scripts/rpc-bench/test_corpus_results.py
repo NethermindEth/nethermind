@@ -298,6 +298,7 @@ class CommentRenderingTests(unittest.TestCase):
                 latency = next(line for line in lines if line.startswith("Paired per-record replay"))
                 throughput = next(line for line in lines if line.startswith("Closed-loop throughput"))
                 self.assertIn(f"median delta {expected_arrow}", latency)
+                self.assertIn(f"{corpus_results.CACHED_NOISE_FLOOR_PCT:g}% arrow floor", latency)
                 self.assertIn(f", {expected_arrow} -{delta:.1f}%.", throughput)
 
     def test_uncached_paired_timing_keeps_one_percent_floor(self):
@@ -311,6 +312,7 @@ class CommentRenderingTests(unittest.TestCase):
                 throughput = next(line for line in lines if line.startswith("Closed-loop throughput"))
                 red = corpus_results._arrow(delta, corpus_results.PAIRED_FLOOR_PCT)
                 self.assertIn(f"median delta {red}", latency)
+                self.assertIn(f"{corpus_results.PAIRED_FLOOR_PCT:g}% arrow floor", latency)
                 self.assertIn(f", {red} -{delta:.1f}%.", throughput)
 
     def test_record_shift_needs_to_exceed_the_records_own_aa_spread(self):
