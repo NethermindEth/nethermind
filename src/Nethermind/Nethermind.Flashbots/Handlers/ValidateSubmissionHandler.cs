@@ -203,7 +203,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = worldState.HasStateForTarget(block.Header) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         BlockReceiptsTracer blockReceiptsTracer = new();
 
