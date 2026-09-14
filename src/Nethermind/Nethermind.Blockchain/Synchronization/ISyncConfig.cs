@@ -193,7 +193,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     ulong StateMaxDistanceFromHead { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header. Also the minimum head advance before a snap failure-streak pivot update is honoured, so lowering it re-enables the forced-pivot chase on fast chains.", DefaultValue = "32", HiddenFromDocs = true)]
     ulong StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]

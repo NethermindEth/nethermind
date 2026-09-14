@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -12,7 +13,7 @@ namespace Nethermind.Facade.Simulate;
 /// <remarks>
 /// The base store is the node's live writable one, so every mutator must stay overridden here.
 /// </remarks>
-public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockStore
+public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockStore, IClearableCache
 {
     private readonly Dictionary<Hash256AsKey, Block> _blockDict = [];
     private readonly Dictionary<ulong, Block> _blockNumDict = [];
@@ -83,4 +84,10 @@ public class SimulateDictionaryBlockStore(IBlockStore baseBlockStore) : IBlockSt
 
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
         => _blockNumDict.ContainsKey(blockNumber) || baseBlockStore.HasBlock(blockNumber, blockHash);
+
+    void IClearableCache.ClearCache()
+    {
+        _blockDict.Clear();
+        _blockNumDict.Clear();
+    }
 }

@@ -207,7 +207,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return block;
     }
 
-    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
+    protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : WithdrawalTrie.CalculateRoot(Withdrawals);
 
     protected Transaction[]? _transactions = null;
 

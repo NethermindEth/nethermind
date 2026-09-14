@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -14,7 +15,7 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
     protected byte[] ClearSstoreCode()
     {
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), [1]);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)1);
         TestState.Commit(Spec);
 
         return Prepare.EvmCode
@@ -34,7 +35,7 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
             .Done;
 
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.Set(new StorageCell(TestItem.AddressC, 0), [1]);
+        TestState.Set(new StorageCell(TestItem.AddressC, 0), (UInt256)1);
         TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
         TestState.Commit(Spec);
 
@@ -57,7 +58,7 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
         TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
 
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), [1]);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)1);
         TestState.Commit(Spec);
 
         return Prepare.EvmCode

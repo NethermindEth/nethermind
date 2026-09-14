@@ -18,29 +18,29 @@ namespace Nethermind.Serialization.Rlp
 
         protected override LogEntry? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
-            {
-                decoderContext.ReadByte();
-                return null;
-            }
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
-            int logEntryLength = decoderContext.ReadSequenceLength();
-            decoderContext.GuardLimit(logEntryLength, RlpLimit);
-            int logEntryCheck = decoderContext.Position + logEntryLength;
-            Address address = decoderContext.DecodeAddress();
-            int topicsLength = decoderContext.ReadSequenceLength();
+            rlp.ReadSequenceLength(ref position, out int logEntryLength);
+            Rlp.GuardLimit(logEntryLength, rlp.Data.Length - position, RlpLimit);
+            int logEntryCheck = position + logEntryLength;
+
+            rlp.DecodeAddress(ref position, out Address address);
+            rlp.ReadSequenceLength(ref position, out int topicsLength);
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
-            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
-            int untilPosition = decoderContext.Position + topicsLength;
-            using ArrayPoolListRef<Hash256> topics = new(topicCount);
-            while (decoderContext.Position < untilPosition)
-            {
-                topics.Add(decoderContext.DecodeZeroPrefixKeccakNonNull());
-            }
-            decoderContext.Check(untilPosition);
+            Rlp.GuardLimit(topicCount, rlp.Data.Length - position, RlpLimit.L4);
+            int untilPosition = position + topicsLength;
 
-            byte[] data = DecodeCompactData(ref decoderContext);
-            decoderContext.Check(logEntryCheck);
+            using ArrayPoolListRef<Hash256> topics = new(topicCount);
+            while (position < untilPosition)
+            {
+                rlp.DecodeZeroPrefixKeccakNonNull(ref position, out Hash256 topic);
+                topics.Add(topic);
+            }
+
+            RlpHelpers.Check(position, untilPosition);
+            position = DecodeCompactData(rlp, position, out byte[] data);
+            RlpHelpers.Check(position, logEntryCheck);
+            decoderContext.Position = position;
 
             return new LogEntry(address, data, topics.ToArray());
         }
@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
 
-            byte[] data = DecodeCompactData(ref decoderContext);
+            decoderContext.Position = DecodeCompactData(new(decoderContext.Data), decoderContext.Position, out byte[] data);
             decoderContext.Check(logEntryCheck);
 
             item = new LogEntryStructRef(address, data, topics);
@@ -118,16 +118,18 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
-        private static byte[] DecodeCompactData(scoped ref RlpReader decoderContext)
+        /// <summary>Decodes the leading-zero-stripped log data.</summary>
+        /// <returns>The position past the data.</returns>
+        private static int DecodeCompactData(LiteRlpReader rlp, int position, out byte[] data)
         {
-            int zeroPrefix = decoderContext.DecodePositiveInt();
-            ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
+            rlp.DecodePositiveInt(ref position, out int zeroPrefix);
+            rlp.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> rlpData);
 
             Rlp.GuardLimit(zeroPrefix, LogEntryDataRlpLimit.Limit - rlpData.Length, LogEntryDataRlpLimit);
 
-            byte[] data = new byte[zeroPrefix + rlpData.Length];
+            data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
-            return data;
+            return position;
         }
 
         private static (int Total, int Topics) GetContentLength(LogEntry? item)

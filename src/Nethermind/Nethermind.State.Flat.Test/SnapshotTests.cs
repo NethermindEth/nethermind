@@ -3,11 +3,13 @@
 
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
@@ -21,6 +23,17 @@ public class SnapshotTests
 
     [SetUp]
     public void SetUp() => _pool = new ResourcePool(new FlatDbConfig());
+
+    [Test]
+    public void Storage_value_layout_matches_memory_estimate_assumptions()
+    {
+        // SnapshotContentCounts budgets both the UInt256 key and nullable value at these sizes.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unsafe.SizeOf<UInt256>(), Is.EqualTo(32));
+            Assert.That(Unsafe.SizeOf<UInt256?>(), Is.EqualTo(40));
+        }
+    }
 
     [Test]
     public void CountsSealOnFirstObservationNotBefore()
@@ -47,7 +60,7 @@ public class SnapshotTests
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
-            content.Storages[new((TestItem.AddressA, 1))] = new SlotValue(TestItem.KeccakA.Bytes);
+            content.Storages[new((TestItem.AddressA, 1))] = new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true);
         });
 
         long estimate = snapshot.EstimateMemory();

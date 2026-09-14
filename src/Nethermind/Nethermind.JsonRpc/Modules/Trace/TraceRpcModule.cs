@@ -217,11 +217,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         txHash, parityTypes, ParityTraceStreamMode.Replay, includeTxHash: true,
                         writer, pipeWriter, ct);
-                    ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct);
+                    ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct, transactionHash: txHash);
                 },
                 runBuffered: () =>
                 {
-                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, parityTypes));
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, parityTypes), transactionHash: txHash);
                     return new ParityTxTraceFromReplay(txTrace, includeTransactionHash: true);
                 });
         }
@@ -451,11 +451,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         txHash, ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false,
                         writer, pipeWriter, ct);
-                    ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct);
+                    ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct, transactionHash: txHash);
                 },
                 runBuffered: () =>
                 {
-                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new(txHash, ParityTraceTypes.Trace));
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new(txHash, ParityTraceTypes.Trace), transactionHash: txHash);
                     return ParityTxTraceFromStore.FromTxTrace(txTrace);
                 });
         }
@@ -476,7 +476,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return parityTracer.BuildResult();
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, IReleaseSpec? specOverride = null)
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, IReleaseSpec? specOverride = null, Hash256? transactionHash = null)
         {
             Block blockToExecute = block;
             if (specOverride is not null)
@@ -490,7 +490,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracer2.Execute(blockToExecute, tracer.WithCancellation(cancellationToken));
+            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), transactionHash));
             return tracer.BuildResult();
         }
 
@@ -615,7 +615,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             env.Component.Trace(block, tracer.WithCancellation(ct));
         }
 
-        private void ExecuteBlockStreaming(BlockHeader baseHeader, Block block, ParityLikeBlockTracer tracer, CancellationToken ct, IReleaseSpec? specOverride = null)
+        private void ExecuteBlockStreaming(BlockHeader baseHeader, Block block, ParityLikeBlockTracer tracer, CancellationToken ct, IReleaseSpec? specOverride = null, Hash256? transactionHash = null)
         {
             Block blockToExecute = block;
             if (specOverride is not null)
@@ -623,7 +623,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseHeader, specOverride: specOverride);
-            env.Component.Execute(blockToExecute, tracer.WithCancellation(ct));
+            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash));
         }
 
         /// <summary>

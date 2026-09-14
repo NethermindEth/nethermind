@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -9,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -21,6 +23,94 @@ namespace Nethermind.Blockchain.Test.Proofs;
 public class ReceiptTrieTests
 {
     private static readonly ReceiptMessageDecoder _decoder = new();
+    private static readonly int[] RootCounts = [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 255, 256, 257, 4096];
+    private static readonly int[] InlineCounts = [1, 2, 3, 4, 8, 16, 128, 129];
+
+    [Test]
+    public void Direct_root_matches_mutable_trie(
+        [ValueSource(nameof(RootCounts))] int count,
+        [Values] bool eip658,
+        [Values] bool skipStateAndStatus)
+    {
+        IReleaseSpec spec = eip658 ? Osaka.Instance : Frontier.Instance;
+        TxReceipt[] receipts = new TxReceipt[count];
+        Random random = new(42);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] data = new byte[i % 99];
+            random.NextBytes(data);
+            receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal((ulong)(i + 1) * 21000)
+                .WithStatusCode((byte)(i & 1)).WithTxType(eip658 ? (TxType)(i % 5) : TxType.Legacy)
+                .WithLogs(new LogEntry(TestItem.AddressA, data, [TestItem.KeccakA, TestItem.KeccakB])).TestObject;
+        }
+
+        AssertRootMatches(spec, receipts, new ReceiptMessageDecoder(skipStateAndStatus));
+    }
+
+    [Test, NonParallelizable]
+    public void Direct_root_matches_at_three_byte_index_boundary([Values(65535, 65536, 65537)] int count)
+    {
+        TxReceipt[] receipts = new TxReceipt[count];
+        Array.Fill(receipts, Build.A.Receipt.WithAllFieldsFilled.TestObject);
+        AssertRootMatches(Osaka.Instance, receipts, _decoder);
+    }
+
+    [Test]
+    public void Direct_root_matches_with_inline_nodes([ValueSource(nameof(InlineCounts))] int count, [Values] bool mixed)
+    {
+        TxReceipt[] receipts = new TxReceipt[count];
+        if (mixed)
+        {
+            for (int i = 1; i < count; i += 2)
+                receipts[i] = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        }
+        AssertRootMatches(Osaka.Instance, receipts, _decoder);
+    }
+
+    [Test]
+    public void Custom_receipt_codec_preserves_empty_values()
+    {
+        TxReceipt[] receipts = [Build.A.Receipt.WithAllFieldsFilled.TestObject];
+        Assert.That(ReceiptTrie.CalculateRoot(Osaka.Instance, receipts, new EmptyReceiptDecoder()), Is.EqualTo(Keccak.EmptyTreeHash));
+    }
+
+    private sealed class EmptyReceiptDecoder : RlpDecoder<TxReceipt>
+    {
+        protected override TxReceipt DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors) => throw new NotSupportedException();
+        public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors) => 0;
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors) { }
+    }
+
+    [Test]
+    public void Encoding_failure_does_not_poison_subsequent_calculations([Values(1, 128)] int count)
+    {
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        LogEntry[] logs = receipt.Logs!;
+        TxReceipt[] receipts = new TxReceipt[count];
+        Array.Fill(receipts, receipt);
+        receipt.Logs = null;
+
+        Assert.That(() => ReceiptTrie.CalculateRoot(Osaka.Instance, receipts, _decoder), Throws.TypeOf<RlpException>());
+
+        receipt.Logs = logs;
+        AssertRootMatches(Osaka.Instance, receipts, _decoder);
+    }
+
+    private static void AssertRootMatches(IReleaseSpec spec, TxReceipt[] receipts, IRlpDecoder<TxReceipt> decoder)
+    {
+        using TrackingCappedArrayPool pool = new();
+        Hash256 expected = new ReceiptTrie(spec, receipts, decoder, pool, canBeParallel: false).RootHash;
+        Hash256 actual = ReceiptTrie.CalculateRoot(spec, receipts, decoder);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            if (receipts.Length > 0)
+            {
+                byte[][] proof = ReceiptTrie.CalculateReceiptProofs(spec, receipts, receipts.Length / 2, decoder);
+                Assert.That(Keccak.Compute(proof[0]), Is.EqualTo(actual), "proof root must match the streamed root");
+            }
+        }
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root_no_eip_658()

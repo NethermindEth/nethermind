@@ -108,6 +108,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
+    [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
+    [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
+    public void Log_opcode_to_string_uses_geth_names(Instruction instruction, string expected)
+    {
+        Log.Opcode opcode = new(instruction);
+
+        Assert.That(opcode.toString(), Is.EqualTo(expected));
+    }
+
     [Test]
     public void log_stack_functions()
     {

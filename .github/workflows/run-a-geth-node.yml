@@ -115,7 +115,7 @@ jobs:
           set -euo pipefail
           [ "$ALLOWED_IPS" == "null" ] && ALLOWED_IPS=""
           [ "$MACHINE_TYPE" == "null" ] && MACHINE_TYPE=""
-          [ -z "$MACHINE_TYPE" ] && MACHINE_TYPE="g6-standard-16"
+          [ -z "$MACHINE_TYPE" ] && MACHINE_TYPE="n2d-standard-16"
 
           case "$NETWORK" in
             mainnet) CHECKPOINT_URL="https://mainnet-checkpoint-sync.attestant.io" ;;
@@ -147,7 +147,6 @@ jobs:
             -f firewall_ips="$ALLOWED_IPS" \
             -f config_json="$config_json" \
             -f tests_active="0" \
-            -f monitor_enabled="false" \
             -f timeout="$TIMEOUT"
 
       - name: Wait for creation of node
