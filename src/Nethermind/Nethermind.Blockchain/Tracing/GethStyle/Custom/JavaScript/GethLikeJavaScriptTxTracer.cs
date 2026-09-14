@@ -166,7 +166,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
-        base.ReportActionError(EvmExceptionType.Revert);
+        base.ReportActionRevert(gasLeft, output);
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 

@@ -88,7 +88,7 @@ public class MempoolStatePrewarmerTests
         Block head = new(parentHeader);
 
         ITxSource txSource = Substitute.For<ITxSource>();
-        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns(BuildSenderTxs(TestItem.PrivateKeyA, 1));
         IBlockProducerTxSourceFactory txSourceFactory = Substitute.For<IBlockProducerTxSourceFactory>();
         txSourceFactory.Create().Returns(txSource);
@@ -124,6 +124,7 @@ public class MempoolStatePrewarmerTests
             Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
             Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
             Assert.That(deltaHeader.GasBeneficiary, Is.EqualTo(parentHeader.GasBeneficiary), "Beneficiary resolves to the parent's actual coinbase (Author), not a diverging governance vote target");
+            txSource.Received(1).GetTransactions(parentHeader, deltaHeader, deltaHeader.GasLimit);
         }
     }
 

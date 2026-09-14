@@ -148,10 +148,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _slotCount = 0;
     }
 
-    private readonly struct CachedSlot(bool found, SlotValue value)
+    private readonly struct CachedSlot(bool found, UInt256 value)
     {
         public readonly bool Found = found;
-        public readonly SlotValue Value = value;
+        public readonly UInt256 Value = value;
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
@@ -196,10 +196,21 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 missingCount++;
             }
 
-            if (missingCount == 0) return;
+            if (missingCount == 0)
+            {
+                if (!parent.IsCurrent(generation))
+                    inner.GetAccounts(addresses, accounts);
+                return;
+            }
 
             using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
             inner.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
+            if (!parent.IsCurrent(generation))
+            {
+                inner.GetAccounts(addresses, accounts);
+                return;
+            }
+
             for (int i = 0; i < missingCount; i++)
             {
                 Address address = missingAddresses[i];
@@ -209,7 +220,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
         }
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             (Address, UInt256) key = (address, slot);
             bool current = parent.IsCurrent(generation);
@@ -224,7 +235,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
-        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
         {
             if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
                 throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
@@ -232,7 +243,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (!current)
             {
-                inner.GetSlots(storageCells, slots, found);
+                GetSlotsFromInner(storageCells, slots, found);
                 return;
             }
 
@@ -245,7 +256,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 if (parent._slots.TryGetValue((cell.Address, cell.Index), out CachedSlot cached))
                 {
                     found[i] = cached.Found;
-                    if (cached.Found) slots[i] = cached.Value;
+                    slots[i] = cached.Found ? cached.Value : default;
                     continue;
                 }
 
@@ -254,28 +265,46 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 missingCount++;
             }
 
-            if (missingCount == 0) return;
+            if (missingCount == 0)
+            {
+                if (!parent.IsCurrent(generation))
+                    GetSlotsFromInner(storageCells, slots, found);
+                return;
+            }
 
-            using ArrayPoolListRef<SlotValue> missingSlots = new(missingCount, missingCount);
+            using ArrayPoolListRef<UInt256> missingSlots = new(missingCount, missingCount);
             using ArrayPoolListRef<bool> missingFound = new(missingCount, missingCount);
             inner.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
+            if (!parent.IsCurrent(generation))
+            {
+                GetSlotsFromInner(storageCells, slots, found);
+                return;
+            }
+
             for (int i = 0; i < missingCount; i++)
             {
                 StorageCell cell = missingCells[i];
-                SlotValue slot = missingSlots[i];
+                UInt256 slot = missingSlots[i];
                 bool slotFound = missingFound[i];
                 int destinationIndex = missingIndices[i];
-                slots[destinationIndex] = slot;
+                slots[destinationIndex] = slotFound ? slot : default;
                 found[destinationIndex] = slotFound;
                 parent.TryCacheSlot((cell.Address, cell.Index), new CachedSlot(slotFound, slotFound ? slot : default), generation);
             }
+        }
+
+        private void GetSlotsFromInner(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
+        {
+            inner.GetSlots(storageCells, slots, found);
+            for (int i = 0; i < found.Length; i++)
+                if (!found[i]) slots[i] = default;
         }
 
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;
@@ -301,7 +330,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetAccount(addr, account);
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             (_writtenSlots ??= []).Add((addr, slot));
             inner.SetStorage(addr, slot, value);

@@ -168,8 +168,9 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
 
     }
 
-    [TestCase(false), TestCase(true), MaxTime(Timeout.MaxTestTime)]
-    public void Malformed_prune_data_is_skipped_without_blocking_canonical_batch(bool throwsDuringLoad)
+    [Test]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Malformed_prune_data_is_skipped_without_blocking_canonical_batch([Values] bool throwsDuringLoad)
     {
         _receiptConfig.TxLookupLimit = 1;
         Transaction oldTransaction = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;

@@ -49,6 +49,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
+                .AddSingleton<PrecompileCaches>()
                 .AddSingleton<IPrewarmerState, PreBlockCaches>(static caches => new PrewarmerState(caches, isPrewarmer: false))
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
                 // System-contract access-list hints the prewarmer warms alongside tx addresses.
@@ -67,18 +68,19 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         ctx.Resolve<ILogManager>()
                     );
                 })
-                .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+
+            if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
+            {
+                builder.AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
                 {
-                    IBlocksConfig blocksConfig = ctx.Resolve<IBlocksConfig>();
-                    PreBlockCaches preBlockCaches = ctx.Resolve<PreBlockCaches>();
+                    PrecompileCaches precompileCaches = ctx.Resolve<PrecompileCaches>();
                     IPrecompileProvider precompileProvider = ctx.Resolve<IPrecompileProvider>();
                     IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
-                    return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
-                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches : null);
-                })
-
-                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+                    return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository, precompileCaches);
+                });
+            }
 
             if (blocksConfig.PreWarming == PreWarmMode.BlockAndMempool)
             {

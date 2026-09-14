@@ -31,9 +31,8 @@ public class ReadOnlySnapshotBundleTests
         new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
             PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_FoundInSnapshot_ReturnsIt(bool detailedMetrics)
+    [Test]
+    public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateIndexedAccount(1);
@@ -47,9 +46,8 @@ public class ReadOnlySnapshotBundleTests
         reader.DidNotReceive().GetAccount(Arg.Any<Address>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_FallsBackToPersistence(bool detailedMetrics)
+    [Test]
+    public void GetAccount_FallsBackToPersistence([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateIndexedAccount(1);
@@ -61,9 +59,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_PersistenceMiss_ReturnsNull_AndRecordsMetric(bool detailedMetrics)
+    [Test]
+    public void GetAccount_PersistenceMiss_ReturnsNull_AndRecordsMetric([Values] bool detailedMetrics)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.GetAccount(Arg.Any<Address>()).Returns((Account?)null);
@@ -113,13 +110,33 @@ public class ReadOnlySnapshotBundleTests
     {
         Address address = TestItem.AddressA;
         UInt256 index = 42;
-        SlotValue stored = SlotValue.FromSpanWithoutLeadingZero([0x12, 0x34]);
+        UInt256 stored = BaseFlatPersistence.DecodeSlotValue([0x12, 0x34]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = stored)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0x12, 0x34 }));
+        bundle.GetSlot(address, index, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(stored));
+    }
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void GetSlot_OverlayPresenceControlsFallback(bool hasEntry, bool explicitZero)
+    {
+        Address address = TestItem.AddressA;
+        UInt256 index = 42;
+        UInt256? overlayValue = explicitZero ? UInt256.Zero : null;
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.Storages[(address, index)] = new UInt256(7)),
+            MakeSnapshot(c =>
+            {
+                if (hasEntry) c.Storages[(address, index)] = overlayValue;
+            })));
+
+        bundle.GetSlot(address, in index, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(hasEntry ? overlayValue : new UInt256(7)));
     }
 
     [Test]
@@ -130,22 +147,21 @@ public class ReadOnlySnapshotBundleTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot(), MakeSnapshot()), reader);
 
-        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1), Is.Null);
-        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+        bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1, out UInt256? value);
+        Assert.That(value, Is.Null);
+        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetSlot_FallsBackToPersistence_WithMetricBranches(bool detailedMetrics)
+    [Test]
+    public void GetSlot_FallsBackToPersistence_PreservesPresence([Values] bool detailedMetrics, [Values] bool found)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        // Returning false leaves the SlotValue at default (zero) -> exercises the "value is zero" metric branch.
-        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>()).Returns(false);
+        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(found);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        // Default SlotValue.ToEvmBytes() is the canonical zero (single 0x00 byte).
-        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
+        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(found ? UInt256.Zero : (UInt256?)null));
     }
 
     [Test]
@@ -154,15 +170,15 @@ public class ReadOnlySnapshotBundleTests
         StorageCell snapshotCell = new(TestItem.AddressA, (UInt256)1);
         StorageCell persistenceCell = new(TestItem.AddressB, (UInt256)2);
         StorageCell selfDestructedCell = new(TestItem.AddressC, (UInt256)3);
-        SlotValue snapshotValue = SlotValue.FromSpanWithoutLeadingZero([0x12, 0x34]);
-        SlotValue persistenceValue = SlotValue.FromSpanWithoutLeadingZero([0x56, 0x78]);
+        UInt256 snapshotValue = new([0x12, 0x34], isBigEndian: true);
+        UInt256 persistenceValue = new([0x56, 0x78], isBigEndian: true);
         TrackingStoragePersistenceReader reader = new(persistenceCell, persistenceValue);
 
         using ReadOnlySnapshotBundle bundle = Bundle(
             FlatTestHelpers.SnapshotList(MakeSnapshot(c =>
                 c.Storages[new HashedKey<(Address, UInt256)>((snapshotCell.Address, snapshotCell.Index))] = snapshotValue)),
             reader);
-        byte[]?[] slots = [[0xFF], [0xFF], [0xFF]];
+        UInt256?[] slots = [new UInt256([0xFF], isBigEndian: true), new UInt256([0xFF], isBigEndian: true), new UInt256([0xFF], isBigEndian: true)];
 
         bundle.GetSlots(
             [snapshotCell, persistenceCell, selfDestructedCell],
@@ -171,8 +187,8 @@ public class ReadOnlySnapshotBundleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(slots[0], Is.EqualTo(new byte[] { 0x12, 0x34 }));
-            Assert.That(slots[1], Is.EqualTo(new byte[] { 0x56, 0x78 }));
+            Assert.That(slots[0], Is.EqualTo(snapshotValue));
+            Assert.That(slots[1], Is.EqualTo(persistenceValue));
             Assert.That(slots[2], Is.Null);
             Assert.That(reader.MultiGetCalls, Is.EqualTo(1));
             Assert.That(reader.RequestedCells, Is.EqualTo(new[] { persistenceCell }));
@@ -217,9 +233,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(found, Is.SameAs(node));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryLoadStateRlp_DelegatesToReader(bool detailedMetrics)
+    [Test]
+    public void TryLoadStateRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("12");
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -230,9 +245,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xff }));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryLoadStorageRlp_DelegatesToReader(bool detailedMetrics)
+    [Test]
+    public void TryLoadStorageRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("ab");
         Hash256 address = TestItem.KeccakA;
@@ -271,26 +285,26 @@ public class ReadOnlySnapshotBundleTests
                 accounts[i] = GetAccount(addresses[i]);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => default;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;
         public void Dispose() { }
     }
 
-    private sealed class TrackingStoragePersistenceReader(StorageCell storageCell, SlotValue slotValue) : IPersistence.IPersistenceReader
+    private sealed class TrackingStoragePersistenceReader(StorageCell storageCell, UInt256 slotValue) : IPersistence.IPersistenceReader
     {
         public int MultiGetCalls { get; private set; }
         public StorageCell[]? RequestedCells { get; private set; }
 
         public Account? GetAccount(Address address) => null;
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             StorageCell requestedCell = new(address, in slot);
             if (!requestedCell.Equals(storageCell)) return false;
@@ -298,7 +312,7 @@ public class ReadOnlySnapshotBundleTests
             return true;
         }
 
-        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
         {
             MultiGetCalls++;
             RequestedCells = storageCells.ToArray();
@@ -310,7 +324,7 @@ public class ReadOnlySnapshotBundleTests
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;

@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -143,13 +142,13 @@ public sealed class ReadOnlySnapshotBundle(
         return _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
-        GetSlot(selfDestructStateIdx, (address, index));
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out UInt256? value) =>
+        GetSlot(selfDestructStateIdx, (address, index), out value);
 
     public void GetSlots(
         ReadOnlySpan<StorageCell> storageCells,
         ReadOnlySpan<int> selfDestructStateIdxs,
-        Span<byte[]?> slots)
+        Span<UInt256?> slots)
     {
         GuardDispose();
 
@@ -169,9 +168,9 @@ public sealed class ReadOnlySnapshotBundle(
 
             for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
             {
-                if (snapshots[snapshotIndex].TryGetStorage(key, out SlotValue? slotValue))
+                if (snapshots[snapshotIndex].TryGetStorage(key, out UInt256? slotValue))
                 {
-                    slots[cellIndex] = slotValue?.ToEvmBytes();
+                    slots[cellIndex] = slotValue;
                     resolved = true;
                     break;
                 }
@@ -192,7 +191,7 @@ public sealed class ReadOnlySnapshotBundle(
                 cell.Index,
                 selfDestructStateIdx,
                 sw,
-                out byte[]? persistedSlot))
+                out UInt256? persistedSlot))
             {
                 slots[cellIndex] = persistedSlot;
                 continue;
@@ -205,14 +204,14 @@ public sealed class ReadOnlySnapshotBundle(
 
         if (missingCount == 0) return;
 
-        using ArrayPoolListRef<SlotValue> missingSlots = new(missingCount, missingCount);
+        using ArrayPoolListRef<UInt256> missingSlots = new(missingCount, missingCount);
         using ArrayPoolListRef<bool> missingFound = new(missingCount, missingCount);
         persistenceReader.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
         for (int i = 0; i < missingCount; i++)
-            slots[missingIndices[i]] = missingSlots[i].ToEvmBytes();
+            slots[missingIndices[i]] = missingFound[i] ? missingSlots[i] : null;
     }
 
-    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
+    public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)
     {
         GuardDispose();
 
@@ -220,31 +219,31 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(key, out UInt256? slotValue))
             {
-                byte[]? res = slotValue?.ToEvmBytes();
+                value = slotValue;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
+                return;
             }
 
             if (_persistedSnapshotCount + i <= selfDestructStateIdx)
             {
-                return null;
+                value = null;
+                return;
             }
         }
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
-            return persistedSlot;
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
+            return;
 
-        SlotValue outSlotValue = new();
+        UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
-        byte[]? slotResult = outSlotValue.ToEvmBytes();
+        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
-            if (slotResult is null || slotResult.IsZero())
+            if (outSlotValue.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -253,8 +252,6 @@ public sealed class ReadOnlySnapshotBundle(
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
             }
         }
-
-        return slotResult;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>

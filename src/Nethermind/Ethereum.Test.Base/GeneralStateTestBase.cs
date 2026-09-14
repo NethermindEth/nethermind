@@ -8,8 +8,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -76,10 +76,8 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            // Patricia by default (the production default); opt into the flat state layout with
-            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-            flatDbConfig.Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+            flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
             // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
             // run, and a fire-and-forget background convert from one test can race another test's files. Long
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
@@ -221,14 +219,15 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                        new UInt256(storageItem.Value, isBigEndian: true));
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
             }
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+            // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
+            stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
         }

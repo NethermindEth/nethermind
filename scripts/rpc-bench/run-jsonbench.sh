@@ -41,6 +41,13 @@ JB_HTML_REPORT="${JB_HTML_REPORT:-true}"
 # Deep-check: after the timed load, replay each request once and store raw responses
 # (deep-check-<label>.jsonl) for offline cross-client diffing (k6 checks only verify presence). Off; benchmark only.
 JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
+# Private eth_call corpus (benchmark only): replace the workload's calls with a runner-side
+# JSONL(.gz) corpus of {"method":"eth_call","params":[...]} records. Call contents stay on this
+# machine: raw tool output goes to VM scratch instead of the job log, per-call outputs are not
+# copied to OUT_DIR, and only a sanitized aggregate summary.json is published.
+JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
+# Follows the selected runner: the workflow exports this, and CORPUS_DIR covers direct invocation.
+JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-${CORPUS_DIR:-/data/expb-data/rpc-bench}/eth-call-corpus.jsonl.gz}"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
@@ -48,6 +55,11 @@ JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
 # fails itself when the summary.json fail rate exceeds this percentage.
 JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
+# A warm-up and the measured cell that follows it prepare the same tool twice. With true, a
+# preparation left by the previous invocation (same repo, ref and corpus file) is reused and this
+# one is left in place, so the measured cell — and a profile started just before it — begins within
+# seconds of the profilers instead of after a re-clone, image rebuild and corpus re-conversion.
+JB_REUSE_PREPARED="${JB_REUSE_PREPARED:-false}"
 CONTAINER_NAME="${JB_CONTAINER_NAME:-jsonbench-bench}"
 
 if [[ -z "$JB_MODE" ]]; then
@@ -60,33 +72,76 @@ case "$JB_MODE" in
     ;;
   *) die "unknown JB_MODE '$JB_MODE' (expected benchmark | compare)" ;;
 esac
+case "$JB_ETH_CALL_CORPUS" in
+  true|false) ;;
+  *) die "JB_ETH_CALL_CORPUS must be true or false" ;;
+esac
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
+  [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
+  # The sweep validates corpora before starting a node; this path is entered directly, so apply the
+  # same gate here. Without it a corpus the sweep rejects in seconds is converted into a multi-GB
+  # fixture and handed to k6. corpus_parity is the single authority on what a legal corpus is.
+  python3 "$HERE/corpus_parity.py" validate --corpus "$JB_ETH_CALL_CORPUS_FILE" \
+    || die "eth_call corpus failed validation (see error above — it reports counts and line numbers, not contents)"
+  # Both would write raw request/response content into OUT_DIR — keep the artifact aggregate-only.
+  JB_DEEP_CHECK="false"
+  JB_HTML_REPORT="false"
+fi
 
 mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 work="$SCRATCH_ROOT/jsonbench"
-# The runner container may have left non-owner files in scratch on a prior run.
-as_root rm -rf "$work"
-mkdir -p "$work/io/out"
-
-# Fetch the tool source and build the runner image (bundles k6).
-log "Cloning $JB_REPO@$JB_REF..."
-# Shallow-fetch a single ref; accepts a commit sha, tag, or branch (GitHub
-# serves reachable commit shas), unlike 'git clone --branch'.
-git init -q "$work/src"
-git -C "$work/src" remote add origin "$JB_REPO"
-git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" \
-  || die "failed to fetch $JB_REF from $JB_REPO"
-git -C "$work/src" checkout -q FETCH_HEAD
-
-runner_dockerfile="$work/src/runner/Dockerfile"
-[[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
 # Branch refs may contain '/' etc. — sanitize into a valid docker tag.
 tag_ref="${JB_REF//[^a-zA-Z0-9_.-]/-}"
 image_tag="jsonbench-runner:${tag_ref:0:24}"
-log "Building $image_tag from runner/Dockerfile..."
-docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null \
-  || die "failed to build the json-bench runner image"
+corpus_fixture="$work/src/rpc-calls/runner-eth-call-corpus.json"
+# What a reusable preparation consists of; written last, so one that died halfway is never reused.
+prepared_marker="$work/prepared"
+# Keyed on the commit the ref resolves to, not its name: a branch that moved upstream since a
+# hard-cancelled job left a marker behind would otherwise match both the marker and the image tag
+# (derived from the same name) and be reused silently. ls-remote lists nothing for a raw commit sha,
+# which is already exact.
+resolved_ref="$(git ls-remote "$JB_REPO" "$JB_REF" | awk 'NR == 1 { print $1 }')" \
+  || die "failed to reach $JB_REPO to resolve $JB_REF"
+prepared_id="$JB_REPO@${resolved_ref:-$JB_REF}"
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  # Size and mtime rather than a digest: corpora are swapped, not edited in place, and hashing one
+  # costs about as much as converting it.
+  prepared_id+=" corpus=$(realpath -e -- "$JB_ETH_CALL_CORPUS_FILE") $(stat -c '%s %Y' -- "$JB_ETH_CALL_CORPUS_FILE")"
+fi
+reuse_prepared=false
+if [[ "$JB_REUSE_PREPARED" == "true" && -f "$prepared_marker" && "$(cat "$prepared_marker")" == "$prepared_id" ]] \
+    && docker image inspect "$image_tag" >/dev/null 2>&1 \
+    && [[ "$JB_ETH_CALL_CORPUS" != "true" || -s "$corpus_fixture" ]]; then
+  reuse_prepared=true
+  log "Reusing the json-bench checkout, runner image and fixture prepared by the previous invocation ($prepared_id)"
+  # Only the previous outputs must go: a leftover summary.json would be published as this run's.
+  as_root rm -rf "$work/io"
+else
+  # The runner container may have left non-owner files in scratch on a prior run.
+  as_root rm -rf "$work"
+fi
+mkdir -p "$work/io/out"
+
+if [[ "$reuse_prepared" != "true" ]]; then
+  # Fetch the tool source and build the runner image (bundles k6).
+  log "Cloning $JB_REPO@$JB_REF..."
+  # Shallow-fetch a single ref; accepts a commit sha, tag, or branch (GitHub
+  # serves reachable commit shas), unlike 'git clone --branch'.
+  git init -q "$work/src"
+  git -C "$work/src" remote add origin "$JB_REPO"
+  git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" \
+    || die "failed to fetch $JB_REF from $JB_REPO"
+  git -C "$work/src" checkout -q FETCH_HEAD
+
+  runner_dockerfile="$work/src/runner/Dockerfile"
+  [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
+  log "Building $image_tag from runner/Dockerfile..."
+  docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null \
+    || die "failed to build the json-bench runner image"
+fi
 
 # Render the client registry (and, for benchmark mode, the default workload).
 clients_yaml="$work/io/clients.yaml"
@@ -127,7 +182,7 @@ if [[ "$JB_MODE" == "benchmark" && -z "$JB_BENCHMARK_CONFIG" ]]; then
   # they only make k6 emit a per-method http_req_duration sub-metric into summary.json.
   {
     echo "test_name: \"RPC read benchmark ($LABEL${REFERENCE_RPC_URL:+ vs $REFERENCE_LABEL})\""
-    echo "description: \"Snapshot-backed read-path benchmark on the reproducible-benchmarks runner\""
+    echo "description: \"Snapshot-backed read-path benchmark on the self-hosted benchmark runner\""
     echo "clients:"
     echo "  - $LABEL"
     [[ -n "$REFERENCE_RPC_URL" ]] && echo "  - $REFERENCE_LABEL"
@@ -224,6 +279,41 @@ PY
   bench_cfg="/io/benchmark.yaml"
 fi
 
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  # Convert the corpus into a JSON-array fixture inside the checkout (json-bench's JSONL reader
+  # has a ~64 KiB scanner token limit; real eth_call records exceed it) and make it the only call.
+  python3 -c 'import yaml' 2>/dev/null \
+    || python3 -m pip install --user pyyaml 2>/dev/null \
+    || python3 -m pip install --user --break-system-packages pyyaml \
+    || die "PyYAML is required to prepare the eth_call corpus workload and could not be installed"
+  if [[ "$reuse_prepared" == "true" ]]; then
+    log "Reusing the eth_call corpus fixture prepared by the previous invocation"
+  else
+    mkdir -p "$work/src/rpc-calls"
+    log "Preparing eth_call corpus fixture from $(basename "$JB_ETH_CALL_CORPUS_FILE") (contents stay on this machine)..."
+    python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_fixture" \
+      || die "failed to convert the eth_call corpus (see converter error above — it names line numbers, not contents)"
+  fi
+  python3 - "$work/io/benchmark.yaml" <<'PY'
+import sys, yaml
+
+path = sys.argv[1]
+with open(path) as f:
+    cfg = yaml.safe_load(f) or {}
+cfg["calls"] = [{
+    "name": "eth_call corpus",
+    "file": "./rpc-calls/runner-eth-call-corpus.json",
+    "file_type": "json",
+    "weight": 1,
+    "thresholds": ["p(99)<600000"],
+}]
+with open(path, "w") as f:
+    yaml.safe_dump(cfg, f, sort_keys=False, default_flow_style=False)
+PY
+fi
+
+printf '%s\n' "$prepared_id" > "$prepared_marker"
+
 # The runner image executes as a non-root user (uid 1001) — open up the io
 # mount so it can write outputs there (scratch-only, wiped next run).
 chmod -R a+rwX "$work/io"
@@ -241,7 +331,24 @@ docker_common=(
   -v "$work/io:/io"
 )
 # A stale same-name container from a hard-interrupted run would fail docker run.
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+
+# Resource sampling brackets container execution only. Cloning and building json-bench, converting
+# the corpus fixture and post-processing the summary all happen outside this window, so they cannot
+# dilute the wall-clock-derived figures (averages, peak cores).
+sampler_pid=""
+if [[ -n "${RESOURCE_SAMPLER_CONTAINER:-}" && -n "${RESOURCE_SAMPLER_OUT:-}" ]]; then
+  python3 "$HERE/sample-resources.py" sample \
+    --container "$RESOURCE_SAMPLER_CONTAINER" --out "$RESOURCE_SAMPLER_OUT" &
+  sampler_pid=$!
+fi
+stop_resource_sampler() {
+  [[ -n "$sampler_pid" ]] || return 0
+  kill -TERM "$sampler_pid" 2>/dev/null
+  wait "$sampler_pid" 2>/dev/null
+  sampler_pid=""
+}
+trap stop_resource_sampler EXIT
 
 # Run the selected mode.
 tool_failed=0
@@ -270,15 +377,35 @@ else
   html=()
   [[ "$JB_HTML_REPORT" == "true" ]] && html=(--html-report)
   log "json-bench benchmark (config: ${JB_BENCHMARK_CONFIG:-<generated default>}, summary.json metrics)..."
-  docker run "${docker_common[@]}" "$image_tag" \
-    benchmark \
-    --config "$bench_cfg" \
-    --clients /io/clients.yaml \
-    --output /io/out \
-    ${html[@]+"${html[@]}"} \
-    ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
-    || tool_failed=1
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    # Tool output may echo call contents — keep it in VM scratch (wiped next run), not the job log.
+    docker run "${docker_common[@]}" "$image_tag" \
+      benchmark \
+      --config "$bench_cfg" \
+      --clients /io/clients.yaml \
+      --output /io/out \
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 \
+      || tool_failed=1
+    # Kept for the next invocation under JB_REUSE_PREPARED, which stretches the retention window
+    # for the converted call bodies from "until the tool exits" to "until job cleanup": cleanup.sh
+    # wipes scratch, and it runs if: always().
+    [[ "$JB_REUSE_PREPARED" == "true" ]] || rm -f "$corpus_fixture"
+    if [[ "$tool_failed" == "1" ]]; then
+      die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"
+    fi
+  else
+    docker run "${docker_common[@]}" "$image_tag" \
+      benchmark \
+      --config "$bench_cfg" \
+      --clients /io/clients.yaml \
+      --output /io/out \
+      ${html[@]+"${html[@]}"} \
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
+      || tool_failed=1
+  fi
 fi
+# Close the window before summary post-processing; the EXIT trap only covers an early exit.
+stop_resource_sampler
 
 # Deep-check capture: replay each request once after the timed load (won't perturb k6),
 # storing raw responses keyed by request fingerprint for offline cross-client diff. Non-fatal.
@@ -332,7 +459,14 @@ fi
 # Collect outputs and build a markdown summary.
 as_root chown -R "$(id -u):$(id -g)" "$work/io" 2>/dev/null || true
 if [[ -d "$work/io/out" ]]; then
-  cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    # Publish only a sanitized fixed-schema aggregate; per-call k6 output stays in scratch.
+    rm -f "$OUT_DIR/summary.json"
+    python3 "$HERE/corpus_results.py" sanitize "$work/io/out/summary.json" "$OUT_DIR/summary.json" \
+      || die "corpus run produced no valid aggregate summary — raw output retained on the runner under $work/io/out"
+  else
+    cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
+  fi
 fi
 cp "$clients_yaml" "$OUT_DIR/clients.yaml" 2>/dev/null || true
 
@@ -443,6 +577,26 @@ PY
     rm -f "$fail_pct_file"
   fi
 
+  # Per-request resource cost uses the count the load actually delivered. Deriving it from
+  # rate x duration would assume an integer-second duration and that k6 dropped no iterations.
+  if [[ -n "${RESOURCE_SAMPLER_OUT:-}" && -s "$RESOURCE_SAMPLER_OUT" && -s "$OUT_DIR/summary.json" ]]; then
+    delivered="$(python3 - "$OUT_DIR/summary.json" <<'PY' 2>/dev/null || echo 0
+import json, sys
+try:
+    metrics = (json.load(open(sys.argv[1])) or {}).get("metrics", {}) or {}
+    count = ((metrics.get("http_reqs") or {}).get("values") or {}).get("count")
+except Exception:
+    count = None
+print(int(count) if isinstance(count, (int, float)) and not isinstance(count, bool) and count > 0 else 0)
+PY
+)"
+    if [[ "$delivered" =~ ^[0-9]+$ && "$delivered" -gt 0 ]]; then
+      python3 "$HERE/sample-resources.py" normalize --out "$RESOURCE_SAMPLER_OUT" --requests "$delivered" || true
+    else
+      log "resource sample left un-normalized: no usable http_reqs count"
+    fi
+  fi
+
   {
     echo "## RPC Benchmark — json-bench (k6)"
     echo
@@ -464,7 +618,9 @@ PY
     fi
     html_note=""
     [[ "$JB_HTML_REPORT" == "true" && -s "$OUT_DIR/report.html" ]] && html_note=" / \`report.html\`"
-    if [[ -s "$perf_md" || -s "$OUT_DIR/results.csv" ]]; then
+    if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+      echo "Private corpus cell: aggregate-only \`summary.json\` in the artifact; raw tool output stays on the runner."
+    elif [[ -s "$perf_md" || -s "$OUT_DIR/results.csv" ]]; then
       echo "Full results: \`summary.json\` / \`results.json\` / \`results.csv\`${html_note} in the artifact."
     else
       echo "**NO RESULTS** — json-bench wrote neither \`summary.json\` nor \`results.csv\` (see \`jsonbench.log\` in the artifact)."

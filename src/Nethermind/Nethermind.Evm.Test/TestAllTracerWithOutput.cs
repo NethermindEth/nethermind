@@ -69,6 +69,8 @@ namespace Nethermind.Evm.Test
 
         public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
+        public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportedActionErrors.Add(EvmExceptionType.Revert);
+
         public override void ReportRefund(long refund) => Refund += refund;
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

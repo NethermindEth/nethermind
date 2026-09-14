@@ -39,9 +39,9 @@ public interface IPersistence
 
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
-        bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
 
-        void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
         {
             if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
                 throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
@@ -49,7 +49,9 @@ public interface IPersistence
             for (int i = 0; i < storageCells.Length; i++)
             {
                 StorageCell cell = storageCells[i];
-                found[i] = TryGetSlot(cell.Address, cell.Index, ref slots[i]);
+                bool slotFound = TryGetSlot(cell.Address, cell.Index, ref slots[i]);
+                found[i] = slotFound;
+                if (!slotFound) slots[i] = default;
             }
         }
 
@@ -59,7 +61,7 @@ public interface IPersistence
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
-        bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
+        bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value);
 
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -70,7 +72,7 @@ public interface IPersistence
     {
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
-        void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
+        void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 

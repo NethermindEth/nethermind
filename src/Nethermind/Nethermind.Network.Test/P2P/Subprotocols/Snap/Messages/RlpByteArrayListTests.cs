@@ -149,7 +149,7 @@ public class RlpByteArrayListTests
     }
 
     [Test]
-    public void DecodeList_WithoutLimit_AcceptsLargeList()
+    public void DecodeList_WithoutLimit_AcceptsListWithinDefaultLimit()
     {
         const int count = 10_000;
         byte[] encoded = EncodeSingleByteItemList(count);
@@ -157,6 +157,20 @@ public class RlpByteArrayListTests
         RlpReader ctx = new(encoded);
         using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
         Assert.That(list.Count, Is.EqualTo(count));
+    }
+
+    // Exceeding the default limit takes ~4 MB of single-byte items. The count walk early-outs at
+    // limit + 1, so the test costs tens of milliseconds, not seconds.
+    [Test]
+    public void DecodeList_WithoutLimit_RejectsListAboveDefaultLimit()
+    {
+        byte[] encoded = EncodeSingleByteItemList(RlpLimit.DefaultLimit.Limit + 1);
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            RlpReader ctx = new(encoded);
+            using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+        });
     }
 
     private static byte[] EncodeSingleByteItemList(int count)

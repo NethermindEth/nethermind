@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _startingPosition = _reader.Position;
-            _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength();
+            _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
         }
 
         /// <summary>
@@ -65,6 +65,13 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (_reader.Position < _length)
                 {
+                    if (_reader.IsNextItemEmptyList())
+                    {
+                        _reader.Position = _length;
+                        current = default;
+                        return false;
+                    }
+
                     _receiptRefDecoder.DecodeStructRef(ref _reader, RlpBehaviors.Storage, out current);
                     _recoveryContext?.RecoverReceiptData(ref current);
                     _receiptIndex++;

@@ -311,6 +311,7 @@ public class BlockValidator(
     protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, ref string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
+        bool isEip2780Enabled = spec.IsEip2780Enabled;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
@@ -318,7 +319,7 @@ public class BlockValidator(
 
             // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
             // makes the intrinsic-gas validation below sender-dependent.
-            if (spec.IsEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            if (isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
 
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
@@ -419,7 +420,7 @@ public class BlockValidator(
         return true;
     }
 
-    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
+    public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
         // n.b. block BAL body is a side-channel property only set by engine API or local production.
         // It is NOT part of block RLP, so blocks from p2p/fixtures will have null BlockAccessList
@@ -549,7 +550,7 @@ public class BlockValidator(
             return header.WithdrawalsRoot is null;
         }
 
-        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(body.Withdrawals)) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)

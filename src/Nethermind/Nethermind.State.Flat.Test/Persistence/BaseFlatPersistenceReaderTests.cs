@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
@@ -45,6 +46,22 @@ public class BaseFlatPersistenceReaderTests
         Assert.That(accounts, Is.EqualTo(new byte[]?[] { null, [0x42] }));
     }
 
+    [Test]
+    public void HashedReader_DefaultGetStorages_ClearsMissingValue()
+    {
+        BasePersistence.IHashedFlatReader reader = new FallbackHashedReader();
+        UInt256[] values = [BaseFlatPersistence.DecodeSlotValue([0xff])];
+        bool[] found = [true];
+
+        reader.GetStorages([default], [default], values, found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[0], Is.False);
+            Assert.That(values[0], Is.EqualTo(default(UInt256)));
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void GetStorages_UsesSingleMultiGetWithEncodedKeys(bool fullAddressStorageKey)
@@ -55,7 +72,7 @@ public class BaseFlatPersistenceReaderTests
         ValueHash256 secondSlot = new(Enumerable.Repeat((byte)0x22, ValueHash256.MemorySize).ToArray());
         TrackingMultiGetStore store = new();
         BaseFlatPersistence.Reader reader = new(store, store, fullAddressStorageKey: fullAddressStorageKey);
-        SlotValue[] values = new SlotValue[2];
+        UInt256[] values = new UInt256[2];
         bool[] found = new bool[2];
 
         reader.GetStorages([firstAddress, secondAddress], [firstSlot, secondSlot], values, found);
@@ -95,12 +112,12 @@ public class BaseFlatPersistenceReaderTests
             Assert.That(keys[0], Is.EqualTo(firstExpectedKey));
             Assert.That(keys[1], Is.EqualTo(secondExpectedKey));
             Assert.That(found, Is.All.True);
-            Assert.That(values[0].AsReadOnlySpan[SlotValue.ByteCount - 1], Is.EqualTo(1));
-            Assert.That(values[1].AsReadOnlySpan[SlotValue.ByteCount - 1], Is.EqualTo(2));
+            Assert.That(values[0].ToBigEndian()[^1], Is.EqualTo(1));
+            Assert.That(values[1].ToBigEndian()[^1], Is.EqualTo(2));
         }
     }
 
-    // Regression: a slot value longer than SlotValue.ByteCount must fail loudly instead of underflowing
+    // Regression: a slot value longer than BaseFlatPersistence.StorageValueSize must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.
     // Cases use rlpWrapSlots:false (the corrupted-DB path). There is no rlpWrapSlots:true throwing case: the
@@ -122,20 +139,20 @@ public class BaseFlatPersistenceReaderTests
         {
             Assert.Throws<InvalidConfigurationException>(() =>
             {
-                SlotValue outValue = default;
+                UInt256 outValue = default;
                 reader.TryGetStorage(default, default, ref outValue);
             });
             return;
         }
 
-        SlotValue result = default;
+        UInt256 result = default;
         bool found = reader.TryGetStorage(default, default, ref result);
 
-        byte[] expected = new byte[SlotValue.ByteCount];
-        value.CopyTo(expected, SlotValue.ByteCount - valueLength);
+        byte[] expected = new byte[BaseFlatPersistence.StorageValueSize];
+        value.CopyTo(expected, BaseFlatPersistence.StorageValueSize - valueLength);
 
         Assert.That(found, Is.True);
-        Assert.That(result.AsReadOnlySpan.ToArray(), Is.EqualTo(expected));
+        Assert.That(result.ToBigEndian(), Is.EqualTo(expected));
     }
 
     // Golden path: a correctly RLP-wrapped 32-byte value (0xa0 + 32 = 33 bytes on disk) decodes cleanly with
@@ -143,18 +160,18 @@ public class BaseFlatPersistenceReaderTests
     [Test]
     public void TryGetStorage_RlpWrapped_DecodesToSlotValue()
     {
-        byte[] payload = new byte[SlotValue.ByteCount];
+        byte[] payload = new byte[BaseFlatPersistence.StorageValueSize];
         for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i + 1);
         byte[] rlp = Rlp.Encode(payload).Bytes; // 0xa0 + 32 bytes
 
         FixedValueStore store = new(rlp);
         BaseFlatPersistence.Reader reader = new(store, store, isPreimageMode: false, rlpWrapSlots: true);
 
-        SlotValue result = default;
+        UInt256 result = default;
         bool found = reader.TryGetStorage(default, default, ref result);
 
         Assert.That(found, Is.True);
-        Assert.That(result.AsReadOnlySpan.ToArray(), Is.EqualTo(payload));
+        Assert.That(result.ToBigEndian(), Is.EqualTo(payload));
     }
 
     /// <summary>Returns the same value for any key; enough to exercise <c>TryGetStorage</c>'s decode path.</summary>
@@ -163,7 +180,7 @@ public class BaseFlatPersistenceReaderTests
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => value;
         public byte[]? FirstKey => null;
         public byte[]? LastKey => null;
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
             throw new NotSupportedException();
     }
 
@@ -177,7 +194,7 @@ public class BaseFlatPersistenceReaderTests
             return 1;
         }
 
-        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue) => false;
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue) => false;
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
 
@@ -209,7 +226,7 @@ public class BaseFlatPersistenceReaderTests
 
         public byte[]? FirstKey => null;
         public byte[]? LastKey => null;
-        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
             throw new NotSupportedException();
     }
 }

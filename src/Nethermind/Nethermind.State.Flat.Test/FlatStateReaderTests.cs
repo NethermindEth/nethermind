@@ -19,12 +19,12 @@ public class FlatStateReaderTests
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
     private static FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, LimboLogs.Instance);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
         new TestCaseData((Action<FlatStateReader>)(reader => reader.TryGetAccount(_header, TestItem.AddressA, out _))) { TestName = "TryGetAccount" },
-        new TestCaseData((Action<FlatStateReader>)(reader => reader.GetStorage(_header, TestItem.AddressA, 1))) { TestName = "GetStorage" },
+        new TestCaseData((Action<FlatStateReader>)(reader => reader.GetStorage(_header, TestItem.AddressA, 1, out _))) { TestName = "GetStorage" },
         new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header))) { TestName = "RunTreeVisitor" },
     ];
 

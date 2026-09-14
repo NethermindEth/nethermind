@@ -3,10 +3,13 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -21,9 +24,20 @@ public class GethLikeNativeTracerFactoryTests
     {
         GethTraceOptions options = new() { Tracer = Native4ByteTracer.FourByteTracer };
 
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!);
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
         Assert.That(nativeTracer is Native4ByteTracer, Is.True);
+    }
+
+    [Test]
+    public void CreateTracer_StateGasTracerExists()
+    {
+        GethTraceOptions options = new() { Tracer = NativeStateGasTracer.StateGasTracer };
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, spec);
+
+        Assert.That(nativeTracer is NativeStateGasTracer, Is.True);
     }
 
     [Test]
@@ -31,7 +45,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         GethTraceOptions options = new() { Tracer = "nonExistentTracer" };
 
-        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!));
+        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>()));
     }
 
     [Test]
