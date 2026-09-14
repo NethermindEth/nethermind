@@ -127,9 +127,11 @@ public class DataFeedTests
         try
         {
             feed = dataFeed.ProcessingFeedAsync(httpContext, feedCancellation.Token);
-            await responseBody.NodeDataWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
-
-            blockchainProcessor.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(null, new BlockStatistics());
+            for (int attempt = 0; attempt < 200 && !responseBody.ProcessedWritten.Task.IsCompleted; attempt++)
+            {
+                blockchainProcessor.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(null, new BlockStatistics());
+                await Task.WhenAny(responseBody.ProcessedWritten.Task, Task.Delay(TimeSpan.FromMilliseconds(25)));
+            }
             await responseBody.ProcessedWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
             blockTree.OnForkChoiceUpdated += Raise.Event<EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>>(null, new IBlockTree.ForkChoiceUpdateEventArgs(head, 0, 0));
@@ -203,7 +205,6 @@ public class DataFeedTests
         private readonly object _lock = new();
         private readonly StringBuilder _content = new();
 
-        public TaskCompletionSource NodeDataWritten { get; } = NewSignal();
         public TaskCompletionSource ProcessedWritten { get; } = NewSignal();
         public TaskCompletionSource ForkChoiceWritten { get; } = NewSignal();
 
@@ -254,7 +255,6 @@ public class DataFeedTests
             {
                 _content.Append(Encoding.UTF8.GetString(buffer));
                 string content = _content.ToString();
-                if (content.Contains("event: nodeData", StringComparison.Ordinal)) NodeDataWritten.TrySetResult();
                 if (content.Contains("event: processed\ndata: {", StringComparison.Ordinal)) ProcessedWritten.TrySetResult();
                 if (content.Contains("event: forkChoice\ndata: {", StringComparison.Ordinal)) ForkChoiceWritten.TrySetResult();
             }
