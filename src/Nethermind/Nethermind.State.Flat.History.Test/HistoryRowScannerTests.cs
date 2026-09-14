@@ -67,7 +67,7 @@ public class HistoryRowScannerTests
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(stackalloc byte[BaseFlatPersistence.StorageKeyLength], identity, slot);
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
+        int written = BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue(rawValue), rlpWrapSlots: true, value);
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         store.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }

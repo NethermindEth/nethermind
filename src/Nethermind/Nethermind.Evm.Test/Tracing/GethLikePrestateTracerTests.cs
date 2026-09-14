@@ -133,6 +133,10 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    private static void AssertTrace(GethLikeTxTrace trace, string expectedTrace) =>
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions),
+            Is.EqualTo(expectedTrace.ReplaceLineEndings(SerializerOptions.NewLine)));
+
     private static GethTraceOptions GetGethTraceOptions(string? config = null) => GethTraceOptions.Default with
     {
         Tracer = NativePrestateTracer.PrestateTracer,
@@ -198,11 +202,11 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(Address.Zero, 100.Ether);
         StorageCell storageCell = new(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
-        TestState.Set(storageCell, storageData);
+        TestState.Set(storageCell, new UInt256(storageData, isBigEndian: true));
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = ExecutePrestate(tracer, SStore, wrapped);
-        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+        AssertTrace(trace, expectedTrace);
     }
 
     private const string ExpectedNestedCallsPrestateTrace = """
@@ -283,7 +287,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+        AssertTrace(trace, expectedTrace);
     }
 
     private const string ExpectedCreate2PrestateTrace = """
@@ -366,7 +370,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
         GethLikeTxTrace trace = ExecutePrestate(tracer, code, wrapped);
 
-        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+        AssertTrace(trace, expectedTrace);
     }
 
     private const string ExpectedExistingAccountPrestateTrace = """
@@ -426,7 +430,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+        AssertTrace(trace, expectedTrace);
     }
 
     private const string ExpectedEmptyToPrestateTrace = """
@@ -476,7 +480,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+        AssertTrace(trace, expectedTrace);
     }
 
     private const string ExpectedSelfDestructPrestateTrace = """
@@ -529,7 +533,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedTrace));
+        AssertTrace(trace, expectedTrace);
     }
 
     private GethLikeTxTrace ExecutePrestate(NativePrestateTracer tracer, byte[] code, bool wrapped)
