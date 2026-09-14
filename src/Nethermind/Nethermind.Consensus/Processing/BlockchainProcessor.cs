@@ -11,9 +11,11 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -494,7 +496,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         if (!readonlyChain) _stats.CaptureStartStats();
 
-        using ProcessingBranch processingBranch = _branchBuilder.PrepareProcessingBranch(suggestedBlock, options);
+        using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
         _stopwatch.Restart();
@@ -654,6 +656,20 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         return processedBlocks;
+    }
+
+    private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
+    {
+        if (!options.ContainsFlag(ProcessingOptions.IgnoreParentNotOnMainChain))
+        {
+            return _branchBuilder.PrepareProcessingBranch(suggestedBlock, options);
+        }
+
+        // Engine API newPayload processes the block directly on its parent without collecting a branch.
+        BlockHeader? parent = suggestedBlock.IsGenesis ? null : _blockTree.FindParentHeader(suggestedBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        ArrayPoolList<Block> blocks = new(1);
+        if (!options.ContainsFlag(ProcessingOptions.ForceProcessing)) blocks.Add(suggestedBlock);
+        return new ProcessingBranch(parent, blocks);
     }
 
     public async ValueTask DisposeAsync()
