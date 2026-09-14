@@ -2,33 +2,36 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 
 namespace Nethermind.State;
 
 /// <summary>
-/// Scope provider for overridable world states: remembers the header of the scope last opened and lets the
-/// wrapped provider resolve a target's parent from it before the block tree.
+/// Scope provider for overridable world states: keeps the headers of every scope it opened, keyed by hash,
+/// and lets the wrapped provider resolve a target's parent from them before the block tree.
 /// </summary>
 /// <remarks>
 /// An overridable env commits state overrides into an in-memory header the block tree never sees, and a
 /// target processed through <see cref="TryBeginScope"/> becomes the committed state its child builds on.
-/// Matching is by <see cref="BlockHeader.ParentHash"/> only; whether the remembered header's state exists
-/// remains the wrapped provider's <c>HasRoot</c> check.
+/// Matching is by <see cref="BlockHeader.ParentHash"/> only; whether a known header's state exists remains
+/// the wrapped provider's <c>HasRoot</c> check. <see cref="Clear"/> goes with the overrides reset that
+/// discards the state those headers describe.
 /// </remarks>
-public sealed class LastScopeHeaderScopeProvider : IWorldStateScopeProvider
+public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
 {
-    private readonly LastScopeHeaderProvider _headerProvider;
+    private readonly KnownHeadersProvider _headerProvider;
     private readonly IWorldStateScopeProvider _baseProvider;
 
     /// <param name="createBaseProvider">
-    /// Builds the wrapped provider over the header provider that serves the remembered header first.
+    /// Builds the wrapped provider over the header provider that serves the known headers first.
     /// </param>
-    public LastScopeHeaderScopeProvider(IStateHeaderProvider stateHeaderProvider, Func<IStateHeaderProvider, IWorldStateScopeProvider> createBaseProvider)
+    public KnownHeadersScopeProvider(IStateHeaderProvider stateHeaderProvider, Func<IStateHeaderProvider, IWorldStateScopeProvider> createBaseProvider)
     {
-        _headerProvider = new LastScopeHeaderProvider(stateHeaderProvider);
+        _headerProvider = new KnownHeadersProvider(stateHeaderProvider);
         _baseProvider = createBaseProvider(_headerProvider);
     }
 
@@ -39,23 +42,32 @@ public sealed class LastScopeHeaderScopeProvider : IWorldStateScopeProvider
     public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         if (!_baseProvider.TryBeginScope(targetBlock, metrics, out scope)) return false;
-        _headerProvider.LastScopeHeader = targetBlock;
+        _headerProvider.Remember(targetBlock);
         return true;
     }
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
-        _headerProvider.LastScopeHeader = baseBlock;
+        _headerProvider.Remember(baseBlock);
         return _baseProvider.BeginScope(baseBlock, metrics);
     }
 
-    private sealed class LastScopeHeaderProvider(IStateHeaderProvider stateHeaderProvider) : IStateHeaderProvider
+    public void Clear() => _headerProvider.Clear();
+
+    private sealed class KnownHeadersProvider(IStateHeaderProvider stateHeaderProvider) : IStateHeaderProvider
     {
-        public BlockHeader? LastScopeHeader { get; set; }
+        private readonly Dictionary<Hash256, BlockHeader> _headers = [];
+
+        public void Remember(BlockHeader? header)
+        {
+            if (header?.Hash is not null) _headers[header.Hash] = header;
+        }
+
+        public void Clear() => _headers.Clear();
 
         public BlockHeader? FindParentHeader(BlockHeader target) =>
-            LastScopeHeader is { } lastScopeHeader && target.ParentHash == lastScopeHeader.Hash
-                ? lastScopeHeader
+            target.ParentHash is not null && _headers.TryGetValue(target.ParentHash, out BlockHeader? knownParent)
+                ? knownParent
                 : stateHeaderProvider.FindParentHeader(target);
 
         public ulong FinalizedBlockNumber => stateHeaderProvider.FinalizedBlockNumber;

@@ -354,8 +354,15 @@ public class FlatOverridableWorldScopeTests
         }
         grandchildScope.Dispose();
 
+        // Every opened header stays known, not only the latest: a sibling of child still resolves overriddenBase.
+        Assert.That(worldState.HasStateForTarget(Build.A.BlockHeader.WithParent(overriddenBase).WithTimestamp(7).TestObject), Is.True);
+
         overridableScope.ResetOverrides();
-        Assert.That(worldState.HasStateForTarget(grandchild), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worldState.HasStateForTarget(grandchild), Is.False);
+            Assert.That(worldState.HasStateForTarget(child), Is.False);
+        }
     }
 
     private static Hash256 CommitAccount(IWorldStateScopeProvider.IScope scope, ulong blockNumber, Address address)
