@@ -14,6 +14,9 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// <param name="GasRefund">EIP-3529 gas refund applied to the transaction (capped at one fifth of the pre-refund gas).</param>
 public readonly record struct GasConsumed(ulong SpentGas, ulong OperationGas, ulong BlockGas = 0, ulong BlockStateGas = 0, ulong MaxUsedGas = 0, ulong GasRefund = 0)
 {
+    /// <summary>Set by a refund path when an EIP-8037 state-gas invariant is violated; the processor turns it into a failed <see cref="TransactionResult"/>.</summary>
+    public string? StateGasInvariantError { get; init; }
+
     /// <summary>
     /// Gets the effective execution gas for block accounting. When EIP-7778 is enabled,
     /// this returns BlockGas (pre-refund), otherwise returns SpentGas. EIP-8037 can explicitly report zero execution gas when state gas is nonzero.
