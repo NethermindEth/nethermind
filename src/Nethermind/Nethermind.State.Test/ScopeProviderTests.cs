@@ -387,7 +387,7 @@ public class ScopeProviderTests(bool useFlat)
         return (caches, consumer);
     }
 
-    /// <summary>A block committed through the consumer, whose final values the world state writes back into the caches.</summary>
+    /// <summary>A block committed through the consumer, whose tree commit clears the caches.</summary>
     private static Hash256 CommitThroughConsumer(WorldState consumer, Hash256 baseRoot, Action<WorldState> changes)
     {
         using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
@@ -413,399 +413,34 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_ConsumerCommit_WritesTheBlocksFinalValuesBackIntoTheCarriedCaches()
+    public void Test_ConsumerCommit_ClearsTheCaches()
     {
         using Context ctx = new(useFlat);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _);
-            ws.DeleteAccount(TestItem.AddressB);
-            ws.Set(in SlotA1, (UInt256)7);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True, "the caches describe the committed state");
-            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
-            Assert.That(CachedAccount(caches, TestItem.AddressB), Is.Null, "a deleted account is cached as absent");
-            Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)300), "untouched entries survive");
-            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
-            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "removing an account without storage clears no storage");
-        }
-
-        // The cached account seeds the next block's storage lookups, so its storage root must be the committed one.
-        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
-        {
-            Assert.That(consumer.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)400));
-            consumer.Get(in SlotA1, out UInt256 storageValue1);
-            Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
-        }
-    }
-
-    [Test]
-    public void Test_StorageOnlyChange_CachesTheAccountWithItsNewStorageRoot()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        Hash256 baseStorageRoot = CachedAccount(caches, TestItem.AddressA).StorageRoot;
-
-        // No account-level change: the account's new storage root only exists once the storage tree is committed.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.Set(in SlotA1, (UInt256)7));
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using IWorldStateScopeProvider.IScope reader = ctx.ScopeProvider.BeginScope(HeaderAt(newRoot, 2));
-        Hash256 committedStorageRoot = reader.CreateStorageTree(TestItem.AddressA).RootHash;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(committedStorageRoot, Is.Not.EqualTo(baseStorageRoot), "precondition");
-            Assert.That(CachedAccount(caches, TestItem.AddressA).StorageRoot, Is.EqualTo(committedStorageRoot));
-            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
-        }
-    }
-
-    [TestCase(true, TestName = "Test_PrepareFor_TheCommittedRoot_KeepsTheCaches")]
-    [TestCase(false, TestName = "Test_PrepareFor_TheParentRoot_ClearsTheCachesThatMovedOn")]
-    public void Test_PrepareFor_AfterACommit(bool committedRoot)
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _));
-        TestLogger testLogger = new();
-
-        // The commit moved the caches on: a sibling block on the parent finds nothing it can use.
-        Hash256 requestedRoot = committedRoot ? newRoot : baseRoot;
-        bool carried = caches.PrepareFor(requestedRoot, new ILogger(testLogger));
-
         AddressAsKey keyA = TestItem.AddressA;
-        string[] expectedLogs = committedRoot
-            ? []
-            : [$"Pre-block caches cleared because cached state root {newRoot} does not match requested state root {baseRoot}"];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.EqualTo(committedRoot));
-            Assert.That(caches.StateCache.TryGetValue(in keyA, out Account account), Is.EqualTo(committedRoot));
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.EqualTo(committedRoot));
-            Assert.That(testLogger.LogList, Is.EqualTo(expectedLogs));
-            if (committedRoot) Assert.That(account.Balance, Is.EqualTo((UInt256)400));
-        }
-    }
 
-    [TestCase(true, TestName = "Test_StorageClear_OfPreBlockStorage_DropsTheStorageCache")]
-    [TestCase(false, TestName = "Test_StorageClear_OfAnAccountWithoutStorage_KeepsTheStorageCache")]
-    public void Test_StorageClear(bool preExistingStorage)
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        Address cleared = preExistingStorage ? TestItem.AddressA : TestItem.AddressD;
-        StorageCell written = new(cleared, 9);
-        // Whether the account held storage must come from its tree, not from an evictable cache entry.
-        caches.StateCache.Clear();
-
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            if (!preExistingStorage) ws.CreateAccount(cleared, 1);
-            ws.ClearStorage(cleared);
-            ws.Set(in written, (UInt256)9);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.EqualTo(!preExistingStorage),
-                "unrelated slots survive only when the cleared account had no storage to begin with");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage),
-                "the cleared account's pre-block slots must not survive the clear");
-            Assert.That(caches.StorageCache.TryGetValue(in written, out UInt256 writtenValue), Is.EqualTo(!preExistingStorage),
-                "a clear abandons the rest of the block, which would refill the cache with one block's writes");
-            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new UInt256(9)));
-        }
-    }
-
-    [Test]
-    public void Test_DestroyedAccount_DropsItsCachedSlots()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        // Selfdestruct as the transaction processor commits it: the storage is marked destroyed, then the account removed.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            ws.GetBalance(TestItem.AddressA);
-            ws.MarkStorageDestroyed(TestItem.AddressA);
-            ws.DeleteAccount(TestItem.AddressA);
-        });
-        Assert.That(newRoot, Is.Not.EqualTo(baseRoot), "precondition: the account was removed from the state");
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(CachedAccount(caches, TestItem.AddressA), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "the removed account's slots must not survive it");
-        }
-    }
-
-    [TestCase(true, TestName = "Test_AccountDestroyedAcrossTwoFlushes_WithPreBlockStorage_DropsTheStorageCache")]
-    [TestCase(false, TestName = "Test_AccountDestroyedAcrossTwoFlushes_CreatedInTheBlock_LeavesNoTrace")]
-    public void Test_AccountDestroyedAcrossTwoFlushes(bool preExistingStorage)
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        Address destroyed = preExistingStorage ? TestItem.AddressA : TestItem.AddressD;
-        StorageCell written = new(destroyed, 9);
-
-        // Per-transaction root commits, as pre-Byzantium receipts require: the slot reaches the state in the first flush,
-        // which moves the storage root, and the account is destroyed before the second.
-        Hash256 newRoot;
+        // A block that flushed its writes but was thrown away before the tree commit, as on a failed or retried block.
         using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
         {
-            if (!preExistingStorage) consumer.CreateAccount(destroyed, 1);
-            consumer.Set(in written, (UInt256)7);
+            consumer.AddToBalance(TestItem.AddressA, 899, Cancun.Instance, out _);
             consumer.Commit(Cancun.Instance);
-            consumer.GetBalance(destroyed);
-            consumer.MarkStorageDestroyed(destroyed);
-            consumer.DeleteAccount(destroyed);
-            consumer.Commit(Cancun.Instance);
-            consumer.CommitTree(2);
-            newRoot = consumer.StateRoot;
-        }
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(CachedAccount(caches, destroyed), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in written, out _), Is.False, "a slot of the destroyed account must not be cached");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage), "pre-block slots of the destroyed account must not survive it");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.EqualTo(!preExistingStorage),
-                "unrelated slots go only with an account that held storage before the block");
-        }
-    }
-
-    [Test]
-    public void Test_StorageWrittenForAnAccountThatEndsAbsent_IsNotCached()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        StorageCell slotD1 = new(TestItem.AddressD, 1);
-
-        // Looked up as a creation's collision check does, then created, written and removed without a storage clear.
-        // Its slot never became state, so a later contract at the address must not find it in the caches.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            ws.AccountExists(TestItem.AddressD);
-            ws.CreateAccount(TestItem.AddressD, 1);
-            ws.Set(in slotD1, (UInt256)7);
-            ws.DeleteAccount(TestItem.AddressD);
-            ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(CachedAccount(caches, TestItem.AddressD), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in slotD1, out _), Is.False, "storage that never became state must not be cached");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.True, "an account that never had storage triggers no clear");
-            Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
-        }
-    }
-
-    [Test]
-    public void Test_StorageWrittenWithoutTheAccountEverLoaded_DropsTheStorageCache()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        StorageCell slotD1 = new(TestItem.AddressD, 1);
-
-        // Execution loads an account before writing its storage; a write without that load leaves the caches unable to
-        // tell the account's fate, so they must drop every slot rather than keep pre-block ones that may be stale.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            ws.CreateAccount(TestItem.AddressD, 1);
-            ws.Set(in slotD1, (UInt256)7);
-            ws.DeleteAccount(TestItem.AddressD);
-            ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in slotD1, out _), Is.False, "storage that never became state must not be cached");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False, "an unknown fate clears the storage cache");
-            Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500), "the account cache is unaffected");
-        }
-    }
-
-    [Test]
-    public void Test_DirectStorageRead_OfAnAccountTheBlockNeverLoaded_ClearsNothing()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        // System reads go straight to storage, so the block ends with a storage record for C but no account record.
-        // That is not a removal: C keeps its storage, and nothing may be cleared for it.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            ws.Get(in SlotC5, out _);
-            ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }));
-            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 10, 20 }), "no storage clear may be issued for an account the block did not remove");
-            Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)300));
-        }
-    }
-
-    [Test]
-    public void Test_RevertedStorageClear_LeavesNoStaleCachedValue()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        // A selfdestruct that reverts within its transaction: the clear leaves a conservative mark, so the caches end up
-        // holding nothing of the slot rather than the value it had before the block.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            ws.Get(in SlotA1, out _);
-            Snapshot snapshot = ws.TakeSnapshot();
-            ws.ClearStorage(TestItem.AddressA);
-            ws.Restore(snapshot);
-            ws.Set(in SlotA1, (UInt256)7);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "asserted before the read below caches it again");
-            consumer.Get(in SlotA1, out UInt256 storageValue2);
-            Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
-            Assert.That(CachedAccount(caches, TestItem.AddressA).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "the account keeps its storage");
-        }
-    }
-
-    [Test]
-    public void Test_SlotSetToZero_IsCachedAsZero()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        // A zero write is a delete for the tree, but a read of the slot must still be served as zero, not as a miss.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.Set(in SlotA1, (UInt256)0));
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(CachedSlot(caches, in SlotA1).IsZero(), Is.True);
-            consumer.Get(in SlotA1, out UInt256 storageValue3);
-            Assert.That(storageValue3.IsZero, Is.True);
-        }
-    }
-
-    [Test]
-    public void Test_TouchedEmptyAccountWithStorage_IsRemovedWithItsCachedSlots()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-        StorageCell slotE2 = new(TestItem.AddressE, 2);
-
-        // A touch removes the EIP-161-empty account, storage included, with no storage clear on the way. The reverted
-        // write leaves a storage record that never resolved the tree, so it cannot vouch for the storage either.
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
-        {
-            Snapshot snapshot = ws.TakeSnapshot();
-            ws.Set(in slotE2, (UInt256)1);
-            ws.Restore(snapshot);
-            ws.AddToBalance(TestItem.AddressE, UInt256.Zero, Cancun.Instance, out _);
-        });
-
-        bool carried = caches.PrepareFor(newRoot);
-
-        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(carried, Is.True);
-            Assert.That(CachedAccount(caches, TestItem.AddressE), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotE1, out _), Is.False, "the removed account's slots must not survive it");
-            consumer.Get(in SlotE1, out UInt256 storageValue4);
-            Assert.That(storageValue4.IsZero, Is.True, "the state agrees the storage is gone");
-        }
-    }
-
-    [Test]
-    public void Test_TwoBlocksInOneScope_CarryTheCachesThroughBothCommits()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        StorageCell slotD1 = new(TestItem.AddressD, 1);
-
-        // A branch processes several blocks in one scope: each commit must start from the root the previous one left,
-        // and a removal the first block made must not be applied again by the second, which touched no storage.
-        Hash256 secondRoot;
-        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
-        {
-            consumer.CreateAccount(TestItem.AddressD, 1);
-            consumer.Set(in slotD1, (UInt256)7);
-            consumer.GetBalance(TestItem.AddressA);
-            consumer.MarkStorageDestroyed(TestItem.AddressA);
-            consumer.DeleteAccount(TestItem.AddressA);
-            consumer.Commit(Cancun.Instance);
-            consumer.CommitTree(2);
-            // What the driver does between blocks of a branch, and what joins the first commit's write-back.
-            Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True, "the first commit must carry the caches to its own root");
-
-            consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
-            // Cached within the second block, so replaying the first block's removal would clear it away again.
-            consumer.Get(in SlotC5, out _);
-            consumer.Commit(Cancun.Instance);
-            consumer.CommitTree(3);
-            secondRoot = consumer.StateRoot;
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(caches.PrepareFor(secondRoot), Is.True);
-            Assert.That(CachedAccount(caches, TestItem.AddressA), Is.Null);
-            Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
-            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "the second commit must not replay the first block's removal");
+            Assert.That(caches.ValidFor, Is.EqualTo(baseRoot), "nothing was committed, so the caches still describe the parent");
+            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+        }
+
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.AddToBalance(TestItem.AddressA, 300, Cancun.Instance, out _));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.ValidFor, Is.Null, "committed values are not carried over to the next block");
+            Assert.That(caches.StateCache.TryGetValue(in keyA, out _), Is.False);
+            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False);
+            Assert.That(caches.PrepareFor(newRoot), Is.False, "the next block starts from cleared caches");
         }
     }
 
@@ -847,70 +482,6 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }), "the snapshot must hold the block it was taken from");
             Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False, "and nothing the next block touched");
-        }
-    }
-
-    [Test]
-    public void Test_SecondBlockInAScope_LeavesTheFirstsDetachedChangesAlone()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        StorageCell slotA2 = new(TestItem.AddressA, 2);
-
-        // Nothing joins between the two commits. Whether or not the first write-back is still running when the second
-        // block starts, both must land: Test_DetachedStorageChanges_SurviveTheNextBlock forces the overlap itself.
-        Hash256 secondRoot;
-        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
-        {
-            consumer.Set(in SlotA1, (UInt256)7);
-            consumer.Commit(Cancun.Instance);
-            consumer.CommitTree(2);
-
-            consumer.Set(in slotA2, (UInt256)8);
-            consumer.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _);
-            consumer.Commit(Cancun.Instance);
-            consumer.CommitTree(3);
-            secondRoot = consumer.StateRoot;
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(caches.PrepareFor(secondRoot), Is.True, "both write-backs ran to completion");
-            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
-            Assert.That(CachedSlot(caches, in slotA2), Is.EqualTo(new byte[] { 8 }));
-            Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
-        }
-    }
-
-    [Test]
-    public void Test_ScopeEndingWithoutACommit_LeavesTheCachesAtTheBaseState()
-    {
-        using Context ctx = new(useFlat);
-        Hash256 baseRoot = CommitBaseState(ctx);
-        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
-
-        // A block that flushed its writes but was thrown away before the tree commit, as on a failed or retried block.
-        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
-        {
-            consumer.AddToBalance(TestItem.AddressA, 899, Cancun.Instance, out _);
-            consumer.Commit(Cancun.Instance);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(caches.ValidFor, Is.EqualTo(baseRoot), "nothing was committed, so the caches still describe the parent");
-            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
-        }
-
-        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws => ws.AddToBalance(TestItem.AddressB, 300, Cancun.Instance, out _));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(caches.PrepareFor(newRoot), Is.True);
-            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
-            Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500));
         }
     }
 
@@ -1072,21 +643,19 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_UnchangedRoot_WritesNothingBack()
+    public void Test_CommittedState_TakesNoSnapshot_AndOnlyAConsumerClearsTheCaches([Values] bool isPrewarmer)
     {
         PreBlockCaches caches = NewCaches();
         AddressAsKey key = TestItem.AddressA;
         caches.PrepareFor(TestItem.KeccakA);
         caches.StateCache.Set(in key, new Account(1, 100));
-        // A scope that computes no roots, as a trieless one does, reports its base root after a commit.
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        baseScope.RootHash.Returns(TestItem.KeccakA);
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
         baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
-        PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+        PrewarmerScopeProvider provider = new(baseProvider, new PrewarmerState(caches, isPrewarmer), LimboLogs.Instance);
 
         bool ran = false;
-        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(HeaderAt(TestItem.KeccakA, 1)))
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(HeaderAt(TestItem.KeccakA, 1)))
         {
             scope.Commit(2);
             scope.WriteBackCommittedState(() =>
@@ -1098,9 +667,9 @@ public class ScopeProviderTests(bool useFlat)
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ran, Is.False, "post-block values must not be filed under the pre-block root, nor a snapshot taken to file them");
-            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
-            Assert.That(caches.ValidFor, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(ran, Is.False, "nothing is written back, so no snapshot is taken");
+            Assert.That(caches.StateCache.TryGetValue(in key, out _), Is.EqualTo(isPrewarmer), "only a consumer commit becomes state and drops the caches");
+            Assert.That(caches.ValidFor, Is.EqualTo(isPrewarmer ? TestItem.KeccakA : null));
         }
     }
 
