@@ -131,7 +131,7 @@ class ExpbWorkflowImageTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, log)
         self.assertEqual(f"repo/image:tag@{DIGEST}", output["image"])
         self.assertEqual(REVISION, output["revision"])
-        self.assertIn("run --rm --network none --platform linux/amd64 --entrypoint /nethermind/nethermind", docker_args)
+        self.assertIn("run --rm --network none --platform linux/amd64 --entrypoint /nethermind/Nethermind.Runner", docker_args)
 
     def test_dispatched_image_commit_mismatch_fails_before_benchmark(self):
         expected = "c" * 40

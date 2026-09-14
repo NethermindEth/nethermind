@@ -709,7 +709,7 @@ jobs:
 
           docker pull "${image}"
           version_status=0
-          version_output="$(docker run --rm --network none --platform linux/amd64 --entrypoint /nethermind/nethermind "${image}" --version 2>&1)" || version_status=$?
+          version_output="$(docker run --rm --network none --platform linux/amd64 --entrypoint /nethermind/Nethermind.Runner "${image}" --version 2>&1)" || version_status=$?
           printf '%s\n' "${version_output}"
           if [[ "${version_status}" -ne 0 ]]; then
             echo "::error::Pinned image version probe failed with exit code ${version_status}."
