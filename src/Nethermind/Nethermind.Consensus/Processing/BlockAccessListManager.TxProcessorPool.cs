@@ -53,13 +53,16 @@ public partial class BlockAccessListManager
         private const int DefaultTxCount = 10000;
         private static readonly int ProcessorPoolSize = RuntimeInformation.ProcessorCount;
 
-        // BAL pool is larger since extra BALs are retained so they can be merged in order
-        private static readonly int BalPoolSize = RuntimeInformation.ProcessorCount * 2;
+        // Every transaction of a block holds a detached BAL until the validator merges it in order, so the pool
+        // must be allowed to grow to a whole block: anything above the cap is dropped on return and rebuilt for
+        // the next block. Only a small working set is created up front.
+        private const int BalPoolSize = DefaultTxCount;
+        private static readonly int BalPoolPrefill = RuntimeInformation.ProcessorCount * 2;
 
         static ParallelTxProcessorWithWorldStateManager()
         {
             StaticPool<BlockAccessListAtIndex>.SetMaxPooledCount(BalPoolSize);
-            for (int i = 0; i < BalPoolSize; i++)
+            for (int i = 0; i < BalPoolPrefill; i++)
             {
                 StaticPool<BlockAccessListAtIndex>.Return(new());
             }

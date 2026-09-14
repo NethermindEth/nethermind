@@ -21,10 +21,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
-    private const int InitialChangeCapacity = 64;
+    // Sized for a plain transfer; a pooled slice keeps the capacity a heavier transaction grew it to, up to the cap below.
+    private const int InitialChangeCapacity = 16;
+    private const int MaxRetainedChangeCapacity = 256;
 
-    // Caps pool retention so a one-off oversized block doesn't permanently inflate the slice.
-    private const int MaxPooledAccountChanges = 4096;
+    // Caps pool retention so a one-off oversized transaction doesn't permanently inflate the slice; the slices
+    // themselves are pooled up to a whole block's worth.
+    private const int MaxPooledAccountChanges = 512;
 
     public uint Index { get; set; }
 
@@ -74,6 +77,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         }
         _accountChanges.ClearAndTrim();
         _changes.Clear();
+        if (_changes.Capacity > MaxRetainedChangeCapacity) _changes.Capacity = InitialChangeCapacity;
         _storageJournalEpoch = 0;
         _previousCodeChanges.Clear();
         _lastReadAddress = null;
