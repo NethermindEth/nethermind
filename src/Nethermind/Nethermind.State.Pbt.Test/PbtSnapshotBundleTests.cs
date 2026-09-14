@@ -500,36 +500,38 @@ public class PbtSnapshotBundleTests
         Assert.That(reader.GroupReadCount, Is.EqualTo(2), "replacement must not make the old view return the new subtree");
     }
 
+    // At a 1 MiB budget each shard holds a single set, so paths sharing the top hash byte share a set.
     [Test]
-    public void Trie_cache_rejects_distinct_paths_in_the_same_bucket()
+    public void Trie_cache_keeps_distinct_paths_in_the_same_set()
     {
-        Dictionary<int, PbtNodePath> buckets = [];
+        Dictionary<int, PbtNodePath> shards = [];
         PbtNodePath first = default;
         PbtNodePath second = default;
         bool found = false;
         for (int suffix = 0; suffix <= 256; suffix++)
         {
             PbtNodePath candidate = new(new byte[] { Eip8297KeyDerivation.AccountZone, 0, (byte)(suffix >> 8), (byte)suffix }, 32);
-            int bucket = candidate.GetHashCode() & 255;
-            if (buckets.TryGetValue(bucket, out first))
+            int shard = (int)((uint)candidate.GetHashCode() >> 24);
+            if (shards.TryGetValue(shard, out first))
             {
                 second = candidate;
                 found = true;
                 break;
             }
-            buckets.Add(bucket, candidate);
+            shards.Add(shard, candidate);
         }
         Assert.That(found, Is.True);
-        using PbtTrieNodeCache cache = new(new PbtConfig());
+        using PbtTrieNodeCache cache = new(new PbtConfig { AccountTrieNodeCacheSizeBudget = 1048576 });
         using RefCountingMemory original = Memory(Bytes.FromHexString("010203"));
-        using RefCountingMemory replacement = Memory(Bytes.FromHexString("040506"));
+        using RefCountingMemory other = Memory(Bytes.FromHexString("040506"));
         ValueHash256 hash = TestItem.KeccakA.ValueHash256;
         cache.Add(hash, first, original);
         Assert.That(cache.TryGet(hash, second, out _), Is.False);
-        cache.Add(hash, second, replacement);
-        Assert.That(cache.TryGet(hash, first, out _), Is.False);
-        Assert.That(cache.TryGet(hash, second, out RefCountingMemory? payload), Is.True);
-        using (payload) Assert.That(payload!.Memory.ToArray(), Is.EqualTo(replacement.Memory.ToArray()));
+        cache.Add(hash, second, other);
+        Assert.That(cache.TryGet(hash, first, out RefCountingMemory? firstPayload), Is.True);
+        using (firstPayload) Assert.That(firstPayload!.Memory.ToArray(), Is.EqualTo(original.Memory.ToArray()));
+        Assert.That(cache.TryGet(hash, second, out RefCountingMemory? secondPayload), Is.True);
+        using (secondPayload) Assert.That(secondPayload!.Memory.ToArray(), Is.EqualTo(other.Memory.ToArray()));
     }
 
     [Test]
@@ -671,25 +673,33 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    private static PbtNodePath CachePath(string partition, int index) =>
+        new([CachePath(partition).GetByte(0), (byte)(index >> 8), (byte)index], 24);
+
     [Test]
-    public void Trie_cache_uses_all_shards_below_each_zone([ValueSource(nameof(CachePartitions))] string partition)
+    public void Trie_cache_over_budget_insert_evicts_one_entry_not_the_shard([ValueSource(nameof(CachePartitions))] string partition)
     {
         using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
         using RefCountingMemory source = Memory(new byte[1600]);
-        byte[] bytes = new byte[2];
-        bytes[0] = CachePath(partition).GetByte(0);
-        for (int shard = 0; shard < 256; shard++)
+        for (int count = 1; count <= 2048; count++)
         {
-            bytes[1] = (byte)shard;
-            cache.Add(default, new PbtNodePath(bytes, 16), source);
+            cache.Add(default, CachePath(partition, count), source);
+            int hits = 0;
+            for (int index = 1; index <= count; index++)
+            {
+                if (!cache.TryGet(default, CachePath(partition, index), out RefCountingMemory? payload)) continue;
+                hits++;
+                ((IDisposable)payload).Dispose();
+            }
+            if (hits == count) continue;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hits, Is.EqualTo(count - 1), "the first shard overflow evicts exactly one entry");
+                Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(1048576));
+            }
+            return;
         }
-        for (int shard = 0; shard < 256; shard++)
-        {
-            bytes[1] = (byte)shard;
-            Assert.That(cache.TryGet(default, new PbtNodePath(bytes, 16), out RefCountingMemory? payload), Is.True, $"shard {shard}");
-            ((IDisposable)payload!).Dispose();
-        }
-        Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(1048576));
+        Assert.Fail("no shard overflowed");
     }
 
     [Test, NonParallelizable]
@@ -710,7 +720,7 @@ public class PbtSnapshotBundleTests
         using (retained)
         {
             using RefCountingMemory larger = Memory(new byte[1600]);
-            cache.Add(default, path.AppendNib(0), larger);
+            cache.Add(new ValueHash256(Value(2)), path, larger);
             Assert.That(cache.TryGet(replacementRoot, path, out _), Is.False);
             foreach (string label in CachePartitions)
             {
@@ -752,8 +762,8 @@ public class PbtSnapshotBundleTests
             Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out RefCountingMemory? replacement), Is.True);
             using RefCountingMemory? replacementLease = replacement;
             using RefCountingMemory larger = Memory(new byte[1600]);
-            cache.Add(new ValueHash256(Value(2)), new PbtNodePath([0], 4), larger);
-            Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False, "a full shard evicts old entries");
+            cache.Add(new ValueHash256(Value(2)), path, larger);
+            Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False, "a newer subtree hash replaces the same path");
             cache.Clear();
             cache.Dispose();
             cache.Add(default, path, source);
@@ -1258,6 +1268,114 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [Test]
+    public void Code_chunks_are_staged_only_when_the_code_becomes_referenced(
+        [Values("codeFirst", "codeAfterAccount", "codeAfterUpdate")] string codeArrival, [Values(1, 3)] int chunkCount)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] bytes = new byte[chunkCount * 31];
+        bytes.AsSpan().Fill(0x5b);
+        Account account = Build.An.Account.WithBalance(1).WithCode(bytes).TestObject;
+        ValueHash256 codeHash = account.CodeHash.ValueHash256;
+        Dictionary<string, byte[]> model = [];
+
+        if (codeArrival == "codeFirst") bundle.SetCode(codeHash, new CodeInfo(bytes));
+        bundle.SetAccount(TestItem.AddressA, account);
+        if (codeArrival == "codeAfterUpdate") bundle.SetAccount(TestItem.AddressA, account.WithChangedBalance(2));
+        if (codeArrival != "codeFirst") bundle.SetCode(codeHash, new CodeInfo(bytes));
+        Account current = bundle.GetAccount(TestItem.AddressA)!;
+        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((chunkCount, 0)), "a first reference stages every chunk");
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, current.Nonce, current.Balance, bytes);
+        ValueHash256 root = Fold(bundle, default);
+        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "first reference root");
+
+        current = current.WithChangedBalance(3);
+        bundle.SetAccount(TestItem.AddressA, current);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, 0)), "a balance change stages no chunk");
+            Assert.That(StagedAccountLeafKeys(bundle), Is.EquivalentTo(new[] { PbtKeyDerivation.BasicDataLeafKey, PbtKeyDerivation.CodeHashLeafKey }));
+        }
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, current.Nonce, current.Balance, bytes);
+        root = Fold(bundle, root);
+        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "balance change root");
+
+        bundle.SetAccount(TestItem.AddressB, account);
+        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, 0)), "adopting referenced code stages no chunk");
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
+        root = Fold(bundle, root);
+        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "shared code root");
+
+        bundle.SetAccount(TestItem.AddressA, null);
+        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, 0)), "a surviving reference keeps every chunk");
+        bundle.SetAccount(TestItem.AddressB, null);
+        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, chunkCount)), "removing the last reference deletes every chunk");
+        bundle.SetAccount(TestItem.AddressA, account);
+        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((chunkCount, 0)), "re-referencing the code stages every chunk again");
+        model.Clear();
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
+        root = Fold(bundle, root);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "re-referenced code root");
+            Assert.That(bundle.GetCodeReference(codeHash), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Persisted_code_is_read_once_per_bundle_and_never_snapshotted()
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        Reader reader = new(default, null);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        byte[] bytes = Bytes.FromHexString("6001600055");
+        Account account = Build.An.Account.WithBalance(1).WithCode(bytes).TestObject;
+        ValueHash256 codeHash = account.CodeHash.ValueHash256;
+        CodeInfo persisted = new(bytes);
+        reader.Codes[codeHash] = persisted;
+        bundle.SetAccount(TestItem.AddressA, account);
+        ValueHash256 root = Fold(bundle, default);
+        using PbtSnapshot first = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
+        Account updated = account.WithChangedBalance(2);
+        bundle.SetAccount(TestItem.AddressA, updated);
+        root = Fold(bundle, root);
+        using PbtSnapshot second = bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root);
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, updated.Nonce, updated.Balance, bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(reader.CodeReadCount, Is.EqualTo(1), "persisted code is memoized per bundle");
+            Assert.That(bundle.GetCode(codeHash), Is.SameAs(persisted));
+            Assert.That(first.Content.Codes, Is.Empty, "memoized code must not be snapshotted");
+            Assert.That(second.Content.Codes, Is.Empty, "memoized code must not be snapshotted");
+        }
+    }
+
+    private static (int Written, int Deleted) CodeZoneMutations(PbtSnapshotBundle bundle)
+    {
+        int written = 0;
+        int deleted = 0;
+        foreach ((PbtStorageFullKey key, ValueHash256? value) in bundle.EnumeratePendingLeafMutationsForTest())
+        {
+            if (key.Bytes[0] != Eip8297KeyDerivation.CodeZone) continue;
+            if (value is null) deleted++;
+            else written++;
+        }
+        return (written, deleted);
+    }
+
+    private static List<int> StagedAccountLeafKeys(PbtSnapshotBundle bundle)
+    {
+        List<int> keys = [];
+        foreach ((PbtStorageFullKey key, ValueHash256? value) in bundle.EnumeratePendingLeafMutationsForTest())
+            if (key.Bytes[0] == Eip8297KeyDerivation.AccountZone && value is not null) keys.Add(key.Bytes[^1]);
+        return keys;
+    }
+
     [TestCase(0x00)]
     [TestCase(0x01)]
     [TestCase(0xFF)]
@@ -1278,6 +1396,11 @@ public class PbtSnapshotBundleTests
         Account replacement = account.WithChangedBalance(4);
         bundle.SetAccount(TestItem.AddressA, replacement);
         bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("02")));
+        // A balance change stages no code chunk, so a new contract keeps the code partition in the batch.
+        byte[] otherBytes = Bytes.FromHexString("6002600055");
+        Account other = Build.An.Account.WithCode(otherBytes).TestObject;
+        bundle.SetCode(other.CodeHash.ValueHash256, new CodeInfo(otherBytes));
+        bundle.SetAccount(TestItem.AddressB, other);
         KeyValuePair<PbtStorageFullKey, ValueHash256?>[] pending = [.. bundle.EnumeratePendingLeafMutationsForTest()];
         CountingStore store = new(bundle) { FailedZone = failedZone };
         Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges()));
@@ -1379,11 +1502,17 @@ public class PbtSnapshotBundleTests
         public IRefCountingMemoryProvider MemoryProvider { get; set; } = PooledRefCountingMemoryProvider.Instance;
         public Exception? GroupReadException { get; set; }
         public int GroupReadCount { get; private set; }
+        public Dictionary<ValueHash256, CodeInfo> Codes { get; } = [];
+        public int CodeReadCount { get; private set; }
         public StateId CurrentState => StateId.PreGenesis;
         public ValueHash256 CurrentRoot { get; set; }
         public Account? GetAccount(in ValueHash256 addressHash) => null;
         public EvmWord GetSlot(PbtStorageFullKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
-        public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
+        public CodeInfo? GetCode(in ValueHash256 codeHash)
+        {
+            CodeReadCount++;
+            return Codes.GetValueOrDefault(codeHash);
+        }
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
         public IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) =>
             new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(EnumerateStorageCore(prefix));

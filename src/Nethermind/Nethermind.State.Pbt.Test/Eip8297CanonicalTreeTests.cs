@@ -465,6 +465,33 @@ public class Eip8297CanonicalTreeTests
         AssertEquivalentAfterReopen(bulk, serial, oracle, "restored boundary");
     }
 
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void Rewriting_leaves_with_their_current_values_keeps_root_and_records(int leafCount)
+    {
+        (byte[] Key, byte[]? Value)[] entries = [([0x80, 0x01], Value(1)), ([0x40, 0x02], Value(2)), ([0x40, 0x03], Value(3))];
+        List<(byte[] Key, byte[]? Value)> changes = [.. entries[..leafCount]];
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        ApplyAll(bulk, serial, oracle, changes);
+        ValueHash256 root = bulk.RootHash;
+        string[] canonical = bulk.CanonicalRecords();
+
+        ApplyAll(bulk, serial, oracle, changes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bulk.RootHash, Is.EqualTo(root), "identical rewrite root");
+            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(canonical), "identical rewrite records");
+        }
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "identical rewrite");
+
+        ApplyAll(bulk, serial, oracle, [(entries[0].Key, Value(9))]);
+        Assert.That(bulk.RootHash, Is.Not.EqualTo(root), "changed value root");
+        AssertEquivalentAfterReopen(bulk, serial, oracle, "changed value");
+    }
+
     [Test]
     public void Deep_one_sided_divergence_ladder_rejects_buried_prefix_before_store_access()
     {
@@ -2099,6 +2126,32 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+    [Test]
+    public void Untouched_sibling_reuses_the_hash_its_parent_holds([Values] bool omittedSibling)
+    {
+        // The root branch splits [0x00] from its right sibling: a stored leaf, or an omitted branch over two leaves.
+        (byte[] Key, byte[]? Value)[] initial = omittedSibling
+            ? [([0x00], Value(1)), ([0x80], Value(2)), ([0xC0], Value(3))]
+            : [([0x00], Value(1)), ([0x80], Value(2))];
+        CountingPbtStore store = new();
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(initial));
+        TrieUpdaterMetrics metrics = new();
+
+        ValueHash256 updated = TrieUpdater.UpdateRoot(store, root, Batch(([0x00], Value(4))), metrics);
+
+        initial[0].Value = Value(4);
+        ValueHash256 expected = TrieUpdater.UpdateRoot(new CountingPbtStore(), default, Batch(initial));
+        // The rewritten leaf and the root are hashed. An omitted sibling also hashes its two leaves to rebuild
+        // the encoding it is acquired from, but never itself.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.EqualTo(expected));
+            Assert.That(metrics.NodeHashes, Is.EqualTo(omittedSibling ? 4 : 2));
+        }
+
+        AssertAllMemoryReleased(store);
+    }
+
     [TestCase(false, 0)]
     [TestCase(false, 1)]
     [TestCase(true, 0)]
@@ -2347,11 +2400,12 @@ public class Eip8297CanonicalTreeTests
     }
 
     [TestCase(2, 2)]
-    [TestCase(16, 4)]
-    public void Ordered_group_emission_rents_geometrically_instead_of_per_node(int leafCount, int expectedRentCount)
+    [TestCase(16, 1)]
+    public void Ordered_group_emission_rents_one_bucket_instead_of_per_node(int leafCount, int expectedRentCount)
     {
         const int leafEncodingLength = 3 + 1 + 32;
         const int rootEncodingLength = 3 + 2 * 32;
+        const int initialCapacity = 1024;
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();
         EipReferenceTree oracle = new();
@@ -2381,9 +2435,9 @@ public class Eip8297CanonicalTreeTests
             Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount * leafEncodingLength + rootEncodingLength + 4 + 2 * (leafCount + 1)));
             Assert.That(payloads[0].Payload.ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
-            int firstRentLength = PbtNodeGroupCodec.HeaderLength + leafEncodingLength + PbtNodeGroupCodec.MaxTrailerLength;
-            for (int rental = 0; rental < provider.RequestedLengths.Count; rental++)
-                Assert.That(provider.RequestedLengths[rental], Is.EqualTo(firstRentLength << rental));
+            Assert.That(provider.RequestedLengths[0], Is.EqualTo(initialCapacity), "one pool bucket up front");
+            if (expectedRentCount == 2)
+                Assert.That(provider.RequestedLengths[1], Is.EqualTo(payloads[0].Payload.Length), "a small group is compacted to its payload");
             AssertOnlyPublishedRentalsRemain(store, provider);
         }
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);

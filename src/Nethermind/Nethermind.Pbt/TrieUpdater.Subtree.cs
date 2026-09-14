@@ -20,12 +20,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly TKey LeafKey;
         internal readonly ValueHash256 ValueOrLeft;
         private readonly ValueHash256 _right;
+        /// <summary>The hash the source group already held for this node, or default when it must be computed.</summary>
+        internal readonly ValueHash256 KnownHash;
 
-        internal Subtree(ReadOnlyMemory<byte> encoding, NodeGroupPath path)
+        internal Subtree(ReadOnlyMemory<byte> encoding, NodeGroupPath path, in ValueHash256 knownHash)
         {
             Kind = NodeKind.Original;
             Encoding = encoding;
             Path = path;
+            KnownHash = knownHash;
         }
 
         internal Subtree(PbtWriteOperation<TKey> operation)
@@ -43,11 +46,15 @@ internal static partial class TrieUpdater<TKey, TPath>
             Path = path;
         }
 
+        internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, in ValueHash256 knownHash)
+            : this(path, left, right) => KnownHash = knownHash;
+
         internal readonly NodeGroupPath Path { get; }
         internal readonly PbtNodeReader Reader => PbtNodeReader.FromValidated(Encoding.Span);
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf || (Kind == NodeKind.Original && Reader.IsLeaf);
         internal readonly TKey Key => Kind == NodeKind.Leaf ? LeafKey : TKey.Create(Reader.Key);
+        internal readonly ValueHash256 Value => Kind == NodeKind.Leaf ? ValueOrLeft : new ValueHash256(Reader.Value);
         internal readonly CompressedPrefix Prefix => Kind == NodeKind.Branch ? default : Reader.Prefix;
         internal readonly ValueHash256 LeftHash => Kind == NodeKind.Branch ? ValueOrLeft : Reader.LeftHash;
         internal readonly ValueHash256 RightHash => Kind == NodeKind.Branch ? _right : Reader.RightHash;
@@ -102,33 +109,47 @@ internal static partial class TrieUpdater<TKey, TPath>
             ? (Node.Kind == NodeKind.Leaf ? 3 + Node.LeafKey.Length + 32 : Node.Encoding.Length)
             : 3 + PbtBitPrefix.ByteCount(BranchDepth - depth) + 64;
 
-        internal readonly ValueHash256 Hash(int depth)
+        // Encode writes every byte of the encoding it is given.
+        [SkipLocalsInit]
+        internal readonly ValueHash256 Hash(int depth, TrieUpdaterMetrics? metrics)
         {
             if (IsEmpty) return default;
             if (Node.Kind == NodeKind.Original && (IsLeaf || depth == AnchorDepth))
-                return PbtNodeCodec.Hash(Node.Reader);
+                return SourceHash(metrics);
             Span<byte> encoding = stackalloc byte[EncodedLength(depth)];
-            return Encode(encoding, depth);
+            return Encode(encoding, depth, metrics);
         }
 
-        internal readonly ValueHash256 Encode(Span<byte> encoding, int depth)
+        internal readonly ValueHash256 Encode(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics)
         {
             if (Node.Kind == NodeKind.Original && (IsLeaf || depth == AnchorDepth))
             {
                 Node.Encoding.Span.CopyTo(encoding);
-                return PbtNodeCodec.Hash(Node.Reader);
+                return SourceHash(metrics);
             }
             if (IsLeaf)
             {
                 PbtNodeCodec.EncodeLeaf(encoding, Node.LeafKey, Node.ValueOrLeft.Bytes);
-                return PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding));
+                return HashEncoding(PbtNodeReader.FromValidated(encoding), metrics);
             }
 
             // Promotion absorbs the source anchor's skipped bits into the relative compressed prefix.
             int bitCount = BranchDepth - depth;
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, Node.LeftHash, Node.RightHash);
             CopyBranchBits(depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
+            // An omitted branch reacquired at its own anchor is the node its parent already hashed.
+            if (depth == AnchorDepth && Node.KnownHash != default) return Node.KnownHash;
+            metrics?.IncrementNodeHashes();
             return Blake3Hash.Hash(encoding);
+        }
+
+        private readonly ValueHash256 SourceHash(TrieUpdaterMetrics? metrics) =>
+            Node.KnownHash != default ? Node.KnownHash : HashEncoding(Node.Reader, metrics);
+
+        private static ValueHash256 HashEncoding(PbtNodeReader node, TrieUpdaterMetrics? metrics)
+        {
+            metrics?.IncrementNodeHashes();
+            return PbtNodeCodec.Hash(node);
         }
 
         private readonly void CopyBranchBits(int start, int count, Span<byte> destination)
@@ -144,6 +165,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 PbtBitPrefix.CopyBits(Node.Prefix.Bytes, prefixStart - AnchorDepth, end - prefixStart, destination, prefixStart - start);
         }
 
+        [SkipLocalsInit]
         internal readonly OwnedSubtree Materialize()
         {
             if (IsEmpty) return default;

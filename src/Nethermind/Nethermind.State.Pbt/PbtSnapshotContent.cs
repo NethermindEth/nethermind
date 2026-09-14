@@ -38,11 +38,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        if (payload is not null)
-        {
-            PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
-            _ = new PbtNodeGroupReader(traversalPath, payload.GetSpan());
-        }
+        if (payload is not null) PbtNodeGroupCodec.ValidateFraming(groupKey.BitDepth, payload.GetSpan());
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
         payload?.AcquireLease();
         RefCountingMemory? previous;
@@ -70,7 +66,14 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     {
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        bool found = NodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload);
+        return TryGetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), out payload);
+    }
+
+    /// <inheritdoc cref="TryGetNodeGroup{TPath}"/>
+    /// <remarks>Skips depth validation so a bundle can validate once and probe every layer with the same key.</remarks>
+    internal bool TryGetNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    {
+        bool found = NodeGroups.TryGetValue(groupKey, out payload);
         payload?.AcquireLease();
         return found;
     }

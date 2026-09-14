@@ -8,6 +8,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
+// The only stack buffer, the branch encoding in GetHash, is fully written before it is read.
+[SkipLocalsInit]
 internal struct GroupFrameReader<TKey, TPath> : IDisposable
     where TKey : struct, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
@@ -84,16 +86,24 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     internal TrieUpdater<TKey, TPath>.Subtree Acquire(scoped in PbtTraversalPath path, int position)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
+        ValueHash256 knownHash = (_hashed & (1u << position)) != 0 ? _hashes[position] : default;
         if (encoding.IsEmpty)
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(position);
             if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
             ValueHash256 left = GetHash(path, position - width);
             ValueHash256 right = GetHash(path, position - 1);
-            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right);
+            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right, knownHash);
         }
         NodeGroupPath nodePath = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? default : PbtFourLevelGroupGeometry.LocalPathOf(position);
-        return new(encoding, nodePath);
+        return new(encoding, nodePath, knownHash);
+    }
+
+    /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so acquiring it needs no rehash.</summary>
+    internal void SeedHash(int position, in ValueHash256 hash)
+    {
+        _hashes[position] = hash;
+        _hashed |= 1u << position;
     }
 
     private ValueHash256 GetHash(scoped in PbtTraversalPath path, int position)
@@ -103,7 +113,10 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
         ValueHash256 hash = default;
         if (!encoding.IsEmpty)
+        {
+            _metrics?.IncrementNodeHashes();
             hash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding.Span));
+        }
         else if (PbtFourLevelGroupGeometry.WidthOf(position) is int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
         {
             ValueHash256 left = GetHash(path, position - width);
@@ -112,6 +125,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
             {
                 Span<byte> branch = stackalloc byte[67];
                 PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
+                _metrics?.IncrementNodeHashes();
                 hash = Blake3Hash.Hash(branch);
             }
         }

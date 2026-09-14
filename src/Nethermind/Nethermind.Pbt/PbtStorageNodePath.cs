@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+
 namespace Nethermind.Pbt;
 
 /// <summary>Identifies a canonical tree node by its consumed MSB-first key path.</summary>
@@ -8,6 +10,7 @@ namespace Nethermind.Pbt;
 public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IEquatable<PbtStorageNodePath>, IComparable<PbtStorageNodePath>
 {
     private readonly PbtStorageFullKey _path;
+    private readonly int _hashCode;
 
     /// <inheritdoc/>
     public static int MaxBitDepth => PbtStorageFullKey.MaxLength * 8;
@@ -19,6 +22,7 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
         PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
         _path = path.IsEmpty ? default : new PbtStorageFullKey(path);
         BitDepth = bitDepth;
+        _hashCode = PbtNodePathOperations.Hash(path, bitDepth);
     }
 
     public int BitDepth { get; }
@@ -43,7 +47,9 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     public PbtStorageNodePath AppendBits(int bits, int bitCount) =>
         PbtNodePathOperations.AppendBits<PbtStorageNodePath>(_path.Bytes, BitDepth, bits, bitCount);
     /// <inheritdoc/>
-    public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => TPath.Create(_path.Bytes, BitDepth);
+    public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => typeof(TPath) == typeof(PbtStorageNodePath)
+        ? Unsafe.As<PbtStorageNodePath, TPath>(ref Unsafe.AsRef(in this))
+        : TPath.Create(_path.Bytes, BitDepth);
     /// <inheritdoc/>
     public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther> =>
         PbtNodePathOperations.MatchesPrefix(this, other, bitCount);
@@ -74,5 +80,5 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
         PbtStorageNodePath path => Equals(path),
         _ => false
     };
-    public override int GetHashCode() => PbtNodePathOperations.Hash(_path.Bytes, BitDepth);
+    public override int GetHashCode() => _hashCode;
 }

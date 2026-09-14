@@ -31,6 +31,23 @@ public static class PbtNodeGroupCodec
     public const int MaxTrailerLength = PositionCount * sizeof(ushort) + sizeof(uint);
 
     private const int MaxOffset = ushort.MaxValue;
+    private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
+    private const uint AllowedPositionBits = (1u << PositionCount) - 1;
+
+    /// <summary>Checks a payload's header, footer length and availability bits without parsing its nodes.</summary>
+    /// <returns>The availability bitmap.</returns>
+    internal static uint ValidateFraming(int groupDepth, ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < HeaderLength || !payload[..HeaderLength].SequenceEqual(Header))
+            throw new InvalidDataException("Unsupported or missing PBT node group format header.");
+        payload = payload[HeaderLength..];
+        if (payload.Length < sizeof(uint)) throw new InvalidDataException("Truncated PBT node group footer.");
+        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^sizeof(uint)..]);
+        if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupDepth != 0 && (availability & ReservedRootBit) != 0))
+            throw new InvalidDataException("Invalid PBT node group availability bits.");
+        if (payload.Length < GetTrailerLength(availability)) throw new InvalidDataException("Truncated PBT node group offset table.");
+        return availability;
+    }
 
     /// <summary>
     /// Validates and writes a canonical group payload directly through <paramref name="writer"/>.
@@ -200,8 +217,6 @@ public static class PbtNodeGroupCodec
 /// <summary>Provides a validated, allocation-free view over a borrowed node-group payload.</summary>
 public readonly ref struct PbtNodeGroupReader
 {
-    private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
-    private const uint AllowedPositionBits = (1u << PbtFourLevelGroupGeometry.PositionCount) - 1;
     private readonly int _groupDepth;
     private readonly ReadOnlySpan<byte> _payload;
     private readonly OffsetBuffer _offsets;
@@ -212,19 +227,14 @@ public readonly ref struct PbtNodeGroupReader
     /// <summary>Validates and borrows a complete node-group payload.</summary>
     /// <remarks>The path is used only for validation; advancing the cursor cannot change this reader or its enumerators.
     /// The payload must remain valid and immutable for the lifetime of the reader and its enumerators.</remarks>
+    [SkipLocalsInit]
     public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload)
     {
         int groupDepth = path.BitDepth;
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(path));
-        if (payload.Length < PbtNodeGroupCodec.HeaderLength || !payload[..PbtNodeGroupCodec.HeaderLength].SequenceEqual(PbtNodeGroupCodec.Header))
-            throw new InvalidDataException("Unsupported or missing PBT node group format header.");
+        uint availability = PbtNodeGroupCodec.ValidateFraming(groupDepth, payload);
         payload = payload[PbtNodeGroupCodec.HeaderLength..];
-        if (payload.Length < sizeof(uint)) throw new InvalidDataException("Truncated PBT node group footer.");
-        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^sizeof(uint)..]);
-        if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupDepth != 0 && (availability & ReservedRootBit) != 0))
-            throw new InvalidDataException("Invalid PBT node group availability bits.");
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability);
-        if (payload.Length < trailerLength) throw new InvalidDataException("Truncated PBT node group offset table.");
         int entriesLength = payload.Length - trailerLength;
         if (entriesLength > ushort.MaxValue) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
         ReadOnlySpan<byte> footer = payload[entriesLength..];

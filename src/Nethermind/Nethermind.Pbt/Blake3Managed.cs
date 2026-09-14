@@ -11,8 +11,10 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Pbt;
 
 /// <summary>Managed, unkeyed BLAKE3 producing a 32-byte digest.</summary>
-/// <remarks>Avoids P/Invoke overhead for EIP-8297's inputs of 64 bytes or less. Longer inputs use a
-/// correctness-oriented general path.</remarks>
+/// <remarks>Avoids P/Invoke overhead for EIP-8297's single-chunk inputs (at most 1024 bytes, typically
+/// under 100). Longer inputs use a correctness-oriented general path. Every stack buffer below is fully
+/// written or explicitly cleared before it is read, so the frames skip zero-initialization.</remarks>
+[SkipLocalsInit]
 public static class Blake3Managed
 {
     private const int BlockLength = 64;
@@ -30,23 +32,16 @@ public static class Blake3Managed
     public static void Hash(ReadOnlySpan<byte> input, Span<byte> output32)
     {
         Span<uint> cv = stackalloc uint[8];
-        if (input.Length > BlockLength)
-        {
-            HashLong(input, cv);
-        }
-        else
-        {
-            Span<byte> block = stackalloc byte[BlockLength];
-            PadBlock(input, block);
-            InitialCv(cv);
-            CompressBlock<FullBlock>(cv, block, 0, (uint)input.Length, ChunkStart | ChunkEnd | Root);
-        }
-
+        // A single chunk is the root itself: its last block carries ROOT and no merge stack is needed.
+        if (input.Length > ChunkLength) HashLong(input, cv);
+        else ChunkChainingValue(input, 0, Root, cv);
         WriteWords(cv, output32);
     }
 
+    /// <summary>Hashes an input longer than one chunk through the chunk merge tree.</summary>
     private static void HashLong(ReadOnlySpan<byte> input, Span<uint> cv)
     {
+        Debug.Assert(input.Length > ChunkLength);
         // Chaining values of the complete subtrees to the left of the current chunk, each covering a
         // power-of-two run of chunks. A chunk count with n trailing zero bits completes n merges, and the
         // counter is 64-bit, so 54 entries cover every input a caller can hold.
@@ -67,9 +62,8 @@ public static class Blake3Managed
             stackLength++;
         }
 
-        // Only the topmost node is compressed with ROOT set. With a single chunk that node is the chunk's
-        // last block, otherwise it is the last parent merged.
-        ChunkChainingValue(input, chunkCounter, stackLength == 0 ? Root : 0, cv);
+        // Only the topmost node, the last parent merged, is compressed with ROOT set.
+        ChunkChainingValue(input, chunkCounter, 0, cv);
         while (stackLength > 0)
             MergeParent(stack.Slice(--stackLength * 8, 8), cv, stackLength == 0 ? Root : 0);
     }

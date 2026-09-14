@@ -3,11 +3,13 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
 internal static class PbtNodePathOperations
 {
+    [SkipLocalsInit]
     internal static TPath Prefix<TPath>(ReadOnlySpan<byte> path, int bitDepth, int depth)
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -45,6 +47,7 @@ internal static class PbtNodePathOperations
         catch (ArgumentException exception) { throw new InvalidDataException("Invalid PBT node path padding.", exception); }
     }
 
+    [SkipLocalsInit]
     internal static TPath FromKey<TPath>(ReadOnlySpan<byte> key, int bitDepth) where TPath : struct, IPbtNodePath<TPath>
     {
         Debug.Assert(!key.IsEmpty);
@@ -55,6 +58,7 @@ internal static class PbtNodePathOperations
         return TPath.Create(path, bitDepth);
     }
 
+    [SkipLocalsInit]
     internal static TPath AppendBits<TPath>(ReadOnlySpan<byte> source, int bitDepth, int bits, int bitCount)
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -75,6 +79,7 @@ internal static class PbtNodePathOperations
         return TPath.Create(path, depth);
     }
 
+    [SkipLocalsInit]
     internal static TPath Append<TPath>(ReadOnlySpan<byte> source, int bitDepth, CompressedPrefix prefix, int direction)
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -154,6 +159,8 @@ internal static class PbtNodePathOperations
 
     internal static int Hash(ReadOnlySpan<byte> path, int bitDepth)
     {
+        // The root path equals the default path value, whose cached hash is zero.
+        if (path.IsEmpty) return 0;
         HashCode hash = new();
         hash.Add(bitDepth);
         hash.AddBytes(path);
