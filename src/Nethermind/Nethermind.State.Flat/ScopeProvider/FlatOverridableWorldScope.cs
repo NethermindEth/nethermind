@@ -129,9 +129,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         ILogManager logManager)
         : IWorldStateScopeProvider
     {
-        public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
+        public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
         {
             StateId currentState = new(baseBlock);
             SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);

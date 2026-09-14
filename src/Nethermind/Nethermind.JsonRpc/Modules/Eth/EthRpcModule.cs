@@ -1023,6 +1023,9 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
+        if (_specProvider.GetSpec(header).IsEip8347Enabled)
+            return ResultWrapper<AccountProof>.Fail("MPT proofs are not available for the PBT state backend", ErrorCodes.ResourceUnavailable);
+
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);

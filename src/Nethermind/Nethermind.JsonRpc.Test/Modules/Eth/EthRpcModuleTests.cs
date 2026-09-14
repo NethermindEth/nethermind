@@ -557,6 +557,25 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Get_proof_is_unavailable_for_pbt_state([Values] bool binaryFork)
+    {
+        OverridableReleaseSpec releaseSpec = new(Prague.Instance);
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec), bridge);
+        _ = ctx.Test;
+        releaseSpec.IsEip8347Enabled = binaryFork;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestAccountAddress, "[]", "latest");
+
+        if (binaryFork)
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,\"message\":\"MPT proofs are not available for the PBT state backend\"},\"id\":67}"));
+        else
+            Assert.That(serialized, Does.Contain("\"result\":"));
+        Assert.That(bridge.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "RunTreeVisitor"), Is.EqualTo(binaryFork ? 0 : 1));
+    }
+
     private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
     {
         string addressA = TestItem.AddressA.Bytes.ToHexString(true);

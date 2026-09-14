@@ -18,8 +18,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private readonly Action<double> _updateMetrics = updateMetrics;
     private double _stateMerkleizationTime;
 
-    public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
+    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => _baseProvider.HasRoot(baseBlock, targetBlock);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, targetBlock, metrics), this);
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
@@ -42,6 +42,9 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+            baseScope.CreateTrieWarmupSession();
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
 

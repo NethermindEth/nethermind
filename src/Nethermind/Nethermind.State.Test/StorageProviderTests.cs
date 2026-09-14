@@ -462,6 +462,33 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>Only <c>IStorageTree.IsKnownEmpty</c> may suppress reads for missing slots.</summary>
+    [Test]
+    public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = new(new UnknownEmptinessScopeProvider(ctx.StateProvider.ScopeProvider), LogManager);
+
+        Hash256 stateRoot;
+        using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+            provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            stateRoot = provider.StateRoot;
+        }
+
+        using (IDisposable _ = provider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject))
+        {
+            provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 firstSlot);
+            provider.Get(new StorageCell(ctx.Address1, 2), out UInt256 secondSlot);
+            Assert.That(firstSlot, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+            Assert.That(secondSlot, Is.EqualTo(new UInt256(_values[2], isBigEndian: true)));
+        }
+    }
+
     [Test]
     public void Storage_root_collect_recomputes_all_changed_contracts_amid_warm_reads()
     {
@@ -1809,6 +1836,8 @@ public class StorageProviderTests(bool useFlat)
     {
         PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
 
         using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
@@ -1816,9 +1845,9 @@ public class StorageProviderTests(bool useFlat)
         ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), new UInt256(_values[1], isBigEndian: true));
 
         if (populator)
-            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+            trieWarmupSession.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
         else
-            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
+            trieWarmupSession.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
     }
 
     private class Context : IDisposable
@@ -1888,9 +1917,9 @@ public class StorageProviderTests(bool useFlat)
     private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
     {
 
-        public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
+        public bool HasRoot(BlockHeader baseBlock, BlockHeader targetBlock) => scopeProvider.HasRoot(baseBlock, targetBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, BlockHeader targetBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, targetBlock, metrics), writtenData);
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {
@@ -1969,6 +1998,51 @@ public class StorageProviderTests(bool useFlat)
     {
         Snapshot,
         ResetKeepingBlockChanges,
+    }
+
+    private sealed class UnknownEmptinessScopeProvider(IWorldStateScopeProvider baseProvider) : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader baseBlock, BlockHeader targetBlock) => baseProvider.HasRoot(baseBlock, targetBlock);
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, BlockHeader targetBlock, LocalMetrics metrics) =>
+            new ScopeDecorator(baseProvider.BeginScope(baseBlock, null, metrics));
+
+        private sealed class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope) : IWorldStateScopeProvider.IScope
+        {
+            public Hash256 RootHash => baseScope.RootHash;
+
+            public void UpdateRootHash() => baseScope.UpdateRootHash();
+
+            public Account Get(Address address) => baseScope.Get(address);
+
+            public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
+
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
+                => baseScope.HintBal(bal, sink);
+
+            public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
+                new StorageTreeDecorator(baseScope.CreateStorageTree(address));
+
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
+                baseScope.StartWriteBatch(estimatedAccountNum);
+
+            public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
+
+            public void Dispose() => baseScope.Dispose();
+        }
+
+        private sealed class StorageTreeDecorator(IWorldStateScopeProvider.IStorageTree baseStorageTree) : IWorldStateScopeProvider.IStorageTree
+        {
+            public Hash256 RootHash => baseStorageTree.RootHash;
+
+            public bool IsKnownEmpty => false;
+
+            public void Get(in UInt256 index, out UInt256 value) => baseStorageTree.Get(in index, out value);
+
+            public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
+        }
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer

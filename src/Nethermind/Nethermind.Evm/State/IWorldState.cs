@@ -25,13 +25,16 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 
-    IDisposable BeginScope(BlockHeader? baseBlock);
+    /// <param name="baseBlock"><inheritdoc cref="IWorldStateScopeProvider.HasRoot" path="/param[@name='baseBlock']"/></param>
+    /// <param name="targetBlock"><inheritdoc cref="IWorldStateScopeProvider.HasRoot" path="/param[@name='targetBlock']"/></param>
+    IDisposable BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock = null);
     Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
-    bool HasStateForBlock(BlockHeader? baseBlock);
+    /// <inheritdoc cref="IWorldStateScopeProvider.HasRoot"/>
+    bool HasStateForBlock(BlockHeader? baseBlock, BlockHeader? targetBlock = null);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell.

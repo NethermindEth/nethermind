@@ -937,7 +937,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _backend = Provider.CurrentScope.CreateStorageTree(Address);
 
-            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            bool isEmpty = _backend.IsKnownEmpty;
             if (!_storageRootSeen)
             {
                 _storageRootSeen = true;
@@ -1047,15 +1047,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
-                BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
+                // Reads must continue through the uncleared tree until the write batch is disposed.
+                BlockChange.UnmarkClear();
             }
 
-            // Inserts/updates must be applied before deletes. Final root is identical regardless of order
-            // (an MPT is canonical for its key set), but a delete can collapse a branch (compression) which needs
-            // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
-            // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
-            // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
-            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+            // Delete last to match stateless verifiers and avoid resolving siblings after branch compression.
+            // Deletes are rare, so rent the pooled array only when the first one is added.
 
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 

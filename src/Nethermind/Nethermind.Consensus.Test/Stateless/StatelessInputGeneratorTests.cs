@@ -148,7 +148,7 @@ public class StatelessInputGeneratorTests
             block.Header.Hash = block.Header.CalculateHash();
             StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
             using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
-            using IDisposable scope = env.WorldState.BeginScope(headers[^1]);
+            using IDisposable scope = env.WorldState.BeginScope(headers[^1], block.Header);
 
             (Block processed, _) = env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
                 NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
@@ -228,7 +228,7 @@ public class StatelessInputGeneratorTests
             {
                 ExecutionRequestsProcessorFactory = ExecutionRequestsProcessorFactory.Instance
             };
-            using IDisposable scope = env.WorldState.BeginScope(parent);
+            using IDisposable scope = env.WorldState.BeginScope(parent, suggested.Header);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
             Assert.That(block.ExecutionRequests, Has.Length.EqualTo(amsterdam ? 5 : 3));

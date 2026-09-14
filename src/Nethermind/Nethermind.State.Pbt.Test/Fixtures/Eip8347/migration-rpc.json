@@ -1,0 +1,34 @@
+{
+  "inactive": {
+    "phase": "inactive",
+    "binary": null,
+    "merkle": null
+  },
+  "prefork": {
+    "phase": "running",
+    "binary": {
+      "phase": "synced",
+      "cursor": 3,
+      "cursorHash": "0x0fbcf09dbbb680373dc98cf370b0c05f417a1ad582449e3809b87e0b6ce5aaf8",
+      "shadowRoot": "0x22c9e3dd8ae32d6b7dc7811eab09036809cceabaf6a5d46606b1dc85e297664e",
+      "error": ""
+    },
+    "merkle": null
+  },
+  "stalled": {
+    "phase": "running",
+    "binary": {
+      "phase": "stalled",
+      "cursor": 0,
+      "cursorHash": "0x35091d8791b6a548f2b95f4e8c0ad60efae033f4ccddbf58c60be1b36a107fce",
+      "shadowRoot": "0xd7936293b851534fa6af126bdc2f5db471069aeea9b614856e0e1e871524522e",
+      "error": "BAL catch-up is stalled; required canonical data is unavailable."
+    },
+    "merkle": null
+  },
+  "done": {
+    "phase": "done",
+    "binary": null,
+    "merkle": null
+  }
+}

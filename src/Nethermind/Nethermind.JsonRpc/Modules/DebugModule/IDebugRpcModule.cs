@@ -19,6 +19,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 [RpcModule(ModuleType.Debug)]
 public interface IDebugRpcModule : IRpcModule
 {
+    [JsonRpcMethod(Description = "Returns EIP-8347 migration progress (debug telemetry only).", IsImplemented = true, IsSharable = true)]
+    ResultWrapper<MigrationProgressForRpc> debug_migrationProgress();
+
+    [JsonRpcMethod(Description = "Returns a retained shadow state root by block hash, or null when unavailable.", IsImplemented = true, IsSharable = true)]
+    ResultWrapper<Hash256?> debug_shadowStateRoot(Hash256 blockHash);
+
     [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 

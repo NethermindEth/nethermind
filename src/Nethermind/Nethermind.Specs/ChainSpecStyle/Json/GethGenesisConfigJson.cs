@@ -42,6 +42,9 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Eip155Block { get; set; }
     public ulong? Eip158Block { get; set; }
 
+    /// <summary>EIP-8347 activation Unix timestamp in seconds; null disables activation.</summary>
+    public ulong? BinaryTrieTime { get; set; }
+
     public ulong? TangerineWhistleBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? SpuriousDragonBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? ByzantiumBlock { get => GetBlock(); set => SetBlock(value); }
