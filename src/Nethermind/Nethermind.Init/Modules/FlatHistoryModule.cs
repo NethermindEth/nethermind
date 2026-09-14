@@ -70,7 +70,6 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryWalkVerificationCoordinator>()
             .AddStep(typeof(StartHistoryWalkVerification))
             .AddSingleton<TransactionChangesetIndex>()
-            .AddScoped<ProcessingHistoryBlockExecutor.Components>()
             .AddSingleton<IHistoryBlockExecutorFactory, ProcessingHistoryBlockExecutorFactory>()
             .AddSingleton<TransactionChangesetBuilder>()
             .AddStep(typeof(StartTransactionChangesetBuilder))

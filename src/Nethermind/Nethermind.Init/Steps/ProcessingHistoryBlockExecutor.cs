@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.Evm.State;
+using Nethermind.Core.Container;
 using Nethermind.Evm.Tracing;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
@@ -17,7 +19,8 @@ namespace Nethermind.Init.Steps;
 /// nothing it touches is shared with the processing of the chain or with another executor.</summary>
 public sealed class ProcessingHistoryBlockExecutor(
     IBlockTree blockTree,
-    IOverridableEnv<ProcessingHistoryBlockExecutor.Components> processingEnv,
+    IOverridableEnv processingEnv,
+    BlockchainProcessorFacade processor,
     ILifetimeScope scope) : IHistoryBlockExecutor
 {
     public bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken)
@@ -28,21 +31,33 @@ public sealed class ProcessingHistoryBlockExecutor(
         BlockHeader? parent = blockTree.FindHeader(toExecute.Header.ParentHash, BlockTreeLookupOptions.None);
         if (parent is null) return false;
 
-        using Scope<Components> processing = processingEnv.BuildAndOverride(parent, null);
-        processing.Component.BlockchainProcessor.Process(toExecute, TraceProcessingOptions.ReadOnlyReplay, tracer, cancellationToken);
+        using IDisposable processing = processingEnv.BuildAndOverride(parent);
+        processor.Process(toExecute, TraceProcessingOptions.ReadOnlyReplay, tracer, cancellationToken);
         return true;
     }
 
-    public void Dispose() => scope.Dispose();
-
-    public record Components(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);
+    public void Dispose()
+    {
+        scope.Dispose();
+        (processingEnv as IDisposable)?.Dispose();
+    }
 }
 
-public class ProcessingHistoryBlockExecutorFactory(IBlockTree blockTree, ILifetimeScope parent) : IHistoryBlockExecutorFactory
+/// <summary>Builds each executor its own processing scope, shaped like the one the debug RPC module traces in.</summary>
+public class ProcessingHistoryBlockExecutorFactory(
+    IBlockTree blockTree,
+    IOverridableEnvFactory envFactory,
+    ILifetimeScope rootLifetimeScope,
+    IBlockValidationModule[] validationModules) : IHistoryBlockExecutorFactory
 {
     public IHistoryBlockExecutor Create()
     {
-        ILifetimeScope scope = parent.BeginLifetimeScope();
-        return new ProcessingHistoryBlockExecutor(blockTree, scope.Resolve<IOverridableEnv<ProcessingHistoryBlockExecutor.Components>>(), scope);
+        IOverridableEnv env = envFactory.Create();
+        ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
+            .AddModule(validationModules)
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddModule(env));
+        return new ProcessingHistoryBlockExecutor(blockTree, env, scope.Resolve<BlockchainProcessorFacade>(), scope);
     }
 }
