@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -24,8 +23,8 @@ public class TransientStorageBenchmark
     private IWorldState _worldState = null!;
     private StorageCell _fixedCell;
     private StorageCell[] _varyingCells = null!;
-    private byte[] _word = null!;
-    private byte[] _otherWord = null!;
+    private UInt256 _word;
+    private UInt256 _otherWord;
 
     [GlobalSetup]
     public void Setup()
@@ -33,10 +32,8 @@ public class TransientStorageBenchmark
         _worldState = TestWorldStateFactory.CreateForTest();
         _worldState.BeginScope(IWorldState.PreGenesis);
 
-        _word = new byte[32];
-        _word[31] = 7;
-        _otherWord = new byte[32];
-        _otherWord[31] = 9;
+        _word = (UInt256)7;
+        _otherWord = (UInt256)9;
 
         _fixedCell = new StorageCell(TestItem.AddressA, (UInt256)1);
         _varyingCells = new StorageCell[OperationsPerInvoke];
@@ -51,10 +48,9 @@ public class TransientStorageBenchmark
     public void Store_SameWord()
     {
         _worldState.Reset();
-        ReadOnlySpan<byte> word = _word;
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
-            _worldState.SetTransientState(in _fixedCell, word);
+            _worldState.SetTransientState(in _fixedCell, in _word);
         }
     }
 
@@ -65,7 +61,7 @@ public class TransientStorageBenchmark
         _worldState.Reset();
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
-            _worldState.SetTransientState(in _fixedCell, (ReadOnlySpan<byte>)((i & 1) == 0 ? _word : _otherWord));
+            _worldState.SetTransientState(in _fixedCell, (i & 1) == 0 ? _word : _otherWord);
         }
     }
 
@@ -74,10 +70,9 @@ public class TransientStorageBenchmark
     public void Store_VaryingKeys()
     {
         _worldState.Reset();
-        ReadOnlySpan<byte> word = _word;
         for (int i = 0; i < OperationsPerInvoke; i++)
         {
-            _worldState.SetTransientState(in _varyingCells[i], word);
+            _worldState.SetTransientState(in _varyingCells[i], in _word);
         }
     }
 }
