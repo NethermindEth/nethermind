@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
