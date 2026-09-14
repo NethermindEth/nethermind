@@ -6,7 +6,7 @@ This is a small, opt-in experiment for checking whether Nethermind's block-proce
 - `boost`: request the same managed priority and apply a Linux native boost to the processing thread: try nice `-20`, then fall back to `min(original, -6)` when the stronger request is denied, restoring the original value when the scope ends.
 - `nice`: the historical prototype arm, which temporarily sets nice to `-5`; its old timing results do not measure the boost policy.
 
-All enabled modes receive Docker's `SYS_NICE` capability. An explicit `off` is forwarded to Nethermind without that capability; an absent EXPB mode leaves the container arguments unchanged, so Linux Nethermind uses its default best-effort boost mode. These probes are scoped to the synchronous processing thread. Restoration is intentional because .NET thread nice values belong to native threads and must not leak through pooled-thread reuse.
+All enabled modes receive Docker's `SYS_NICE` capability. An explicit `off` is forwarded to Nethermind without that capability; an absent or whitespace-only EXPB mode leaves the container arguments unchanged, so the priority probe remains off by default. These probes are scoped to the synchronous processing thread. Restoration is intentional because .NET thread nice values belong to native threads and must not leak through pooled-thread reuse.
 
 ## A/B dispatch
 

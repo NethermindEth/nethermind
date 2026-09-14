@@ -77,7 +77,7 @@ public class ExpbPriorityProbeTests
     }
 
     [Test]
-    public void Nice_failure_is_logged_and_restore_is_attempted()
+    public void Nice_failure_is_logged_and_probe_is_disabled()
     {
         FakeNative native = new() { FailApply = true };
         TestLogger logger = new();
@@ -89,12 +89,47 @@ public class ExpbPriorityProbeTests
             scope.CaptureDuring();
         }
 
+        int callCount = native.CallCount;
+        using (probe.Enter())
+        {
+        }
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -5, 0 }));
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -5 }));
+            Assert.That(native.CallCount, Is.EqualTo(callCount));
             Assert.That(logger.LogList, Has.One.Items);
             Assert.That(logger.LogList[0], Does.Contain("success=false"));
             Assert.That(logger.LogList[0], Does.Contain("setpriority_apply"));
+        }
+    }
+
+    [Test]
+    public void Nice_transient_failure_is_retried()
+    {
+        FakeNative native = new() { FailApplyOnce = true, SetNiceError = 5 };
+        TestLogger logger = new();
+        ExpbPriorityProbe probe = new(ExpbPriorityMode.Nice, native, new ILogger(logger));
+
+        using (ExpbPriorityProbe.Scope scope = probe.Enter())
+        using (ThreadExtensions.Disposable handle = System.Threading.Thread.CurrentThread.SetHighestPriority())
+        {
+            scope.CaptureDuring();
+        }
+
+        using (ExpbPriorityProbe.Scope scope = probe.Enter())
+        using (ThreadExtensions.Disposable handle = System.Threading.Thread.CurrentThread.SetHighestPriority())
+        {
+            scope.CaptureDuring();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -5, -5, 0 }));
+            Assert.That(native.CurrentNice, Is.Zero);
+            Assert.That(logger.LogList, Has.Exactly(2).Items);
+            Assert.That(logger.LogList[0], Does.Contain("errno=5"));
+            Assert.That(logger.LogList[1], Does.Contain("success=true"));
         }
     }
 
@@ -132,14 +167,22 @@ public class ExpbPriorityProbeTests
     }
 
     [Test]
-    public void Boost_reports_both_denied_attempts_without_throwing()
+    public void Boost_reports_both_denied_attempts_without_throwing([Values(1, 13)] int denialError)
     {
-        FakeNative native = new() { FailBoostPrimary = true, FailBoostFallback = true };
-        TestLogger logger = RunProbe(ExpbPriorityMode.Boost, native);
+        FakeNative native = new() { FailBoostPrimary = true, FailBoostFallback = true, SetNiceError = denialError };
+        TestLogger logger = new();
+        ExpbPriorityProbe probe = new(ExpbPriorityMode.Boost, native, new ILogger(logger));
+        using (ExpbPriorityProbe.Scope scope = probe.Enter())
+        using (ThreadExtensions.Disposable handle = System.Threading.Thread.CurrentThread.SetHighestPriority())
+        {
+            scope.CaptureDuring();
+        }
+        int callCount = native.CallCount;
+        int logCount = logger.LogList.Count;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -6, 0 }));
+            Assert.That(native.SetNiceValues, Is.EqualTo(new[] { -20, -6 }));
             Assert.That(native.CurrentNice, Is.Zero);
             Assert.That(logger.LogList, Has.One.Items);
             Assert.That(logger.LogList[0], Does.Contain("mode=boost"));
@@ -148,6 +191,13 @@ public class ExpbPriorityProbeTests
             Assert.That(logger.LogList[0], Does.Contain("setpriority_fallback"));
             Assert.That(logger.LogList[0], Does.Contain("success=false"));
         }
+
+        using (probe.Enter())
+        {
+        }
+
+        Assert.That(native.CallCount, Is.EqualTo(callCount));
+        Assert.That(logger.LogList, Has.Count.EqualTo(logCount));
     }
 
     [Test]
@@ -324,7 +374,9 @@ public class ExpbPriorityProbeTests
     }
 
     [TestCase(null, false, 0)]
-    [TestCase(null, true, 3)]
+    [TestCase(null, true, 0)]
+    [TestCase(" ", false, 0)]
+    [TestCase("\t", true, 0)]
     [TestCase("off", true, 0)]
     [TestCase("observe", false, 1)]
     [TestCase("nice", false, 2)]
@@ -335,6 +387,24 @@ public class ExpbPriorityProbeTests
     [Test]
     public void Parse_mode_rejects_unknown_value()
         => Assert.That(() => ExpbPriorityProbe.ParseMode("invalid"), Throws.InvalidOperationException);
+
+    [TestCase("invalid", true)]
+    [TestCase("boost", false)]
+    public void From_environment_disables_invalid_or_unsupported_modes(string rawMode, bool isLinux)
+    {
+        TestLogger logger = new();
+
+        ExpbPriorityProbe probe = ExpbPriorityProbe.FromEnvironment(rawMode, isLinux, new ILogger(logger));
+        using (probe.Enter())
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Has.One.Items);
+            Assert.That(logger.LogList[0], Does.Contain("disabled"));
+        }
+    }
 
     [Test]
     public void Missing_native_entry_point_is_logged_without_throwing()
@@ -457,12 +527,14 @@ public class ExpbPriorityProbeTests
         private int _getThreadIdCalls;
 
         public bool FailApply { get; init; }
+        public bool FailApplyOnce { get; init; }
         public bool FailRestore { get; init; }
         public bool ThrowOnGetThreadId { get; init; }
         public bool FailBoostPrimary { get; init; }
         public bool FailBoostFallback { get; init; }
         public bool MismatchApplyReadback { get; init; }
         public bool MismatchBoostFallbackReadback { get; init; }
+        public int SetNiceError { get; init; } = 13;
         public int FailPolicyAfterCall { get; init; }
         public int ThreadIdAfterEnter { get; init; } = 42;
         public int InitialNice { get; init; }
@@ -470,6 +542,7 @@ public class ExpbPriorityProbeTests
         public List<int> SetNiceValues { get; } = [];
         public int CallCount { get; private set; }
         private bool _niceInitialized;
+        private bool _applyFailed;
         private int _policyCallCount;
 
         public bool TryGetThreadId(out int threadId, out int error)
@@ -521,11 +594,13 @@ public class ExpbPriorityProbeTests
             CallCount++;
             SetNiceValues.Add(nice);
             if ((FailApply && nice == -5)
+                || (FailApplyOnce && !_applyFailed && nice == -5)
                 || (FailBoostPrimary && nice == -20)
                 || (FailBoostFallback && nice == -6)
                 || (FailRestore && nice == InitialNice))
             {
-                error = 13;
+                _applyFailed = true;
+                error = SetNiceError;
                 return false;
             }
 

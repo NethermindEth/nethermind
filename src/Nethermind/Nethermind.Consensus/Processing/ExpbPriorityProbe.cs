@@ -39,6 +39,7 @@ internal sealed class ExpbPriorityProbe
     private readonly HashSet<int> _loggedThreadIds = [];
     private readonly HashSet<int> _loggedFailureThreadIds = [];
     private const int MaxSuccessfulThreadRecords = 64;
+    private int _disabled;
     private bool _loggedUnknownThread;
     private bool _loggedUnknownFailure;
 
@@ -52,13 +53,32 @@ internal sealed class ExpbPriorityProbe
     internal static ExpbPriorityProbe FromEnvironment(ILogger logger)
     {
         string? rawMode = Environment.GetEnvironmentVariable(EnvironmentVariable);
-        bool isLinux = OperatingSystem.IsLinux();
-        ExpbPriorityMode mode = ParseMode(rawMode, isLinux);
+        return FromEnvironment(rawMode, OperatingSystem.IsLinux(), logger);
+    }
+
+    internal static ExpbPriorityProbe FromEnvironment(string? rawMode, bool isLinux, ILogger logger)
+    {
+        ExpbPriorityMode mode;
+        try
+        {
+            mode = ParseMode(rawMode, isLinux);
+        }
+        catch (InvalidOperationException exception)
+        {
+            mode = ExpbPriorityMode.Off;
+            if (logger.IsWarn)
+            {
+                logger.Warn($"{exception.Message} Priority probe is disabled.");
+            }
+        }
 
         if (mode is not ExpbPriorityMode.Off && !isLinux)
         {
-            throw new PlatformNotSupportedException(
-                $"{EnvironmentVariable}={rawMode} requires Linux; unset the variable or set it to off on this platform.");
+            mode = ExpbPriorityMode.Off;
+            if (logger.IsWarn)
+            {
+                logger.Warn($"{EnvironmentVariable}={rawMode} requires Linux; priority probe is disabled.");
+            }
         }
 
         return new ExpbPriorityProbe(mode, LinuxExpbPriorityNative.Instance, logger);
@@ -71,7 +91,7 @@ internal sealed class ExpbPriorityProbe
     {
         if (string.IsNullOrWhiteSpace(rawMode) || rawMode.Equals("off", StringComparison.OrdinalIgnoreCase))
         {
-            return string.IsNullOrWhiteSpace(rawMode) && isLinux ? ExpbPriorityMode.Boost : ExpbPriorityMode.Off;
+            return ExpbPriorityMode.Off;
         }
 
         if (rawMode.Equals("observe", StringComparison.OrdinalIgnoreCase))
@@ -95,7 +115,7 @@ internal sealed class ExpbPriorityProbe
 
     internal Scope Enter()
     {
-        if (_mode is ExpbPriorityMode.Off)
+        if (_mode is ExpbPriorityMode.Off || Volatile.Read(ref _disabled) != 0)
         {
             return default;
         }
@@ -130,7 +150,6 @@ internal sealed class ExpbPriorityProbe
 
         if (_mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Boost)
         {
-            state.SetAttempted = true;
             int requestedNice = _mode is ExpbPriorityMode.Boost ? BoostPrimaryNice : RequestedNice;
             if (_native.TrySetNice(state.ThreadId, requestedNice, out error))
             {
@@ -148,6 +167,10 @@ internal sealed class ExpbPriorityProbe
             else if (_mode is ExpbPriorityMode.Nice)
             {
                 state.Failure = FormatError("setpriority_apply", error);
+                if (IsPermissionDenied(error))
+                {
+                    Volatile.Write(ref _disabled, 1);
+                }
             }
             else
             {
@@ -169,6 +192,10 @@ internal sealed class ExpbPriorityProbe
                 else
                 {
                     state.Failure = $"{FormatError("setpriority_primary", primaryError)}; {FormatError("setpriority_fallback", error)}";
+                    if (IsPermissionDenied(primaryError) && IsPermissionDenied(error))
+                    {
+                        Volatile.Write(ref _disabled, 1);
+                    }
                 }
             }
         }
@@ -297,7 +324,7 @@ internal sealed class ExpbPriorityProbe
                 }
                 else
                 {
-                    if ((_state.Mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Boost) && _state.SetAttempted
+                    if ((_state.Mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Boost) && _state.AppliedNice
                         && !_owner._native.TrySetNice(_state.ThreadId, _state.NiceBefore, out error))
                     {
                         _state.Failure ??= FormatError("setpriority_restore", error);
@@ -347,6 +374,8 @@ internal sealed class ExpbPriorityProbe
     internal static string FormatError(string operation, int error)
         => error == NativeApiUnavailableError ? $"{operation} unavailable" : $"{operation} errno={error}";
 
+    private static bool IsPermissionDenied(int error) => error is 1 or 13;
+
     internal sealed class ProbeState
     {
         internal ProbeState(ExpbPriorityMode mode)
@@ -370,7 +399,6 @@ internal sealed class ExpbPriorityProbe
         internal int NiceDuring;
         internal int NiceAfter;
         internal string? ManagedDuring;
-        internal bool SetAttempted;
         internal bool AppliedNice;
         internal int AppliedNiceValue;
         internal string? Failure;
