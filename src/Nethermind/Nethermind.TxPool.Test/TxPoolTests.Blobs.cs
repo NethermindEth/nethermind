@@ -5023,11 +5023,11 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: FixtureHeadTimestamp + 1_000, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(FixtureHeadTimestamp + 1_500).TestObject);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
                 "an expired blob-carrying frame tx must be evicted from the blob pool on a new head");
@@ -5035,7 +5035,7 @@ namespace Nethermind.TxPool.Test
 
         /// <summary>Head timestamp the expiry cases below are stated against, so each deadline names its own
         /// side of the boundary rather than repeating a literal the head could drift away from.</summary>
-        private const ulong ExpiryHeadTimestamp = 1_500;
+        private const ulong ExpiryHeadTimestamp = FixtureHeadTimestamp + 1_500;
 
         // With persistent storage the pool holds the frameless light record, not the submitted transaction, so
         // the sweep reads the deadline that record carries: built at admission, or decoded off disk after a restart.
@@ -5084,7 +5084,7 @@ namespace Nethermind.TxPool.Test
             // Separate senders: evicting a blob tx also evicts the rest of its own bucket, to leave no nonce gap.
             foreach (Address sender in (Address[])[TestItem.AddressA, TestItem.AddressB])
             {
-                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: FixtureHeadTimestamp + 1_000, withSidecar: true);
                 tx.SenderAddress = sender;
                 tx.Hash = tx.CalculateHash();
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -5095,7 +5095,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the restart must evict the stale record and keep the other");
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(FixtureHeadTimestamp + 1_500).TestObject);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
                 "the surviving transaction must still expire out of the pool");
