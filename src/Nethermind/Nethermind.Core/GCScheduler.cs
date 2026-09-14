@@ -24,6 +24,7 @@ public sealed class GCScheduler
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
+    private static long _latencySensitiveRequests;
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
@@ -142,6 +143,18 @@ public sealed class GCScheduler
     public static void MarkGCResumed() => Volatile.Write(ref _canPerformGC, CanPerformGC);
 
     /// <summary>
+    /// Records that a latency-sensitive request, such as an engine payload, has started arriving.
+    /// </summary>
+    /// <remarks>
+    /// Raised before the request's parameters are bound, so collections scheduled after the previous block can
+    /// stand down before that work begins. A change in <see cref="LatencySensitiveRequests"/> is the signal.
+    /// </remarks>
+    public static void MarkLatencySensitiveRequest() => Interlocked.Increment(ref _latencySensitiveRequests);
+
+    /// <summary>Number of latency-sensitive requests seen so far.</summary>
+    public static long LatencySensitiveRequests => Volatile.Read(ref _latencySensitiveRequests);
+
+    /// <summary>
     /// Determines and performs the appropriate type of garbage collection.
     /// </summary>
     private void PerformFullGC()
@@ -187,9 +200,13 @@ public sealed class GCScheduler
     /// <param name="mode">The garbage collection mode.</param>
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
-    /// <param name="trimNativeMemory">Whether to hand freed native allocator memory back to the OS afterwards.</param>
     /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
-    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory = true)
+    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
+        GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
+
+    /// <inheritdoc cref="GCCollect(int, GCCollectionMode, bool, bool)"/>
+    /// <param name="trimNativeMemory">Whether to hand freed native allocator memory back to the OS afterwards.</param>
+    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {

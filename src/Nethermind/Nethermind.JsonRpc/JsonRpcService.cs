@@ -15,6 +15,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -50,6 +51,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             }
 
             return ValueTask.FromResult<JsonRpcResponse>(errorResponse);
+        }
+
+        if (context.IsAuthenticated && methodName.StartsWith("engine_newPayload", StringComparison.Ordinal))
+        {
+            // Binding a payload's parameters is the bulk of the work before block processing; GC work scheduled
+            // after the previous block must stand down before it starts, not once the module is reached.
+            GCScheduler.MarkLatencySensitiveRequest();
         }
 
         try
