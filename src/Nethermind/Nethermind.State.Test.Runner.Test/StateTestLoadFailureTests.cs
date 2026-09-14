@@ -7,17 +7,28 @@ using System.IO;
 using System.Text.Json;
 using Ethereum.Test.Base;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Test.Runner;
 using NUnit.Framework;
 
 namespace Nethermind.State.Test.Runner.Test;
 
 /// <summary>
-/// A state-test fixture that cannot be parsed must be reported as a failure rather than vanish
-/// from the run, which previously left <c>nethtest --stateTest</c> printing an empty result array.
+/// How <c>nethtest --stateTest</c> treats a fixture the loader struggles with: one that cannot be
+/// parsed must be reported as a failure rather than vanish from the run, which previously left an
+/// empty result array, and one that merely pins its own signature must load and run.
 /// </summary>
 public class StateTestLoadFailureTests
 {
+    private const string Sender = "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b";
+
+    /// <summary>One past the largest <c>r</c> or <c>s</c> a valid secp256k1 signature can carry.</summary>
+    private static readonly UInt256 Secp256k1N =
+        UInt256.Parse("115792089237316195423570985008687907852837564279074904382605163141518161494337");
+
     private string _directory = null!;
 
     [SetUp]
@@ -47,11 +58,23 @@ public class StateTestLoadFailureTests
 
     // frontier/validation/transaction/bad_v_r_s pins an explicit v/r/s, so it carries no secretKey the
     // loader could sign with. Building a private key out of the missing one threw, and until load
-    // failures were reported the whole fixture just vanished from the run.
+    // failures were reported the whole fixture just vanished from the run. The two cases are the two
+    // branches such a fixture can take, since whether the pinned signature survives decoding decides
+    // which transaction the runner ends up with.
     [Test]
-    public void Fixture_without_a_secret_key_loads_as_an_intentionally_invalid_transaction()
+    public void Fixture_without_a_secret_key_loads([Values] bool signatureSurvivesDecoding)
     {
-        const string sender = "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b";
+        // An out-of-range r is one of the signatures bad_v_r_s pins and it still decodes, so the
+        // fixture's own transaction reaches the runner and tx validation is what rejects it. A v
+        // below 27 does not decode, and the template standing in for it must stay invalid rather
+        // than become a valid transfer from the named sender.
+        string post = signatureSurvivesDecoding
+            ? $$"""
+                "expectException": "TransactionException.INVALID_SIGNATURE_VRS",
+                      "txbytes": "{{PinnedOutOfRangeSignatureTxBytes()}}",
+                """
+            : string.Empty;
+
         string file = Path.Combine(_directory, "bad_v_r_s.json");
         File.WriteAllText(file, $$"""
             {
@@ -66,7 +89,7 @@ public class StateTestLoadFailureTests
                 },
                 "pre": {},
                 "transaction": {
-                  "sender": "{{sender}}",
+                  "sender": "{{Sender}}",
                   "nonce": "0x00",
                   "gasPrice": "0x0a",
                   "gasLimit": ["0x5208"],
@@ -77,6 +100,7 @@ public class StateTestLoadFailureTests
                 "post": {
                   "Frontier": [
                     {
+                      {{post}}
                       "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
                       "logs": "0x0000000000000000000000000000000000000000000000000000000000000000",
                       "indexes": { "data": 0, "gas": 0, "value": 0 }
@@ -93,8 +117,11 @@ public class StateTestLoadFailureTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tests[0].LoadFailure, Is.Null);
-            Assert.That(tests[0].Transaction.SenderAddress, Is.EqualTo(Address.Zero),
-                "an unsignable template must stay invalid rather than become a valid transfer from the named sender");
+            Assert.That(tests[0].Transaction.SenderAddress,
+                Is.EqualTo(signatureSurvivesDecoding ? new Address(Sender) : Address.Zero));
+            Assert.That(new UInt256(tests[0].Transaction.Signature!.RAsSpan, true),
+                Is.EqualTo(signatureSurvivesDecoding ? Secp256k1N : UInt256.One),
+                "the fixture's own signature reaches the runner only when it decodes");
         }
     }
 
@@ -111,5 +138,25 @@ public class StateTestLoadFailureTests
             Assert.That(result.Pass, Is.False);
             Assert.That(result.Error, Is.EqualTo("Failed to load: boom"));
         }
+    }
+
+    /// <summary>
+    /// A legacy transaction carrying an out-of-range <c>r</c>. The RLP decoder range-checks only
+    /// <c>v</c>, so this signature reaches the runner intact and transaction validation is what
+    /// rejects it - unlike a <c>v</c> below 27, which the decoder refuses.
+    /// </summary>
+    private static string PinnedOutOfRangeSignatureTxBytes()
+    {
+        Transaction transaction = new()
+        {
+            Nonce = 0,
+            GasPrice = 10,
+            GasLimit = 21000,
+            To = new Address("0x1000000000000000000000000000000000000000"),
+            Value = 1,
+            Signature = new Signature(Secp256k1N, UInt256.One, 27)
+        };
+
+        return Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
     }
 }
