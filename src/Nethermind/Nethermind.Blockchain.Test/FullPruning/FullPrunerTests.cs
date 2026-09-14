@@ -147,9 +147,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(false, PruningStatus.Starting, 0, TestName = "AvailableSpaceCheckEnabled_false_skips_disk_space_probe_and_starts_pruning_despite_low_space")]
-    [TestCase(true, PruningStatus.NotEnoughDiskSpace, 1, TestName = "AvailableSpaceCheckEnabled_true_probes_disk_space_and_blocks_pruning_on_low_space")]
-    public void available_space_check_enabled_controls_whether_disk_space_is_probed(bool availableSpaceCheckEnabled, PruningStatus expectedStatus, int expectedWarnings)
+    [TestCase(false, PruningStatus.Starting, 0, TestName = "available_space_check_disabled_skips_the_probe_and_starts_pruning_despite_low_space")]
+    [TestCase(true, PruningStatus.NotEnoughDiskSpace, 1, TestName = "available_space_check_enabled_probes_and_blocks_pruning_on_low_space")]
+    public async Task available_space_check_enabled_controls_whether_disk_space_is_probed(bool availableSpaceCheckEnabled, PruningStatus expectedStatus, int expectedWarnings)
     {
         IChainEstimations chainEstimations = Substitute.For<IChainEstimations>();
         chainEstimations.PruningSize.Returns(1000L);
@@ -169,7 +169,16 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         PruningTriggerEventArgs? capturedArgs = null;
         test.PruningTrigger.Prune += (_, e) => capturedArgs = e;
 
-        test.TriggerPruningViaEvent();
+        if (availableSpaceCheckEnabled)
+        {
+            test.TriggerPruningViaEvent();
+        }
+        else
+        {
+            // Skipping the probe actually starts pruning, so run it to the end: an abandoned run
+            // parks on WaitForMainChainChange forever, keeping the databases and the logger alive.
+            await test.RunFullPruning();
+        }
 
         using (Assert.EnterMultipleScope())
         {
