@@ -145,36 +145,28 @@ public class SnapshotTests
         }
     }
 
-    [TestCase(256, false)]
-    [TestCase(8_192, true)]
-    public void AddressOwnedStorageNodesRetainBoundedInnerCapacityAfterQuiescentClear(
-        int requestedCapacity,
-        bool shouldShrink)
+    [TestCase(256)]
+    [TestCase(8_192)]
+    public void AddressNodesResetForPoolingKeepsSmallCapacityAndDropsLargeCapacity(int requestedCapacity)
     {
-        AddressStorageNodeDictionary storageNodes = new();
-        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
-        AddressStorageNodeDictionary.AddressNodes original = storageNodes.GetOrAddAddress(addressA);
-        original.EnsureAdditionalCapacity(requestedCapacity);
-        original.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
-        int capacityBeforeClear = original.Nodes.Capacity;
+        AddressStorageNodeDictionary.AddressNodes nodes = new();
+        nodes.EnsureAdditionalCapacity(requestedCapacity);
+        nodes.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+        int capacityBeforeReset = nodes.Nodes.Capacity;
 
-        storageNodes.NoLockClear();
-        AddressStorageNodeDictionary.AddressNodes reused = storageNodes.GetOrAddAddress(addressB);
+        nodes.ResetForPooling();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(original.Nodes, Is.Empty);
-            Assert.That(reused.Nodes, Is.Empty);
+            Assert.That(nodes.Nodes, Is.Empty);
 
-            if (shouldShrink)
+            if (requestedCapacity > 4_096)
             {
-                Assert.That(original.Nodes.Capacity, Is.LessThanOrEqualTo(4_096));
-                Assert.That(original.Nodes.Capacity, Is.LessThan(capacityBeforeClear));
+                Assert.That(nodes.Nodes.Capacity, Is.Zero);
             }
             else
             {
-                Assert.That(original.Nodes.Capacity, Is.EqualTo(capacityBeforeClear));
+                Assert.That(nodes.Nodes.Capacity, Is.EqualTo(capacityBeforeReset));
             }
         }
     }

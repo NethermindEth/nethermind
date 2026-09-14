@@ -106,7 +106,7 @@ public class DataFeed
         }
     }
 
-    /// <summary>Resolves the <c>events</c> query parameter (comma-separated <see cref="EntryType"/> names) to the streamed event types; absent or empty means all of them.</summary>
+    /// <summary>Resolves the <c>events</c> query parameter (comma-separated <see cref="EntryType"/> names) to the streamed event types; absent, empty, or containing no recognized streamed event names means all of them.</summary>
     internal static EntryType[] ParseRequestedEvents(string? events)
     {
         if (string.IsNullOrWhiteSpace(events)) return StreamedEntryTypes;

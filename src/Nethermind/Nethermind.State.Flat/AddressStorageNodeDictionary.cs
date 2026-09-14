@@ -143,6 +143,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
             if (Nodes.Capacity > PooledNodeCapacity)
             {
                 Dictionary<HashedKey<TreePath>, TrieNode> large = Nodes;
+                // Keep a small spare when one exists; otherwise use an empty fallback while the large batch returns to the shared pool.
                 Nodes = _spare ?? [];
                 _spare = null;
                 large.Clear();

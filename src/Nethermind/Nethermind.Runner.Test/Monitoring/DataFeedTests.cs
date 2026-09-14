@@ -127,7 +127,7 @@ public class DataFeedTests
         try
         {
             feed = dataFeed.ProcessingFeedAsync(httpContext, feedCancellation.Token);
-            await responseBody.LogWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await responseBody.NodeDataWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
             blockchainProcessor.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(null, new BlockStatistics());
             await responseBody.ProcessedWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -154,7 +154,7 @@ public class DataFeedTests
 
             if (expectForkChoice)
             {
-                Assert.That(receiptFinder.Received(1).Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()), Is.Not.Null);
+                receiptFinder.Received(1).Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
             }
         }
         finally
@@ -203,7 +203,7 @@ public class DataFeedTests
         private readonly object _lock = new();
         private readonly StringBuilder _content = new();
 
-        public TaskCompletionSource LogWritten { get; } = NewSignal();
+        public TaskCompletionSource NodeDataWritten { get; } = NewSignal();
         public TaskCompletionSource ProcessedWritten { get; } = NewSignal();
         public TaskCompletionSource ForkChoiceWritten { get; } = NewSignal();
 
@@ -254,7 +254,7 @@ public class DataFeedTests
             {
                 _content.Append(Encoding.UTF8.GetString(buffer));
                 string content = _content.ToString();
-                if (content.Contains("event: log", StringComparison.Ordinal)) LogWritten.TrySetResult();
+                if (content.Contains("event: nodeData", StringComparison.Ordinal)) NodeDataWritten.TrySetResult();
                 if (content.Contains("event: processed\ndata: {", StringComparison.Ordinal)) ProcessedWritten.TrySetResult();
                 if (content.Contains("event: forkChoice\ndata: {", StringComparison.Ordinal)) ForkChoiceWritten.TrySetResult();
             }

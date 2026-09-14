@@ -36,7 +36,8 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
         private const int InitialNodeBufferCapacity = 128;
         // A large block's parallel commit fills more buffers than the default pool retains, so the
         // dropped ones re-grew through LOH-sized doublings on every block; retain enough of them,
-        // bounded per buffer so an outlier block cannot pin memory.
+        // bounded per buffer so an outlier block cannot pin memory. The process-wide ceiling is
+        // 256 * 65536 = 16,777,216 cleared node-reference tuples; in-use buffers are not included.
         private const int MaxRetainedNodeBuffers = 256;
         private const int MaxRetainedNodeBufferCapacity = 1 << 16;
         private static readonly ObjectPool<NodeBuffer> NodeBufferPool =
