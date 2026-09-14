@@ -5151,15 +5151,13 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // The persistent pool holds a light record, and it is that record's removal which releases the payer's
-        // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
-        [TestCase(BlobsSupportMode.InMemory, TestName = "the in-memory pool keeps the frames, so the prefix is revalidated")]
-        [TestCase(BlobsSupportMode.StorageWithReorgs, TestName = "the persistent pool holds a frameless record, which revalidation must leave alone")]
-        public async Task Blob_carrying_frame_tx_is_only_revalidated_while_its_prefix_is_still_there(BlobsSupportMode blobsSupport)
+        // EIP-8141 "Revalidation". The persistent pool swaps the transaction for a frameless light record, but
+        // the prefix it was admitted with is still in blob storage, so the sweep reloads it in every blob mode.
+        [TestCase(BlobsSupportMode.InMemory)]
+        [TestCase(BlobsSupportMode.Storage)]
+        [TestCase(BlobsSupportMode.StorageWithReorgs)]
+        public async Task Blob_carrying_frame_tx_whose_prefix_stops_validating_is_evicted_on_a_new_head(BlobsSupportMode blobsSupport)
         {
-            // The persistent pool swaps the transaction for a frameless light record. Simulating a prefix that
-            // is no longer there can only reject, so revalidating one would evict every such transaction on the
-            // first head touching its sender; skipping it leaves the transaction pending instead.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
@@ -5186,11 +5184,8 @@ namespace Nethermind.TxPool.Test
             block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
             await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            bool framesSurvivePooling = blobsSupport == BlobsSupportMode.InMemory;
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(framesSurvivePooling ? 0 : 1),
-                framesSurvivePooling
-                    ? "a pooled prefix that no longer validates must be evicted"
-                    : "a record with no prefix left to judge must be left pending");
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a pooled prefix that no longer validates must be evicted");
         }
 
         [Test]

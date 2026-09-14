@@ -543,15 +543,16 @@ namespace Nethermind.TxPool
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
+        /// A persistent blob pool holds a frameless light record, which is indexed all the same: the set is
+        /// addresses that record carries, and <see cref="RevalidateFrameTransactions"/> reloads the prefix
+        /// from blob storage. Skipping it would exempt every blob-carrying frame transaction from revalidation.
         /// </remarks>
         /// <param name="resolvedPayer">A payer the sweep resolved but did not record, so it is still tracked.</param>
         /// <param name="onlyIfTracked">Set by revalidation, which re-indexes a transaction the pool already holds
         /// rather than admitting one, so an eviction that landed meanwhile is not undone.</param>
         private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false)
         {
-            // Under persistent blob storage the pool holds a frameless light record. There is no prefix left
-            // to re-resolve, so indexing it would only queue a revalidation that must reject it.
-            if (!tx.SupportsFrames || tx.Frames is null) return;
+            if (!tx.SupportsFrames) return;
 
             Address? payer = tx.PayerAddress ?? resolvedPayer;
             bool hasDistinctPayer = payer is not null && payer != tx.SenderAddress;
