@@ -20,11 +20,12 @@ namespace Nethermind.JsonRpc.Modules
 
         /// <summary>
         /// Marks a method that executes the EVM against overridable state, so that it is admitted through the JSON-RPC
-        /// EVM-execution gate (<c>JsonRpc.EvmExecutionConcurrency</c>, <c>JsonRpc.EvmExecutionMaxQueueWaitMs</c>).
+        /// EVM-execution gate (<c>JsonRpc.EvmExecutionMaxQueueWaitMs</c>).
         /// </summary>
         /// <remarks>
-        /// A gated method must not return an <see cref="IStreamableResult"/>: its permit is released when the invocation
-        /// completes, so a result that re-executes while the response is written would run ungated.
+        /// Known result payloads assignable to <see cref="IStreamableResult"/> are rejected during module registration,
+        /// because the permit is released when invocation completes while the response may still execute during writing.
+        /// Object-erased streamable values cannot be identified during registration and are unsupported for gated methods.
         /// </remarks>
         public bool IsEvmExecution { get; set; }
 

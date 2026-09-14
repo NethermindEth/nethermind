@@ -42,7 +42,7 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
 
     /// <summary>Creates a JSON-RPC service using the supplied module provider, logger, and configuration.</summary>
     public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
-        : this(rpcModuleProvider, logManager, jsonRpcConfig, new EvmAdmissionGate(jsonRpcConfig, logManager))
+        : this(rpcModuleProvider, logManager, jsonRpcConfig, new EvmAdmissionGate(jsonRpcConfig))
     {
     }
 
@@ -61,7 +61,11 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
     public void Dispose() => _gate.Dispose();
 
     /// <inheritdoc/>
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken = default)
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context) =>
+        SendRequestAsync(rpcRequest, context, CancellationToken.None);
+
+    /// <inheritdoc/>
+    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken)
     {
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
@@ -145,10 +149,7 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
         // released once the invocation, including any task it returned, has completed.
         using EvmAdmissionGate.Lease lease = await _gate.AdmitAsync(request.ParamsUtf8Length, cancellationToken, allowQueue: CanQueue(request, context));
         cancellationToken.ThrowIfCancellationRequested();
-        JsonRpcResponse response = await ExecuteAsync(request, methodName, method, context);
-        // A streamed result executes while the response is written, after the permit is released (see JsonRpcMethodAttribute.IsEvmExecution).
-        if (response.TryGetStreamableResult(out _) && _logger.IsError) _logger.Error($"{methodName} is admission-gated but returned a streamable result; its execution while the response is written runs without a permit.");
-        return response;
+        return await ExecuteAsync(request, methodName, method, context);
     }
 
     private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
@@ -158,6 +159,7 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
         {
             RpcEndpoint.Http => true,
             RpcEndpoint.Ws => _webSocketsQueueingEnabled,
+            RpcEndpoint.IPC => _webSocketsQueueingEnabled,
             _ => false,
         };
 

@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcInvalidRequests { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (the EVM-execution admission gate — see the RpcAdmission* metrics, JsonRpc.EvmExecutionConcurrency and JsonRpc.EvmExecutionMaxQueueWaitMs — a module pool, or the override-environment limit). A nonzero rate means callers receive 'Too many requests'.")]
+        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (the EVM-execution admission gate, a module pool, or the override-environment limit). A nonzero rate means callers receive 'Too many requests'.")]
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc
 
         /// <summary>Number of EVM-executing JSON-RPC requests currently holding an execution slot.</summary>
         [GaugeMetric]
-        [Description("Number of EVM-executing JSON RPC requests currently executing. A value pinned at JsonRpc.EvmExecutionConcurrency while RpcAdmissionQueued stays zero is the signature of a leaked permit.")]
+        [Description("Number of EVM-executing JSON RPC requests currently executing. A value pinned at the execution cap while RpcAdmissionQueued stays zero is the signature of a leaked permit.")]
         public static long RpcAdmissionInFlight { get; set; }
 
         /// <summary>Number of EVM-executing JSON-RPC requests rejected before entering the wait queue.</summary>

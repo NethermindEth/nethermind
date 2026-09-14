@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.IO.Abstractions;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -150,7 +152,6 @@ public class RpcModuleProviderTests
             "eth_createAccessList",
             "eth_simulateV1",
             "eth_fillTransaction",
-            "debug_simulateV1",
         ];
 
         Dictionary<string, bool> reflectedMethods = new(StringComparer.Ordinal);
@@ -321,6 +322,27 @@ public class RpcModuleProviderTests
             Assert.That(module.AsyncCalls, Is.EqualTo(1));
             Assert.That(module.ParameterCalls, Is.EqualTo(1));
             Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Admission_gated_streaming_return_is_rejected_during_registration()
+    {
+        InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() =>
+            _moduleProvider.Register(new TestModulePool<GatedStreamRpcModule>(new GatedStreamRpcModule())));
+
+        Assert.That(exception!.Message, Does.Contain(nameof(IStreamableResult)));
+    }
+
+    [Test]
+    public void Streaming_and_gated_non_streaming_methods_resolve()
+    {
+        _moduleProvider.Register(new TestModulePool<ValidAdmissionRpcModule>(new ValidAdmissionRpcModule()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Resolve(nameof(ValidAdmissionRpcModule.streamed)), Is.Not.Null);
+            Assert.That(_moduleProvider.Resolve(nameof(ValidAdmissionRpcModule.gated)), Is.Not.Null);
         }
     }
 
@@ -609,6 +631,28 @@ public class RpcModuleProviderTests
 
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class GatedStreamRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<TestStreamable> gated() => ResultWrapper<TestStreamable>.Success(new());
+    }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class ValidAdmissionRpcModule : IRpcModule
+    {
+        [JsonRpcMethod]
+        public ResultWrapper<TestStreamable> streamed() => ResultWrapper<TestStreamable>.Success(new());
+
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<string> gated() => ResultWrapper<string>.Success(string.Empty);
+    }
+
+    private sealed class TestStreamable : IStreamableResult
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) => default;
+    }
 
     [RpcModule(ModuleType.Admin)]
     public interface ITestAdminRpcModule : IRpcModule

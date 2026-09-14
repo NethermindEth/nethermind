@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
-using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc;
 
@@ -19,20 +18,16 @@ namespace Nethermind.JsonRpc;
 /// Throughput of EVM-bound methods plateaus at roughly one execution per logical processor, and the override-environment
 /// pool they execute in rejects instantly at that count; admitting more only converts throughput into queueing delay and,
 /// past saturation, into work wasted on requests that are rejected anyway. The gate keeps concurrency at the plateau
-/// (<see cref="IJsonRpcConfig.EvmExecutionConcurrency"/>) and turns the excess into fast "Too many requests" answers: a
+/// (the configured EVM module concurrency) and turns the excess into fast "Too many requests" answers: a
 /// request that finds no free permit waits asynchronously for at most <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>,
 /// and is rejected up front when <see cref="IJsonRpcConfig.EvmExecutionQueueLimit"/> requests are already waiting. A zero
-/// budget disables queueing: the request is rejected on the calling thread without allocating a waiter. A negative queue
-/// limit also disables queueing; zero explicitly removes the queue limit.
+/// wait budget disables queueing: the request is rejected on the calling thread without allocating a waiter. A non-positive
+/// queue limit removes the queue limit.
 /// <para>
-/// Waiters are served lightest first, FIFO within a weight: a freed permit goes to the request expected to finish soonest,
-/// which maximises the requests served per second of execution time and keeps a sub-millisecond <c>eth_call</c> from
-/// waiting behind a batch of heavy simulations. The flip side is deliberate: under sustained overload heavy requests are
-/// the ones overtaken until their budget runs out, so the gate sheds heavy work first. "Heavy" means large, not expensive:
-/// the weight is the <c>params</c> size (see <see cref="Weigh"/>), so a large but cheap request, say many storage overrides
-/// ahead of a trivial call, is overtaken at every release and, for as long as the overload lasts, shed at its budget even
-/// though it would have finished quickly. The gate bounds every caller's wait; it does not promise that a large request is
-/// eventually served while the node stays overloaded.
+/// Waiters are served lightest first, FIFO within a weight, while a waiter that has aged through half its budget gets priority.
+/// This keeps short calls moving under ordinary overload while ensuring that sustained light traffic cannot indefinitely
+/// starve a heavier request. "Heavy" means large, not expensive: the weight is the <c>params</c> size
+/// (see <see cref="Weigh"/>).
 /// </para>
 /// <para>
 /// One lock guards the permit count and the queues; it is held for a few instructions per admission and nothing under it
@@ -60,28 +55,20 @@ internal sealed class EvmAdmissionGate : IDisposable
     private readonly TimeSpan _budget;
     private readonly int _maxQueued;
     private readonly TimeProvider _timeProvider;
-    private readonly ILogger _logger;
     private readonly ITimer _sweepTimer;
     private int _queued;
     private int _inFlight;
+    private long _nextSequence;
     private bool _disposed;
 
-    /// <summary>Creates a gate sized from <paramref name="config"/>; see <see cref="IJsonRpcConfig.EvmExecutionConcurrency"/> for the permit count rules.</summary>
-    internal EvmAdmissionGate(IJsonRpcConfig config, ILogManager logManager, TimeProvider? timeProvider = null)
+    /// <summary>Creates a gate sized from the EVM module concurrency and queue settings in <paramref name="config"/>.</summary>
+    internal EvmAdmissionGate(IJsonRpcConfig config, TimeProvider? timeProvider = null)
     {
-        _logger = logManager.GetClassLogger<EvmAdmissionGate>();
         _timeProvider = timeProvider ?? TimeProvider.System;
 
         int envCap = Math.Max(1, config.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
-        Permits = config.EvmExecutionConcurrency is int configured ? Math.Clamp(configured, 1, envCap) : envCap;
-        if (config.EvmExecutionConcurrency is int outOfRange && outOfRange != Permits && _logger.IsWarn)
-        {
-            _logger.Warn($"JsonRpc.EvmExecutionConcurrency={outOfRange} is outside [1, {envCap}]; using {Permits}. Set JsonRpc.EvmExecutionMaxQueueWaitMs=0 to disable queueing instead.");
-        }
-
-        _budget = config.EvmExecutionQueueLimit < 0
-            ? TimeSpan.Zero
-            : TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
+        Permits = envCap;
+        _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
         _maxQueued = Math.Max(0, config.EvmExecutionQueueLimit);
         for (int w = MinWeight; w <= MaxWeight; w++)
         {
@@ -143,7 +130,7 @@ internal sealed class EvmAdmissionGate : IDisposable
     /// anything is deserialized, so a request can be weighed without paying for parameter binding. The clamp keeps a single
     /// pathological request from starving everybody else. The proxy is wrong in both directions, tiny calldata can drive an
     /// expensive contract and many overrides can precede a trivial call, but only the second error compounds: with
-    /// shortest-job-first an overweighted request is overtaken at every release (see the class remarks).
+    /// shortest-job-first an overweighted request is overtaken until aging gives it priority (see the class remarks).
     /// </remarks>
     internal static int Weigh(int paramsUtf8Length)
     {
@@ -184,7 +171,7 @@ internal sealed class EvmAdmissionGate : IDisposable
                 // Stamped under the lock: with one constant budget every new deadline is then no earlier than any queued one,
                 // so expired waiters are always bucket heads.
                 long now = _timeProvider.GetTimestamp();
-                Waiter waiter = new(now, cancellationToken);
+                Waiter waiter = new(now, ++_nextSequence, cancellationToken);
                 bool wasEmpty = _queued == 0;
                 _queues[weight].Enqueue(waiter);
                 Metrics.RpcAdmissionQueued = ++_queued;
@@ -211,30 +198,39 @@ internal sealed class EvmAdmissionGate : IDisposable
         {
             Debug.Assert(_inFlight > 0, "a lease was released twice");
             long now = _queued > 0 ? _timeProvider.GetTimestamp() : 0;
-            for (int w = MinWeight; w <= MaxWeight && grantee is null; w++)
-            {
-                while (_queues[w].TryDequeue(out Waiter? head))
-                {
-                    Metrics.RpcAdmissionQueued = --_queued;
-                    bool isCancelled = head.CancellationToken.IsCancellationRequested;
-                    if (!isCancelled && _timeProvider.GetElapsedTime(head.EnqueuedTimestamp, now) < _budget)
-                    {
-                        grantee = head;
-                        break;
-                    }
+            Prune(now, ref cancelled, ref expired);
 
-                    if (isCancelled)
+            Waiter? oldestAged = null;
+            int selectedWeight = 0;
+            for (int w = MinWeight; w <= MaxWeight; w++)
+            {
+                if (!_queues[w].TryPeek(out Waiter? head))
+                {
+                    continue;
+                }
+
+                if (_timeProvider.GetElapsedTime(head.EnqueuedTimestamp, now) >= _budget / 2 &&
+                    (oldestAged is null || head.EnqueuedTimestamp < oldestAged.EnqueuedTimestamp ||
+                     head.EnqueuedTimestamp == oldestAged.EnqueuedTimestamp && head.Sequence < oldestAged.Sequence))
+                {
+                    oldestAged = head;
+                    selectedWeight = w;
+                }
+            }
+
+            if (oldestAged is not null)
+            {
+                grantee = _queues[selectedWeight].Dequeue();
+                Metrics.RpcAdmissionQueued = --_queued;
+            }
+            else
+            {
+                for (int w = MinWeight; w <= MaxWeight; w++)
+                {
+                    if (_queues[w].TryDequeue(out grantee))
                     {
-                        // A caller that has gone never takes the permit.
-                        Metrics.RpcAdmissionCancellations++;
-                        head.NextSettled = cancelled;
-                        cancelled = head;
-                    }
-                    else
-                    {
-                        Metrics.RpcAdmissionWaitTimeoutRejections++;
-                        head.NextSettled = expired;
-                        expired = head;
+                        Metrics.RpcAdmissionQueued = --_queued;
+                        break;
                     }
                 }
             }
@@ -263,39 +259,46 @@ internal sealed class EvmAdmissionGate : IDisposable
             }
 
             long now = _timeProvider.GetTimestamp();
-            for (int w = MinWeight; w <= MaxWeight; w++)
-            {
-                Queue<Waiter> queue = _queues[w];
-                while (queue.TryPeek(out Waiter? head))
-                {
-                    bool isCancelled = head.CancellationToken.IsCancellationRequested;
-                    // Expires at exactly the budget: the timer is armed for that instant, rounded up to a whole millisecond.
-                    if (!isCancelled && _timeProvider.GetElapsedTime(head.EnqueuedTimestamp, now) < _budget)
-                    {
-                        break;
-                    }
-
-                    queue.Dequeue();
-                    Metrics.RpcAdmissionQueued = --_queued;
-                    if (isCancelled)
-                    {
-                        Metrics.RpcAdmissionCancellations++;
-                        head.NextSettled = cancelled;
-                        cancelled = head;
-                    }
-                    else
-                    {
-                        Metrics.RpcAdmissionWaitTimeoutRejections++;
-                        head.NextSettled = expired;
-                        expired = head;
-                    }
-                }
-            }
+            Prune(now, ref cancelled, ref expired);
 
             ArmSweep(now);
         }
 
         CompleteWaiters(cancelled, expired);
+    }
+
+    // Caller holds _lock. Cancellation and expiry are removed from every bucket before a permit is selected so a stale
+    // head cannot hide an eligible waiter in another bucket.
+    private void Prune(long now, ref Waiter? cancelled, ref Waiter? expired)
+    {
+        for (int w = MinWeight; w <= MaxWeight; w++)
+        {
+            Queue<Waiter> queue = _queues[w];
+            while (queue.TryPeek(out Waiter? head))
+            {
+                bool isCancelled = head.CancellationToken.IsCancellationRequested;
+                // Expires at exactly the budget: the timer is armed for that instant, rounded up to a whole millisecond.
+                if (!isCancelled && _timeProvider.GetElapsedTime(head.EnqueuedTimestamp, now) < _budget)
+                {
+                    break;
+                }
+
+                queue.Dequeue();
+                Metrics.RpcAdmissionQueued = --_queued;
+                if (isCancelled)
+                {
+                    Metrics.RpcAdmissionCancellations++;
+                    head.NextSettled = cancelled;
+                    cancelled = head;
+                }
+                else
+                {
+                    Metrics.RpcAdmissionWaitTimeoutRejections++;
+                    head.NextSettled = expired;
+                    expired = head;
+                }
+            }
+        }
     }
 
     // Caller holds _lock.
@@ -357,11 +360,12 @@ internal sealed class EvmAdmissionGate : IDisposable
     /// A queued admission, dequeued exactly once under the gate lock by either a grant or the expiry sweep, and settled by
     /// that dequeuer outside the lock through the <see cref="NextSettled"/> chain.
     /// </summary>
-    private sealed class Waiter(long enqueuedTimestamp, CancellationToken cancellationToken)
+    private sealed class Waiter(long enqueuedTimestamp, long sequence, CancellationToken cancellationToken)
         // Completed on the pool: the releasing request's thread never runs the next request's invocation.
         : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
     {
         public long EnqueuedTimestamp { get; } = enqueuedTimestamp;
+        public long Sequence { get; } = sequence;
         public CancellationToken CancellationToken { get; } = cancellationToken;
         public Waiter? NextSettled;
     }

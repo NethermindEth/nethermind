@@ -374,13 +374,12 @@ public class JsonRpcProcessorTests
         JsonRpcConfig config = new()
         {
             EnabledModules = [ModuleType.Eth],
-            EvmExecutionConcurrency = 1,
             EthModuleConcurrentInstances = 1,
             EvmExecutionMaxQueueWaitMs = 60_000,
             EvmExecutionQueueLimit = 16,
         };
         ManualTimeProvider timeProvider = new();
-        using EvmAdmissionGate gate = new(config, LimboLogs.Instance, timeProvider);
+        using EvmAdmissionGate gate = new(config, timeProvider);
 
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>())

@@ -460,6 +460,12 @@ namespace Nethermind.JsonRpc.Modules
                 {
                     SuccessPayloadType = GetResultWrapperPayloadType(ResultWrapperType);
                     ErrorDataPayloadType = GetResultWrapperErrorDataType(ResultWrapperType);
+                    if (IsEvmExecution && SuccessPayloadType is not null && typeof(IStreamableResult).IsAssignableFrom(SuccessPayloadType))
+                    {
+                        throw new InvalidOperationException(
+                            $"RPC method {methodInfo.Name} is admission-gated but returns {nameof(IStreamableResult)}; streamed EVM execution must use a separate pool.");
+                    }
+
                     SuccessPayloadTypeInfo = GetJsonTypeInfo(SuccessPayloadType);
                     ErrorDataPayloadTypeInfo = GetJsonTypeInfo(ErrorDataPayloadType);
                     SuccessPayloadCanHaveDerivedRuntimeType = RpcPayloadTypeShape.CanHaveDerivedRuntimeType(SuccessPayloadType);
