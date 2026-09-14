@@ -102,16 +102,22 @@ public partial class DebugRpcModuleTests
         Block canonical = context.Blockchain.BlockTree.Head!;
         BlockHeader parent = context.Blockchain.BlockTree.FindHeader(canonical.ParentHash!, BlockTreeLookupOptions.None)!;
 
-        // Same height as the canonical block, but empty - tracing index 0 against it can only fail
+        // Same height as the canonical block, but empty - tracing index 0 against it can only fail.
+        // It borrows the canonical state root because only the head's is retained here, and the
+        // module rejects a header without state before it ever reaches the tracer.
         Block sideChain = Build.A.Block
             .WithParent(parent)
-            .WithStateRoot(parent.StateRoot!)
+            .WithStateRoot(canonical.StateRoot!)
             .WithExtraData([1])
             .TestObject;
-        context.Blockchain.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        AddBlockResult suggested = context.Blockchain.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
 
-        Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
-            Is.EqualTo(canonical.Hash), "the suggested sibling must stay off the canonical chain for this test to mean anything");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested, Is.EqualTo(AddBlockResult.Added), "the sibling must actually reach the block tree for this test to mean anything");
+            Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
+                Is.EqualTo(canonical.Hash), "the suggested sibling must stay off the canonical chain for this test to mean anything");
+        }
 
         string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", canonical.Number, "0x0");
         string byHash = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", sideChain.Hash!, "0x0");

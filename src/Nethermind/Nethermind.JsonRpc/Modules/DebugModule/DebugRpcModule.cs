@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -193,17 +192,17 @@ public class DebugRpcModule(
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
         TryGetHeaderAndCheckState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
-        return headerError ?? TraceTransactionAtIndex(blockhash, index, options);
+        return headerError ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
         BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
         // Trace the block that was resolved, not the canonical one at its height: a block hash parameter need not be canonical
-        return headerError ?? TraceTransactionAtIndex(header!.Hash!, index, options);
+        return headerError ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
     }
 
-    private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, [CallerMemberName] string? method = null)
+    private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, string method)
     {
         if (CanStreamStructLogs(options))
         {
