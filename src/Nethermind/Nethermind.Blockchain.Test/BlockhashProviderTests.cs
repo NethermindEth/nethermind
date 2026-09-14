@@ -371,7 +371,7 @@ public class BlockhashProviderTests
         public void WriteRingSlot(ulong number, Hash256 hash)
             => WorldState.Set(
                 new StorageCell(Eip2935Constants.BlockHashHistoryAddress, new UInt256(number % Spec.Eip2935RingBufferSize)),
-                hash.BytesToArray().WithoutLeadingZeros().ToArray());
+                hash.ToUInt256());
 
         public void Dispose() => _scope.Dispose();
     }
@@ -694,7 +694,7 @@ public class BlockhashProviderTests
 
         using IDisposable legacyScope = legacyWorldState.BeginScope(current.Header);
         new BlockhashStore(legacyWorldState).ApplyBlockhashStateChanges(current.Header, spec);
-        byte[] expectedStoredHash = legacyWorldState.Get(storageCell).ToArray();
+        legacyWorldState.Get(in storageCell, out UInt256 expectedStoredHash);
 
         using IDisposable balScope = balWorldState.BeginScope(current.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
@@ -711,7 +711,8 @@ public class BlockhashProviderTests
         balManager.ApplyBlockhashStateChanges(current.Header, spec);
         balManager.NextTransaction();
 
-        Assert.That(balWorldState.Get(storageCell).ToArray(), Is.EqualTo(expectedStoredHash));
+        balWorldState.Get(in storageCell, out UInt256 actualStoredHash);
+        Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

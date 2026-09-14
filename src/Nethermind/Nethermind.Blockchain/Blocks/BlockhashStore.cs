@@ -18,13 +18,12 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
-    private static readonly byte[] EmptyBytes = [0];
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
 
-        worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.ToUInt256());
         worldState.RecordBytecodeAccess(blockHashStoreCell.Address);
     }
 
@@ -52,8 +51,8 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
             return null;
         }
 
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.SequenceEqual(EmptyBytes) ? null : Hash256.FromBytesWithPadding(data);
+        worldState.Get(blockHashStoreCell, out UInt256 data);
+        return data.IsZero ? null : new Hash256(data.ToBigEndian());
     }
 
     /// <inheritdoc/>
@@ -64,12 +63,10 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
             return false;
         }
 
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        if (data.SequenceEqual(EmptyBytes)) return false;
+        worldState.Get(blockHashStoreCell, out UInt256 data);
+        if (data.IsZero) return false;
 
-        // Storage drops leading zeros, so the hash is right-aligned in the word.
-        destination[..^data.Length].Clear();
-        data.CopyTo(destination[^data.Length..]);
+        data.ToBigEndian(destination);
         return true;
     }
 
