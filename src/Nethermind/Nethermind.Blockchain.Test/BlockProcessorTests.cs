@@ -79,31 +79,14 @@ public class BlockProcessorTests
         int targetIndex, string tracerName, bool useBal, bool forceFullBal)
     {
         IReleaseSpec spec = useBal ? Amsterdam.Instance : Prague.Instance;
-        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
-            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec);
         BlockHeader parent = chain.BlockTree.Head!.Header;
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
-                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        }
-        Block block = await chain.AddBlock(transactions);
-        Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: the block must contain the complete test sequence");
+        Block block = await AddThreeTransferBlock(chain);
         Hash256 target = targetIndex < 0 ? TestItem.KeccakA : block.Transactions[targetIndex].Hash!;
         GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
 
         string expected = Replay(false, out int fullCount);
-        byte[][] executionRequests = [[0, 1, 2]];
-        GeneratedBlockAccessList generatedBlockAccessList = new();
-        byte[] encodedBlockAccessList = [0xc0];
-        using ArrayPoolList<AddressAsKey> accountChanges = new(1);
-        accountChanges.Add(TestItem.AddressA);
-        block.AccountChanges = accountChanges;
-        block.ExecutionRequests = executionRequests;
-        block.GeneratedBlockAccessList = generatedBlockAccessList;
-        block.EncodedBlockAccessList = encodedBlockAccessList;
+        using StampedExecutionArtifacts artifacts = new(block);
         string actual = Replay(true, out int prefixCount);
 
         using (Assert.EnterMultipleScope())
@@ -112,10 +95,7 @@ public class BlockProcessorTests
             Assert.That(prefixCount, Is.EqualTo(targetIndex < 0 || forceFullBal ? 3 : targetIndex + 1), "replay must stop only after the target completes unless full BAL construction is required");
             Assert.That(actual, Is.EqualTo(expected), "the selected trace must match full-block replay including its prestate");
             Assert.That(block.Transactions.Length, Is.EqualTo(3), "the original block body must not be truncated");
-            Assert.That(block.AccountChanges, Is.SameAs(accountChanges), "read-only replay must not overwrite cached account changes");
-            Assert.That(block.ExecutionRequests, Is.SameAs(executionRequests), "read-only replay must not overwrite cached execution requests");
-            Assert.That(block.GeneratedBlockAccessList, Is.SameAs(generatedBlockAccessList), "read-only replay must not overwrite the cached generated BAL");
-            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBlockAccessList), "read-only replay must not overwrite the cached encoded BAL");
+            artifacts.AssertUntouched(block);
         }
 
         string Replay(bool stopAtTarget, out int count)
@@ -136,14 +116,49 @@ public class BlockProcessorTests
         }
     }
 
-    [Test]
-    public void TransactionTraceBoundary_WhenOptionsAreNotReadOnlyReplay_IsIgnored(
-        [Values(ProcessingOptions.None, ProcessingOptions.NoValidation, ProcessingOptions.ProducingBlock,
-            ProcessingOptions.Trace | ProcessingOptions.StoreReceipts)] ProcessingOptions options)
+    [TestCase(ProcessingOptions.None, false, TestName = "None")]
+    [TestCase(ProcessingOptions.NoValidation, false, TestName = "NoValidation")]
+    [TestCase(ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.LoadNonceFromState, false, TestName = "ReplayWithoutReadOnlyChain")]
+    [TestCase(ProcessingOptions.Trace | ProcessingOptions.StoreReceipts, false, TestName = "TraceWithStoreReceipts")]
+    [TestCase(ProcessingOptions.ReadOnlyChain, true, TestName = "ReadOnlyChain")]
+    [TestCase(ProcessingOptions.Trace, true, TestName = "Trace")]
+    public void TransactionTraceBoundary_Get_ReturnsBoundaryOnlyForReadOnlyReplayWithoutReceiptPersistence(ProcessingOptions options, bool expectBoundary)
     {
         IBlockTracer tracer = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, TestItem.KeccakA);
-        Assert.That(TransactionTraceBoundary.Get(tracer, options), Is.Null,
-            "prefix completion must not affect validation, production, simulated calls or receipt persistence");
+        Assert.That(TransactionTraceBoundary.Get(tracer, options), expectBoundary ? Is.SameAs(tracer) : Is.Null,
+            "prefix completion applies only when the chain is read-only and receipts are not persisted");
+    }
+
+    [Test]
+    public async Task TransactionTraceBlockProcessor_WhenOptionsAreNotReadOnlyReplay_LeavesSuggestedBlockArtifactsUntouched()
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        using StampedExecutionArtifacts artifacts = new(block);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        chain.BlockProcessor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+
+        artifacts.AssertUntouched(block);
+    }
+
+    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec) =>
+        BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+
+    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain)
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: the block must contain the complete test sequence");
+        return block;
     }
 
     [Test]
@@ -2120,6 +2135,35 @@ public class BlockProcessorTests
         }
 
         public void Dispose() => _parallelExecutionStarted.Dispose();
+    }
+
+    private sealed class StampedExecutionArtifacts : IDisposable
+    {
+        private readonly ArrayPoolList<AddressAsKey> _accountChanges = new(1) { TestItem.AddressA };
+        private readonly byte[][] _executionRequests = [[0, 1, 2]];
+        private readonly GeneratedBlockAccessList _generatedBlockAccessList = new();
+        private readonly byte[] _encodedBlockAccessList = [0xc0];
+
+        public StampedExecutionArtifacts(Block block)
+        {
+            block.AccountChanges = _accountChanges;
+            block.ExecutionRequests = _executionRequests;
+            block.GeneratedBlockAccessList = _generatedBlockAccessList;
+            block.EncodedBlockAccessList = _encodedBlockAccessList;
+        }
+
+        public void AssertUntouched(Block block)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.AccountChanges, Is.SameAs(_accountChanges), "read-only replay must not overwrite cached account changes");
+                Assert.That(block.ExecutionRequests, Is.SameAs(_executionRequests), "read-only replay must not overwrite cached execution requests");
+                Assert.That(block.GeneratedBlockAccessList, Is.SameAs(_generatedBlockAccessList), "read-only replay must not overwrite the cached generated BAL");
+                Assert.That(block.EncodedBlockAccessList, Is.SameAs(_encodedBlockAccessList), "read-only replay must not overwrite the cached encoded BAL");
+            }
+        }
+
+        public void Dispose() => _accountChanges.Dispose();
     }
 
     private sealed class RecordingPrefixTracer(IBlockTracer inner) : IBlockTracer

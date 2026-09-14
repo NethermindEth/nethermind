@@ -36,10 +36,9 @@ public sealed class TransactionTraceBlockProcessor(
         return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
 
+    /// <summary>The suggested block is the canonical instance; a replay never writes its artifacts back onto it.</summary>
     protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
     {
-        if (!options.ContainsFlag(ProcessingOptions.Trace))
-            base.PostValidation(suggestedBlock, processedBlock, receipts, options);
     }
 
     protected override TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
