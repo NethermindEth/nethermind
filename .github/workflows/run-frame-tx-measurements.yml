@@ -102,7 +102,7 @@ jobs:
           if [[ -n "${GROTH16_ARTIFACTS_VERSION:-}" ]]; then
             {
               echo "groth16_artifacts=NethermindEth/frame-verify-gas@${GROTH16_ARTIFACTS_VERSION} sha256sums_sha256=${GROTH16_ARTIFACTS_SHA256SUMS_DIGEST}"
-              cat "${FRAME_GROTH16_ARTIFACTS}/SHA256SUMS"
+              cat "${GROTH16_ARTIFACTS_SHA256SUMS}"
             } >> "${OUTPUT_DIR}/PROVENANCE.txt"
           fi
           RAISE_VERIFY_GAS="${RAISE_VERIFY_GAS//[[:space:]]/}"

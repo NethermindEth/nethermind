@@ -121,9 +121,11 @@ if ! python3 "$(dirname "${BASH_SOURCE[0]}")/check-verifiers.py" "${artifacts}" 
   exit 1
 fi
 
-cp "${assets}/SHA256SUMS" "${artifacts}/SHA256SUMS" || exit 1
+sums="${RUNNER_TEMP}/frame-verify-gas-groth16.SHA256SUMS"
+cp "${assets}/SHA256SUMS" "${sums}" || exit 1
 {
   echo "FRAME_GROTH16_ARTIFACTS=${artifacts}"
+  echo "GROTH16_ARTIFACTS_SHA256SUMS=${sums}"
   echo "GROTH16_ARTIFACTS_VERSION=${version}"
   echo "GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=$(sha256sum "${assets}/SHA256SUMS" | cut -d ' ' -f 1)"
 } >> "${GITHUB_ENV}"

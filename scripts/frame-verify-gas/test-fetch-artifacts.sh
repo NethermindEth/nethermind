@@ -166,8 +166,9 @@ happy="${LAST_RUN}"
 check happy-path-env "grep -qx 'FRAME_GROTH16_ARTIFACTS=${happy}/temp/frame-verify-gas-groth16' '${happy}/github_env' \
   && grep -qx 'GROTH16_ARTIFACTS_VERSION=v1.0.0' '${happy}/github_env' \
   && grep -qE '^GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=[0-9a-f]{64}\$' '${happy}/github_env'"
-check happy-path-tree "diff -r --exclude=SHA256SUMS '${root}/src/v1.0.0' '${happy}/temp/frame-verify-gas-groth16' \
-  && cmp -s '${root}/releases/v1.0.0/assets/SHA256SUMS' '${happy}/temp/frame-verify-gas-groth16/SHA256SUMS'"
+check happy-path-tree "diff -r '${root}/src/v1.0.0' '${happy}/temp/frame-verify-gas-groth16' \
+  && grep -qx 'GROTH16_ARTIFACTS_SHA256SUMS=${happy}/temp/frame-verify-gas-groth16.SHA256SUMS' '${happy}/github_env' \
+  && cmp -s '${root}/releases/v1.0.0/assets/SHA256SUMS' '${happy}/temp/frame-verify-gas-groth16.SHA256SUMS'"
 check happy-path-no-download-dir-left "[[ -z \$(find '${happy}/temp' -maxdepth 1 -name 'frame-verify-gas-download.*') ]]"
 expect dot-slash-root v1.0.1 0 'extracted to'
 expect dot-slash-prefix v1.0.2 0 'extracted to'
