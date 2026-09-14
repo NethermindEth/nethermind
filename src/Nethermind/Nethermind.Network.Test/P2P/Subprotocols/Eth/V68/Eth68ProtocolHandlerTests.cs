@@ -462,6 +462,22 @@ public class Eth68ProtocolHandlerTests
         AssertFrameTxAnnouncementRequested((int)txPoolConfig.MaxTxSize! + 1, expectedRequests);
     }
 
+    // The two caps are independently operator-settable, so the blobless one can be the larger; a gate keyed on
+    // the blob cap alone would then drop a type-6 hash SizeTxFilter accepts.
+    [Test]
+    public void Frame_tx_announcement_budget_covers_the_larger_of_the_two_size_caps()
+    {
+        TxPoolConfig txPoolConfig = new()
+        {
+            BlobsSupport = BlobsSupportMode.InMemory,
+            MaxTxSize = 4.MiB,
+            MaxBlobTxSize = 1.MiB
+        };
+        _handler = BuildHandler(txPoolConfig, frameTxsEnabled: true);
+
+        AssertFrameTxAnnouncementRequested((int)txPoolConfig.MaxBlobTxSize! + 1, expectedRequests: 1);
+    }
+
     // Without the fork a frame tx is rejected at ingress, so requesting one is always wasted bandwidth.
     [TestCase(true, 1, TestName = "Frame_tx_announcement_is_requested_once_the_fork_is_active")]
     [TestCase(false, 0, TestName = "Frame_tx_announcement_is_not_requested_before_the_fork")]

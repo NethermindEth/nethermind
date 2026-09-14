@@ -66,12 +66,13 @@ namespace Nethermind.JsonRpc.Data
 
         /// <summary>Post-refund execution gas (OperationGas) without the EIP-7976 floor adjustment. Not the
         /// EIP-8037 execution-dimension block figure — see <see cref="BlockGasUsed"/>.</summary>
-        /// <remarks>Carried and emitted exactly as <see cref="BlockGasUsed"/> is.</remarks>
+        /// <remarks>Carried like <see cref="BlockGasUsed"/>; the converter writes this and <see cref="StorageGasUsed"/>
+        /// as a pair whenever either is non-zero, so a zero of the pair is emitted rather than omitted.</remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public ulong ExecutionGasUsed { get; set; }
 
         /// <summary>EIP-8037 state-dimension gas used by block accounting.</summary>
-        /// <remarks>Carried and emitted exactly as <see cref="BlockGasUsed"/> is.</remarks>
+        /// <remarks>Carried like <see cref="BlockGasUsed"/>; emitted paired with <see cref="ExecutionGasUsed"/>.</remarks>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public ulong StorageGasUsed { get; set; }
 
