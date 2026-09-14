@@ -13,7 +13,7 @@ internal class SyncInfoManager(
     IQuorumCertificateManager qcManager,
     ITimeoutCertificateManager timeoutManager) : ISyncInfoManager
 {
-    public SyncInfo GetSyncInfo() => new(xdcContext.HighestQC, xdcContext.HighestTC);
+    public SyncInfo GetSyncInfo() => new(xdcContext.HighestQC, xdcContext.HighestTC, isMine: true);
 
     public string? ProcessQuorumCertificate(QuorumCertificate? quorumCert)
     {

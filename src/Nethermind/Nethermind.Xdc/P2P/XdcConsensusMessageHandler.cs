@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Types;
 
@@ -24,11 +25,16 @@ internal sealed class XdcConsensusMessageHandler(
     IVotesManager votesManager,
     ISyncInfoManager syncInfoManager,
     IBlockTree blockTree,
+    ISyncPeerPool syncPeerPool,
     ISession session,
     ILogManager logManager)
 {
+    // A SyncInfo is sent once every few timed-out rounds, so a short window is enough to keep one from circling.
+    private const int NotifiedSyncInfoCapacity = 64;
+
     private readonly AssociativeKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
     private readonly AssociativeKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
+    private readonly AssociativeKeyCache<ValueHash256> _notifiedSyncInfos = new(NotifiedSyncInfoCapacity);
     private readonly ILogger _logger = logManager.GetClassLogger<XdcConsensusMessageHandler>();
 
     /// <summary>Handles <paramref name="message"/> if it is an XDC-specific message.</summary>
@@ -111,12 +117,43 @@ internal sealed class XdcConsensusMessageHandler(
         return true;
     }
 
+    public bool ShouldNotify(SyncInfo syncInfo)
+    {
+        if (syncInfo.IsMine)
+            return true;
+
+        if (_notifiedSyncInfos.Contains(syncInfo.Hash))
+            return false;
+
+        _notifiedSyncInfos.Set(syncInfo.Hash);
+        return true;
+    }
+
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
         // The message itself decodes to null from an empty RLP list, just like either certificate does.
         SyncInfo? syncInfo = syncInfoMsg.SyncInfo;
-        LogSkippedCertificate(syncInfoManager.ProcessTimeoutCertificate(syncInfo?.HighestTimeoutCert));
-        LogSkippedCertificate(syncInfoManager.ProcessQuorumCertificate(syncInfo?.HighestQuorumCert));
+        string? timeoutError = syncInfoManager.ProcessTimeoutCertificate(syncInfo?.HighestTimeoutCert);
+        string? quorumError = syncInfoManager.ProcessQuorumCertificate(syncInfo?.HighestQuorumCert);
+        LogSkippedCertificate(timeoutError);
+        LogSkippedCertificate(quorumError);
+
+        // Propagate only what moved us forward, so a message that taught us nothing stops here.
+        if (timeoutError is null || quorumError is null)
+            Relay(syncInfo!);
+    }
+
+    /// <summary>Forwards a peer's <see cref="SyncInfo"/> to the other peers, as votes and timeouts are forwarded.</summary>
+    private void Relay(SyncInfo syncInfo)
+    {
+        // The sender has it already; marking its session keeps the relay from echoing it straight back.
+        _notifiedSyncInfos.Set(syncInfo.Hash);
+
+        foreach (PeerInfo peer in syncPeerPool.AllPeers)
+        {
+            if (peer.SyncPeer is IXdcConsensusPeer xdcProtocol)
+                xdcProtocol.SendSyncInfo(syncInfo);
+        }
     }
 
     private void LogSkippedCertificate(string? error)
@@ -132,9 +169,10 @@ internal sealed class XdcConsensusMessageHandler(
         IVotesManager votesManager,
         ISyncInfoManager syncInfoManager,
         IBlockTree blockTree,
+        ISyncPeerPool syncPeerPool,
         ILogManager logManager)
     {
         public XdcConsensusMessageHandler ForSession(ISession session) =>
-            new(timeoutCertificateManager, votesManager, syncInfoManager, blockTree, session, logManager);
+            new(timeoutCertificateManager, votesManager, syncInfoManager, blockTree, syncPeerPool, session, logManager);
     }
 }

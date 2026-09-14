@@ -17,6 +17,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Types;
@@ -33,7 +34,7 @@ public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100)
+        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100, ISyncPeerPool? syncPeerPool = null)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -56,7 +57,8 @@ public class XdcProtocolHandlerTests
         blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
 
         XdcConsensusMessageHandler.Factory consensusMessages =
-            new(timeoutManager, votesManager, syncInfoManager, blockTree, LimboLogs.Instance);
+            new(timeoutManager, votesManager, syncInfoManager, blockTree,
+                syncPeerPool ?? Substitute.For<ISyncPeerPool>(), LimboLogs.Instance);
 
         XdcProtocolHandler handler = new(
             consensusMessages,
@@ -97,12 +99,12 @@ public class XdcProtocolHandlerTests
         handler.HandleMessage(packet);
     }
 
-    private static SyncInfo CreateSyncInfo(ulong qcRound = 1)
+    private static SyncInfo CreateSyncInfo(ulong qcRound = 1, bool isMine = false)
     {
         BlockRoundInfo blockInfo = new(TestItem.KeccakA, qcRound, 100);
         QuorumCertificate qc = new(blockInfo, Array.Empty<Signature>(), 0);
         TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
-        return new SyncInfo(qc, tc);
+        return new SyncInfo(qc, tc, isMine);
     }
 
 
@@ -177,6 +179,59 @@ public class XdcProtocolHandlerTests
 
             syncInfoManager.Received(1).ProcessQuorumCertificate(null);
             syncInfoManager.Received(1).ProcessTimeoutCertificate(null);
+        }
+    }
+
+    // A SyncInfo that advanced us is forwarded to the other peers the way a vote or a timeout is, and the
+    // per-peer filter keeps it from going straight back to the peer it came from.
+    [Test]
+    public void HandleMessage_SyncInfoMsgThatAdvancedUs_IsRelayedToTheOtherPeers()
+    {
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            _, _, ISyncInfoManager syncInfoManager) = CreateAll(syncPeerPool: syncPeerPool);
+        (XdcProtocolHandler otherHandler, _, ISession otherSession, _, _, _) = CreateAll();
+        using (handler)
+        using (otherHandler)
+        {
+            syncPeerPool.AllPeers.Returns([new PeerInfo(handler), new PeerInfo(otherHandler)]);
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+
+            // One accepted half is enough to pass the message on.
+            syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert).Returns((string?)null);
+            syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert).Returns("TC is stale");
+
+            HandleIncomingStatus(handler, serializer);
+            handler.HandleMessage(packet);
+
+            otherSession.Received(1).DeliverMessage(Arg.Any<SyncInfoMsg>());
+            session.DidNotReceive().DeliverMessage(Arg.Any<SyncInfoMsg>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_SyncInfoMsgWithNothingNewInIt_IsNotRelayed()
+    {
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            _, _, ISyncInfoManager syncInfoManager) = CreateAll(syncPeerPool: syncPeerPool);
+        (XdcProtocolHandler otherHandler, _, ISession otherSession, _, _, _) = CreateAll();
+        using (handler)
+        using (otherHandler)
+        {
+            syncPeerPool.AllPeers.Returns([new PeerInfo(otherHandler)]);
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert).Returns("QC is stale");
+            syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert).Returns("TC is stale");
+
+            HandleIncomingStatus(handler, serializer);
+            handler.HandleMessage(packet);
+
+            otherSession.DidNotReceive().DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
     }
 
@@ -284,19 +339,21 @@ public class XdcProtocolHandlerTests
         }
     }
 
-    [Test]
-    public void SendSyncInfo_SameSyncInfoTwice_IsDeliveredTwice()
+    // Our own announcement is a liveness signal, so an unchanged one still has to go out again;
+    // a relayed one is deduplicated per peer, the way a vote or a timeout is.
+    [TestCase(true, 2)]
+    [TestCase(false, 1)]
+    public void SendSyncInfo_SameSyncInfoTwice_IsDeliveredAgainOnlyIfItIsOurs(bool isMine, int expectedDeliveries)
     {
-        // SyncInfo has no deduplication cache; each call should send
         (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
-            SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 5, isMine: isMine);
 
             ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
             ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
-            session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
+            session.Received(expectedDeliveries).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
     }
 
