@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -66,8 +67,9 @@ internal class XdcReceiptsTrieTests
     public void OriginalReceipts_AreNotTouched()
     {
         TxReceipt signReceipt = Receipt(BlockSigner, TxType.EIP1559);
-        TxReceipt[] receipts = [signReceipt, Receipt(TestItem.AddressD, TxType.EIP1559)];
+        TxReceipt[] receipts = [signReceipt, Receipt(TestItem.AddressD, TxType.EIP1559), Receipt(TestItem.AddressD, TxType.Legacy)];
         TxReceipt[] before = (TxReceipt[])receipts.Clone();
+        TxType[] typesBefore = Array.ConvertAll(receipts, r => r.TxType);
 
         TxReceipt[] forTrie = XdcBlockProcessor.AsEncodedForTrie(receipts, Spec);
 
@@ -77,7 +79,7 @@ internal class XdcReceiptsTrieTests
             for (int i = 0; i < receipts.Length; i++)
             {
                 Assert.That(receipts[i], Is.SameAs(before[i]));
-                Assert.That(receipts[i].TxType, Is.EqualTo(TxType.EIP1559));
+                Assert.That(receipts[i].TxType, Is.EqualTo(typesBefore[i]));
             }
         });
     }
