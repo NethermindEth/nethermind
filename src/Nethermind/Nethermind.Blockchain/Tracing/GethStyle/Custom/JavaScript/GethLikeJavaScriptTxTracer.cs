@@ -30,7 +30,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource _cts;
     private readonly IDisposable _ctsRegistration;
-    private bool _resultConstructed;
     private bool _engineReleased;
     private bool _disposed;
     private Stack<ulong>? _frameGas;
@@ -77,7 +76,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
         _ctsRegistration.Dispose();
-        _resultConstructed = true;
         ReleaseEngine();
 
         return result;
