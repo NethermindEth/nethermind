@@ -272,14 +272,20 @@ public class EvmExecutionGateServiceTests
         }
     }
 
+    /// <summary>Batch items are shed rather than queued, trusted or not.</summary>
+    /// <remarks>A batch is dispatched sequentially, so waiting would delay every later item on the same connection.
+    /// The IPC arm is the one that bites: every IPC request counts as authenticated, authenticated callers are
+    /// exempt from <see cref="IJsonRpcConfig.MaxBatchSize"/>, and the head-of-queue favour a trusted caller gets
+    /// would otherwise apply per item - so an unbounded batch would pin its own connection for that many budgets
+    /// while holding the head of the queue against every anonymous caller. With a one-minute budget this test
+    /// would hang if batch items were allowed to queue.</remarks>
     [Test]
-    public async Task Batch_items_are_shed_rather_than_queued()
+    public async Task Batch_items_are_shed_rather_than_queued([Values(RpcEndpoint.Http, RpcEndpoint.IPC)] RpcEndpoint endpoint)
     {
-        // A batch is dispatched sequentially, so waiting would delay every later item on the same connection.
-        // With a one-minute budget this test would hang if batch items were allowed to queue.
         using BlockingGatedModule module = new();
         JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
-        using JsonRpcContext context = new(RpcEndpoint.Http);
+        using JsonRpcContext context = new(endpoint);
+        Assert.That(context.IsAuthenticated, Is.EqualTo(endpoint == RpcEndpoint.IPC), "precondition: the IPC arm is the trusted one");
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
         await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));
@@ -295,12 +301,15 @@ public class EvmExecutionGateServiceTests
         await inFlight;
     }
 
+    /// <summary>A single request waits for a slot and is then served.</summary>
+    /// <remarks>The IPC arm is the trusted one: a saturated gate queues it at the head rather than refusing it,
+    /// which is the favour the batch exclusion above must not extend to.</remarks>
     [Test]
-    public async Task Http_request_waits_for_a_slot_and_is_then_served()
+    public async Task Single_request_waits_for_a_slot_and_is_then_served([Values(RpcEndpoint.Http, RpcEndpoint.IPC)] RpcEndpoint endpoint)
     {
         using BlockingGatedModule module = new();
         JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 30_000, module);
-        using JsonRpcContext context = new(RpcEndpoint.Http);
+        using JsonRpcContext context = new(endpoint);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
         await module.Entered.WaitAsync(TimeSpan.FromSeconds(10));

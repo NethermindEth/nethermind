@@ -98,7 +98,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         EvmExecutionGate.Lease lease;
         try
         {
-            lease = await _evmGate!.AcquireAsync(weight, CanQueue(request, context), context.IsAuthenticated, callerCancellation);
+            lease = await _evmGate!.AcquireAsync(weight, CanQueue(request, context), IsTrusted(request, context), callerCancellation);
         }
         catch (OperationCanceledException) when (callerCancellation.IsCancellationRequested)
         {
@@ -118,9 +118,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     /// Waiting only pays off where the connection can serve something else meanwhile. On a lane that processes one
     /// request at a time - a batch, or a socket with a single processing slot - the wait is pure added latency for
     /// every later request behind it. Authenticated callers are the consensus client, which needs a prompt answer
-    /// rather than a queued one. Note this answers only whether the request may wait at all: an authenticated
-    /// caller (<see cref="JsonRpcContext"/> counts every IPC request as one) is queued at the head regardless, so
-    /// a saturated gate makes it wait one service time rather than refusing it while anonymous callers are served.
+    /// rather than a queued one; <see cref="IsTrusted"/> is what makes a saturated gate queue them anyway, and it
+    /// respects the batch exclusion rather than overriding it.
     /// </remarks>
     private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
         !request.IsBatchItem &&
@@ -131,6 +130,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             RpcEndpoint.Ws => _webSocketsQueueingEnabled,
             _ => false,
         };
+
+    /// <summary>Whether a saturated gate queues this request at the head, ahead of every anonymous waiter.</summary>
+    /// <remarks>
+    /// The favour is for the consensus client's single calls, which a saturated gate would otherwise refuse
+    /// outright while anonymous callers behind them were still served after a wait. It stops at the batch
+    /// exclusion: authenticated callers are exempt from <see cref="IJsonRpcConfig.MaxBatchSize"/> and
+    /// <see cref="JsonRpcContext"/> counts every IPC request as authenticated, so a trusted batch item would wait
+    /// the full budget for each of an unbounded number of items - serially, on a connection that dispatches one at
+    /// a time - while holding the head of the queue against everyone else for the duration.
+    /// </remarks>
+    private static bool IsTrusted(JsonRpcRequest request, JsonRpcContext context) =>
+        context.IsAuthenticated && !request.IsBatchItem;
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {
