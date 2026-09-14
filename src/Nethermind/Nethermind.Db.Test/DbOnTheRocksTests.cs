@@ -9,6 +9,10 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -17,6 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
 using Nethermind.State.Flat;
@@ -164,7 +169,8 @@ namespace Nethermind.Db.Test
         public void FlatAccountColumn_UsesAutoIndexAndRoundTripsAfterReopen([Values] bool writeLegacyBinarySst)
         {
             DbConfig config = new();
-            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using IContainer configContainer = CreateRocksDbContainer(config);
+            IRocksDbConfigFactory configFactory = configContainer.Resolve<IRocksDbConfigFactory>();
             IDictionary<string, string> resolvedOptions = DbOnTheRocks.ExtractOptions(
                 configFactory.GetForDatabase(DbNames.Flat, nameof(FlatDbColumns.Account)).RocksDbOptions);
 
@@ -179,7 +185,6 @@ namespace Nethermind.Db.Test
             byte[][] values = new byte[keys.Length][];
 
             DbConfig writerConfig = config;
-            RocksDbConfigFactory writerConfigFactory = configFactory;
             if (writeLegacyBinarySst)
             {
                 writerConfig = new DbConfig
@@ -188,11 +193,12 @@ namespace Nethermind.Db.Test
                         "block_based_table_factory.index_block_search_type=kBinary;" +
                         "block_based_table_factory.uniform_cv_threshold=-1;"
                 };
-                writerConfigFactory = new RocksDbConfigFactory(writerConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
             }
 
-            using (ColumnsDb<FlatDbColumns> db = new(DbPath, new(DbNames.Flat, DbPath), writerConfig, writerConfigFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>()))
+            using (IContainer writerContainer = CreateRocksDbContainer(writerConfig))
             {
+                IDbFactory dbFactory = writerContainer.Resolve<IDbFactory>();
+                using IColumnsDb<FlatDbColumns> db = dbFactory.CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
                 IDb account = db.GetColumnDb(FlatDbColumns.Account);
                 for (int i = 0; i < keys.Length; i++)
                 {
@@ -203,7 +209,9 @@ namespace Nethermind.Db.Test
                 db.Flush();
             }
 
-            using ColumnsDb<FlatDbColumns> reopened = new(DbPath, new(DbNames.Flat, DbPath), config, configFactory, LimboLogs.Instance, Enum.GetValues<FlatDbColumns>());
+            using IContainer reopenedContainer = CreateRocksDbContainer(config);
+            using IColumnsDb<FlatDbColumns> reopened = reopenedContainer.Resolve<IDbFactory>()
+                .CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
             IDb reopenedAccount = reopened.GetColumnDb(FlatDbColumns.Account);
             for (int i = 0; i < keys.Length; i++)
             {
@@ -227,11 +235,14 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(index, Is.EqualTo(10));
+
+            long uniformBlocks = GetUniformBlockCount(reopened);
+            Assert.That(uniformBlocks, writeLegacyBinarySst ? Is.EqualTo(0) : Is.GreaterThan(0));
         }
 
         private static byte[][] CreateAccountKeys()
         {
-            byte[][] keys = new byte[1024][];
+            byte[][] keys = new byte[4096][];
             for (int i = 0; i < keys.Length; i++)
             {
                 keys[i] = ValueKeccak.Compute(i.ToBigEndianByteArray()).Bytes[..20].ToArray();
@@ -253,6 +264,38 @@ namespace Nethermind.Db.Test
         }
 
         private static byte[] CreateMissingAccountKey() => ValueKeccak.Compute("missing-flat-account").Bytes[..20].ToArray();
+
+        private IContainer CreateRocksDbContainer(DbConfig config)
+        {
+            InitConfig initConfig = new() { BaseDbPath = DbPath };
+            return new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+                .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Build();
+        }
+
+        private static long GetUniformBlockCount(IColumnsDb<FlatDbColumns> db)
+        {
+            ColumnDb account = (ColumnDb)db.GetColumnDb(FlatDbColumns.Account);
+            string? properties = account._mainDb._db.GetProperty("rocksdb.aggregated-table-properties", account._columnFamily);
+            Assert.That(properties, Is.Not.Null);
+
+            const string propertyName = "# uniform blocks=";
+            int start = properties!.IndexOf(propertyName, StringComparison.Ordinal);
+            Assert.That(start, Is.GreaterThanOrEqualTo(0), properties);
+            start += propertyName.Length;
+
+            int end = start;
+            while (end < properties.Length && char.IsAsciiDigit(properties[end])) end++;
+
+            Assert.That(end, Is.GreaterThan(start), properties);
+            Assert.That(long.TryParse(properties.AsSpan(start, end - start), out long value), Is.True, properties);
+            return value;
+        }
 
         [Test]
         public void SharedCacheCanBeCreatedAndDisposed()
