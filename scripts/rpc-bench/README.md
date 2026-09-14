@@ -397,12 +397,13 @@ cell costs exactly what an eth_call cell costs to set up. The corpus file on dis
 modified.
 
 `tool_config.trace_call_tracer` selects the geth tracer — `callTracer` (default),
-`prestateTracer`, `4byteTracer`, or `""` for the struct logger. `tool_config.trace_call_types`
+`prestateTracer`, `4byteTracer`, `stateGasTracer`, or `""` for the struct logger. `tool_config.trace_call_types`
 selects the Parity types — `trace` (default), `vmTrace`, `stateDiff`, `rewards`, `all`,
 space- or comma-separated. Prefer the cheap selections: struct logs and `vmTrace` on a corpus of
 heavy simulation records run to enormous responses, at which point the cell measures response
-serialization rather than execution (`RPC_BENCH_MAX_RESPONSE_BYTES` raises the 16 MB per-response
-ceiling in the replay if you need it anyway).
+serialization rather than execution. `tool_config.max_response_bytes` sets the positive per-response
+ceiling for corpus parity and paired replay (the default is 16 MiB); the workflow exports it as
+`RPC_BENCH_MAX_RESPONSE_BYTES`.
 
 Parity still runs, and still compares two clients exactly — an outcome becomes a SHA-256 digest
 of the canonicalized trace instead of the returned bytes, which keeps the state file small and

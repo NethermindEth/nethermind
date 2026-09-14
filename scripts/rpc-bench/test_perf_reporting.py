@@ -1056,6 +1056,103 @@ esac
                 self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
                 self.assertIn("::error::", result.stdout)
 
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_response_limit_is_validated_and_exported_to_both_corpus_paths(self) -> None:
+        jsonbench = {"IN_TOOL": "jsonbench", "IN_CLIENT": "nethermind"}
+        result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG='{"max_response_bytes":123456}')
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        result, _ = self.resolve(
+            **jsonbench,
+            IN_DEBUG_TRACE_CALL_CORPUS="true",
+            IN_TOOL_CONFIG='{"eth_call_corpus":true,"trace_call_tracer":"stateGasTracer"}',
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+
+        for value in (0, -1, 1.5, '"123"'):
+            with self.subTest(value=value):
+                result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG=f'{{"max_response_bytes":{value}}}')
+                self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+                self.assertIn("max_response_bytes must be a positive JSON integer", result.stdout)
+
+        workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("callTracer|prestateTracer|4byteTracer|stateGasTracer|\"\"", resolve_script(workflow))
+        for step_name in ("Warm up node", "Run json-bench benchmark", "Run RPC sweep"):
+            self.assertIn(
+                'export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"',
+                workflow_named_step_body(workflow, "benchmark", step_name),
+            )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the parity gate")
+    def test_trace_parity_gate_only_downgrades_clean_format_divergence(self) -> None:
+        sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^compare_corpus_parity\(\) \{.*?^\}\n\n(?=mkdir -p)", sweep)
+        self.assertIsNotNone(match, "could not extract the checked-in parity gate")
+        self.write_executable(
+            "python3",
+            """#!/usr/bin/env bash
+set -euo pipefail
+report=''
+for ((i = 1; i <= $#; i++)); do
+  if [[ "${!i}" == "--report" ]]; then
+    j=$((i + 1)); report="${!j}"
+  fi
+done
+case "${FAKE_REPORT_KIND}" in
+  clean) printf '%s' '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":0,"baseline_rpc_errors":0}' > "${report}" ;;
+  transport) printf '%s' '{"candidate_transport_failures":1,"candidate_invalid_responses":0,"candidate_rpc_errors":0,"baseline_rpc_errors":0}' > "${report}" ;;
+  rpc) printf '%s' '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":1,"baseline_rpc_errors":0}' > "${report}" ;;
+  mixed) printf '%s' '{"candidate_transport_failures":0,"candidate_invalid_responses":1,"candidate_rpc_errors":1,"baseline_rpc_errors":0}' > "${report}" ;;
+  invalid) printf '%s' '{"candidate_transport_failures":0}' > "${report}" ;;
+esac
+exit "${FAKE_EXIT}"
+""",
+        )
+        script = self.write_executable(
+            "parity-gate.sh",
+            """#!/usr/bin/env bash
+set -uo pipefail
+here=/unused
+CORPUS_PARITY_DIFFS=false
+PARITY_ROWS=()
+parity_fail=0
+CORPUS_METHOD="${CORPUS_METHOD_VALUE}"
+__PARITY_FUNCTION__
+mkdir -p "$1"
+compare_corpus_parity corpus http://localhost:8545 state "$1/report.json" base candidate "${CANDIDATE_TYPE}" "${BASELINE_TYPE}" "$1" corpus
+printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
+""".replace("__PARITY_FUNCTION__", match.group(0).rstrip()),
+        )
+        cases = (
+            ("fixture exit2", "clean", "2", "trace_call", "geth", "nethermind", "parity_fail=1"),
+            ("transport failure", "transport", "1", "trace_call", "geth", "nethermind", "parity_fail=1"),
+            ("rpc failure", "rpc", "1", "trace_call", "geth", "nethermind", "parity_fail=1"),
+            ("mixed report", "mixed", "1", "trace_call", "geth", "nethermind", "parity_fail=1"),
+            ("invalid report", "invalid", "1", "trace_call", "geth", "nethermind", "parity_fail=1"),
+            ("clean format divergence", "clean", "1", "trace_call", "geth", "nethermind", "parity_fail=0"),
+            ("eth_call divergence", "clean", "1", "eth_call", "geth", "nethermind", "parity_fail=1"),
+            ("same client divergence", "clean", "1", "trace_call", "nethermind", "nethermind", "parity_fail=1"),
+        )
+        for label, report_kind, status, method, candidate_type, baseline_type, expected in cases:
+            with self.subTest(case=label):
+                report_dir = self.directory / label.replace(" ", "-")
+                result = subprocess.run(
+                    [BASH, str(script), str(report_dir)],
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    env={
+                        **os.environ,
+                        "PATH": f"{self.directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                        "FAKE_EXIT": status,
+                        "FAKE_REPORT_KIND": report_kind,
+                        "CORPUS_METHOD_VALUE": method,
+                        "CANDIDATE_TYPE": candidate_type,
+                        "BASELINE_TYPE": baseline_type,
+                    },
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertIn(expected, result.stdout)
+
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
         start_profilers = START_PROFILERS.read_text(encoding="utf-8")

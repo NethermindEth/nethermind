@@ -66,7 +66,7 @@ PARITY_TRACE_CALL_METHOD = "trace_call"       # Parity-style, Trace module
 CORPUS_METHODS = ("eth_call", DEBUG_TRACE_CALL_METHOD, PARITY_TRACE_CALL_METHOD)
 # Native tracers Nethermind implements, plus "" for the built-in struct logger. Closed on purpose:
 # an unknown name is accepted by nothing and would fail every record of a run that takes hours.
-TRACE_CALL_TRACERS = frozenset({"callTracer", "prestateTracer", "4byteTracer", ""})
+TRACE_CALL_TRACERS = frozenset({"callTracer", "prestateTracer", "4byteTracer", "stateGasTracer", ""})
 DEFAULT_TRACE_CALL_TRACER = "callTracer"
 # ParityTraceTypes, parsed case-insensitively by the client. "trace" alone is the cheapest useful
 # selection; vmTrace and stateDiff multiply the response size.

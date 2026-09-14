@@ -153,8 +153,8 @@ on:
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, or "" for struct logs)/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, or "" for struct logs)/trace_call_types (Parity types for trace_call_corpus: trace (default), vmTrace, stateDiff, rewards, all) — parity_diffs is refused in either trace mode.
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/max_response_bytes (positive response-size cap for corpus replay, default 16 MiB)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, stateGasTracer, or "" for struct logs)/extra_args.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/max_response_bytes (positive response-size cap for corpus replay, default 16 MiB)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, stateGasTracer, or "" for struct logs)/trace_call_types (Parity types for trace_call_corpus: trace (default), vmTrace, stateDiff, rewards, all) — parity_diffs is refused in either trace mode.
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -377,6 +377,12 @@ jobs:
             echo "tool_config must be a JSON object."
             exit 1
           fi
+          max_response_bytes_type="$(echo "${tool_config}" | jq -r 'if has("max_response_bytes") then .max_response_bytes|type else "absent" end')"
+          max_response_bytes="$(echo "${tool_config}" | jq -r '.max_response_bytes // empty')"
+          if [[ "${max_response_bytes_type}" != "absent" ]] && ! [[ "${max_response_bytes_type}" == "number" && "${max_response_bytes}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::max_response_bytes must be a positive JSON integer, got '${max_response_bytes}'."
+            exit 1
+          fi
           # Private eth_call corpus mode (jsonbench/jsonbench-sweep benchmark only): call contents
           # stay on the runner; the artifact carries aggregate summaries and parity counts only.
           # Single source of truth for corpus mode. A present-but-non-Boolean value (e.g. the string
@@ -418,8 +424,8 @@ jobs:
           if echo "${tool_config}" | jq -e 'has("trace_call_tracer")' >/dev/null 2>&1; then
             trace_call_tracer="$(echo "${tool_config}" | jq -r '.trace_call_tracer')"
             case "${trace_call_tracer}" in
-              callTracer|prestateTracer|4byteTracer|"") ;;
-              *) echo "trace_call_tracer must be callTracer, prestateTracer, 4byteTracer, or \"\" (struct logs), got '${trace_call_tracer}'."; exit 1;;
+              callTracer|prestateTracer|4byteTracer|stateGasTracer|"") ;;
+              *) echo "trace_call_tracer must be callTracer, prestateTracer, 4byteTracer, stateGasTracer, or \"\" (struct logs), got '${trace_call_tracer}'."; exit 1;;
             esac
           fi
           # Parity trace types, space- or comma-separated; the client parses them case-insensitively.
@@ -1004,6 +1010,7 @@ jobs:
           [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
           [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          max_response_bytes="$(get '.max_response_bytes')"; [[ -n "${max_response_bytes}" ]] && export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           export JB_EXTRA_ARGS="$(get '.extra_args')"
           # Discarded output stays OUT of OUT_DIR so it is never staged or published; the
           # fail-rate gate is lifted because absorbing the cold failures is the point of this cell.
@@ -1086,6 +1093,7 @@ jobs:
           # The record cap is a property of the corpus, not of the dispatch mode: without this the
           # sweep accepts a raised cap while this path still rejects the same corpus at 10k.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          max_response_bytes="$(get '.max_response_bytes')"; [[ -n "${max_response_bytes}" ]] && export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           if [[ "${COMPARISON}" == "true" ]]; then
             export REFERENCE_RPC_URL="http://localhost:${REF_RPC_PORT}"
             export REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT}"
@@ -1185,6 +1193,7 @@ jobs:
           corpus_warmup_rps="$(get '.corpus_warmup_rps')"; [[ -n "${corpus_warmup_rps}" ]] && export CORPUS_WARMUP_RPS="${corpus_warmup_rps}"
           # Parity holds every record in memory; raising this is a deliberate act, not a default.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          max_response_bytes="$(get '.max_response_bytes')"; [[ -n "${max_response_bytes}" ]] && export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           # Per-record latency matrix; bypasses k6, so it is how a large corpus runs at a high rate.
           t_passes="$(get '.timings_passes')";  [[ -n "${t_passes}" ]] && export CORPUS_TIMINGS_PASSES="${t_passes}"
           t_rps="$(get '.timings_rps')";        [[ -n "${t_rps}" ]] && export CORPUS_TIMINGS_RPS="${t_rps}"

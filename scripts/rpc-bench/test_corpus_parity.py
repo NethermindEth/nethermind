@@ -493,14 +493,15 @@ class TraceCallModeTests(unittest.TestCase):
                  "blockOverrides": {"number": "0x2"}},
             ]])
 
-    def test_a_missing_block_defaults_to_latest_and_absent_overrides_are_not_forwarded(self):
+    def test_supported_tracers_default_missing_block_to_latest(self):
         corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]},
                                     {"method": "eth_call", "params": [{"to": "0x2"}, None, None]}])
-        with self.trace_mode("prestateTracer"):
-            self.assertEqual(corpus_parity.load_corpus(corpus), [
-                [{"to": "0x1"}, "latest", {"tracer": "prestateTracer"}],
-                [{"to": "0x2"}, "latest", {"tracer": "prestateTracer"}],
-            ])
+        for tracer in ("prestateTracer", "stateGasTracer"):
+            with self.subTest(tracer=tracer), self.trace_mode(tracer):
+                self.assertEqual(corpus_parity.load_corpus(corpus), [
+                    [{"to": "0x1"}, "latest", {"tracer": tracer}],
+                    [{"to": "0x2"}, "latest", {"tracer": tracer}],
+                ])
 
     def test_the_struct_logger_is_selected_by_an_empty_tracer(self):
         corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
