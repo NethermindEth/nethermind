@@ -10,19 +10,25 @@ namespace Nethermind.Core.Test.Crypto;
 
 public class BlobProofsManagerTests
 {
-    [Test]
-    public void Empty_bundle_has_valid_proofs([Values] ProofVersion version)
+    [TestCase(ProofVersion.V0, false, false, true)]
+    [TestCase(ProofVersion.V0, true, false, false)]
+    [TestCase(ProofVersion.V0, false, true, false)]
+    [TestCase(ProofVersion.V0, true, true, false)]
+    [TestCase(ProofVersion.V1, false, false, true)]
+    [TestCase(ProofVersion.V1, true, false, false)]
+    [TestCase(ProofVersion.V1, false, true, false)]
+    [TestCase(ProofVersion.V1, true, true, false)]
+    public void Empty_bundle_has_valid_proofs_only_without_stray_commitments_or_proofs(
+        ProofVersion version,
+        bool hasCommitment,
+        bool hasProof,
+        bool expected)
     {
-        ShardBlobNetworkWrapper wrapper = new([], [], [], version);
+        byte[][] commitments = hasCommitment ? [new byte[Ckzg.BytesPerCommitment]] : [];
+        byte[][] proofs = hasProof ? [new byte[Ckzg.BytesPerProof]] : [];
 
-        Assert.That(IBlobProofsManager.For(version).ValidateProofs(wrapper), Is.True);
-    }
+        ShardBlobNetworkWrapper wrapper = new([], commitments, proofs, version);
 
-    [Test]
-    public void Empty_bundle_with_stray_commitments_is_invalid([Values] ProofVersion version)
-    {
-        ShardBlobNetworkWrapper wrapper = new([], [new byte[Ckzg.BytesPerCommitment]], [], version);
-
-        Assert.That(IBlobProofsManager.For(version).ValidateProofs(wrapper), Is.False);
+        Assert.That(IBlobProofsManager.For(version).ValidateProofs(wrapper), Is.EqualTo(expected));
     }
 }
