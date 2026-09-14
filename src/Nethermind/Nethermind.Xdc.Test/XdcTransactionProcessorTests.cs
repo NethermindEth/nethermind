@@ -137,11 +137,17 @@ internal class XdcTransactionProcessorTests
 
     // A randomize transaction reaches PayFees and must pay nobody; a sign transaction is routed to
     // ExecuteSpecialTransaction long before, and is covered here only against a future routing change.
+    // The transaction carries a tip - without one the premium is zero and paying the fee out looks the
+    // same as burning it, which is what hid this from the mixed-client network.
+    // Every combination is worth running: the guard must hold whatever the spec, the fee regime and the
+    // transaction type say, including a 1559 transaction on a pre-1559 spec that the validator would
+    // reject upstream.
     [Test]
     public void PayFees_SignOrRandomizeTransaction_PaysNobody(
+        [Values] bool eip1559Enabled,
+        [Values] bool eip1559Tx,
         [Values] bool tipTrc21FeeEnabled,
-        [Values] bool toBlockSigner,
-        [Values] bool eip1559Tx)
+        [Values] bool toBlockSigner)
     {
         Address blockSigner = TestItem.AddressE;
         Address randomize = TestItem.AddressC;
@@ -149,7 +155,7 @@ internal class XdcTransactionProcessorTests
         Address owner = TestItem.AddressD;
 
         _spec.IsTipTrc21FeeEnabled.Returns(tipTrc21FeeEnabled);
-        _spec.IsEip1559Enabled.Returns(true);
+        _spec.IsEip1559Enabled.Returns(eip1559Enabled);
         _spec.RandomizeSMCBinary.Returns(randomize);
         _spec.BlockSignerContract.Returns(blockSigner);
 
@@ -157,10 +163,13 @@ internal class XdcTransactionProcessorTests
         _stateProvider.CreateAccount(owner, UInt256.Zero);
         _masternodeVotingContract.GetCandidateOwner(Arg.Any<IWorldState>(), beneficiary).Returns(owner);
 
+        UInt256 gasPrice = 2 * (UInt256)XdcBaseFeeCalculator.BaseFee;
+        UInt256 baseFee = eip1559Enabled ? (UInt256)XdcBaseFeeCalculator.BaseFee : UInt256.Zero;
+
         Transaction tx = Build.A.Transaction
             .WithTo(toBlockSigner ? blockSigner : randomize)
-            .WithGasPrice(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)
-            .WithMaxFeePerGas(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)
+            .WithGasPrice(gasPrice)
+            .WithMaxFeePerGas(gasPrice)
             .WithMaxPriorityFeePerGas((UInt256)XdcBaseFeeCalculator.BaseFee)
             .WithGasLimit(100000)
             .WithType(eip1559Tx ? TxType.EIP1559 : TxType.Legacy)
@@ -168,7 +177,7 @@ internal class XdcTransactionProcessorTests
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithNumber(1)
-            .WithBaseFee((UInt256)XdcBaseFeeCalculator.BaseFee)
+            .WithBaseFee(baseFee)
             .TestObject;
         header.Beneficiary = beneficiary;
 
@@ -177,14 +186,17 @@ internal class XdcTransactionProcessorTests
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(beneficiary);
         UInt256 ownerBefore = _stateProvider.GetBalance(owner);
 
+        // Pre-1559 the whole gas price is the miner's premium; after it, whatever is left above the base fee.
+        UInt256 premiumPerGas = gasPrice - baseFee;
+
         _transactionProcessor.TestPayFees(tx, header, _spec, new FeesTracer(), default, 21046,
-            premiumPerGas: (UInt256)XdcBaseFeeCalculator.BaseFee,
-            tx.CalculateEffectiveGasPrice(true, header.BaseFeePerGas), UInt256.Zero, StatusCode.Success);
+            premiumPerGas,
+            tx.CalculateEffectiveGasPrice(eip1559Enabled, header.BaseFeePerGas), UInt256.Zero, StatusCode.Success);
 
         Assert.Multiple(() =>
         {
-            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(beneficiaryBefore));
-            Assert.That(_stateProvider.GetBalance(owner), Is.EqualTo(ownerBefore));
+            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(beneficiaryBefore), "block beneficiary was paid");
+            Assert.That(_stateProvider.GetBalance(owner), Is.EqualTo(ownerBefore), "candidate owner was paid");
         });
     }
 
