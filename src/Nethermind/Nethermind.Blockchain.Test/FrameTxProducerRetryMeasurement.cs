@@ -103,9 +103,15 @@ public class FrameTxProducerRetryMeasurement
             .Op(Instruction.APPROVE)
             .Done;
 
+    /// <summary>Measures producer-side retry behavior for a control that approves and a prefix that never does.</summary>
+    /// <remarks>322,800 is soispoke's declared privacy-pool budget (their
+    /// <c>activation_manifest.testbed.json</c>: <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800).
+    /// The <c>groth16-soispoke</c> sweep entry in the mempool/flood harnesses stays clamped to 300,000
+    /// because that same field also sets the admission ceiling those tests run under on a stock build;
+    /// this case uses the real declared number that clamp stands in for.</remarks>
     [TestCase(true, 322_800ul, TestName = "control: a prefix that approves is included and paid for")]
     [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
-    [TestCase(false, 322_800ul, TestName = "never approves, at a measured private-pool prefix")]
+    [TestCase(false, 322_800ul, TestName = "never approves, at soispoke's declared privacy-pool budget")]
     public async Task ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {
         await BuildChain(approves ? Approves() : NeverApproves());
@@ -193,7 +199,7 @@ public class FrameTxProducerRetryMeasurement
 
     /// <summary>
     /// Measures the unpaid verification work extracted from a producer by a never-approving prefix
-    /// that is evicted after <paramref name="kRetry"/> failed attempts.
+    /// that is evicted after failing on <paramref name="kRetry"/> distinct chain heads, one attempt per head.
     /// </summary>
     [TestCaseSource(nameof(RetryCases))]
     public async Task ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
