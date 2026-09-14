@@ -523,6 +523,8 @@ jobs:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     runs-on: ubuntu-latest
+    outputs:
+      publish_head_sha: ${{ steps.wait-publish-docker.outputs.head_sha }}
     steps:
       - name: Docker image source
         if: needs.resolve.outputs.should_trigger_publish_docker != 'true' && needs.resolve.outputs.should_wait_for_publish_docker != 'true'
@@ -551,6 +553,7 @@ jobs:
 
       - name: Wait for publish-docker.yml to complete
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: wait-publish-docker
         env:
           GITHUB_TOKEN: ${{ github.token }}
           WORKFLOW_ID: publish-docker.yml
@@ -566,6 +569,7 @@ jobs:
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          set -euo pipefail
           # An empty runId would silently fall back to run discovery - the exact false green this
           # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
           # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
@@ -576,6 +580,16 @@ jobs:
           fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
+          publish_head_sha=$(curl -sf \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${ORG_NAME}/${REPO_NAME}/actions/runs/${RUN_ID}" \
+            | jq -r '.head_sha // empty')
+          if ! [[ "${publish_head_sha}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::publish-docker run ${RUN_ID} has no valid head_sha."
+            exit 1
+          fi
+          echo "head_sha=${publish_head_sha}" >> "${GITHUB_OUTPUT}"
 
       - name: Wait for parallel publish-docker.yml
         if: needs.resolve.outputs.should_wait_for_publish_docker == 'true'
@@ -1557,9 +1571,12 @@ jobs:
   # ---------------------------------------------------------------------------
 
   report:
-    needs: [resolve, benchmark]
+    needs: [resolve, prepare-docker, benchmark]
     if: always() && github.event_name == 'pull_request' && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     runs-on: ubuntu-latest
+    concurrency:
+      group: expb-report-${{ github.repository }}-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     steps:
       - name: Download all metrics artifacts
         uses: actions/download-artifact@v8
@@ -1609,6 +1626,7 @@ jobs:
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          PUBLISH_HEAD_SHA: ${{ needs.prepare-docker.outputs.publish_head_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -1616,6 +1634,10 @@ jobs:
           marker="<!-- expb-reproducible-benchmark-report -->"
           comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
           : > "${comment_file}"
+          if ! [[ "${PUBLISH_HEAD_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::No valid publish-docker head SHA was produced; refusing to publish a misleading benchmark comment."
+            exit 1
+          fi
 
           load_metric() {
             local file="$1"
@@ -1728,6 +1750,7 @@ jobs:
           }
 
           append_line "${marker}"
+          append_line "Tested against commit: ${PUBLISH_HEAD_SHA}"
           append_line "### EXPB Benchmark Comparison"
           append_blank
           append_line "Run: [View workflow run](${RUN_URL})"
@@ -1773,25 +1796,25 @@ jobs:
               per_page: 100,
             });
 
-            const existing = comments.find((comment) =>
+            const existing = comments.filter((comment) =>
+              comment.user?.login === 'github-actions[bot]' &&
               comment.body && comment.body.includes(marker),
             );
 
-            if (existing) {
-              await github.rest.issues.updateComment({
+            for (const comment of existing) {
+              await github.rest.issues.deleteComment({
                 owner,
                 repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
+                comment_id: comment.id,
               });
             }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
 
   # ---------------------------------------------------------------------------
   # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
