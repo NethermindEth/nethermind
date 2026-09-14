@@ -461,10 +461,11 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     """
     params_list = load_corpus(corpus)
     head, chain_id, block_hash = _node_identity(rpc_url)
+    method = corpus_method()
     results: list[str] = []
     failures: dict[str, int] = {}
     error_count = 0
-    for category, result in _replay(rpc_url, params_list, "baseline", corpus_method()):
+    for category, result in _replay(rpc_url, params_list, "baseline", method):
         if _base_category(category) == "rpc_error":
             error_count += 1
             results.append(ERROR_MARKER)
@@ -476,6 +477,10 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
         summary = " ".join(f"{key}={value}" for key, value in sorted(failures.items()))
         raise CorpusParityError(
             f"baseline replay had failures over {len(params_list)} records: {summary}"
+        )
+    if method != "eth_call" and error_count == len(results):
+        raise CorpusParityError(
+            f"trace baseline produced no successful results over {len(results)} records"
         )
     state = Path(state_path)
     state.parent.mkdir(parents=True, exist_ok=True)
@@ -645,6 +650,8 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         json.dump(document, output, sort_keys=True, separators=(",", ":"))
         output.write("\n")
     clean = report["matched"] + report["both_rpc_errors"] == report["total"]
+    if method != "eth_call":
+        clean = clean and report["matched"] > 0
     defects = " ".join(
         f"{key}={value}" for key, value in report.items()
         if value and key not in ("total", "matched", "both_rpc_errors")

@@ -408,11 +408,13 @@ ceiling for corpus parity and paired replay (the default is 16 MiB); the workflo
 Parity still runs, and the `jsonbench-sweep` compares its Nethermind image arms exactly — an
 outcome becomes a SHA-256 digest of the canonicalized trace instead of the returned bytes, which
 keeps the state file small and the privacy boundary intact. Every trace divergence and failed
-replay is gated. The word-level `parity_diffs` characterisation is refused in these modes because
-it would describe the hash, so the digest cannot show response length or word-level differences.
-The first rewritten record is probed on each node before the measured replay; a method-not-found,
-transport, or invalid response fails before timing data is collected. Response bytes stay the gate
-for `eth_call` in every combination.
+replay is gated. A trace baseline must also contain at least one successful result, so an
+all-error replay cannot silently pass as a usable trace configuration. The word-level
+`parity_diffs` characterisation is refused in these modes because it would describe the hash, so
+the digest cannot show response length or word-level differences. The first rewritten record is
+probed on each node before the measured replay; a disabled namespace (`-32600`), method-not-found
+(`-32601`), transport, or invalid response fails before timing data is collected. Response bytes
+stay the gate for `eth_call` in every combination.
 
 **Sizing a cell by request count.** By default a corpus cell runs for `duration` at each
 `rps_list` rate. `corpus_requests` (absolute) or `corpus_passes` (a multiple of that

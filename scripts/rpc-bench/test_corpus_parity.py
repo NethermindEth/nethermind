@@ -335,6 +335,15 @@ class CorpusParityTests(unittest.TestCase):
         self.assertEqual(report["baseline_rpc_errors"], 1)
         self.assertEqual(report["matched"], 2)
 
+    def test_eth_call_all_rpc_errors_remain_valid_agreement(self):
+        corpus = self.write_corpus(2)
+        with unittest.mock.patch.dict(os.environ, {"RPC_BENCH_CORPUS_METHOD": "eth_call"}):
+            self.run_baseline(corpus, lambda i: ("error", -32000))
+            self.assertTrue(self.state.exists())
+            clean, report, _ = self.run_compare(corpus, lambda i: ("error", -32000))
+        self.assertTrue(clean)
+        self.assertEqual((report["matched"], report["both_rpc_errors"]), (0, 2))
+
     def test_baseline_still_aborts_on_transport_failures_with_counts_only_error(self):
         corpus = self.write_corpus(3)
         with RpcServer(lambda i: ("http", 503) if i == 2 else "0xab") as server:
@@ -580,6 +589,59 @@ class TraceCallModeTests(unittest.TestCase):
                 with self.assertRaises(corpus_parity.CorpusParityError) as raised:
                     corpus_parity.probe(str(corpus), server.url)
                 self.assertIn("transport_failure", str(raised.exception))
+
+    def test_trace_requires_successful_results_but_allows_mixed_errors(self):
+        modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
+        cases = (
+            ("all-error", [("error", -32000)], False, 0, 1),
+            ("mixed", [{"type": "CALL"}, ("error", -32000)], True, 1, 1),
+            ("successful", [{"type": "CALL"}, {"type": "CALL", "gasUsed": "0x2"}], True, 2, 0),
+        )
+        for mode, mode_context in modes:
+            for name, outcomes, expected_clean, expected_matched, expected_errors in cases:
+                with self.subTest(mode=mode, case=name), mode_context():
+                    self.state.unlink(missing_ok=True)
+                    self.report.unlink(missing_ok=True)
+                    corpus = self.write_corpus([
+                        {"method": "eth_call", "params": [{"to": f"0x{index}"}, "latest"]}
+                        for index in range(1, len(outcomes) + 1)
+                    ])
+
+                    def responder(index, outcomes=outcomes):
+                        return outcomes[index - 1]
+
+                    if name == "all-error":
+                        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+                            with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                                corpus_parity.baseline(str(corpus), server.url, str(self.state))
+                            self.assertIn("no successful results", str(raised.exception))
+                            self.assertFalse(self.state.exists())
+                            with gzip.open(self.state, "wt", encoding="utf-8") as output:
+                                json.dump({
+                                    "total": 1,
+                                    "head": server.head,
+                                    "chain_id": server.chain,
+                                    "block_hash": server.block_hash,
+                                    "results": [corpus_parity.ERROR_MARKER],
+                                }, output)
+                            clean = corpus_parity.compare(
+                                str(corpus), server.url, str(self.state), str(self.report),
+                                "base_client", "cand_client",
+                            )
+                        report = json.loads(self.report.read_text(encoding="utf-8"))
+                    else:
+                        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+                            corpus_parity.baseline(str(corpus), server.url, str(self.state))
+                        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+                            clean = corpus_parity.compare(
+                                str(corpus), server.url, str(self.state), str(self.report),
+                                "base_client", "cand_client",
+                            )
+                        report = json.loads(self.report.read_text(encoding="utf-8"))
+
+                    self.assertEqual(clean, expected_clean)
+                    self.assertEqual(report["matched"], expected_matched)
+                    self.assertEqual(report["both_rpc_errors"], expected_errors)
 
     def test_trace_cli_replays_probe_before_writing_outputs(self):
         corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
