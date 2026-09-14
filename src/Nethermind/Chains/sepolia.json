@@ -1,149 +1,75 @@
 {
-  "name": "Sepolia Testnet",
-  "dataDir": "sepolia",
-  "engine": {
-    "Ethash": {
-      "params": {
-        "minimumDifficulty": "0x20000",
-        "difficultyBoundDivisor": "0x800",
-        "difficultyBombDisabled": "true",
-        "durationLimit": "0xd",
-        "difficultyBombDelays": {
-          "0": "0x7FFFFFFFFFFFFFFF"
-        },
-        "blockReward": {
-          "0x0": "0x1bc16d674ec80000"
-        },
-        "homesteadTransition": "0x0",
-        "eip100bTransition": "0x0"
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/genesis.json",
+  "config": {
+    "chainId": 11155111,
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "muirGlacierBlock": 0,
+    "berlinBlock": 0,
+    "londonBlock": 0,
+    "mergeNetsplitBlock": 1735371,
+    "terminalTotalDifficulty": "0x3c6568f12e8000",
+    "terminalTotalDifficultyPassed": true,
+    "beaconChainGenesisTimestamp": 1655733600,
+    "shanghaiTime": 1677557088,
+    "cancunTime": 1706655072,
+    "pragueTime": 1741159776,
+    "osakaTime": 1760427360,
+    "bpo1Time": 1761017184,
+    "bpo2Time": 1761607008,
+    "amsterdamTime": 1791294816,
+    "depositContractAddress": "0x7f02C3E3c98b133055B8B348B2Ac625669Ed295D",
+    "blobSchedule": {
+      "cancun": {
+        "target": 3,
+        "max": 6,
+        "baseFeeUpdateFraction": 3338477
+      },
+      "prague": {
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": 5007716
+      },
+      "bpo1": {
+        "target": 10,
+        "max": 15,
+        "baseFeeUpdateFraction": 8346193
+      },
+      "bpo2": {
+        "target": 14,
+        "max": 21,
+        "baseFeeUpdateFraction": 11684671
       }
     }
   },
-  "params": {
-    "gasLimitBoundDivisor": "0x400",
-    "accountStartNonce": "0x0",
-    "maximumExtraDataSize": "0x20",
-    "minGasLimit": "0x1388",
-    "networkId": "0xaa36a7",
-    "forkBlock": "0x0",
-    "maxCodeSize": "0x6000",
-    "maxCodeSizeTransition": "0x0",
-    "eip150Transition": "0x0",
-    "eip160Transition": "0x0",
-    "eip161abcTransition": "0x0",
-    "eip161dTransition": "0x0",
-    "eip155Transition": "0x0",
-    "eip140Transition": "0x0",
-    "eip211Transition": "0x0",
-    "eip214Transition": "0x0",
-    "eip658Transition": "0x0",
-    "eip145Transition": "0x0",
-    "eip1014Transition": "0x0",
-    "eip1052Transition": "0x0",
-    "eip1283Transition": "0x0",
-    "eip1283DisableTransition": "0x0",
-    "eip152Transition": "0x0",
-    "eip1108Transition": "0x0",
-    "eip1344Transition": "0x0",
-    "eip1884Transition": "0x0",
-    "eip2028Transition": "0x0",
-    "eip2200Transition": "0x0",
-    "eip2565Transition": "0x0",
-    "eip2929Transition": "0x0",
-    "eip2930Transition": "0x0",
-    "eip1559Transition": "0x0",
-    "eip3198Transition": "0x0",
-    "eip3529Transition": "0x0",
-    "eip3541Transition": "0x0",
-    "terminalTotalDifficulty": "3C6568F12E8000",
-    "mergeForkIdTransition": "0x1A7ACB",
-    "beaconChainGenesisTimestamp": "0x62b07d60",
-    "eip4895TransitionTimestamp": "0x63fd7d60",
-    "eip3855TransitionTimestamp": "0x63fd7d60",
-    "eip3651TransitionTimestamp": "0x63fd7d60",
-    "eip3860TransitionTimestamp": "0x63fd7d60",
-    "eip1153TransitionTimestamp": "0x65b97d60",
-    "eip4788TransitionTimestamp": "0x65b97d60",
-    "eip4844TransitionTimestamp": "0x65b97d60",
-    "eip5656TransitionTimestamp": "0x65b97d60",
-    "eip6780TransitionTimestamp": "0x65b97d60",
-    "eip2537TransitionTimestamp": "0x67c7fd60",
-    "eip2935TransitionTimestamp": "0x67c7fd60",
-    "eip6110TransitionTimestamp": "0x67c7fd60",
-    "eip7002TransitionTimestamp": "0x67c7fd60",
-    "eip7251TransitionTimestamp": "0x67c7fd60",
-    "eip7623TransitionTimestamp": "0x67c7fd60",
-    "eip7702TransitionTimestamp": "0x67c7fd60",
-    "eip7594TransitionTimestamp": "0x68edfd60",
-    "eip7823TransitionTimestamp": "0x68edfd60",
-    "eip7825TransitionTimestamp": "0x68edfd60",
-    "eip7883TransitionTimestamp": "0x68edfd60",
-    "eip7918TransitionTimestamp": "0x68edfd60",
-    "eip7934TransitionTimestamp": "0x68edfd60",
-    "eip7939TransitionTimestamp": "0x68edfd60",
-    "eip7951TransitionTimestamp": "0x68edfd60",
-    "amsterdam": "0x6ac4fd60",
-    "depositContractAddress": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
-    "blobSchedule": [
-      {
-        "name": "prague",
-        "timestamp": "0x67c7fd60",
-        "target": 6,
-        "max": 9,
-        "baseFeeUpdateFraction": "0x4c6964"
-      },
-      {
-        "name": "bpo1",
-        "timestamp": "0x68f6fd60",
-        "target": 10,
-        "max": 15,
-        "baseFeeUpdateFraction": "0x7f5a51"
-      },
-      {
-        "name": "bpo2",
-        "timestamp": "0x68fffd60",
-        "target": 14,
-        "max": 21,
-        "baseFeeUpdateFraction": "0xb24b3f"
-      }
-    ]
-  },
-  "genesis": {
-    "seal": {
-      "ethereum": {
-        "nonce": "0x000000000000000",
-        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
-      }
-    },
-    "difficulty": "0x20000",
-    "author": "0x0000000000000000000000000000000000000000",
-    "timestamp": "0x6159af19",
-    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "extraData": "0x5365706f6c69612c20417468656e732c204174746963612c2047726565636521",
-    "gasLimit": "0x1c9c380"
-  },
-  "nodes": [
-    "enr:-KG4QHn1Os72NN5Z44Ehf9CHPmN490GBphTFirfk33pFuWnkY9UNrQMfHkuCw6a-ykeRhGKrPL5ppMXiZQchgPrCDJQBgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQJK_ye9jx9mela-ME_Kt5e017Ywv3hYH_5rwNhIUrtzNoN1ZHCCTriEdWRwNoJOuA",
-    "enr:-KG4QCpiRltiyX7LgozCkQ8XBrcDzejBXbE7YRUQFmIEgv46SC8B4CJLcOO3O2bH-_u-B242GTzO_hQPhv3rpyvAHXMBgmlkgnY0gmlwhIHUpj2DaXA2kCYEqIAABAHQAAAAA2GdUACJc2VjcDI1NmsxoQNmVWXve5c0uvsn_agjTKQ8pR6gl9DynZyTQNruBDfJ4YN1ZHCCdsOEdWRwNoJ2ww",
-    "enr:-KG4QJUWvc8qvCUr7x-qCFWee6HPLgmRUfVn-M_yqXD-sjSoAalKCV3NgUhmlqozjTJIj_nPr7J_uT8WJwbWiIx3Cv4BgmlkgnY0gmlwhJB-_BiDaXA2kCQAYYABAADQAAAAAYEgYAGJc2VjcDI1NmsxoQKOQetrA-97TELUzuGegVD1_cHKKNnjOmJ9CYdeSTor7YN1ZHCCdsOEdWRwNoJ2ww",
-    "enr:-KG4QIBsIiST0JBBvgSNxvHQOeH5PkRgWeufahVXYQQWj7GLYPFDsviuQ6qU-3Xx4qnARaZiI-qqVRyw_2qqmOKRY1UBgmlkgnY0gmlwhLKc14yDaXA2kCoBBP8A9DxKAAAAAAAAAAGJc2VjcDI1NmsxoQKx4n3wy0KtwnuZCHmlxMmc4b0VvfC4Ka_f3sUPvjUq1oN1ZHCCdsOEdWRwNoJ2ww",
-    "enr:-KG4QPM5C6wuTxu5yk4jkI9Mm64iSUKMPNt8y8kmoFzOlYrnYV4SBeZK7UiS4YWrkX4y2FD9_eH7xiPGvLQ-nXoXIcYBgmlkgnY0gmlwhAXfXlGDaXA2kCoBBP8C8BytAAAAAAAAAAGJc2VjcDI1NmsxoQIC3FMD8Si9DIBVofsSbJkpvXTUAfyi8q66XXQgjRhUsIN1ZHCCdsOEdWRwNoJ2ww"
-  ],
-  "accounts": {
-    "0xa2A6d93439144FFE4D27c9E088dCD8b783946263": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xBc11295936Aa79d594139de1B2e12629414F3BDB": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0x7cF5b79bfe291A67AB02b393E456cCc4c266F753": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xaaec86394441f915bce3e6ab399977e9906f3b69": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xF47CaE1CF79ca6758Bfc787dbD21E6bdBe7112B8": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xd7eDDB78ED295B3C9629240E8924fb8D8874ddD8": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0x8b7F0977Bb4f0fBE7076FA22bC24acA043583F5e": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xe2e2659028143784d557bcec6ff3a0721048880a": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xd9a5179f091d85051d3c982785efd1455cec8699": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0xbeef32ca5b9a198d27B4e02F4c70439fE60356Cf": { "balance": "0xD3C21BCECCEDA1000000" },
-    "0x0000006916a87b82333f4245046623b23794c65c": { "balance": "0x84595161401484A000000" },
-    "0xb21c33de1fab3fa15499c62b59fe0cc3250020d1": { "balance": "0x52B7D2DCC80CD2E4000000" },
-    "0x10F5d45854e038071485AC9e402308cF80D2d2fE": { "balance": "0x52B7D2DCC80CD2E4000000" },
-    "0xd7d76c58b3a519e9fA6Cc4D22dC017259BC49F1E": { "balance": "0x52B7D2DCC80CD2E4000000" },
-    "0x799D329e5f583419167cD722962485926E338F4a": { "balance": "0xDE0B6B3A7640000" }
+  "nonce": "0x000000000000000",
+  "timestamp": "0x6159af19",
+  "extraData": "0x5365706f6c69612c20417468656e732c204174746963612c2047726565636521",
+  "gasLimit": "0x1c9c380",
+  "difficulty": "0x20000",
+  "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "coinbase": "0x0000000000000000000000000000000000000000",
+  "alloc": {
+    "0xa2a6d93439144ffe4d27c9e088dcd8b783946263": { "balance": "0xd3c21bcecceda1000000" },
+    "0xbc11295936aa79d594139de1b2e12629414f3bdb": { "balance": "0xd3c21bcecceda1000000" },
+    "0x7cf5b79bfe291a67ab02b393e456ccc4c266f753": { "balance": "0xd3c21bcecceda1000000" },
+    "0xaaec86394441f915bce3e6ab399977e9906f3b69": { "balance": "0xd3c21bcecceda1000000" },
+    "0xf47cae1cf79ca6758bfc787dbd21e6bdbe7112b8": { "balance": "0xd3c21bcecceda1000000" },
+    "0xd7eddb78ed295b3c9629240e8924fb8d8874ddd8": { "balance": "0xd3c21bcecceda1000000" },
+    "0x8b7f0977bb4f0fbe7076fa22bc24aca043583f5e": { "balance": "0xd3c21bcecceda1000000" },
+    "0xe2e2659028143784d557bcec6ff3a0721048880a": { "balance": "0xd3c21bcecceda1000000" },
+    "0xd9a5179f091d85051d3c982785efd1455cec8699": { "balance": "0xd3c21bcecceda1000000" },
+    "0xbeef32ca5b9a198d27b4e02f4c70439fe60356cf": { "balance": "0xd3c21bcecceda1000000" },
+    "0x0000006916a87b82333f4245046623b23794c65c": { "balance": "0x84595161401484a000000" },
+    "0xb21c33de1fab3fa15499c62b59fe0cc3250020d1": { "balance": "0x52b7d2dcc80cd2e4000000" },
+    "0x10f5d45854e038071485ac9e402308cf80d2d2fe": { "balance": "0x52b7d2dcc80cd2e4000000" },
+    "0xd7d76c58b3a519e9fa6cc4d22dc017259bc49f1e": { "balance": "0x52b7d2dcc80cd2e4000000" },
+    "0x799d329e5f583419167cd722962485926e338f4a": { "balance": "0xde0b6b3a7640000" }
   }
 }

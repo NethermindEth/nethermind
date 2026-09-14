@@ -191,6 +191,20 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    [TestCase("sepolia.json")]
+    [TestCase("sepolia_archive.json")]
+    public void Sepolia_discovery_bootnodes_are_correct(string configFile)
+    {
+        IDiscoveryConfig discoveryConfig = GetConfigFromFile<IDiscoveryConfig>(configFile);
+        Assert.That(discoveryConfig.Bootnodes, Has.Length.EqualTo(5), configFile);
+
+        foreach (NetworkNode bootnode in discoveryConfig.Bootnodes)
+        {
+            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
+        }
+    }
+
     [TestCase("*")]
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
 
