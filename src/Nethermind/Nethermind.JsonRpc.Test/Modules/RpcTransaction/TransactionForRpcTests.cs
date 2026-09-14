@@ -53,8 +53,13 @@ public class TransactionForRpcTests
     }
 
     [TestCase("""{"type":"0x0","gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
+    [TestCase("""{"gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
     [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
     [TestCase("""{"blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"gasPrice":"0x1","accessList":[]}""", typeof(AccessListTransactionForRpc))]
+    [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"gasPrice":"0x1","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"gasPrice":"0x1","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
     public void Deserializes_polymorphically_when_declared_as_SignableTransactionForRpc(string json, Type expectedType)
     {
         SignableTransactionForRpc tx = _serializer.Deserialize<SignableTransactionForRpc>(json)
@@ -62,6 +67,64 @@ public class TransactionForRpcTests
 
         Assert.That(tx, Is.TypeOf(expectedType),
             "input parameters declared as SignableTransactionForRpc must still dispatch to the concrete tx type");
+    }
+
+    [Test]
+    public void GasPrice_does_not_drop_the_access_list()
+    {
+        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
+            """{"gasPrice":"0x7","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1"]}]}""")
+            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
+
+        Transaction tx = rpcTx.ToTransaction().Data!;
+
+        Assert.That(tx.Type, Is.EqualTo(TxType.AccessList));
+        Assert.That(tx.AccessList?.Count, Is.EqualTo((1, 1)));
+        Assert.That(tx.GasPrice, Is.EqualTo((UInt256)7));
+    }
+
+    [Test]
+    public void GasPrice_does_not_drop_the_authorization_list_and_prices_the_dynamic_fee_transaction()
+    {
+        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
+            """{"gasPrice":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""")
+            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
+
+        Transaction tx = rpcTx.ToTransaction().Data!;
+
+        Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
+        Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
+        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+        Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+    }
+
+    [Test]
+    public void GasPrice_does_not_drop_the_blob_versioned_hashes()
+    {
+        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
+            """{"gasPrice":"0x7","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"]}""")
+            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
+
+        Transaction tx = rpcTx.ToTransaction().Data!;
+
+        Assert.That(tx.Type, Is.EqualTo(TxType.Blob));
+        Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
+        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
+    }
+
+    [Test]
+    public void Explicit_dynamic_fees_take_precedence_over_gasPrice()
+    {
+        TransactionForRpc rpcTx = _serializer.Deserialize<TransactionForRpc>(
+            """{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""")
+            ?? throw new InvalidOperationException("Expected a deserialized transaction.");
+
+        Transaction tx = rpcTx.ToTransaction().Data!;
+
+        Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
+        Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)2));
+        Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
+        Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
     }
 
     [TestCaseSource(nameof(Transactions))]

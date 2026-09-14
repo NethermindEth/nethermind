@@ -74,6 +74,23 @@ public partial class EthRpcModuleTests
         Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)0x3b9aca00), "caller-supplied maxPriorityFeePerGas must be preserved");
     }
 
+    [Test]
+    public async Task FillTransaction_WhenDynamicFeeTxSuppliesOnlyGasPrice_UsesItAsFeeCapAndTip()
+    {
+        EIP1559TransactionForRpc rpcTx = new()
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressB,
+            Value = 1,
+            GasPrice = 7,
+        };
+
+        EIP1559TransactionForRpc filled = (EIP1559TransactionForRpc)await FillTransactionForResult(rpcTx);
+
+        Assert.That(filled.MaxFeePerGas, Is.EqualTo((UInt256)7), "gasPrice must become the fee cap instead of being replaced by the oracle");
+        Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7), "gasPrice must become the tip instead of being replaced by the oracle");
+    }
+
     private static IEnumerable<TestCaseData> InvalidInputCases()
     {
         yield return new TestCaseData(
