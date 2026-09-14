@@ -1,0 +1,104 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics;
+using Nethermind.Db;
+using Nethermind.Logging;
+
+namespace Nethermind.State.Flat.History.Changesets;
+
+/// <summary>Fills the changeset column behind the history watermark, one block at a time, on its own thread. It
+/// never runs ahead of the watermark, so it only ever indexes blocks the capture has already made durable, and it
+/// sleeps out the rest of its duty cycle so that re-execution stays invisible to the RPC the node is serving.</summary>
+public sealed class TransactionChangesetBuilder(
+    TransactionChangesetIndex index,
+    IHistoryBlockExecutor executor,
+    HistoryAvailability availability,
+    IFlatDbConfig config,
+    ILogManager logManager) : IDisposable
+{
+    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
+
+    private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
+    private readonly ILogger _logger = logManager.GetClassLogger<TransactionChangesetBuilder>();
+    private readonly CancellationTokenSource _cancellation = new();
+    private Thread? _thread;
+
+    public void Start()
+    {
+        if (!index.Enabled || _thread is not null) return;
+
+        _thread = new Thread(Run)
+        {
+            IsBackground = true,
+            Name = "Transaction changeset builder",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        _thread.Start();
+        if (_logger.IsInfo) _logger.Info($"Transaction changeset index building at {_dutyCyclePercent}% duty cycle.");
+    }
+
+    public bool TryBuildNext()
+    {
+        if (!TryNextBlock(out ulong block)) return false;
+
+        using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block);
+        if (!executor.TryExecute(block, capture.Tracer, _cancellation.Token)) return false;
+
+        capture.Commit();
+        return true;
+    }
+
+    public void Dispose()
+    {
+        _cancellation.Cancel();
+        _thread?.Join(TimeSpan.FromSeconds(5));
+        _cancellation.Dispose();
+    }
+
+    private void Run()
+    {
+        CancellationToken token = _cancellation.Token;
+        while (!token.IsCancellationRequested)
+        {
+            long startedAt = Stopwatch.GetTimestamp();
+            bool built;
+            try
+            {
+                built = TryBuildNext();
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                // A block that will not re-execute is not a reason to lose the thread: coverage stops where it
+                // stopped, every read below it stays correct, and the next pass tries again.
+                if (_logger.IsWarn) _logger.Warn($"Transaction changeset build failed, retrying: {exception.Message}");
+                built = false;
+            }
+
+            if (built) Throttle(startedAt, token);
+            else token.WaitHandle.WaitOne(IdleDelay);
+        }
+    }
+
+    private void Throttle(long startedAt, CancellationToken token)
+    {
+        if (_dutyCyclePercent >= 100) return;
+
+        TimeSpan worked = Stopwatch.GetElapsedTime(startedAt);
+        TimeSpan rest = worked * (100 - _dutyCyclePercent) / _dutyCyclePercent;
+        if (rest > TimeSpan.Zero) token.WaitHandle.WaitOne(rest);
+    }
+
+    private bool TryNextBlock(out ulong block)
+    {
+        block = 0;
+        if (!index.Enabled || !availability.TryGetWatermark(out ulong watermark)) return false;
+
+        block = index.TryGetCoverage(out _, out ulong covered) ? covered + 1 : watermark;
+        return block <= watermark && availability.IsCovered(block);
+    }
+}

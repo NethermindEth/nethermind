@@ -19,6 +19,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
     public long HistoryVerifyMaxRows { get; set; } = 0;
+    public bool HistoryTransactionIndexEnabled { get; set; } = false;
+    public int HistoryTransactionIndexDutyCyclePercent { get; set; } = 25;
     public bool ArchiveProofServeEnabled { get; set; } = false;
     public bool ArchiveProofBuildEnabled { get; set; } = false;
     public int ArchiveProofFanOut { get; set; } = 8;

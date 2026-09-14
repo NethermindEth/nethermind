@@ -11,6 +11,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Flat.History.Proofs;
 
 namespace Nethermind.Init.Modules;
@@ -66,5 +67,10 @@ public class FlatHistoryModule : Module
             .AddSingleton<ArchiveProofSource>()
             .Bind<IHistoricalTrieVisitor, ArchiveProofSource>()
             .AddSingleton<HistoryWalkVerificationCoordinator>()
-            .AddStep(typeof(StartHistoryWalkVerification));
+            .AddStep(typeof(StartHistoryWalkVerification))
+            .AddSingleton<TransactionChangesetIndex>()
+            .AddScoped<ProcessingHistoryBlockExecutor.Components>()
+            .AddSingleton<IHistoryBlockExecutor, ProcessingHistoryBlockExecutor>()
+            .AddSingleton<TransactionChangesetBuilder>()
+            .AddStep(typeof(StartTransactionChangesetBuilder));
 }
