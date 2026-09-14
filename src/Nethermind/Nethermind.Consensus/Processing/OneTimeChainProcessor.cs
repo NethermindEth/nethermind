@@ -25,7 +25,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -49,7 +48,6 @@ public sealed class OneTimeChainProcessor(
     IStateReader stateReader,
     ILogManager logManager,
     BlockchainProcessor.Options options,
-    IProcessingStats processingStats,
     IEnumerable<IBlockTracer>? blockTracers = null
 ) : IBlockchainProcessor
 {
@@ -63,8 +61,6 @@ public sealed class OneTimeChainProcessor(
     private readonly BlockchainProcessor.Options _options = options;
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ILogger _logger = logManager.GetClassLogger<OneTimeChainProcessor>();
-    private readonly IProcessingStats _stats = processingStats;
-    private readonly Stopwatch _stopwatch = new();
     private readonly Lock _lock = new();
     // Retained for DI parity with BlockchainProcessor; seeding into a composite tracer is only meaningful
     // on the queued path, which this processor deliberately does not have.
@@ -99,15 +95,10 @@ public sealed class OneTimeChainProcessor(
             return null;
         }
 
-        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        if (!readonlyChain) _stats.CaptureStartStats();
-
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
-        _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token);
-        _stopwatch.Stop();
         if (processedBlocks is null)
         {
             return null;
@@ -123,18 +114,6 @@ public sealed class OneTimeChainProcessor(
         else
         {
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
-        }
-
-        if (!readonlyChain)
-        {
-            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
-            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
-        }
-
-        if (!readonlyChain)
-        {
-            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
         }
 
         return lastProcessed;
@@ -204,12 +183,6 @@ public sealed class OneTimeChainProcessor(
             }
             if (invalidBlock is not null)
             {
-                Metrics.BadBlocks++;
-                if (ex.InvalidBlock.IsByNethermindNode())
-                {
-                    Metrics.BadBlocksByNethermindNodes++;
-                }
-
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,
                     (_options.DumpOptions & DumpOptions.RlpLog) != 0);

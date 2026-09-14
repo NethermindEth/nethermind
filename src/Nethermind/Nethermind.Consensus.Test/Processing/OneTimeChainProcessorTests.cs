@@ -32,18 +32,6 @@ namespace Nethermind.Consensus.Test.Processing;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class OneTimeChainProcessorTests
 {
-    private class StatsMock : IProcessingStats
-    {
-        public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-        public int CaptureStartStatsCount { get; private set; }
-        public int UpdateStatsCount { get; private set; }
-
-        public void Start() { }
-        public void CaptureStartStats() => CaptureStartStatsCount++;
-        public void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros) => UpdateStatsCount++;
-        public void Fire() => NewProcessingStatistics?.Invoke(this, new BlockStatistics());
-    }
-
     private class BranchProcessorMock : IBranchProcessor
     {
         private readonly ConcurrentDictionary<Hash256, bool> _allowed = [];
@@ -93,7 +81,6 @@ public class OneTimeChainProcessorTests
     private Block _genesis = null!;
     private IStateReader _stateReader = null!;
     private BranchProcessorMock _branchProcessor = null!;
-    private StatsMock _stats = null!;
     private PreprocessorStepMock _preprocessorStep = null!;
     private OneTimeChainProcessor _processor = null!;
 
@@ -110,7 +97,6 @@ public class OneTimeChainProcessorTests
         _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _branchProcessor = new BranchProcessorMock();
-        _stats = new StatsMock();
         _preprocessorStep = new PreprocessorStepMock();
         _processor = new OneTimeChainProcessor(
             Substitute.For<IWorldState>(),
@@ -120,8 +106,7 @@ public class OneTimeChainProcessorTests
             [_preprocessorStep],
             _stateReader,
             LimboLogs.Instance,
-            BlockchainProcessor.Options.Default,
-            _stats);
+            BlockchainProcessor.Options.Default);
     }
 
     private Block BuildBlockOnHead(long totalDifficulty = 2_000_000)
