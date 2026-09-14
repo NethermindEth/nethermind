@@ -14,7 +14,7 @@ internal enum ExpbPriorityMode
     Off,
     Observe,
     Nice,
-    Reth,
+    Boost,
 }
 
 /// <summary>
@@ -30,8 +30,8 @@ internal sealed class ExpbPriorityProbe
     internal const string EnvironmentVariable = "NETHERMIND_EXPB_PRIORITY_MODE";
     internal const int NativeApiUnavailableError = int.MinValue;
     private const int RequestedNice = -5;
-    private const int RethPrimaryNice = -20;
-    private const int RethFallbackNice = -6;
+    private const int BoostPrimaryNice = -20;
+    private const int BoostFallbackNice = -6;
 
     private readonly ExpbPriorityMode _mode;
     private readonly IExpbPriorityNative _native;
@@ -71,7 +71,7 @@ internal sealed class ExpbPriorityProbe
     {
         if (string.IsNullOrWhiteSpace(rawMode) || rawMode.Equals("off", StringComparison.OrdinalIgnoreCase))
         {
-            return string.IsNullOrWhiteSpace(rawMode) && isLinux ? ExpbPriorityMode.Reth : ExpbPriorityMode.Off;
+            return string.IsNullOrWhiteSpace(rawMode) && isLinux ? ExpbPriorityMode.Boost : ExpbPriorityMode.Off;
         }
 
         if (rawMode.Equals("observe", StringComparison.OrdinalIgnoreCase))
@@ -84,13 +84,13 @@ internal sealed class ExpbPriorityProbe
             return ExpbPriorityMode.Nice;
         }
 
-        if (rawMode.Equals("reth", StringComparison.OrdinalIgnoreCase))
+        if (rawMode.Equals("boost", StringComparison.OrdinalIgnoreCase))
         {
-            return ExpbPriorityMode.Reth;
+            return ExpbPriorityMode.Boost;
         }
 
         throw new InvalidOperationException(
-            $"Invalid {EnvironmentVariable} value '{rawMode}'. Expected unset, off, observe, nice, or reth.");
+            $"Invalid {EnvironmentVariable} value '{rawMode}'. Expected unset, off, observe, nice, or boost.");
     }
 
     internal Scope Enter()
@@ -128,10 +128,10 @@ internal sealed class ExpbPriorityProbe
             return new Scope(this, state);
         }
 
-        if (_mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Reth)
+        if (_mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Boost)
         {
             state.SetAttempted = true;
-            int requestedNice = _mode is ExpbPriorityMode.Reth ? RethPrimaryNice : RequestedNice;
+            int requestedNice = _mode is ExpbPriorityMode.Boost ? BoostPrimaryNice : RequestedNice;
             if (_native.TrySetNice(state.ThreadId, requestedNice, out error))
             {
                 state.AppliedNice = true;
@@ -152,7 +152,7 @@ internal sealed class ExpbPriorityProbe
             else
             {
                 int primaryError = error;
-                int fallbackNice = Math.Min(state.NiceBefore, RethFallbackNice);
+                int fallbackNice = Math.Min(state.NiceBefore, BoostFallbackNice);
                 if (_native.TrySetNice(state.ThreadId, fallbackNice, out error))
                 {
                     state.AppliedNice = true;
@@ -297,7 +297,7 @@ internal sealed class ExpbPriorityProbe
                 }
                 else
                 {
-                    if ((_state.Mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Reth) && _state.SetAttempted
+                    if ((_state.Mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Boost) && _state.SetAttempted
                         && !_owner._native.TrySetNice(_state.ThreadId, _state.NiceBefore, out error))
                     {
                         _state.Failure ??= FormatError("setpriority_restore", error);
@@ -313,7 +313,7 @@ internal sealed class ExpbPriorityProbe
                         _state.Failure ??= FormatError("getpriority_after", error);
                     }
 
-                    if ((_state.Mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Reth)
+                    if ((_state.Mode is ExpbPriorityMode.Nice or ExpbPriorityMode.Boost)
                         && _state.NiceAfter != int.MinValue && _state.NiceAfter != _state.NiceBefore)
                     {
                         _state.Failure ??= $"setpriority_restore_readback expected={_state.NiceBefore} actual={_state.NiceAfter}";

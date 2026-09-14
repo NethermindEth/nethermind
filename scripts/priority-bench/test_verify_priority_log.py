@@ -18,7 +18,7 @@ def record(mode="observe", **overrides):
         "nice_during": {
             "observe": "0",
             "nice": "-5",
-            "reth": "-20",
+            "boost": "-20",
         }[mode],
         "policy_after": "SCHED_OTHER",
         "nice_after": "0",
@@ -43,41 +43,41 @@ def test_valid_nice_record_requires_and_restores_minus_five():
     assert validate_records([record("nice")], expected_mode="nice") == []
 
 
-def test_valid_reth_record_uses_highest_priority_nice():
-    assert validate_records([record("reth")], expected_mode="reth") == []
+def test_valid_boost_record_uses_highest_priority_nice():
+    assert validate_records([record("boost")], expected_mode="boost") == []
 
 
-def test_reth_record_accepts_thread_priority_fallback():
+def test_boost_record_accepts_thread_priority_fallback():
     assert validate_records(
-        [record("reth", nice_during="-6")], expected_mode="reth"
+        [record("boost", nice_during="-6")], expected_mode="boost"
     ) == []
 
 
-def test_reth_record_accepts_inherited_stronger_baseline_fallback():
+def test_boost_record_accepts_inherited_stronger_baseline_fallback():
     assert validate_records(
-        [record("reth", nice_before="-10", nice_during="-10", nice_after="-10")],
-        expected_mode="reth",
+        [record("boost", nice_before="-10", nice_during="-10", nice_after="-10")],
+        expected_mode="boost",
     ) == []
 
 
-def test_reth_arm_rejects_unexpected_nice_value():
+def test_boost_arm_rejects_unexpected_nice_value():
     errors = validate_records(
-        [record("reth", nice_during="-5")], expected_mode="reth"
+        [record("boost", nice_during="-5")], expected_mode="boost"
     )
-    assert any("reth arm expected" in error for error in errors)
+    assert any("boost arm expected" in error for error in errors)
 
 
-def test_reth_arm_rejects_ineffective_minus_twenty_baseline():
+def test_boost_arm_rejects_ineffective_minus_twenty_baseline():
     errors = validate_records(
-        [record("reth", nice_before="-20", nice_during="-20", nice_after="-20")],
-        expected_mode="reth",
+        [record("boost", nice_before="-20", nice_during="-20", nice_after="-20")],
+        expected_mode="boost",
     )
     assert any("cannot demonstrate a raise" in error for error in errors)
 
 
-def test_reth_arm_rejects_failed_apply():
+def test_boost_arm_rejects_failed_apply():
     errors = validate_records(
-        [record("reth", success="false")], expected_mode="reth"
+        [record("boost", success="false")], expected_mode="boost"
     )
     assert any("success=false" in error for error in errors)
 
@@ -102,7 +102,7 @@ def test_observe_arm_must_leave_nice_unchanged():
     assert any("observe arm changed nice" in error for error in errors)
 
 
-@pytest.mark.parametrize("mode", ["observe", "reth"])
+@pytest.mark.parametrize("mode", ["observe", "boost"])
 def test_policy_and_nice_must_be_restored(mode):
     errors = validate_records(
         [record(mode, policy_after="SCHED_BATCH", nice_after="1")],

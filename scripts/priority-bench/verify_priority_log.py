@@ -35,8 +35,8 @@ KNOWN_POLICIES = {
     "SCHED_IDLE",
     "SCHED_DEADLINE",
 }
-SUPPORTED_MODES = {"observe", "nice", "reth"}
-RETH_FALLBACK_NICE = -6
+SUPPORTED_MODES = {"observe", "nice", "boost"}
+BOOST_FALLBACK_NICE = -6
 
 
 @dataclass(frozen=True)
@@ -135,15 +135,15 @@ def validate_records(
                 errors.append(
                     f"{prefix}: observe arm changed nice from {nice_before} to {nice_during}"
                 )
-        elif record["mode"] == "reth":
-            expected_fallback = min(nice_before, RETH_FALLBACK_NICE)
+        elif record["mode"] == "boost":
+            expected_fallback = min(nice_before, BOOST_FALLBACK_NICE)
             if nice_before <= -20:
                 errors.append(
-                    f"{prefix}: reth arm baseline nice={nice_before} cannot demonstrate a raise"
+                    f"{prefix}: boost arm baseline nice={nice_before} cannot demonstrate a raise"
                 )
             elif nice_during not in {-20, expected_fallback}:
                 errors.append(
-                    f"{prefix}: reth arm expected nice_during=-20 or fallback={expected_fallback} "
+                    f"{prefix}: boost arm expected nice_during=-20 or fallback={expected_fallback} "
                     f"(got {nice_during})"
                 )
         elif nice_during != -5:
@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("log", type=Path, help="EXPB raw run log")
     parser.add_argument(
         "--mode",
-        choices=("observe", "nice", "reth"),
+        choices=("observe", "nice", "boost"),
         help="Require records for this arm; otherwise infer one mode from the log",
     )
     args = parser.parse_args(argv)

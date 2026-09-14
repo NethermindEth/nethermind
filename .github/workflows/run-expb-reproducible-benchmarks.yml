@@ -275,8 +275,8 @@ jobs:
               fi
               priority_mode="${_kv#*=}"
             done < <(printf '%s\n' "${expb_env}" | tr ',' '\n')
-            if [[ -n "${priority_mode}" && "${priority_mode}" != "observe" && "${priority_mode}" != "nice" && "${priority_mode}" != "reth" && "${priority_mode}" != "off" ]]; then
-              echo "EXPB_NETHERMIND_PRIORITY_MODE must be observe, nice, reth, or off (got '${priority_mode}')."
+            if [[ -n "${priority_mode}" && "${priority_mode}" != "observe" && "${priority_mode}" != "nice" && "${priority_mode}" != "boost" && "${priority_mode}" != "off" ]]; then
+              echo "EXPB_NETHERMIND_PRIORITY_MODE must be observe, nice, boost, or off (got '${priority_mode}')."
               exit 1
             fi
             cleanup_grace_seconds="90"
@@ -1244,7 +1244,7 @@ jobs:
           exit "${expb_exit_code}"
 
       - name: Verify Linux priority records
-        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' || needs.resolve.outputs.priority_mode == 'reth' }}
+        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' || needs.resolve.outputs.priority_mode == 'boost' }}
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
@@ -2713,7 +2713,7 @@ jobs:
           exit "${expb_exit_code}"
 
       - name: Verify Linux priority records
-        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' || needs.resolve.outputs.priority_mode == 'reth' }}
+        if: ${{ needs.resolve.outputs.priority_mode == 'observe' || needs.resolve.outputs.priority_mode == 'nice' || needs.resolve.outputs.priority_mode == 'boost' }}
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
