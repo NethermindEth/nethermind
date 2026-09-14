@@ -26,6 +26,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
+    private readonly GcPacer _gcPacer;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -56,6 +57,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public FlatDbManager(
         IResourcePool resourcePool,
+        GcPacer gcPacer,
         IProcessExitSource processExitSource,
         ITrieNodeCache trieNodeCache,
         ISnapshotCompactor snapshotCompactor,
@@ -71,6 +73,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
+        _gcPacer = gcPacer;
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
@@ -101,6 +104,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
         _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
+
+        _gcPacer.TryStart();
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -509,6 +514,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 while (_populateTrieNodeCacheJobs.Reader.TryRead(out TransientResource? cachedResource))
                     cachedResource.ReleaseLease();
+                _gcPacer.Dispose();
                 _cancelTokenSource.Dispose();
             }
         }
