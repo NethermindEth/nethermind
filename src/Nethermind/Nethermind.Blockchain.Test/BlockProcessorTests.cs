@@ -557,11 +557,13 @@ public class BlockProcessorTests
         }
     }
 
-    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
+    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, TestParentHeaderProvider parentHeaderProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        BlockHeader? parentHeader = null)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        TestParentHeaderProvider parentHeaderProvider = new() { Parent = parentHeader };
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parentHeaderProvider);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
@@ -590,13 +592,58 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             preWarmer);
 
-        return (processor, branchProcessor, stateProvider);
+        return (processor, branchProcessor, stateProvider, parentHeaderProvider);
+    }
+
+    [TestCase(ProcessingOptions.None)]
+    [TestCase(ProcessingOptions.EthereumMerge)]
+    [TestCase(ProcessingOptions.DoNotUpdateHead)]
+    public void BranchProcessor_normal_options_open_target_scope(ProcessingOptions options)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        (_, BranchProcessor branchProcessor, _, TestParentHeaderProvider parentHeaderProvider) = CreateProcessorAndBranch(parentHeader: parent);
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
+
+        Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
+        Assert.That(parentHeaderProvider.LastTarget, Is.SameAs(block.Header));
+    }
+
+    [TestCase(ProcessingOptions.Trace)]
+    [TestCase(ProcessingOptions.ProducingBlock)]
+    [TestCase(ProcessingOptions.ForceSameBlock)]
+    [TestCase(ProcessingOptions.ForceProcessing)]
+    public void BranchProcessor_legacy_options_use_base_scope(ProcessingOptions options)
+    {
+        (_, BranchProcessor branchProcessor, _, TestParentHeaderProvider parentHeaderProvider) = CreateProcessorAndBranch();
+        Block block = Build.A.Block.TestObject;
+
+        Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
+        Assert.That(parentHeaderProvider.LastTarget, Is.Null);
+    }
+
+    [Test]
+    public void BranchProcessor_target_scope_failure_is_not_invalid_block_and_does_not_execute()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        TokenCapturingPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            branchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Parent state is unavailable"));
+            Assert.That(exception, Is.Not.TypeOf<InvalidBlockException>());
+            Assert.That(preWarmer.CapturedToken, Is.EqualTo(default(CancellationToken)));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch();
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -612,10 +659,12 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Recovers_state_on_cancel()
     {
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
-            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance));
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(
+            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance),
+            parentHeader: parent);
 
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
         Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
             null,
@@ -657,7 +706,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void TransactionsExecuted_event_fires_during_ProcessOne()
     {
-        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch();
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch();
 
         bool eventFired = false;
         processor.TransactionsExecuted += () => eventFired = true;
@@ -715,7 +764,7 @@ public class BlockProcessorTests
     public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
     {
         TokenCapturingPreWarmer preWarmer = new();
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(transactionCount, MuirGlacier.Instance).TestObject;
@@ -753,7 +802,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
-        (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
+        (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -779,7 +828,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: null);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
