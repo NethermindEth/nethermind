@@ -23,4 +23,8 @@ internal sealed class TestParentHeaderProvider : IParentHeaderProvider
         if (ThrowOnLookup) throw new InvalidOperationException("Parent lookup must not be called for genesis.");
         return Parent;
     }
+
+    public ulong FinalizedBlockNumber => 0;
+
+    public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
 }

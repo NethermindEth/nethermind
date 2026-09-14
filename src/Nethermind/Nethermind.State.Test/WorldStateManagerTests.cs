@@ -22,6 +22,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Int256;
 
 namespace Nethermind.Store.Test;
 
@@ -109,17 +110,20 @@ public class WorldStateManagerTests
         // Asserts the pruning trie store's best-persisted-state reorg announcement; a patricia-only concept.
         configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         ulong reorgDepth = configProvider.GetConfig<ISyncConfig>().SnapServingMaxDepth;
-        IFinalizedStateProvider manualFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
+        IParentHeaderProvider manualFinalizedStateProvider = Substitute.For<IParentHeaderProvider>();
         manualFinalizedStateProvider.FinalizedBlockNumber.Returns(lastBlock - reorgDepth);
-        manualFinalizedStateProvider.GetFinalizedStateRootAt(lastBlock - reorgDepth)
-            .Returns(new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d"));
+        manualFinalizedStateProvider.GetFinalizedHeader(lastBlock - reorgDepth)
+            .Returns(new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, lastBlock - reorgDepth, 30_000_000, 0, [])
+            {
+                StateRoot = new Hash256("0xec6063a04d48f4b2258f36efaef76a23ba61875f5303fcf8ede2f5d160def35d")
+            });
 
         IDb stateDb;
         IDb blockInfosDb;
         {
             using IContainer ctx = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
-                .AddSingleton<IFinalizedStateProvider>(manualFinalizedStateProvider)
+                .AddSingleton<IParentHeaderProvider>(manualFinalizedStateProvider)
                 .AddSingleton(blockTree)
                 .Build();
 

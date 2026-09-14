@@ -28,8 +28,6 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
 
-            .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvider>()
-
             // Admin RPC surface is common to all backends; each backend registers its implementation.
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
 
