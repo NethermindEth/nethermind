@@ -50,7 +50,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
-    private bool _resultBuilt = false;
     private bool _framesCollapsed = false;
     private NativeCallTracerCallFrame?[]? _frameRoots;
     private EvmExceptionType?[]? _frameErrors;
@@ -86,7 +85,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         CollapseFrameRoots();
 
-        Debug.Assert(_callStack.Count <= 1, $"Unexpected frames on call stack, expected at most one master frame, found {_callStack.Count} frames.");
+        // CollapseFrameRoots folds a frame transaction's per-frame roots into one synthetic root.
+        Debug.Assert(!_isFrameTx || _callStack.Count <= 1, $"Expected one collapsed root, found {_callStack.Count} frames.");
 
         if (_callStack.Count is not 0)
         {
@@ -99,7 +99,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
 
         result.TxHash = _txHash;
-        _resultBuilt = true;
 
         return result;
     }
@@ -107,12 +106,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     public override void Dispose()
     {
         base.Dispose();
-        for (int i = _resultBuilt ? 1 : 0; i < _callStack.Count; i++)
-        {
-            _callStack[i].Dispose();
-        }
 
-        _callStack.Dispose();
+        // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
+        _callStack.DisposeRecursive();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
