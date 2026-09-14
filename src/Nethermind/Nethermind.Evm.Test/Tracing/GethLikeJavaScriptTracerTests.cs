@@ -15,7 +15,6 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -24,6 +23,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
+
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
@@ -608,6 +609,49 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
+    }
+
+    [Test]
+    public void Completed_results_keep_big_integer_values_after_repeated_disposal()
+    {
+        const string valueTracer = """
+            {
+                fault: function(log, db) { },
+                result: function(ctx, db) { return { value: ctx.value.add(1).toString(), bytes: toHex(toWord('1')) }; }
+            }
+            """;
+
+        for (int i = 0; i < 3; i++)
+        {
+            using Engine engine = new(Shanghai.Instance);
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState),
+                new Context { Value = UInt256.MaxValue }, GethTraceOptions.Default with { Tracer = valueTracer });
+            using GethLikeTxTrace trace = tracer.BuildResult();
+            tracer.Dispose();
+            tracer.Dispose();
+
+            AssertResult(trace, new
+            {
+                value = "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+                bytes = "0000000000000000000000000000000000000000000000000000000000000001"
+            });
+        }
+    }
+
+    [Test]
+    public void Result_failure_does_not_prevent_the_next_trace_from_using_host_helpers()
+    {
+        const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
+        using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
+        {
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+        }
+
+        const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";
+        using GethLikeBlockJavaScriptTracer recovered = ExecuteBlock(GetTracer(recoveringTracer), MStore());
+        using GethLikeTxTrace trace = recovered.BuildResult().First();
+
+        AssertResult(trace, "0000000000000000000000000000000000000000000000000000000000000001");
     }
 
     [Test]

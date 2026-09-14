@@ -29,8 +29,6 @@ public sealed class NativeNoopTracer : GethLikeNativeTxTracer
 
     public override bool IsTracingInstructions => false;
 
-    protected override GethLikeTxTrace CreateTrace() => new();
-
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();

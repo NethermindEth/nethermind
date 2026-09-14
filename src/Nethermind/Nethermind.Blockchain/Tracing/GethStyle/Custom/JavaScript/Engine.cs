@@ -303,5 +303,7 @@ public class Engine : IDisposable
 
     private static string LoadTracerCodeFromFile(string tracerFileName) => PackTracerCode(LoadJavaScriptCodeFromFile(tracerFileName));
 
-    private static V8Script LoadBigInteger() => LoadBuiltIn(nameof(BigIntegerJavaScript), LoadJavaScriptCodeFromFile(BigIntegerJavaScript));
+    private static V8Script LoadBigInteger() => _builtInScripts.TryGetValue(nameof(BigIntegerJavaScript), out V8Script script)
+        ? script
+        : LoadBuiltIn(nameof(BigIntegerJavaScript), LoadJavaScriptCodeFromFile(BigIntegerJavaScript));
 }

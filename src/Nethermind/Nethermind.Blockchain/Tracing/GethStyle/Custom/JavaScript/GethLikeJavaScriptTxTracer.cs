@@ -29,8 +29,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource _cts;
-    private readonly IDisposable _ctsRegistration;
-    private bool _engineReleased;
+    private readonly CancellationTokenRegistration _ctsRegistration;
     private bool _disposed;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -75,9 +74,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         result.TxHash = _ctx.TxHash;
         result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
-        _ctsRegistration.Dispose();
-        _cts.Dispose();
-        ReleaseEngine();
+        Dispose();
 
         return result;
     }
@@ -101,29 +98,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         finally
         {
             ForcedNumberConversion.Value = previousConversion;
-        }
-    }
-
-    /// <summary>
-    /// Disposes the tracer proxy, which roots its script object in the V8 heap until then whatever happens to
-    /// the engine, and then the engine itself. The engine goes even if the proxy refuses, so the runtime's heap
-    /// limit is always re-armed.
-    /// </summary>
-    private void ReleaseEngine()
-    {
-        if (_engineReleased)
-        {
-            return;
-        }
-
-        _engineReleased = true;
-        try
-        {
-            ((object)_tracer as IDisposable)?.Dispose();
-        }
-        finally
-        {
-            _engine.Dispose();
         }
     }
 
@@ -325,7 +299,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         }
         finally
         {
-            ReleaseEngine();
+            try
+            {
+                ((object)_tracer as IDisposable)?.Dispose();
+            }
+            finally
+            {
+                _engine.Dispose();
+            }
         }
     }
 
