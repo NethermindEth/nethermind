@@ -45,18 +45,14 @@ namespace Ethereum.Test.Base
         /// <see cref="TestsSourceLoader.LoadTests{TTestType}"/> discards it and the caller sees a file
         /// that failed to parse as no tests at all rather than as a failure.
         /// </remarks>
-        private static List<EthereumTest> WithTypedLoadFailures(IEnumerable<EthereumTest> tests)
+        private static IEnumerable<EthereumTest> WithTypedLoadFailures(IEnumerable<EthereumTest> tests)
         {
-            List<EthereumTest> typed = [];
-
             foreach (EthereumTest test in tests)
             {
-                typed.Add(test is FailedToLoadTest
+                yield return test is FailedToLoadTest
                     ? new GeneralStateTest { Name = test.Name, LoadFailure = test.LoadFailure }
-                    : test);
+                    : test;
             }
-
-            return typed;
         }
 
         private string GetGeneralStateTestsDirectory()
