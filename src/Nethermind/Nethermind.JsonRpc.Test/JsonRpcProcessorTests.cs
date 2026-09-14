@@ -999,7 +999,7 @@ public class JsonRpcProcessorTests
         Assert.That(response.BatchItems, Is.Null);
         JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
         Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
-        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+        await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
     [TestCaseSource(nameof(MultipleDocumentRequestCases))]

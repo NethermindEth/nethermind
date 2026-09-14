@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using NUnit.Framework;
