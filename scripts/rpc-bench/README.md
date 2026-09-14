@@ -407,9 +407,11 @@ ceiling in the replay if you need it anyway).
 Parity still runs, and still compares two clients exactly — an outcome becomes a SHA-256 digest
 of the canonicalized trace instead of the returned bytes, which keeps the state file small and
 the privacy boundary intact. Two caveats: the word-level `parity_diffs` characterisation is
-refused in these modes (it would describe the hash), and only a **same-client** A/B is meaningful,
-since trace formatting legitimately differs between Nethermind, geth and reth — on a cross-client
-trace sweep expect divergence counts that are formatting, not defects.
+refused in these modes (it would describe the hash), and a divergence between two **different**
+client implementations is reported but not gated, since trace formatting legitimately differs
+between Nethermind, geth and reth — gating it would mark a good cross-client timing comparison as
+failed. A **same-client** trace A/B keeps the gate, which is where a divergence means something.
+Response bytes stay the gate for `eth_call` in every combination.
 
 **Sizing a cell by request count.** By default a corpus cell runs for `duration` at each
 `rps_list` rate. `corpus_requests` (absolute) or `corpus_passes` (a multiple of that
