@@ -105,8 +105,7 @@ public class OneTimeChainProcessorTests
             MainnetSpecProvider.Instance,
             [_preprocessorStep],
             _stateReader,
-            LimboLogs.Instance,
-            BlockchainProcessor.Options.Default);
+            LimboLogs.Instance);
     }
 
     private Block BuildBlockOnHead(long totalDifficulty = 2_000_000)
