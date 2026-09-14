@@ -37,6 +37,7 @@ public sealed class TransactionChangesetBuilder(
     private ulong? _nextChunkTop;
     private long _progressReportedAt;
     private long _builtSinceReport;
+    private bool _disposed;
 
     private bool RetrofitOnWorkers => _retrofitFromBlock != 0 && _workers > 1;
 
@@ -132,6 +133,9 @@ public sealed class TransactionChangesetBuilder(
 
     public void Dispose()
     {
+        if (_disposed) return;
+
+        _disposed = true;
         _cancellation.Cancel();
         foreach (Thread thread in _threads) thread.Join(TimeSpan.FromSeconds(5));
         _tipExecutor?.Dispose();

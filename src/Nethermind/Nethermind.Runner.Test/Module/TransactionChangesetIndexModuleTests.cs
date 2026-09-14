@@ -45,8 +45,9 @@ public class TransactionChangesetIndexModuleTests
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true, HistoryTransactionIndexWorkers = 2 }))
             .Build();
 
-        using TransactionChangesetBuilder builder = container.Resolve<TransactionChangesetBuilder>();
+        TransactionChangesetBuilder builder = container.Resolve<TransactionChangesetBuilder>();
+        builder.Dispose();
 
-        Assert.That(builder, Is.Not.Null);
+        Assert.That(container.Dispose, Throws.Nothing, "the container disposes its singletons too; a second dispose must be harmless");
     }
 }
