@@ -50,7 +50,6 @@ public class BranchProcessor(
         // Only normal main-chain processing can resolve a target from the block tree. Forced and
         // post-state modes open an explicit base instead (e.g. trace, block production, BAL retry).
         !options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
-        && !options.ContainsFlag(ProcessingOptions.ForceSameBlock)
         && !options.ContainsFlag(ProcessingOptions.ForceProcessing)
         && !options.ContainsFlag(ProcessingOptions.NoValidation);
 
