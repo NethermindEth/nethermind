@@ -13,7 +13,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
