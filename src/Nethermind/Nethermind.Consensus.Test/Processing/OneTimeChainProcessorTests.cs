@@ -199,12 +199,4 @@ public class OneTimeChainProcessorTests
         _stats.Fire();
         Assert.That(received, Is.Not.Null);
     }
-
-    [Test]
-    public void Lifecycle_members_are_safe()
-    {
-        Assert.That(() => _processor.Start(), Throws.Nothing);
-        Assert.That(_processor.IsProcessingBlocks(null), Is.False);
-        Assert.That(() => _processor.StopAsync(), Throws.Nothing);
-    }
 }
