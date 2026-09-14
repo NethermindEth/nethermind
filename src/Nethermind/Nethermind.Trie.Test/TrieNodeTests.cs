@@ -172,7 +172,7 @@ public class TrieNodeTests
     // Warmer jobs resolve one shared node concurrently: a decode another job published while this load was in
     // flight must be kept, not replaced by a second decode of the same bytes.
     [Test]
-    public void Try_resolve_keeps_a_decode_published_during_the_load()
+    public void Try_or_throw_resolve_keeps_a_decode_published_during_the_load([Values] bool tryResolve)
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
         TrieNode trieNode = new(NodeType.Unknown, hash);
@@ -180,23 +180,47 @@ public class TrieNodeTests
         racingResolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(rlp);
         INodeData? racingDecode = null;
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
-        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+        void PublishRacingDecode()
         {
             trieNode.ResolveNode(racingResolver, TreePath.Empty);
             racingDecode = trieNode.NodeData;
-            return rlp;
-        });
+        }
+
+        if (tryResolve)
+        {
+            resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+            {
+                PublishRacingDecode();
+                return rlp;
+            });
+        }
+        else
+        {
+            resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+            {
+                PublishRacingDecode();
+                return rlp;
+            });
+        }
 
         TreePath path = TreePath.Empty;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
+            if (tryResolve)
+            {
+                Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
+            }
+            else
+            {
+                trieNode.ResolveNode(resolver, path);
+            }
+
             Assert.That(trieNode.NodeData, Is.SameAs(racingDecode));
         }
     }
 
     [Test]
-    public void Warmer_owned_child_is_memoized_in_the_parent_only_once_decoded()
+    public void Warmer_owned_child_is_memoized_in_the_parent_only_once_decoded([Values] bool iterator)
     {
         (TrieNode parent, byte[] childRlp, Hash256 childHash) = ResolvedParentOfHashedLeaf();
 
@@ -213,13 +237,22 @@ public class TrieNodeTests
 
         TreePath childPath = TreePath.Empty;
         parent.AppendChildPath(ref childPath, 0);
-        TrieNode first = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
-        TrieNode second = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode.ChildIterator childIterator = parent.CreateChildIterator();
+        TrieNode first = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode second = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
         int lookupsWhileUnresolved = lookups;
 
         Assert.That(placeholder.TryResolveNode(resolver, ref childPath), Is.True);
-        TrieNode third = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
-        TrieNode fourth = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode third = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode fourth = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -235,7 +268,7 @@ public class TrieNodeTests
     // The live resolver answers the hash of an undecoded warmer child with a node of its own; that
     // node must take the slot, or every traversal through the parent repeats the lookup, load and decode.
     [Test]
-    public void Non_warmer_child_answering_an_undecoded_warmer_slot_is_memoized_in_the_parent()
+    public void Non_warmer_child_answering_an_undecoded_warmer_slot_is_memoized_in_the_parent([Values] bool iterator)
     {
         (TrieNode parent, _, Hash256 childHash) = ResolvedParentOfHashedLeaf();
 
@@ -252,9 +285,16 @@ public class TrieNodeTests
 
         TreePath childPath = TreePath.Empty;
         parent.AppendChildPath(ref childPath, 0);
-        TrieNode first = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
-        TrieNode second = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
-        TrieNode third = parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode.ChildIterator childIterator = parent.CreateChildIterator();
+        TrieNode first = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode second = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode third = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
 
         using (Assert.EnterMultipleScope())
         {

@@ -148,8 +148,8 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
-        public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
-        public INodeData? NodeData => _nodeData;
+        public NodeType NodeType => Volatile.Read(ref _nodeData)?.NodeType ?? NodeType.Unknown;
+        public INodeData? NodeData => Volatile.Read(ref _nodeData);
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
 
@@ -368,6 +368,9 @@ namespace Nethermind.Trie
                     ThrowNullRlp();
                 }
 
+                // Warmer jobs share one node, so a racing resolver may have published its decode during the load.
+                if (NodeType != NodeType.Unknown) return;
+
                 WriteRlp(rlp = new CappedArray<byte>(fullRlp));
                 IsPersisted = true;
             }
@@ -471,7 +474,7 @@ namespace Nethermind.Trie
             }
             else if (numberOfItems > 2)
             {
-                _nodeData = new BranchData();
+                Volatile.Write(ref _nodeData, new BranchData());
             }
             else
             {
@@ -482,11 +485,11 @@ namespace Nethermind.Trie
                     reader.DecodeByteArraySpan(ref position, out valueSpan);
                     CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    _nodeData = new LeafData(key, buffer);
+                    Volatile.Write(ref _nodeData, new LeafData(key, buffer));
                 }
                 else
                 {
-                    _nodeData = new ExtensionData(key);
+                    Volatile.Write(ref _nodeData, new ExtensionData(key));
                 }
             }
 
