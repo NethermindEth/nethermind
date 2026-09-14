@@ -725,8 +725,14 @@ public class FrameTxReceiptDecoderTests
         }
 
         byte[] encoded = EncodeMessage(CreateReceipt(new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, [])));
-        encoded[FirstFrameStatusOffset(encoded)] = status;
+        int statusOffset = FirstFrameStatusOffset(encoded);
+        Assert.That(encoded[statusOffset], Is.EqualTo(TxFrameReceipt.StatusSuccess), "the byte the splice is aimed at");
 
+        // A layout drift onto a byte that merely holds the same value would still read back as success here.
+        encoded[statusOffset] = TxFrameReceipt.StatusSkipped;
+        Assert.That(DecodeMessage(encoded).FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSkipped));
+
+        encoded[statusOffset] = status;
         Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
     }
 
@@ -746,6 +752,9 @@ public class FrameTxReceiptDecoderTests
 
         RlpLimit.InitMaxBlockGas(EightLogBlockGas);
         Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(EightLogBlockGasLimit), "the ceiling the frames are sized against");
+        // Otherwise the per-frame guard trips first and the rejection stops covering the shared budget.
+        Assert.That(Math.Max(firstFrameLogs, secondFrameLogs), Is.LessThanOrEqualTo(EightLogBlockGasLimit),
+            "each frame has to stay within the ceiling on its own");
 
         if (rejected)
         {

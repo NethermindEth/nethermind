@@ -1568,16 +1568,12 @@ namespace Nethermind.TxPool
                 Metrics.BlobTransactionCount = _blobTransactions.Count;
                 return AcceptTxResult.Accepted;
             }
-            catch
-            {
-                // The insert can take the record and then throw — the persistent blob pool writes the body
-                // inside it — and the reservations are then the pooled record's, released on its Removed.
-                reservationSettled |= relevantPool.ContainsKey(tx.Hash!.ValueHash256);
-                throw;
-            }
             finally
             {
-                if (!reservationSettled)
+                // The insert can take the record and then throw — the persistent blob pool writes the body inside
+                // it — and the reservations are then the pooled record's, released on its Removed. Membership, not
+                // ownership: a duplicate admission inserting first strands this call's reservation, caught in DEBUG.
+                if (!reservationSettled && !relevantPool.ContainsKey(tx.Hash!.ValueHash256))
                 {
                     ReleaseFrameTxReservations(tx);
                 }
