@@ -97,10 +97,8 @@ public class OneTimeChainProcessorTests
         _branchProcessor = new BranchProcessorMock();
         _preprocessorStep = new PreprocessorStepMock();
         _processor = new OneTimeChainProcessor(
-            Substitute.For<IWorldState>(),
             _blockTree,
             _branchProcessor,
-            MainnetSpecProvider.Instance,
             [_preprocessorStep],
             _stateReader,
             LimboLogs.Instance);
