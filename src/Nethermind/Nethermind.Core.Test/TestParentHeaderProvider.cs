@@ -10,7 +10,14 @@ public sealed class TestParentHeaderProvider : IParentHeaderProvider
 {
     public static TestParentHeaderProvider Instance { get; } = new();
 
-    private TestParentHeaderProvider() { }
+    public BlockHeader? Parent { get; set; }
+    public BlockHeader? LastTarget { get; private set; }
 
-    public BlockHeader? FindParentHeader(BlockHeader target) => null;
+    public TestParentHeaderProvider() { }
+
+    public BlockHeader? FindParentHeader(BlockHeader target)
+    {
+        LastTarget = target;
+        return Parent;
+    }
 }

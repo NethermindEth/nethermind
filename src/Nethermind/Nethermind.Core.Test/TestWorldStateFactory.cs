@@ -17,7 +17,10 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null) =>
+        CreateForTest(UnavailableParentHeaderProvider.Instance, dbProvider, logManager);
+
+    public static IWorldState CreateForTest(IParentHeaderProvider parentHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
@@ -31,13 +34,14 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, UnavailableParentHeaderProvider.Instance, logManager), logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, parentHeaderProvider, logManager), logManager);
     }
 
-    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, IParentHeaderProvider? parentHeaderProvider = null)
     {
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
+        parentHeaderProvider ??= UnavailableParentHeaderProvider.Instance;
 
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
@@ -49,7 +53,7 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, UnavailableParentHeaderProvider.Instance, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, parentHeaderProvider, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
     public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IParentHeaderProvider parentHeaderProvider)

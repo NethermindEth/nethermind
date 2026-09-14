@@ -45,7 +45,8 @@ public class ReorgTests
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
+        TestParentHeaderProvider parentHeaderProvider = new();
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance, parentHeaderProvider);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
@@ -68,6 +69,7 @@ public class ReorgTests
 
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
+        parentHeaderProvider.Parent = _genesis;
 
         EthereumEcdsa ecdsa = new(1);
 
