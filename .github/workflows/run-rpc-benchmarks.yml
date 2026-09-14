@@ -735,11 +735,36 @@ jobs:
       RPC_PORT: "8545"
       REF_RPC_PORT: "8546"
     steps:
+      # This workspace persists between jobs and is shared with every other workflow on the box, so a job
+      # that checks out sparsely leaves core.sparseCheckout and skip-worktree bits behind for the next one.
+      # actions/checkout's own `sparse-checkout disable` then has to re-materialize the whole tree and
+      # aborts if any path is mid-write, leaving a partial tree while still reporting success - and
+      # skip-worktree keeps `git status` clean, so the damage only surfaces later as a missing script.
+      - name: Clear inherited sparse-checkout state
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -d .git ]] || exit 0
+          git sparse-checkout disable 2>/dev/null || true
+          if git ls-files -v 2>/dev/null | grep -q '^S'; then
+            echo "::warning::skip-worktree entries survived the reset; removing the workspace so checkout re-clones."
+            find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Make scripts executable
-        run: chmod +x scripts/rpc-bench/*.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Without this guard a partial tree reaches the benchmark as `chmod: No such file or directory`,
+          # which reads like the scripts are missing from the branch rather than from the workspace.
+          if [[ ! -d scripts/rpc-bench ]]; then
+            echo "::error::scripts/rpc-bench is missing after checkout - the shared workspace was left in a partial state. Re-run the job to re-clone it."
+            exit 1
+          fi
+          chmod +x scripts/rpc-bench/*.sh
 
       - name: Verify perf profiling prerequisites
         if: needs.resolve.outputs.perf == 'true'
