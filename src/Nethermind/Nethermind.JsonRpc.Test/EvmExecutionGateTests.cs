@@ -25,6 +25,39 @@ public class EvmExecutionGateTests
         internal void Advance(long ticks) => _ticks += ticks;
     }
 
+    /// <summary>Runs posted continuations only when pumped, so a grant can be settled without letting the waiter
+    /// that owns it resume.</summary>
+    private sealed class ManualSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> _posted = new();
+
+        internal int Pending
+        {
+            get { lock (_posted) return _posted.Count; }
+        }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            lock (_posted) _posted.Enqueue((d, state));
+        }
+
+        internal void RunPending()
+        {
+            while (true)
+            {
+                (SendOrPostCallback Callback, object? State) next;
+                lock (_posted)
+                {
+                    if (_posted.Count == 0) return;
+
+                    next = _posted.Dequeue();
+                }
+
+                next.Callback(next.State);
+            }
+        }
+    }
+
     private static EvmExecutionGate Gate(int permits, int maxQueueWaitMs = 500, TestClock? clock = null) =>
         new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs },
             clock is null ? null : clock.Now);
@@ -109,6 +142,46 @@ public class EvmExecutionGateTests
         Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true, cancellationToken: disconnected.Token),
             Throws.InstanceOf<OperationCanceledException>());
         Assert.That(gate.QueuedCount, Is.Zero);
+    }
+
+    /// <summary>A caller that gives up after the grant but before it resumes must hand the permit straight back.</summary>
+    /// <remarks>The only path that both holds a permit and throws: nothing will ever reach the caller to release it,
+    /// so a miss here narrows the gate by one for the life of the process. Deterministic because the grant's
+    /// continuation runs asynchronously - parked on a context the test pumps by hand rather than on the thread pool,
+    /// which is what makes the window between the grant and the resumption addressable at all.</remarks>
+    [Test]
+    public async Task Caller_that_gives_up_between_the_grant_and_its_resumption_returns_the_permit()
+    {
+        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        EvmExecutionGate.Lease held = await Acquire(gate);
+
+        using CancellationTokenSource disconnected = new();
+        ManualSynchronizationContext resumption = new();
+        SynchronizationContext? original = SynchronizationContext.Current;
+        Task<EvmExecutionGate.Lease> queued;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(resumption);
+            queued = gate.AcquireAsync(1, allowQueue: true, cancellationToken: disconnected.Token).AsTask();
+            Assert.That(gate.QueuedCount, Is.EqualTo(1), "precondition: the caller is queued");
+
+            held.Dispose();
+            Assert.That(() => resumption.Pending, Is.EqualTo(1).After(1000, 10),
+                "precondition: the permit was granted and its resumption is parked, not yet run");
+
+            disconnected.Cancel();
+            resumption.RunPending();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+
+        Assert.That(async () => await queued, Throws.InstanceOf<OperationCanceledException>());
+
+        // The caller never got a lease, so if it did not hand the permit back nothing else can.
+        using EvmExecutionGate.Lease next = await Acquire(gate);
+        Assert.Pass();
     }
 
     /// <summary>Shutdown answers waiters at once instead of waiting out the budget for each of them.</summary>
