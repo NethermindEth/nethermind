@@ -23,17 +23,40 @@ public sealed class ProcessingHistoryBlockExecutor(
     BlockchainProcessorFacade processor,
     ILifetimeScope scope) : IHistoryBlockExecutor
 {
+    private readonly BlockchainProcessorFacade _processor = processor;
+
     public bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken)
     {
-        Block? toExecute = blockTree.FindBlock(block, BlockTreeLookupOptions.RequireCanonical);
-        if (toExecute?.Header.ParentHash is null) return false;
+        using IHistoryBlockRun? run = BeginRun(block);
+        return run is not null && run.TryExecuteNext(tracer, cancellationToken);
+    }
 
-        BlockHeader? parent = blockTree.FindHeader(toExecute.Header.ParentHash, BlockTreeLookupOptions.None);
-        if (parent is null) return false;
+    public IHistoryBlockRun? BeginRun(ulong firstBlock)
+    {
+        Block? first = FindCanonical(firstBlock);
+        if (first?.Header.ParentHash is null) return null;
 
-        using IDisposable processing = processingEnv.BuildAndOverride(parent);
-        processor.Process(toExecute, TraceProcessingOptions.ReadOnlyReplay, tracer, cancellationToken);
-        return true;
+        BlockHeader? parent = blockTree.FindHeader(first.Header.ParentHash, BlockTreeLookupOptions.None);
+        return parent is null ? null : new Run(this, processingEnv.BuildAndOverride(parent), first);
+    }
+
+    private Block? FindCanonical(ulong block) => blockTree.FindBlock(block, BlockTreeLookupOptions.RequireCanonical);
+
+    private sealed class Run(ProcessingHistoryBlockExecutor executor, IDisposable state, Block first) : IHistoryBlockRun
+    {
+        private Block? _next = first;
+
+        public bool TryExecuteNext(IBlockTracer tracer, CancellationToken cancellationToken)
+        {
+            Block? block = _next;
+            if (block is null) return false;
+
+            executor._processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, cancellationToken);
+            _next = executor.FindCanonical((ulong)block.Number + 1);
+            return true;
+        }
+
+        public void Dispose() => state.Dispose();
     }
 
     public void Dispose()

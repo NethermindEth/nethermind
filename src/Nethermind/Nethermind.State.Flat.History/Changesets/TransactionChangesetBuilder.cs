@@ -100,13 +100,22 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
+    /// <summary>A chunk runs ascending on one open state, so a key the chunk touches is read from history once and
+    /// then from memory; on a disk-bound archive that is most of the cost of the retrofit.</summary>
     internal bool BuildChunk(in Chunk chunk, IHistoryBlockExecutor executor)
     {
-        for (ulong block = chunk.Top; ; block--)
+        using IHistoryBlockRun? run = executor.BeginRun(chunk.Bottom);
+        if (run is null) return false;
+
+        for (ulong block = chunk.Bottom; block <= chunk.Top; block++)
         {
-            if (!Build(block, executor)) return false;
-            if (block == chunk.Bottom) return true;
+            using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block);
+            if (!run.TryExecuteNext(capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
+
+            Interlocked.Increment(ref _builtSinceReport);
         }
+
+        return true;
     }
 
     /// <summary>Joins the chunk to coverage when it touches the edge, then every completed chunk that now touches

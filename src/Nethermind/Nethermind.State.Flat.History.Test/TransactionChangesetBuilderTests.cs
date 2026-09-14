@@ -244,6 +244,27 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void AChunk_IsBuiltAscendingOnOneRun()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+        _executor.Executed.Clear();
+
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk chunk);
+        builder.BuildChunk(chunk, _executor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_executor.Executed[0], Is.EqualTo(172UL), "a run starts at the bottom of its chunk and carries the state upward");
+            Assert.That(_executor.Executed[^1], Is.EqualTo(299UL));
+            Assert.That(_executor.Executed, Is.Ordered.Ascending);
+        }
+    }
+
+    [Test]
     public void AChunkThatFailed_IsRetriedBeforeANewOneIsHandedOut()
     {
         Capture(upTo: 300);
@@ -307,6 +328,8 @@ public class TransactionChangesetBuilderTests
 
         public IHistoryBlockExecutor Create() => this;
 
+        public IHistoryBlockRun? BeginRun(ulong firstBlock) => Fail ? null : new Run(this, firstBlock);
+
         public bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken)
         {
             if (Fail) return false;
@@ -328,6 +351,17 @@ public class TransactionChangesetBuilderTests
 
         public void Dispose()
         {
+        }
+
+        private sealed class Run(RecordingExecutor executor, ulong first) : IHistoryBlockRun
+        {
+            private ulong _next = first;
+
+            public bool TryExecuteNext(IBlockTracer tracer, CancellationToken cancellationToken) => executor.TryExecute(_next++, tracer, cancellationToken);
+
+            public void Dispose()
+            {
+            }
         }
     }
 }
