@@ -187,11 +187,9 @@ public sealed class GCScheduler
     /// <param name="mode">The garbage collection mode.</param>
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
+    /// <param name="trimNativeMemory">Whether to hand freed native allocator memory back to the OS afterwards.</param>
     /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
-    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
-        GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
-
-    private bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
+    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory = true)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {
