@@ -171,8 +171,8 @@ public interface IJsonRpcConfig : IConfig
             half its budget takes priority over lighter newcomers, while expired requests are shed at their full budget.
             `0` disables queueing: a request that finds every slot busy is rejected at once, before its parameters are read.
             A longer budget adds latency to the requests it serves without
-            adding throughput. Queueing is bypassed for batch items and authenticated requests. WebSocket and IPC
-            connections configured with at most one processing worker also bypass queueing, to avoid delaying later calls.
+            adding throughput. Queueing is bypassed for batch items and authenticated requests, including all IPC requests.
+            WebSocket connections configured with at most one processing worker also bypass queueing, to avoid delaying later calls.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }

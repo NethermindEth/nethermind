@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Threading;
 using Nethermind.JsonRpc.Exceptions;
-using Nethermind.Logging;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.EvmAdmissionGate;
 
@@ -651,21 +650,25 @@ public class EvmAdmissionGateTests
         }
     }
 
-    [Test]
-    public async Task Aged_heavy_waiter_precedes_new_light_traffic_after_half_the_budget()
+    [TestCase(0, 500, TestName = "Equal enqueue timestamps use sequence order")]
+    [TestCase(100, 500, TestName = "Earlier enqueue timestamp wins")]
+    [TestCase(500, 1, TestName = "An aged heavy waiter precedes new light traffic")]
+    public async Task Aged_heavy_waiter_precedes_light_traffic(int delayMilliseconds, int agingAdvanceMilliseconds)
     {
         using EvmAdmissionGate gate = CreateGate(SinglePermit(maxQueueWaitMs: 1_000));
-        using Lease holder = await Admit(gate, MaxWeight);
+        Lease holder = await Admit(gate, MaxWeight);
         Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(500));
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(delayMilliseconds));
         Task<Lease> light = Admit(gate, MinWeight).AsTask();
 
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(agingAdvanceMilliseconds));
         holder.Dispose();
-        using Lease agedGrant = await heavy.WaitAsync(WaitBudget);
-        Assert.That(light.IsCompleted, Is.False, "a newly queued light waiter must not overtake an aged heavy waiter");
+        using (Lease agedGrant = await heavy.WaitAsync(WaitBudget))
+        {
+            Assert.That(light.IsCompleted, Is.False, "a light waiter must not overtake the earlier heavy waiter");
+        }
 
-        agedGrant.Dispose();
         using Lease lightGrant = await light.WaitAsync(WaitBudget);
     }
 

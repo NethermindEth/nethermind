@@ -989,8 +989,9 @@ public class JsonRpcServiceTests
     [TestCase(RpcEndpoint.Http, 1, 1, false, false, true, TestName = "HTTP requests may queue")]
     [TestCase(RpcEndpoint.Ws, 1, 1, false, false, false, TestName = "Single-lane WebSocket requests fail fast")]
     [TestCase(RpcEndpoint.Ws, 2, 1, false, false, true, TestName = "Multi-lane WebSocket requests may queue")]
-    [TestCase(RpcEndpoint.IPC, 1, 2, true, false, false, TestName = "Single-lane authenticated IPC requests fail fast")]
-    [TestCase(RpcEndpoint.IPC, 2, 1, true, false, false, TestName = "Multi-lane authenticated IPC requests fail fast")]
+    [TestCase(RpcEndpoint.IPC, 2, 1, false, false, false, TestName = "IPC requests fail fast when WebSocket is multi-lane")]
+    [TestCase(RpcEndpoint.IPC, 1, 2, false, false, false, TestName = "IPC requests fail fast when IPC is multi-lane")]
+    [TestCase(RpcEndpoint.IPC, 1, 2, true, false, false, TestName = "Explicitly authenticated IPC requests fail fast")]
     [TestCase(RpcEndpoint.Http, 1, 1, true, false, false, TestName = "Authenticated HTTP requests fail fast")]
     [TestCase(RpcEndpoint.Http, 1, 1, false, true, false, TestName = "Batch items fail fast")]
     public async Task Evm_queueing_policy_depends_on_transport_authentication_and_batch_membership(
@@ -1017,6 +1018,10 @@ public class JsonRpcServiceTests
         using JsonRpcContext context = authenticated
             ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]))
             : new JsonRpcContext(endpoint);
+        if (endpoint == RpcEndpoint.IPC)
+        {
+            Assert.That(context.IsAuthenticated, Is.True, "IPC contexts are authenticated even without an explicit URL");
+        }
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc());
         request.IsBatchItem = batchItem;
         Task<JsonRpcResponse> response;

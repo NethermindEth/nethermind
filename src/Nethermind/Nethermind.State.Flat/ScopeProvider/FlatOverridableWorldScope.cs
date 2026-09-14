@@ -161,11 +161,12 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             return false;
         }
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-            return snapshotBundle.GetSlot(address, index, selfDestructIdx) ?? [];
+            snapshotBundle.GetSlot(address, index, selfDestructIdx, out UInt256? slot);
+            value = slot.GetValueOrDefault();
         }
 
         public byte[]? GetCode(Hash256 codeHash)
@@ -198,4 +199,3 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);
     }
 }
-

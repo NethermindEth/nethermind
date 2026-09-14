@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Db;
 using Nethermind.Network.Config;
 using Nethermind.TxPool;
 
@@ -27,6 +29,9 @@ public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
 
 public class HiveModule : Module
 {
+    private const string ExpectDeepReorgsEnvironmentVariable = "HIVE_EXPECT_DEEP_REORGS";
+    private const ulong DeepReorgDepth = 512;
+
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<HiveRunner>()
         .AddStep(typeof(HiveStep))
@@ -39,6 +44,16 @@ public class HiveModule : Module
         {
             txPoolConfig.ProofsTranslationEnabled = true;
             return txPoolConfig;
+        })
+        .AddDecorator<IFlatDbConfig>((_, flatDbConfig) =>
+        {
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(ExpectDeepReorgsEnvironmentVariable)))
+            {
+                // The persistence gate has one compaction chunk of look-ahead.
+                flatDbConfig.MinReorgDepth = Math.Max(flatDbConfig.MinReorgDepth, DeepReorgDepth + flatDbConfig.CompactSize);
+            }
+
+            return flatDbConfig;
         })
         .ClearOrderedComponents<ITxGossipPolicy>();
 }

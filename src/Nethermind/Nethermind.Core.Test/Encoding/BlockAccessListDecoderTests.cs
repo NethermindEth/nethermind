@@ -337,12 +337,14 @@ public class BlockAccessListDecoderTests
         Assert.That(encoded, Is.EqualTo(expectedRlp));
     }
 
-    [Test]
-    public void Can_decode_then_encode_storage_change()
+    [TestCase("00", "0xc28080")]
+    [TestCase("01", "0xc28001")]
+    [TestCase("80", "0xc3808180")]
+    [TestCase("0de0b6b3a7640000", "0xca80880de0b6b3a7640000")]
+    [TestCase("c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd", "0xe280a0c382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd")]
+    public void Can_decode_then_encode_storage_change(string valueHex, string expectedRlp)
     {
-        StorageChange expected = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
-
-        string expectedRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
+        StorageChange expected = new(0, new UInt256(Bytes.FromHexString(valueHex), isBigEndian: true));
 
         RlpReader ctx = new(Bytes.FromHexString(expectedRlp));
         StorageChange storageChange = StorageChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
@@ -480,9 +482,9 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Decoding_account_changes_with_unsorted_storage_reads_throws()
+    public void Decoding_account_changes_with_unsorted_or_duplicate_storage_reads_throws([Values(1UL, 2UL)] ulong firstSlot)
     {
-        UInt256[] storageReads = [new UInt256(2), UInt256.One];
+        UInt256[] storageReads = [new UInt256(firstSlot), UInt256.One];
         ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             [],
@@ -496,6 +498,24 @@ public class BlockAccessListDecoderTests
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage reads were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_block_access_list_with_overlapping_storage_reads_and_changes_throws([Values(1UL, 2UL)] ulong writtenSlot)
+    {
+        ReadOnlyAccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [new ReadOnlySlotChanges(new UInt256(writtenSlot), [new StorageChange(1, 1)])],
+            [UInt256.One, new UInt256(2)],
+            [],
+            [],
+            []);
+        ReadOnlyBlockAccessList blockAccessList = new([accountChanges], 4);
+        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid storage read, already in storage changes."));
     }
 
     [Test]

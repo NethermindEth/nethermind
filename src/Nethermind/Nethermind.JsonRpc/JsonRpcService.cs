@@ -159,7 +159,6 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
         {
             RpcEndpoint.Http => true,
             RpcEndpoint.Ws => _webSocketsQueueingEnabled,
-            RpcEndpoint.IPC => _webSocketsQueueingEnabled,
             _ => false,
         };
 

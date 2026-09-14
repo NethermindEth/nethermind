@@ -13,6 +13,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -216,7 +217,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     }
                     StorageCell cell = new(address, in slot);
                     if (!sink.StillNeeded(in cell)) continue;
-                    sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                    storageTree.Get(in slot, out UInt256 value);
+                    sink.OnStorageRead(in cell, in value);
                 }
             }
             catch (MissingTrieNodeException) { }
@@ -372,17 +374,21 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private ValueHash256 _keyBuff = new();
 
-        public void Set(in UInt256 index, byte[] value)
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, in UInt256 value)
         {
+            Unsafe.SkipInit(out EvmWord word);
+            bool isZero = value.IsZero;
+            ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
-                storageTree.Set(index, value);
+                storageTree.Set(index, encoded, isZero);
             }
             else
             {
                 StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
             }
         }
 

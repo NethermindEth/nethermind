@@ -346,7 +346,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
@@ -432,16 +432,16 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
-                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
                         object? data = BranchChildren(state.item)[i];
                         if (data is null)
                         {
-                            ReadOnlySpan<byte> nodeRlp = state.item.FullRlp.AsSpan();
+                            LiteRlpReader nodeRlp = new(state.item.FullRlp);
                             int cursor = state.item.SeekChildPosition(nodeRlp, i);
-                            state.local += RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
+                            state.local += nodeRlp.PeekNextRlpLength(cursor);
                         }
                         else if (ReferenceEquals(data, _nullNode))
                         {
@@ -475,7 +475,7 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 ushort candidateMask = 0;
-                ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
+                LiteRlpReader nodeRlp = new(item.FullRlp);
                 int cursor = item.SeekChildPosition(nodeRlp, 0);
                 ref object? child = ref FirstBranchChild(item);
                 for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
@@ -483,7 +483,7 @@ namespace Nethermind.Trie
                     object? data = child;
                     if (data is null)
                     {
-                        int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
+                        int length = nodeRlp.PeekNextRlpLength(cursor);
                         totalLength += length;
                         cursor += length;
                     }
@@ -524,7 +524,7 @@ namespace Nethermind.Trie
                             path.TruncateOne();
                         }
 
-                        cursor = RlpHelpers.SkipItem(nodeRlp, cursor);
+                        nodeRlp.SkipItem(ref cursor);
                     }
                 }
 
@@ -589,9 +589,10 @@ namespace Nethermind.Trie
             /// <inheritdoc cref="WriteChildrenRlpBranch" />
             private static int WriteChildrenRlpBranchRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
-                ReadOnlySpan<byte> nodeRlp = item.FullRlp.AsSpan();
-                if (nodeRlp.Length == FullBranchRlpLength && destination.Length >= BranchesCount * Rlp.LengthOfKeccakRlp
-                    && TryPatchFullBranch(tree, ref path, item, nodeRlp, destination, bufferPool, canBeParallel))
+                LiteRlpReader nodeRlp = new(item.FullRlp);
+                ReadOnlySpan<byte> nodeRlpData = nodeRlp.Data;
+                if (nodeRlpData.Length == FullBranchRlpLength && destination.Length >= BranchesCount * Rlp.LengthOfKeccakRlp
+                    && TryPatchFullBranch(tree, ref path, item, nodeRlpData, destination, bufferPool, canBeParallel))
                 {
                     return BranchesCount * Rlp.LengthOfKeccakRlp;
                 }
@@ -608,7 +609,7 @@ namespace Nethermind.Trie
                     object? data = child;
                     if (data is null)
                     {
-                        int length = RlpHelpers.PeekNextRlpLength(nodeRlp, cursor);
+                        int length = nodeRlp.PeekNextRlpLength(cursor);
                         if (runStart < 0) runStart = cursor;
                         runLength += length;
                         cursor += length;
@@ -617,7 +618,7 @@ namespace Nethermind.Trie
                     {
                         if (runStart >= 0)
                         {
-                            nodeRlp.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                            nodeRlp.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                             position += runLength;
                             runStart = -1;
                             runLength = 0;
@@ -652,13 +653,13 @@ namespace Nethermind.Trie
                             }
                         }
 
-                        cursor = RlpHelpers.SkipItem(nodeRlp, cursor);
+                        nodeRlp.SkipItem(ref cursor);
                     }
                 }
 
                 if (runStart >= 0)
                 {
-                    nodeRlp.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
+                    nodeRlp.Data.Slice(runStart, runLength).CopyTo(destination.Slice(position, runLength));
                     position += runLength;
                 }
 
