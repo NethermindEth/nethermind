@@ -146,6 +146,19 @@ public partial class DebugRpcModuleTests
             "a negative index must be reported by the bounds check, not indexed into the transaction array");
     }
 
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_treats_genesis_as_its_own_base_state()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", 0UL, "0x0");
+
+        Assert.That(JToken.Parse(response)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
+            "genesis has no parent to replay from, so the state check must fall back to genesis itself rather than reject the request");
+    }
+
     private static async Task<Transaction> AddBlockWithTransfer(Context context)
     {
         Transaction transaction = Build.A.Transaction
@@ -169,6 +182,27 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockhashAndIndex_traces_a_block_whose_own_state_was_never_committed()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+        BlockHeader parent = context.Blockchain.BlockTree.Head!.Header;
+
+        // Suggested but never processed, so only the parent it reuses the state root of has a committed state
+        Block unprocessed = Build.A.Block
+            .WithParent(parent)
+            .WithStateRoot(parent.StateRoot!)
+            .TestObject;
+        context.Blockchain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", unprocessed.Hash!, "0x0");
+
+        Assert.That(JToken.Parse(response)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
+            "the trace replays the block on top of its parent, so the block's own state is not a precondition");
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
