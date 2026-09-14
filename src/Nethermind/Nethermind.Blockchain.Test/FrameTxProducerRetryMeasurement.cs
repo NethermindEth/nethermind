@@ -107,8 +107,14 @@ public class FrameTxProducerRetryMeasurement
     /// <remarks>322,800 is soispoke's declared privacy-pool budget (their
     /// <c>activation_manifest.testbed.json</c>: <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800).
     /// The <c>groth16-soispoke</c> sweep entry in the mempool/flood harnesses stays clamped to 300,000
-    /// because that same field also sets the admission ceiling those tests run under on a stock build;
-    /// this case uses the real declared number that clamp stands in for.</remarks>
+    /// because those harnesses run through <c>CapFrameGas</c>, which enforces the fixed
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/> on the simulation path regardless of configuration; this
+    /// fixture drives block execution instead, which applies no such cap, so it can use the real declared
+    /// number that clamp stands in for. <see cref="FrameTx"/> puts the whole declared value into one frame's
+    /// execution gas limit with no signatures, so at every ceiling this fixture sweeps (not only 322,800) the
+    /// EVM burn is a uniform tight-loop shape, distinct from the signature/Groth16 shapes the mempool/flood
+    /// harnesses measure at the same nominal ceiling — rows here are not CPU-comparable to those, only the
+    /// declared-gas axis is shared.</remarks>
     [TestCase(true, 322_800ul, TestName = "control: a prefix that approves is included and paid for")]
     [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
     [TestCase(false, 322_800ul, TestName = "never approves, at soispoke's declared privacy-pool budget")]
@@ -204,19 +210,22 @@ public class FrameTxProducerRetryMeasurement
     [TestCaseSource(nameof(RetryCases))]
     public async Task ProducerRetriesAreBoundedByKRetry(ulong verifyGas, int kRetry)
     {
-        (int blocksOffered, int attempts, int headsFailed, ulong firstBurn, ulong burned, UInt256 beneficiaryDelta, _) =
+        (int blocksOffered, int attempts, int headsFailed, int evictionCalls, ulong firstBurn, ulong burned,
+                UInt256 beneficiaryDelta, _) =
             await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead: 1);
 
-        Emit($"case=k_retry_sweep k_retry={kRetry} budget={verifyGas} "
+        Emit($"case=k_retry_sweep k_retry={kRetry} k_basis=modelled budget={verifyGas} "
              + $"blocks_offered={blocksOffered} execution_attempts={attempts} "
              + $"burn_first_attempt={firstBurn} burn_total={burned} "
-             + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} "
+             + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} amplification_basis=closed_form "
              + $"beneficiary_delta={beneficiaryDelta}");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headsFailed, Is.EqualTo(kRetry),
                 "the pool must evict the transaction after exactly K_retry failed heads, or the loop bound alone is proving nothing");
+            Assert.That(evictionCalls, Is.EqualTo(blocksOffered),
+                "the executor must consult the pool's eviction decision exactly once per attempt, or a double-call per attempt would go unnoticed");
             Assert.That(attempts, Is.EqualTo(kRetry),
                 "the producer must re-execute the prefix exactly K_retry times before the pool evicts it");
             Assert.That(firstBurn, Is.GreaterThan((ulong)(verifyGas * BudgetBurnFloor)),
@@ -245,21 +254,25 @@ public class FrameTxProducerRetryMeasurement
         [Values(1, 8, 32, 128)] int mPerHead)
     {
         const ulong verifyGas = 300_000ul;
+        int mEffective = kRetry == 1 ? 1 : mPerHead;
 
-        (int blocksOffered, int attempts, int headsFailed, ulong firstBurn, ulong burned, UInt256 beneficiaryDelta,
-                int attemptCap) =
+        (int blocksOffered, int attempts, int headsFailed, int evictionCalls, ulong firstBurn, ulong burned,
+                UInt256 beneficiaryDelta, int attemptCap) =
             await RunNeverApprovingSweep(verifyGas, kRetry, mPerHead);
 
-        Emit($"case=k_retry_two_axis k_retry={kRetry} m_per_head={mPerHead} m_basis=modelled budget={verifyGas} "
+        Emit($"case=k_retry_two_axis k_retry={kRetry} k_basis=modelled m_per_head={mPerHead} m_basis=modelled "
+             + $"m_effective={mEffective} budget={verifyGas} "
              + $"blocks_offered={blocksOffered} execution_attempts={attempts} "
              + $"burn_first_attempt={firstBurn} burn_total={burned} "
-             + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} "
+             + $"amplification={(firstBurn == 0 ? 0 : (double)burned / firstBurn):F2} amplification_basis=closed_form "
              + $"beneficiary_delta={beneficiaryDelta}");
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(headsFailed, Is.EqualTo(kRetry),
                 "the transaction must fail on exactly K_retry distinct heads before eviction");
+            Assert.That(evictionCalls, Is.EqualTo(blocksOffered),
+                "the executor must consult the pool's eviction decision exactly once per attempt, or a double-call per attempt would go unnoticed");
             Assert.That(blocksOffered, Is.EqualTo(attemptCap),
                 "total attempts must equal (K_retry - 1) full heads of M attempts plus one on the evicting head");
             Assert.That(attempts, Is.EqualTo(blocksOffered),
@@ -278,7 +291,7 @@ public class FrameTxProducerRetryMeasurement
     /// per-head eviction budget, until the pool evicts it. Shared by both sweeps above; the single-axis
     /// sweep is the case <paramref name="mPerHead"/> == 1.
     /// </summary>
-    private async Task<(int BlocksOffered, int Attempts, int HeadsFailed, ulong FirstBurn, ulong Burned, UInt256 BeneficiaryDelta, int AttemptCap)>
+    private async Task<(int BlocksOffered, int Attempts, int HeadsFailed, int EvictionCalls, ulong FirstBurn, ulong Burned, UInt256 BeneficiaryDelta, int AttemptCap)>
         RunNeverApprovingSweep(ulong verifyGas, int kRetry, int mPerHead)
     {
         // (kRetry - 1) full heads of mPerHead free attempts each, plus one attempt on the head that
@@ -298,9 +311,14 @@ public class FrameTxProducerRetryMeasurement
         long headGeneration = 0;
         long lastCountedGeneration = -1;
         int headsFailed = 0;
+        // Tracks every call independent of the per-head tally above, so a hypothetical double-call per
+        // attempt (e.g. a regression in the executor's eviction path) still shows up as evictionCalls
+        // exceeding blocksOffered, the way the single flat counter this replaced would have caught it.
+        int evictionCalls = 0;
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.EvictTransaction(Arg.Any<Transaction>()).Returns(_ =>
         {
+            evictionCalls++;
             if (lastCountedGeneration != headGeneration)
             {
                 lastCountedGeneration = headGeneration;
@@ -354,7 +372,7 @@ public class FrameTxProducerRetryMeasurement
         foreach (ulong b in adapter.BurnedPerAttempt) burned += b;
         ulong firstBurn = adapter.BurnedPerAttempt.Count > 0 ? adapter.BurnedPerAttempt[0] : 0;
 
-        return (blocksOffered, adapter.Attempts, headsFailed, firstBurn, burned,
+        return (blocksOffered, adapter.Attempts, headsFailed, evictionCalls, firstBurn, burned,
             _stateProvider.GetBalance(Beneficiary) - beneficiaryBefore, attemptCap);
     }
 
