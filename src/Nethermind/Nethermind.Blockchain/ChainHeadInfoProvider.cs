@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
         {
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
-            HeadNumber = blockTree.BestKnownNumber;
+            HeadNumber = blockTree.Head?.Number ?? 0;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;

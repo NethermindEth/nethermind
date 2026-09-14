@@ -2226,6 +2226,21 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Received((int)headNumber).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 
+        [TestCase(12_000_000UL, 0, TestName = "should_not_notify_added_peer_at_the_tip_while_syncing")]
+        [TestCase(10_000_000UL, 1, TestName = "should_notify_added_peer_at_the_tip_when_synced")]
+        public void should_notify_added_peer_based_on_processed_head(ulong bestKnownNumber, int expectedAnnouncements)
+        {
+            // Setup leaves the processed head at 9_999_999, so the gap to the best downloaded block is what varies here
+            _blockTree.BestKnownNumberOverride = bestKnownNumber;
+            _txPool = CreatePool();
+            _ = AddTransactionToPool();
+            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.HeadNumber.Returns(bestKnownNumber);
+            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(txPoolPeer);
+            txPoolPeer.Received(expectedAnnouncements).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+        }
+
         [Test]
         public void should_notify_peer_only_once()
         {

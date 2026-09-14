@@ -15,6 +15,12 @@ namespace Nethermind.TxPool
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
+        /// <summary>
+        /// Number of the last block on the canonical chain that this node has processed.
+        /// </summary>
+        /// <remarks>
+        /// This is the processed head, not the best downloaded block, so it stays behind the chain tip while syncing.
+        /// </remarks>
         ulong HeadNumber { get; }
 
         ulong? BlockGasLimit { get; }
