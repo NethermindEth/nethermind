@@ -12,6 +12,7 @@ public class BuiltInStepsModule : Module
     public static readonly StepInfo[] BuiltInSteps =
     [
         typeof(ApplyMemoryHint),
+        typeof(ValidateFlatState),
         typeof(DatabaseMigrations),
         typeof(EraEStep),
         typeof(EraStep),

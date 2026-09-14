@@ -61,6 +61,9 @@ The admin_prune JSON-RPC method was removed. Calls now return JSON-RPC method no
 replacement. Configure the FlatDB history features explicitly when historical reads are required. For an old archive
 configuration, map Pruning.Mode=None to FlatDb.HistoryEnabled=true.
 
+The legacy `state` and `storage` database mappings were removed from `debug_getFromDb` because those databases no longer
+exist. Callers must stop using those database names; an unknown database name currently returns a JSON-RPC error.
+
 Remove deleted settings from JSON configuration files and NETHERMIND_* environment variables during migration. Unknown
 keys are ignored by configuration binding and reported as Invalid configuration settings warnings; those warnings do not
 restore the old pruning behavior. Check startup output and clean the old keys rather than relying on the warnings.

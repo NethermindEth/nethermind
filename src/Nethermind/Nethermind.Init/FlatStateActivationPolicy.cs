@@ -17,7 +17,7 @@ using Nethermind.State.Flat.Persistence;
 namespace Nethermind.Init;
 
 /// <summary>
-/// Validates the FlatDB-only state layout before chain startup opens state databases.
+/// Validates the FlatDB-only state layout before chain startup begins.
 /// </summary>
 /// <remarks>An existing populated FlatDB wins over leftover files from an old state database, while a fresh FlatDB
 /// refuses to start if those files are detected. This ordering lets operators remove the old database after a
