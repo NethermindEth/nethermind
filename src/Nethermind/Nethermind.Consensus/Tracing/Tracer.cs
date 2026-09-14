@@ -14,8 +14,8 @@ namespace Nethermind.Consensus.Tracing
         IStateReader stateReader,
         BlockchainProcessorFacade traceProcessor,
         BlockchainProcessorFacade executeProcessor,
-        ProcessingOptions executeOptions = ProcessingOptions.Trace,
-        ProcessingOptions traceOptions = ProcessingOptions.Trace)
+        ProcessingOptions executeOptions = TraceProcessingOptions.ReadOnlyReplay,
+        ProcessingOptions traceOptions = TraceProcessingOptions.ReadOnlyReplay)
         : ITracer
     {
         private void Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
