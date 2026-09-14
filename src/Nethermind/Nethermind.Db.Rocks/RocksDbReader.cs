@@ -84,7 +84,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         if (keyLength <= 0)
             throw new ArgumentOutOfRangeException(nameof(keyLength));
-        if (keys.Length != values.Length * keyLength)
+        if ((long)keys.Length != (long)values.Length * keyLength)
             throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
 
         // Only HintCacheMiss maps onto a batched read; HintReadAhead selects a sequential iterator, per the interface.

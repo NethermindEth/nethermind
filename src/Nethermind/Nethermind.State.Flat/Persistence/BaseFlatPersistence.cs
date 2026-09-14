@@ -24,7 +24,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// reducing memory usage. The tradeoff is that SelfDestruct must verify the 16-byte suffix.
 ///
 /// The <c>fullAddressStorageKey</c> flag switches to the unsplit shape, where the whole address leads the key.
-/// That is required whenever the address is not a hash ? see <see cref="Nethermind.Db.FlatLayout.PreimageFlat"/>,
+/// That is required whenever the address is not a hash — see <see cref="Nethermind.Db.FlatLayout.PreimageFlat"/>,
 /// where a split prefix is attacker-chosen and collapses per-account scans into whole-range scans.
 ///
 /// <code>
@@ -85,7 +85,7 @@ public static class BaseFlatPersistence
     }
 
     /// <summary>
-    /// Hashed-layout storage key (<c>[4B addrHash | 32B slotHash | 16B addrHash]</c>) ? the encoding the history
+    /// Hashed-layout storage key (<c>[4B addrHash | 32B slotHash | 16B addrHash]</c>) — the encoding the history
     /// columns capture and read.
     /// </summary>
     internal static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash) =>
@@ -372,7 +372,7 @@ public static class BaseFlatPersistence
 
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash, fullAddressStorageKey);
 
-            // The bytes are stored verbatim ? no decode + re-encode round-trip. The single DecodeByteArraySpan
+            // The bytes are stored verbatim — no decode + re-encode round-trip. The single DecodeByteArraySpan
             // call validates canonical form and bounds the item exactly (trimming any trailing bytes).
             RlpReader ctx = new(rlpValue);
             ctx.DecodeByteArraySpan();
